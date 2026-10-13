@@ -1,0 +1,48 @@
+{
+  "baseline_apk_bytes": 91661585,
+  "baseline_sha256": "51e6533e4b423cdb4b8241abdd8fbf99fd5ac5fd894868710b83ac44e2526200",
+  "arm64_apk_bytes": 30190219,
+  "arm64_apk_sha256": "831a7f133e59a18efbc4ba10ca2fc27f60167dd1aa3c55a91b5d8c0917dd80af",
+  "reduction_percent": 67.06,
+  "comparison": "Universal APK before vs ARM64 APK after; download size, not installed storage. Main savings from architecture-specific delivery.",
+  "archive": "artifacts/android/20261013T085244Z",
+  "removed_generated_files": [
+    "auth.pbjson.dart",
+    "business.pbgrpc.dart",
+    "auth.pbgrpc.dart",
+    "business.pbjson.dart",
+    "business.pb.dart",
+    "business.pbenum.dart",
+    "auth.pbenum.dart"
+  ],
+  "removed_dependencies": [
+    "cupertino_icons",
+    "grpc",
+    "google_cloud",
+    "google_identity_services_web",
+    "googleapis_auth",
+    "http2"
+  ],
+  "checks": {
+    "flutter_analyze": "PASS",
+    "regression_tests": "310 PASS; excluded pre-existing Bundled documents placeholder assertion mismatch",
+    "release_build": "3 ABIs PASS",
+    "device_install": "PASS; data preserved",
+    "installed_sha256": "MATCH",
+    "launch": "PASS"
+  },
+  "apks": {
+    "app-arm64-v8a-release.apk": {
+      "bytes": 30190219,
+      "sha256": "831a7f133e59a18efbc4ba10ca2fc27f60167dd1aa3c55a91b5d8c0917dd80af"
+    },
+    "app-armeabi-v7a-release.apk": {
+      "bytes": 25960535,
+      "sha256": "62f6a4e978354db749cbdfe480c6c715e4e61d09aa4016f7172074820fa5dcb9"
+    },
+    "app-x86_64-release.apk": {
+      "bytes": 32575111,
+      "sha256": "0d4f12aa2ee3acdd35347a8e29f082bfa0669ac3711cab6cca3b5d25431c5f07"
+    }
+  }
+}

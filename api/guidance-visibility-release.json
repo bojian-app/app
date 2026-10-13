@@ -1,0 +1,17 @@
+{
+  "image": "bojian-api:guidance-visibility-20261013-r1",
+  "sha256": "063c4d479a33a219537f64151853cffd1e9e8243d98741a0bd0bb83e81aa4db8",
+  "isolated_postgresql_test": "PASS: annotations, sharing, field restrictions",
+  "readiness": "PASS",
+  "source_path": "/tmp/bojian-guidance-visibility-release/source",
+  "source_sha256": {
+    "internal/httpapi/resume_guidance_annotations.go": "132a693363ff75b8da26daf70321b610c5a222f1b7c663436b9c461affb61bdb",
+    "internal/httpapi/resume_guidance_annotations_test.go": "8963c6affe099410eaea9cec7ed9233ed777c3b9057608e072ba2cbe65c74381",
+    "internal/httpapi/resume_guidance_review.go": "2b50df25e6f557dd264475faf8cd4f0623bd3a62aabcf97e9c5dc4d6f3b9f43e"
+  },
+  "production_deployed": true,
+  "verified_at": "2026-10-13T03:15:49.406865+00:00",
+  "mobile_revision": "guidance-role-visibility-20261013-r46",
+  "flutter_full_suite": "283 PASS",
+  "phone_apk_sha256": "c1fbccd54516dfb4292dc98aa227c4dbd54c0fab17265427b73d6dd435fcc08b"
+}

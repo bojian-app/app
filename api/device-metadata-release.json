@@ -1,0 +1,9 @@
+{
+  "date": "2026-10-09",
+  "image": "bojian-api:device-metadata-20261009-r1",
+  "previous_image": "bojian-api:realtime-20261009-r2",
+  "binary_sha256": "0b2a1daf9a39daef68678321029063903484b3d712de91a72d93117be7435368",
+  "apk_sha256": "5acd7a9584f16cb608b45c17e09eeabb8f83f0380a697866a982054eb517b908",
+  "flutter_tests": 175,
+  "isolated_device_tests": 2
+}

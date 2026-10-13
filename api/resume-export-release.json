@@ -1,0 +1,15 @@
+{
+  "image": "bojian-api:resume-export-20261008-r5",
+  "baseImage": "bojian-api:resume-export-20261008-r4",
+  "baseSourceCommit": "d21916b838593ce64bd9800d274fe303808267a2",
+  "binarySHA256": "8e654a4a8c8617f286b3671fecb0b2e6ccc502a71e48aec7c8a277f20bc1fefc",
+  "schemaChanges": false,
+  "patch": "resume-export.patch",
+  "verification": [
+    "go test ./... passed",
+    "Structured resume content and rich text tested",
+    "Working resume exports include uploaded portrait photo",
+    "Download links use signed HTTPS origin",
+    "DOCX portrait embedding and package relationships tested"
+  ]
+}

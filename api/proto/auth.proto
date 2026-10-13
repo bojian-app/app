@@ -1,0 +1,46 @@
+syntax = "proto3";
+package bojian.v1;
+option go_package = "github.com/fengzijian/bojian/api/gen/bojian/v1;bojianv1";
+
+// Login responses are typed. Credentials are transported only over TLS outside loopback.
+service AuthenticationService {
+  rpc CreateCaptcha(Empty) returns (Captcha);
+  rpc VerifyCaptcha(VerifyCaptchaRequest) returns (CaptchaVerification);
+  rpc SendSMS(SendSMSRequest) returns (SMSResponse);
+  rpc PhoneLogin(PhoneLoginRequest) returns (LoginResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (TokenResponse);
+  rpc CreateWeChatQR(CreateWeChatQRRequest) returns (WeChatQRSession);
+  rpc GetWeChatQR(WeChatQRRequest) returns (WeChatQRSession);
+  rpc RefreshWeChatQR(WeChatQRRequest) returns (WeChatQRSession);
+  rpc ExchangeWeChatQR(WeChatQRRequest) returns (LoginResponse);
+}
+message Empty {}
+message Captcha { string id = 1; string master_image_data_url = 2; string thumb_image_data_url = 3; }
+message VerifyCaptchaRequest { string id = 1; int32 angle = 2; }
+message CaptchaVerification { string captcha_token = 1; }
+message SendSMSRequest { string phone = 1; string captcha_token = 2; string purpose = 3; }
+message SMSResponse { int32 retry_after_seconds = 1; }
+message PhoneLoginRequest { string phone = 1; string code = 2; }
+message RefreshTokenRequest { string refresh_token = 1; }
+message UserIdentity { int64 id = 1; string public_id = 2; }
+message LoginResponse {
+  string access_token = 1;
+  int64 access_expires_in_seconds = 2;
+  string refresh_token = 3;
+  string refresh_expires_at = 4;
+  UserIdentity user = 5;
+}
+message TokenResponse {
+  string access_token = 1;
+  int64 access_expires_in_seconds = 2;
+  string refresh_token = 3;
+  string refresh_expires_at = 4;
+}
+message CreateWeChatQRRequest { map<string, string> agreement_versions = 1; }
+message WeChatQRRequest { int64 id = 1; }
+message WeChatQRSession {
+  int64 id = 1;
+  string status = 2;
+  optional string qr_url = 3;
+  optional int32 poll_after_seconds = 4;
+}

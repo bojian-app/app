@@ -1,0 +1,22 @@
+--- a/internal/httpapi/article_comments.go
++++ b/internal/httpapi/article_comments.go
+@@ -166,7 +166,7 @@
+ 	if replies {
+ 		query += ` AND c.parent_id=$3 AND c.deleted_at IS NULL`
+ 	} else {
+-		query += ` AND $3::bigint=0 AND c.parent_id IS NULL AND (c.deleted_at IS NULL OR ` + commentReplyCount + `, (SELECT count(*) FROM post_comment_dislikes d WHERE d.comment_id=c.id), EXISTS(SELECT 1 FROM post_comment_dislikes d WHERE d.comment_id=c.id AND d.user_id=$2)` + `>0)`
++		query += ` AND $3::bigint=0 AND c.parent_id IS NULL AND (c.deleted_at IS NULL OR ` + commentReplyCount + `>0)`
+ 	}
+ 	if r.URL.Query().Get("cursor") != "" {
+ 		query += ` AND (c.created_at,c.id)<($5,$6)`
+--- a/internal/httpapi/server.go
++++ b/internal/httpapi/server.go
+@@ -222,6 +222,8 @@
+ 	protected.HandleFunc("PUT /api/v1/articles/{id}/comments/{commentID}/like", s.likeArticleComment)
+ 	protected.HandleFunc("PUT /api/v1/articles/{id}/comments/{commentID}/dislike", s.dislikeArticleComment)
+ 	protected.HandleFunc("DELETE /api/v1/articles/{id}/comments/{commentID}/dislike", s.undislikeArticleComment)
++	protected.HandleFunc("PUT /api/v1/articles/{id}/comments/{commentID}/dislike", s.dislikeArticleComment)
++	protected.HandleFunc("DELETE /api/v1/articles/{id}/comments/{commentID}/dislike", s.undislikeArticleComment)
+ 	protected.HandleFunc("DELETE /api/v1/articles/{id}/comments/{commentID}/like", s.unlikeArticleComment)
+ 	protected.HandleFunc("PATCH /api/v1/articles/{id}", s.updateArticle)
+ 	protected.HandleFunc("DELETE /api/v1/articles/{id}", s.deleteArticle)

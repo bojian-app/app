@@ -1,0 +1,683 @@
+--- a/internal/httpapi/company_benefit_model.go
++++ b/internal/httpapi/company_benefit_model.go
+@@ -0,0 +1,53 @@
++package httpapi
++
++import (
++	"errors"
++	"strings"
++	"time"
++	"unicode/utf8"
++)
++
++type benefitContent struct {
++	CompanyName  string            `json:"company_name"`
++	Province     string            `json:"province"`
++	City         string            `json:"city"`
++	Industry     string            `json:"industry"`
++	JobScope     string            `json:"job_scope"`
++	ValidAsOf    string            `json:"valid_as_of"`
++	Benefits     map[string]string `json:"benefits"`
++	OfficialNote string            `json:"official_note"`
++}
++
++var benefitCategories = map[string]bool{"salary": true, "insurance": true, "hours": true, "leave": true, "bonus": true, "allowance": true, "growth": true, "other": true}
++
++func (in *benefitContent) validate() error {
++	in.CompanyName = strings.TrimSpace(in.CompanyName)
++	in.Province = strings.TrimSpace(in.Province)
++	in.City = strings.TrimSpace(in.City)
++	in.Industry = strings.TrimSpace(in.Industry)
++	in.JobScope = strings.TrimSpace(in.JobScope)
++	in.OfficialNote = strings.TrimSpace(in.OfficialNote)
++	for _, field := range []struct {
++		value    string
++		min, max int
++	}{{in.CompanyName, 2, 120}, {in.Province, 1, 40}, {in.City, 1, 40}, {in.Industry, 0, 60}, {in.JobScope, 1, 100}, {in.OfficialNote, 0, 1500}} {
++		n := utf8.RuneCountInString(field.value)
++		if n < field.min || n > field.max {
++			return errors.New("请填写完整的企业名称、地区和适用岗位，内容不要超过字数限制")
++		}
++	}
++	if _, err := time.Parse(time.DateOnly, in.ValidAsOf); err != nil {
++		return errors.New("请填写待遇对应日期（YYYY-MM-DD）")
++	}
++	if len(in.Benefits) == 0 || len(in.Benefits) > 8 {
++		return errors.New("请至少填写一项福利待遇")
++	}
++	for key, value := range in.Benefits {
++		value = strings.TrimSpace(value)
++		if !benefitCategories[key] || value == "" || utf8.RuneCountInString(value) > 2000 {
++			return errors.New("福利内容无效，每项最多2000字")
++		}
++		in.Benefits[key] = value
++	}
++	return nil
++}
+--- a/internal/httpapi/company_benefits.go
++++ b/internal/httpapi/company_benefits.go
+@@ -0,0 +1,316 @@
++package httpapi
++
++import (
++	"crypto/sha256"
++	"encoding/json"
++	"fmt"
++	"net/http"
++	"strconv"
++	"strings"
++	"time"
++
++	"github.com/jackc/pgx/v5"
++)
++
++// Public records contain only information curated by officials. Proofs never join this query.
++const benefitPublicColumns = `id,company_name,province,city,industry,job_scope,valid_as_of::text,benefits_jsonb,official_note,revision,verified_at`
++
++func scanBenefit(row interface{ Scan(...any) error }) (map[string]any, error) {
++	var id, revision int64
++	var content benefitContent
++	var raw []byte
++	var verified time.Time
++	err := row.Scan(&id, &content.CompanyName, &content.Province, &content.City, &content.Industry, &content.JobScope, &content.ValidAsOf, &raw, &content.OfficialNote, &revision, &verified)
++	if err != nil {
++		return nil, err
++	}
++	if err = json.Unmarshal(raw, &content.Benefits); err != nil {
++		return nil, err
++	}
++	return map[string]any{"id": id, "content": content, "revision": revision, "verified_at": verified}, nil
++}
++func (s *Server) listCompanyBenefits(w http.ResponseWriter, r *http.Request) {
++	q := strings.TrimSpace(r.URL.Query().Get("query"))
++	city := strings.TrimSpace(r.URL.Query().Get("city"))
++	industry := strings.TrimSpace(r.URL.Query().Get("industry"))
++	if len(q) > 360 || len(city) > 120 || len(industry) > 180 {
++		Failure(w, r, 422, "INVALID_ARGUMENT", "搜索内容过长", nil)
++		return
++	}
++	cursor, _ := strconv.ParseInt(r.URL.Query().Get("cursor"), 10, 64)
++	limit := queryLimit(r, 20, 50)
++	// strpos treats wildcard characters literally.
++	rows, err := s.db.Query(r.Context(), `SELECT `+benefitPublicColumns+` FROM company_benefits WHERE status='PUBLISHED' AND ($1='' OR strpos(lower(company_name),lower($1))>0) AND ($2='' OR city=$2) AND ($3='' OR industry=$3) AND ($4::bigint=0 OR id<$4) ORDER BY id DESC LIMIT $5`, q, city, industry, cursor, limit+1)
++	if err != nil {
++		s.internal(w, r, "benefits list", err)
++		return
++	}
++	defer rows.Close()
++	items := []map[string]any{}
++	for rows.Next() {
++		item, e := scanBenefit(rows)
++		if e != nil {
++			s.internal(w, r, "benefits scan", e)
++			return
++		}
++		items = append(items, item)
++	}
++	if err = rows.Err(); err != nil {
++		s.internal(w, r, "benefits rows", err)
++		return
++	}
++	var next any
++	if len(items) > limit {
++		items = items[:limit]
++		next = items[limit-1]["id"]
++	}
++	Success(w, r, 200, map[string]any{"items": items, "next_cursor": next})
++}
++func (s *Server) getCompanyBenefit(w http.ResponseWriter, r *http.Request) {
++	id, ok := pathID(w, r, "id")
++	if !ok {
++		return
++	}
++	item, err := scanBenefit(s.db.QueryRow(r.Context(), `SELECT `+benefitPublicColumns+` FROM company_benefits WHERE id=$1 AND status='PUBLISHED'`, id))
++	if err == pgx.ErrNoRows {
++		Failure(w, r, 404, "NOT_FOUND", "企业尚未收录或已下架", nil)
++		return
++	}
++	if err != nil {
++		s.internal(w, r, "benefit detail", err)
++		return
++	}
++	Success(w, r, 200, item)
++}
++
++type benefitSubmissionInput struct {
++	CompanyID  *int64         `json:"company_id"`
++	Content    benefitContent `json:"content"`
++	Employment []int64        `json:"employment_file_ids"`
++	Evidence   []int64        `json:"evidence_file_ids"`
++	Revision   int64          `json:"revision"`
++}
++
++func validBenefitFiles(proof, evidence []int64) bool {
++	if len(proof) < 1 || len(proof) > 3 || len(evidence) < 1 || len(evidence) > 8 {
++		return false
++	}
++	seen := map[int64]bool{}
++	for _, list := range [][]int64{proof, evidence} {
++		for _, id := range list {
++			if id <= 0 || seen[id] {
++				return false
++			}
++			seen[id] = true
++		}
++	}
++	return true
++}
++func (s *Server) writeBenefitSubmission(w http.ResponseWriter, r *http.Request) {
++	var in benefitSubmissionInput
++	if err := decodeJSON(w, r, &in, 64<<10); err != nil {
++		Failure(w, r, 422, "INVALID_ARGUMENT", "提交内容格式无效", nil)
++		return
++	}
++	if err := in.Content.validate(); err != nil {
++		Failure(w, r, 422, "INVALID_ARGUMENT", err.Error(), nil)
++		return
++	}
++	// Officials alone may write a public note.
++	in.Content.OfficialNote = ""
++	if !validBenefitFiles(in.Employment, in.Evidence) {
++		Failure(w, r, 422, "PROOF_REQUIRED", "请提供1–3份在职证明和1–8份福利图片或视频", nil)
++		return
++	}
++	editing := r.Method == "PATCH"
++	var id int64
++	var ok bool
++	if editing {
++		id, ok = pathID(w, r, "id")
++		if !ok {
++			return
++		}
++	}
++	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
++	if !editing && (len(key) < 16 || len(key) > 100) {
++		Failure(w, r, 422, "INVALID_ARGUMENT", "提交标识无效，请重试", nil)
++		return
++	}
++	raw, _ := json.Marshal(in.Content)
++	hashRaw, _ := json.Marshal(in)
++	hash := fmt.Sprintf("%x", sha256.Sum256(hashRaw))
++	owner := UserID(r.Context())
++	tx, err := s.db.Begin(r.Context())
++	if err != nil {
++		s.internal(w, r, "benefits begin", err)
++		return
++	}
++	defer tx.Rollback(r.Context())
++	if !editing {
++		var oldHash string
++		err = tx.QueryRow(r.Context(), `SELECT id,request_hash FROM company_benefit_submissions WHERE user_id=$1 AND request_key=$2`, owner, key).Scan(&id, &oldHash)
++		if err == nil {
++			if oldHash != hash {
++				Failure(w, r, 409, "IDEMPOTENCY_CONFLICT", "提交内容已变化，请重新提交", nil)
++				return
++			}
++			Success(w, r, 200, map[string]any{"id": id, "deduplicated": true})
++			return
++		}
++		if err != pgx.ErrNoRows {
++			s.internal(w, r, "benefits retry", err)
++			return
++		}
++	}
++	for _, group := range []struct {
++		ids     []int64
++		purpose string
++	}{{in.Employment, "EMPLOYMENT_PROOF"}, {in.Evidence, "BENEFIT_EVIDENCE"}} {
++		var count int
++		err = tx.QueryRow(r.Context(), `SELECT count(*) FROM files WHERE id=ANY($1) AND owner_id=$2 AND purpose=$3 AND status='READY' AND deleted_at IS NULL`, group.ids, owner, group.purpose).Scan(&count)
++		if err != nil {
++			s.internal(w, r, "benefits files", err)
++			return
++		}
++		if count != len(group.ids) {
++			Failure(w, r, 422, "FILES_INVALID", "材料尚未上传完成或不属于当前账号", nil)
++			return
++		}
++	}
++	if in.CompanyID != nil {
++		var exists bool
++		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM company_benefits WHERE id=$1 AND status='PUBLISHED')`, *in.CompanyID).Scan(&exists)
++		if err != nil {
++			s.internal(w, r, "benefits company", err)
++			return
++		}
++		if !exists {
++			Failure(w, r, 404, "NOT_FOUND", "企业收录记录不存在", nil)
++			return
++		}
++	}
++	if editing {
++		var status string
++		var revision int64
++		err = tx.QueryRow(r.Context(), `SELECT status,revision FROM company_benefit_submissions WHERE id=$1 AND user_id=$2 FOR UPDATE`, id, owner).Scan(&status, &revision)
++		if err == pgx.ErrNoRows {
++			Failure(w, r, 404, "NOT_FOUND", "提交记录不存在", nil)
++			return
++		}
++		if err != nil {
++			s.internal(w, r, "benefits edit", err)
++			return
++		}
++		if revision != in.Revision || (status != "NEEDS_MORE" && status != "REJECTED") {
++			Failure(w, r, 409, "STATE_CONFLICT", "审核状态已变化，请刷新后再提交", nil)
++			return
++		}
++		_, err = tx.Exec(r.Context(), `UPDATE company_benefit_submissions SET company_id=$2,content_jsonb=$3,employment_file_ids=$4,evidence_file_ids=$5,status='PENDING',review_reason='',reviewed_at=NULL,updated_at=now(),revision=revision+1 WHERE id=$1`, id, in.CompanyID, raw, in.Employment, in.Evidence)
++	} else {
++		var insertedHash string
++		// A simultaneous retry waits for the first insert, then returns its existing ID.
++		err = tx.QueryRow(r.Context(), `INSERT INTO company_benefit_submissions(user_id,company_id,content_jsonb,employment_file_ids,evidence_file_ids,request_key,request_hash) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(user_id,request_key) DO UPDATE SET request_key=EXCLUDED.request_key RETURNING id,request_hash`, owner, in.CompanyID, raw, in.Employment, in.Evidence, key, hash).Scan(&id, &insertedHash)
++		if err == nil && insertedHash != hash {
++			Failure(w, r, 409, "IDEMPOTENCY_CONFLICT", "提交内容已变化，请重新提交", nil)
++			return
++		}
++	}
++	if err != nil {
++		s.internal(w, r, "benefits write", err)
++		return
++	}
++	if err = tx.Commit(r.Context()); err != nil {
++		s.internal(w, r, "benefits commit", err)
++		return
++	}
++	Success(w, r, 200, map[string]any{"id": id, "status": "PENDING"})
++}
++
++const benefitSubmissionColumns = `id,company_id,content_jsonb,employment_file_ids,evidence_file_ids,status,review_reason,revision,created_at,updated_at`
++
++func scanBenefitSubmission(row interface{ Scan(...any) error }) (map[string]any, error) {
++	var id, revision int64
++	var company *int64
++	var raw []byte
++	var proof, evidence []int64
++	var status, reason string
++	var created, updated time.Time
++	err := row.Scan(&id, &company, &raw, &proof, &evidence, &status, &reason, &revision, &created, &updated)
++	if err != nil {
++		return nil, err
++	}
++	var content benefitContent
++	if err = json.Unmarshal(raw, &content); err != nil {
++		return nil, err
++	}
++	return map[string]any{"id": id, "company_id": company, "content": content, "employment_file_ids": proof, "evidence_file_ids": evidence, "status": status, "review_reason": reason, "revision": revision, "created_at": created, "updated_at": updated}, nil
++}
++func (s *Server) listMyBenefitSubmissions(w http.ResponseWriter, r *http.Request) {
++	cursor, _ := strconv.ParseInt(r.URL.Query().Get("cursor"), 10, 64)
++	limit := queryLimit(r, 20, 50)
++	rows, err := s.db.Query(r.Context(), `SELECT `+benefitSubmissionColumns+` FROM company_benefit_submissions WHERE user_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT $3`, UserID(r.Context()), cursor, limit+1)
++	if err != nil {
++		s.internal(w, r, "benefits mine", err)
++		return
++	}
++	defer rows.Close()
++	items := []map[string]any{}
++	for rows.Next() {
++		item, e := scanBenefitSubmission(rows)
++		if e != nil {
++			s.internal(w, r, "benefits mine scan", e)
++			return
++		}
++		items = append(items, item)
++	}
++	if err = rows.Err(); err != nil {
++		s.internal(w, r, "benefits mine rows", err)
++		return
++	}
++	var next any
++	if len(items) > limit {
++		items = items[:limit]
++		next = items[limit-1]["id"]
++	}
++	w.Header().Set("Cache-Control", "no-store")
++	Success(w, r, 200, map[string]any{"items": items, "next_cursor": next})
++}
++func (s *Server) getMyBenefitSubmission(w http.ResponseWriter, r *http.Request) {
++	id, ok := pathID(w, r, "id")
++	if !ok {
++		return
++	}
++	item, err := scanBenefitSubmission(s.db.QueryRow(r.Context(), `SELECT `+benefitSubmissionColumns+` FROM company_benefit_submissions WHERE id=$1 AND user_id=$2`, id, UserID(r.Context())))
++	if err == pgx.ErrNoRows {
++		Failure(w, r, 404, "NOT_FOUND", "提交记录不存在", nil)
++		return
++	}
++	if err != nil {
++		s.internal(w, r, "benefits own detail", err)
++		return
++	}
++	files := []map[string]any{}
++	ids := append(append([]int64{}, item["employment_file_ids"].([]int64)...), item["evidence_file_ids"].([]int64)...)
++	rows, err := s.db.Query(r.Context(), `SELECT id,purpose,original_name,content_type,size_bytes FROM files WHERE id=ANY($1) AND owner_id=$2 AND status='READY' AND deleted_at IS NULL`, ids, UserID(r.Context()))
++	if err != nil {
++		s.internal(w, r, "benefits own files", err)
++		return
++	}
++	defer rows.Close()
++	for rows.Next() {
++		var fid, size int64
++		var purpose, name, mime string
++		if err = rows.Scan(&fid, &purpose, &name, &mime, &size); err != nil {
++			s.internal(w, r, "benefits files scan", err)
++			return
++		}
++		files = append(files, map[string]any{"id": fid, "purpose": purpose, "name": name, "content_type": mime, "size_bytes": size})
++	}
++	if err = rows.Err(); err != nil {
++		s.internal(w, r, "benefits files rows", err)
++		return
++	}
++	item["files"] = files
++	w.Header().Set("Cache-Control", "no-store")
++	Success(w, r, 200, item)
++}
+--- a/internal/httpapi/company_benefits_test.go
++++ b/internal/httpapi/company_benefits_test.go
+@@ -0,0 +1,151 @@
++package httpapi
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"github.com/jackc/pgx/v5/pgxpool"
++	"log/slog"
++	"net/http/httptest"
++	"net/url"
++	"os"
++	"strings"
++	"testing"
++	"time"
++)
++
++func benefitTestDB(t *testing.T) *pgxpool.Pool {
++	t.Helper()
++	dsn := os.Getenv("BENEFITS_TEST_DATABASE_URL")
++	if dsn == "" {
++		t.Skip("isolated local database required")
++	}
++	u, e := url.Parse(dsn)
++	if e != nil || u.Hostname() != "127.0.0.1" {
++		t.Fatal("local database required")
++	}
++	ctx := context.Background()
++	root, e := pgxpool.New(ctx, dsn)
++	if e != nil {
++		t.Fatal(e)
++	}
++	schema := fmt.Sprintf("benefits_%d", time.Now().UnixNano())
++	if _, e = root.Exec(ctx, "CREATE SCHEMA "+schema); e != nil {
++		t.Fatal(e)
++	}
++	cfg, _ := pgxpool.ParseConfig(dsn)
++	cfg.ConnConfig.RuntimeParams["search_path"] = schema
++	db, e := pgxpool.NewWithConfig(ctx, cfg)
++	if e != nil {
++		t.Fatal(e)
++	}
++	t.Cleanup(func() { db.Close(); root.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE"); root.Close() })
++	_, e = db.Exec(ctx, `CREATE TABLE users(id bigint PRIMARY KEY);INSERT INTO users VALUES(1),(2);CREATE TABLE admin_principals(id bigint PRIMARY KEY);INSERT INTO admin_principals VALUES(1);CREATE TABLE files(id bigint PRIMARY KEY,owner_id bigint,purpose text,status text,object_key text,original_name text,content_type text,size_bytes bigint,deleted_at timestamptz);INSERT INTO files VALUES(11,1,'EMPLOYMENT_PROOF','READY','private-proof','proof.pdf','application/pdf',10,NULL),(12,1,'BENEFIT_EVIDENCE','READY','private-evidence','benefit.png','image/png',10,NULL),(13,2,'EMPLOYMENT_PROOF','READY','other-private','other.pdf','application/pdf',10,NULL),(14,1,'AVATAR','READY','avatar','avatar.png','image/png',10,NULL);CREATE TABLE notifications(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,user_id bigint,type text,subject_type text,subject_id bigint,payload_safe_jsonb jsonb);`)
++	if e != nil {
++		t.Fatal(e)
++	}
++	migration, e := os.ReadFile("../database/migrations/041_company_benefits.sql")
++	if e != nil {
++		t.Fatal(e)
++	}
++	if _, e = db.Exec(ctx, string(migration)); e != nil {
++		t.Fatal(e)
++	}
++	return db
++}
++func testBenefitContent() benefitContent {
++	return benefitContent{CompanyName: "隔离测试企业", Province: "广东省", City: "广州市", Industry: "软件", JobScope: "正式员工", ValidAsOf: "2026-10-10", Benefits: map[string]string{"leave": "双休"}}
++}
++
++func TestCompanyBenefitsWorkflow(t *testing.T) {
++	db := benefitTestDB(t)
++	s := &Server{db: db, logger: slog.Default()}
++	ctx := context.Background()
++	input := benefitSubmissionInput{Content: testBenefitContent(), Employment: []int64{11}, Evidence: []int64{12}}
++	call := func(uid int64, method, path, key string, in benefitSubmissionInput, want int) map[string]any {
++		t.Helper()
++		raw, _ := json.Marshal(in)
++		r := httptest.NewRequest(method, path, strings.NewReader(string(raw)))
++		r = r.WithContext(context.WithValue(r.Context(), userIDKey, uid))
++		r.Header.Set("Idempotency-Key", key)
++		r.SetPathValue("id", "1")
++		w := httptest.NewRecorder()
++		s.writeBenefitSubmission(w, r)
++		if w.Code != want {
++			t.Fatalf("%s got %d want %d: %s", method, w.Code, want, w.Body.String())
++		}
++		var v map[string]any
++		json.Unmarshal(w.Body.Bytes(), &v)
++		return v
++	}
++	key := "benefits-request-0001"
++	call(1, "POST", "/api/v1/company-benefit-submissions", key, input, 200)
++	call(1, "POST", "/api/v1/company-benefit-submissions", key, input, 200)
++	var n int
++	db.QueryRow(ctx, `SELECT count(*) FROM company_benefit_submissions`).Scan(&n)
++	if n != 1 {
++		t.Fatal("duplicate submission")
++	}
++	changed := input
++	changed.Evidence = []int64{14}
++	call(1, "POST", "/", "benefits-request-0002", changed, 422)
++	changed = input
++	changed.Employment = []int64{13}
++	call(1, "POST", "/", "benefits-request-0003", changed, 422)
++	changed = input
++	changed.Employment = nil
++	call(1, "POST", "/", "benefits-request-0004", changed, 422)
++	changed = input
++	changed.Revision = 1
++	call(1, "POST", "/", key, changed, 409)
++	read := func(uid int64, want int) {
++		r := httptest.NewRequest("GET", "/", nil)
++		r.SetPathValue("id", "1")
++		r = r.WithContext(context.WithValue(r.Context(), userIDKey, uid))
++		w := httptest.NewRecorder()
++		s.getMyBenefitSubmission(w, r)
++		if w.Code != want {
++			t.Fatalf("owner read %d: %s", w.Code, w.Body.String())
++		}
++	}
++	read(2, 404)
++	read(1, 200)
++	input.Revision = 1
++	call(1, "PATCH", "/", "", input, 409)
++	db.Exec(ctx, `UPDATE company_benefit_submissions SET status='NEEDS_MORE',revision=2 WHERE id=1`)
++	call(1, "PATCH", "/", "", input, 409)
++	input.Revision = 2
++	call(2, "PATCH", "/", "", input, 422)
++	call(1, "PATCH", "/", "", input, 200)
++	var status string
++	var rev int
++	db.QueryRow(ctx, `SELECT status,revision FROM company_benefit_submissions WHERE id=1`).Scan(&status, &rev)
++	if status != "PENDING" || rev != 3 {
++		t.Fatal("resubmission did not transition")
++	}
++	db.Exec(ctx, `INSERT INTO company_benefits(company_name,province,city,job_scope,valid_as_of,benefits_jsonb) VALUES('公开测试企业','广东省','广州市','员工','2026-10-10','{"leave":"双休"}')`)
++	w := httptest.NewRecorder()
++	s.listCompanyBenefits(w, httptest.NewRequest("GET", "/", nil))
++	if w.Code != 200 {
++		t.Fatal(w.Body.String())
++	}
++	for _, secret := range []string{"employment_file_ids", "evidence_file_ids", "private-proof", "user_id"} {
++		if strings.Contains(w.Body.String(), secret) {
++			t.Fatal("private material leaked")
++		}
++	}
++}
++func TestBenefitUploadPolicies(t *testing.T) {
++	for _, c := range []struct {
++		p, n, m string
++		want    bool
++	}{{"EMPLOYMENT_PROOF", "proof.pdf", "application/pdf", true}, {"EMPLOYMENT_PROOF", "proof.mp4", "video/mp4", false}, {"BENEFIT_EVIDENCE", "evidence.mp4", "video/mp4", true}, {"BENEFIT_EVIDENCE", "evidence.mov", "video/quicktime", true}, {"BENEFIT_EVIDENCE", "a.html", "text/html", false}, {"BENEFIT_EVIDENCE", "a.jpg", "application/pdf", false}, {"BENEFIT_EVIDENCE", "a.svg", "image/svg+xml", false}} {
++		_, ok := uploadPolicy(c.p, c.n, c.m)
++		if ok != c.want {
++			t.Errorf("invalid policy %+v", c)
++		}
++	}
++	if limit, _ := uploadPolicy("BENEFIT_EVIDENCE", "a.png", "image/png"); limit != 20<<20 {
++		t.Fatal("image size limit")
++	}
++}
+--- a/internal/database/migrations/041_company_benefits.sql
++++ b/internal/database/migrations/041_company_benefits.sql
+@@ -0,0 +1,46 @@
++CREATE TABLE company_benefits (
++ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
++ company_name text NOT NULL,
++ province text NOT NULL,
++ city text NOT NULL,
++ industry text NOT NULL DEFAULT '',
++ job_scope text NOT NULL,
++ valid_as_of date NOT NULL,
++ benefits_jsonb jsonb NOT NULL CHECK(jsonb_typeof(benefits_jsonb)='object'),
++ official_note text NOT NULL DEFAULT '',
++ status text NOT NULL DEFAULT 'PUBLISHED' CHECK(status IN ('PUBLISHED','ARCHIVED')),
++ revision bigint NOT NULL DEFAULT 1,
++ verified_at timestamptz NOT NULL DEFAULT now(),
++ updated_at timestamptz NOT NULL DEFAULT now(),
++ UNIQUE(company_name,city,job_scope)
++);
++CREATE INDEX company_benefits_browse_idx ON company_benefits(status,id DESC);
++CREATE TABLE company_benefit_submissions (
++ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
++ user_id bigint NOT NULL REFERENCES users(id),
++ company_id bigint REFERENCES company_benefits(id),
++ content_jsonb jsonb NOT NULL CHECK(jsonb_typeof(content_jsonb)='object'),
++ employment_file_ids bigint[] NOT NULL CHECK(cardinality(employment_file_ids) BETWEEN 1 AND 3),
++ evidence_file_ids bigint[] NOT NULL CHECK(cardinality(evidence_file_ids) BETWEEN 1 AND 8),
++ status text NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','NEEDS_MORE','APPROVED','REJECTED')),
++ review_reason text NOT NULL DEFAULT '',
++ request_key text NOT NULL,
++ request_hash text NOT NULL,
++ revision bigint NOT NULL DEFAULT 1,
++ created_at timestamptz NOT NULL DEFAULT now(),
++ updated_at timestamptz NOT NULL DEFAULT now(),
++ reviewed_at timestamptz,
++ UNIQUE(user_id,request_key)
++);
++CREATE INDEX company_benefit_submissions_owner_idx ON company_benefit_submissions(user_id,id DESC);
++CREATE INDEX company_benefit_submissions_review_idx ON company_benefit_submissions(status,id);
++CREATE TABLE company_benefit_reviews (
++ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
++ submission_id bigint NOT NULL REFERENCES company_benefit_submissions(id),
++ admin_id bigint NOT NULL REFERENCES admin_principals(id),
++ audit_id text NOT NULL,
++ decision text NOT NULL,
++ reason text NOT NULL,
++ content_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
++ created_at timestamptz NOT NULL DEFAULT now()
++);
+--- a/internal/httpapi/server.go
++++ b/internal/httpapi/server.go
+@@ -140,6 +140,12 @@
+ 	protected.HandleFunc("GET /api/v1/users/{first}/{second}", s.userLookup)
+ 	protected.HandleFunc("POST /api/v1/files/uploads", s.createUploadSession)
+ 	protected.HandleFunc("POST /api/v1/files/uploads/{id}/complete", s.completeUpload)
++	protected.HandleFunc("GET /api/v1/company-benefits", s.listCompanyBenefits)
++	protected.HandleFunc("GET /api/v1/company-benefits/{id}", s.getCompanyBenefit)
++	protected.HandleFunc("POST /api/v1/company-benefit-submissions", s.writeBenefitSubmission)
++	protected.HandleFunc("PATCH /api/v1/company-benefit-submissions/{id}", s.writeBenefitSubmission)
++	protected.HandleFunc("GET /api/v1/company-benefit-submissions/{id}", s.getMyBenefitSubmission)
++	protected.HandleFunc("GET /api/v1/me/company-benefit-submissions", s.listMyBenefitSubmissions)
+ 	protected.HandleFunc("GET /api/v1/resumes", s.listResumes)
+ 	protected.HandleFunc("POST /api/v1/resumes", s.createResume)
+ 	protected.HandleFunc("GET /api/v1/resumes/{id}", s.getResume)
+@@ -434,7 +440,11 @@
+ 		Failure(w, r, http.StatusUnprocessableEntity, "FILE_INVALID", "文件参数无效", nil)
+ 		return
+ 	}
+-	objectKey, err := s.objects.ObjectKey(ownerID, input.Purpose, input.Filename)
++	objectName := input.Filename
++	if input.Purpose == "EMPLOYMENT_PROOF" || input.Purpose == "BENEFIT_EVIDENCE" {
++		objectName = "material" + strings.ToLower(filepath.Ext(input.Filename))
++	}
++	objectKey, err := s.objects.ObjectKey(ownerID, input.Purpose, objectName)
+ 	if err != nil {
+ 		Failure(w, r, http.StatusUnprocessableEntity, "FILE_INVALID", "文件用途或名称无效", nil)
+ 		return
+@@ -456,10 +466,17 @@
+ 
+ func uploadPolicy(purpose, filename, contentType string) (int64, bool) {
+ 	extension := strings.ToLower(filepath.Ext(filename))
+-	limits := map[string]int64{"AVATAR": 5 << 20, "RESUME_PHOTO": 5 << 20, "RESUME_IMPORT": 20 << 20, "TEMPLATE_SOURCE": 20 << 20, "CHAT_ATTACHMENT": 50 << 20, "POST_ASSET": 20 << 20, "CREATOR_ID": 10 << 20, "IDENTITY_ID": 10 << 20}
++	limits := map[string]int64{"EMPLOYMENT_PROOF": 10 << 20, "BENEFIT_EVIDENCE": 100 << 20, "AVATAR": 5 << 20, "RESUME_PHOTO": 5 << 20, "RESUME_IMPORT": 20 << 20, "TEMPLATE_SOURCE": 20 << 20, "CHAT_ATTACHMENT": 50 << 20, "POST_ASSET": 20 << 20, "CREATOR_ID": 10 << 20, "IDENTITY_ID": 10 << 20}
+ 	maxSize, allowedPurpose := limits[purpose]
+ 	allowedType := false
+ 	switch purpose {
++	case "EMPLOYMENT_PROOF":
++		allowedType = validImageUpload(extension, contentType, true) || (extension == ".pdf" && contentType == "application/pdf")
++	case "BENEFIT_EVIDENCE":
++		allowedType = validImageUpload(extension, contentType, true) || (extension == ".mp4" && contentType == "video/mp4") || (extension == ".mov" && contentType == "video/quicktime")
++		if strings.HasPrefix(contentType, "image/") {
++			maxSize = 20 << 20
++		}
+ 	case "AVATAR", "RESUME_PHOTO":
+ 		allowedType = validImageUpload(extension, contentType, true)
+ 	case "RESUME_IMPORT":
+@@ -493,6 +510,25 @@
+ 		Failure(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "文件 ID 无效", nil)
+ 		return
+ 	}
++	var purpose, key, mime, status string
++	var size int64
++	if err := s.db.QueryRow(r.Context(), `SELECT purpose,object_key,content_type,size_bytes,status FROM files WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL`, fileID, UserID(r.Context())).Scan(&purpose, &key, &mime, &size, &status); err != nil {
++		Failure(w, r, 404, "NOT_FOUND", "文件不存在", nil)
++		return
++	}
++	if purpose == "EMPLOYMENT_PROOF" || purpose == "BENEFIT_EVIDENCE" {
++		verifier, ok := s.objects.(interface {
++			VerifyPrivateUpload(context.Context, string, string, int64) error
++		})
++		if !ok || verifier.VerifyPrivateUpload(r.Context(), key, mime, size) != nil {
++			Failure(w, r, 503, "EVIDENCE_UNAVAILABLE", "证明材料尚未完成上传或无法读取，请重试", nil)
++			return
++		}
++		if status == "READY" {
++			Success(w, r, 200, map[string]any{"id": fileID, "status": "READY"})
++			return
++		}
++	}
+ 	command, err := s.db.Exec(r.Context(), `UPDATE files SET status='READY', completed_at=now() WHERE id=$1 AND owner_id=$2 AND status='PENDING'`, fileID, UserID(r.Context()))
+ 	if err != nil {
+ 		Failure(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "确认上传失败", nil)
+--- a/internal/httpapi/users.go
++++ b/internal/httpapi/users.go
+@@ -283,7 +283,7 @@
+ 		return ""
+ 	}
+ 	var key string
+-	if s.db.QueryRow(r.Context(), `SELECT object_key FROM files WHERE id=$1 AND status='READY' AND deleted_at IS NULL`, *fileID).Scan(&key) != nil {
++	if s.db.QueryRow(r.Context(), `SELECT object_key FROM files WHERE id=$1 AND status='READY' AND deleted_at IS NULL AND purpose NOT IN ('EMPLOYMENT_PROOF','BENEFIT_EVIDENCE')`, *fileID).Scan(&key) != nil {
+ 		return ""
+ 	}
+ 	url, _, err := s.objects.PresignDownload(r.Context(), key)
+--- a/internal/storage/kodo.go
++++ b/internal/storage/kodo.go
+@@ -152,3 +152,18 @@
+ 	var statusErr statusCoder
+ 	return errors.As(err, &statusErr) && statusErr.HttpCode() == http.StatusNotFound
+ }
++
++// VerifyPrivateUpload confirms that private evidence exists with the expected size.
++func (k *Kodo) VerifyPrivateUpload(ctx context.Context, key, mime string, size int64) error {
++	if !k.private {
++		return errors.New("private evidence storage is required")
++	}
++	info, err := k.objects.Object(key).Stat().Call(ctx)
++	if err != nil {
++		return errors.New("uploaded evidence is not available")
++	}
++	if info.Size != size || strings.ToLower(info.MimeType) != mime {
++		return errors.New("uploaded evidence does not match upload session")
++	}
++	return nil
++}

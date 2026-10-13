@@ -1,0 +1,14 @@
+{
+  "image": "bojian-api:origin-images-20261008",
+  "baseImage": "bojian-api:origin-read-20261008-r2",
+  "baseSourceCommit": "d21916b838593ce64bd9800d274fe303808267a2",
+  "binarySHA256": "2305c41e43536d910385af5a114b2be7f926f9e0428e3a1c80a1c689cf9b3b5c",
+  "schemaChanges": false,
+  "patch": "origin-images.patch",
+  "verification": [
+    "go test ./... passed",
+    "HTTPS origin image links signed with one-minute expiry",
+    "Other file download links retain their existing behavior",
+    "Deployment readiness, running image and binary checksum verified"
+  ]
+}

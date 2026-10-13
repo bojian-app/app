@@ -1,0 +1,55 @@
+--- a/internal/httpapi/creator_market.go
++++ b/internal/httpapi/creator_market.go
+@@ -262,6 +262,8 @@
+ 	var in struct {
+ 		TemplateID       int64  `json:"template_id"`
+ 		AgreementVersion string `json:"agreement_version"`
++		ExpectedPrice    *int64 `json:"expected_price_points"`
++		ExpectedRevision *int64 `json:"expected_template_revision"`
+ 	}
+ 	key := idempotencyKey(r)
+ 	if decodeJSON(w, r, &in, 16<<10) != nil || key == "" || in.TemplateID <= 0 || in.AgreementVersion == "" {
+@@ -297,6 +299,11 @@
+ 	}
+ 	if err != nil || (creatorUserID != nil && *creatorUserID == UserID(r.Context())) {
+ 		Failure(w, r, 409, "TEMPLATE_NOT_PURCHASABLE", "不能购买自己的模板", nil)
++		return
++	}
++	// Check the user-confirmed quote under the same template lock as the debit.
++	if !templatePurchaseQuoteMatches(price, revision, in.ExpectedPrice, in.ExpectedRevision) {
++		Failure(w, r, 409, "TEMPLATE_PRICE_CHANGED", "模板价格或版本已更新，请刷新后重新确认", nil)
+ 		return
+ 	}
+ 	var already bool
+@@ -726,3 +733,9 @@
+ 	Success(w, r, http.StatusOK, map[string]any{"creator_id": id, "nickname": name, "public_id": publicID,
+ 		"bio": bio, "avatar_url": avatarURL, "published_template_count": count})
+ }
++
++// Existing desktop callers may omit a quote; mobile confirmations send both fields.
++func templatePurchaseQuoteMatches(price, revision int64, expectedPrice, expectedRevision *int64) bool {
++	return (expectedPrice == nil || *expectedPrice == price) &&
++		(expectedRevision == nil || *expectedRevision == revision)
++}
+--- /dev/null
++++ b/internal/httpapi/template_purchase_quote_test.go
+@@ -0,0 +1,19 @@
++package httpapi
++
++import "testing"
++
++func TestTemplatePurchaseQuoteMatches(t *testing.T) {
++	price, revision := int64(80), int64(3)
++	if !templatePurchaseQuoteMatches(80, 3, &price, &revision) {
++		t.Fatal("matching confirmation rejected")
++	}
++	if templatePurchaseQuoteMatches(81, 3, &price, &revision) {
++		t.Fatal("changed price accepted")
++	}
++	if templatePurchaseQuoteMatches(80, 4, &price, &revision) {
++		t.Fatal("changed template accepted")
++	}
++	if !templatePurchaseQuoteMatches(80, 3, nil, nil) {
++		t.Fatal("legacy clients broken")
++	}
++}

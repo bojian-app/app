@@ -1,0 +1,23 @@
+{
+  "baseImage": "bojian-api:mobile-auth-20261007",
+  "image": "bojian-api:origin-read-20261008-r2",
+  "binarySHA256": "5b60cb322d813192d4f8bc1289df49e771fb22ccfc3e7c5be5c6d9b3a51b1cf2",
+  "patch": "origin-read.patch",
+  "deploymentScript": "origin-read-deploy.py",
+  "schemaChanges": false,
+  "changes": [
+    "Worker file reads use Qiniu SDK-discovered HTTPS storage origins",
+    "Origin download signatures expire after one minute",
+    "Connection errors omit signed URLs",
+    "Client download links continue to use the configured CDN"
+  ],
+  "verification": [
+    "go test ./... passed on the exact backend baseline with mobile-auth and origin-read patches",
+    "Origin storage.Get read an actual imported file successfully",
+    "API readiness and deployed binary checksum verified",
+    "Physical Android device resume list and detail requests returned HTTP 200 after deployment"
+  ],
+  "rollback": "Restore compose.production.before.yaml and compose.admin.before.yaml from /home/ubuntu/bojian-origin-read-20261008-r2; recreate only the api service with the previous image.",
+  "limitation": "Configured CDN connections still fail; client CDN delivery requires separate repair. Server-side parsing no longer depends on that CDN.",
+  "baseSourceCommit": "d21916b838593ce64bd9800d274fe303808267a2"
+}

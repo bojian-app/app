@@ -1,0 +1,46 @@
+--- a/internal/httpapi/resume_guidance_annotations.go
++++ b/internal/httpapi/resume_guidance_annotations.go
+@@ -159,7 +159,7 @@
+ 	}
+ 	owner := share.owner == UserID(r.Context())
+ 	if r.Method == http.MethodGet {
+-		rows, err := tx.Query(r.Context(), `SELECT a.id,a.field_path,a.selected_text,a.suggestion,a.replacement,a.status,COALESCE(u.nickname,'用户'),a.created_at FROM resume_guidance_annotations a JOIN users u ON u.id=a.reviewer_id WHERE a.scope=$1 AND a.share_id=$2 AND ($3 OR a.reviewer_id=$4 OR a.status='ACCEPTED') ORDER BY a.id DESC`, share.scope(), id, owner, UserID(r.Context()))
++		rows, err := tx.Query(r.Context(), `SELECT a.id,a.field_path,a.selected_text,a.suggestion,a.replacement,a.status,COALESCE(u.nickname,'用户'),a.created_at FROM resume_guidance_annotations a JOIN users u ON u.id=a.reviewer_id WHERE a.scope=$1 AND a.share_id=$2 AND ($3 OR a.reviewer_id=$4 OR a.status='ACCEPTED' OR a.replacement='') ORDER BY a.id DESC`, share.scope(), id, owner, UserID(r.Context()))
+ 		if err != nil {
+ 			s.internal(w, r, "annotations list", err)
+ 			return
+@@ -204,7 +204,7 @@
+ 		return
+ 	}
+ 	raw, _ := json.Marshal(in)
+-	hash := fmt.Sprintf("%x", sha256.Sum256(raw))
++	hash := fmt.Sprintf("%x", sha256.Sum256(append([]byte(fmt.Sprintf("%s:%d:", share.scope(), id)), raw...)))
+ 	if _, err = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock($1,hashtext($2))`, int32(UserID(r.Context())), key); err != nil {
+ 		s.internal(w, r, "annotation request lock", err)
+ 		return
+@@ -290,6 +290,10 @@
+ 	refreshed, err := s.annotationAccess(r, tx, id, true)
+ 	if err != nil {
+ 		Failure(w, r, 404, "NOT_FOUND", "分享不存在或已无权查看", nil)
++		return
++	}
++	if refreshed.owner != UserID(r.Context()) || refreshed.resume != share.resume {
++		Failure(w, r, 409, "SHARE_CHANGED", "分享内容已变化，请重新打开", nil)
+ 		return
+ 	}
+ 	share = refreshed
+--- a/internal/httpapi/resume_guidance_annotations_test.go
++++ b/internal/httpapi/resume_guidance_annotations_test.go
+@@ -108,6 +108,12 @@
+ 	if revision != 2 || !strings.Contains(string(source), "前端开发与性能优化") || !strings.Contains(string(source), "SECRET") || !strings.Contains(string(source), `"italic": true`) || !strings.Contains(string(shared), "前端开发与性能优化") || strings.Contains(string(shared), "SECRET") || strings.Contains(string(shared), "PRIVATE") {
+ 		t.Fatalf("invalid acceptance: %s / %s revision %d", source, shared, revision)
+ 	}
++	// Comments are public to allowed viewers; pending replacements remain private.
++	comment := `{"field_path":"work_experiences.0.description","field_value":"负责前端开发与性能优化","selected_text":"性能优化","suggestion":"可以补充性能指标"}`
++	call(2, "articles", "POST", "", comment, "comment-1", 200)
++	if len(call(3, "articles", "GET", "", "", "", 200)["items"].([]any)) != 2 {
++		t.Fatal("comment missing for another allowed viewer")
++	}
+ 	// Reject leaves both snapshots untouched; stale author edits cannot be overwritten.
+ 	body = strings.ReplaceAll(strings.ReplaceAll(body, "负责开发网站", "负责前端开发与性能优化"), `"selected_text":"开发网站"`, `"selected_text":"前端开发与性能优化"`)
+ 	result = call(2, "articles", "POST", "", body, "replace-2", 200)

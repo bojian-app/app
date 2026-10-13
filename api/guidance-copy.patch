@@ -1,0 +1,156 @@
+--- a/internal/httpapi/resume_guidance_annotations.go
++++ b/internal/httpapi/resume_guidance_annotations.go
+@@ -159,7 +159,7 @@
+ 	}
+ 	owner := share.owner == UserID(r.Context())
+ 	if r.Method == http.MethodGet {
+-		rows, err := tx.Query(r.Context(), `SELECT a.id,a.field_path,a.selected_text,a.suggestion,a.replacement,a.status,COALESCE(u.nickname,'用户'),a.created_at,a.reviewer_id,u.avatar_file_id FROM resume_guidance_annotations a JOIN users u ON u.id=a.reviewer_id WHERE a.scope=$1 AND a.share_id=$2 AND ($3 OR a.reviewer_id=$4 OR a.status='ACCEPTED' OR a.replacement='') ORDER BY a.id DESC`, share.scope(), id, owner, UserID(r.Context()))
++		rows, err := tx.Query(r.Context(), `SELECT a.id,a.field_path,a.selected_text,a.suggestion,a.replacement,a.status,COALESCE(u.nickname,'用户'),a.created_at,a.reviewer_id,u.avatar_file_id,a.result_resume_id FROM resume_guidance_annotations a JOIN users u ON u.id=a.reviewer_id WHERE a.scope=$1 AND a.share_id=$2 AND ($3 OR a.reviewer_id=$4 OR a.status='ACCEPTED' OR a.replacement='') ORDER BY a.id DESC`, share.scope(), id, owner, UserID(r.Context()))
+ 		if err != nil {
+ 			s.internal(w, r, "annotations list", err)
+ 			return
+@@ -168,14 +168,14 @@
+ 		items := []map[string]any{}
+ 		for rows.Next() {
+ 			var aid, reviewer int64
+-			var avatar *int64
++			var avatar, resultResume *int64
+ 			var path, selected, advice, replacement, status, name string
+ 			var created any
+-			if err = rows.Scan(&aid, &path, &selected, &advice, &replacement, &status, &name, &created, &reviewer, &avatar); err != nil {
++			if err = rows.Scan(&aid, &path, &selected, &advice, &replacement, &status, &name, &created, &reviewer, &avatar, &resultResume); err != nil {
+ 				s.internal(w, r, "annotations scan", err)
+ 				return
+ 			}
+-			items = append(items, map[string]any{"id": aid, "field_path": path, "selected_text": selected, "suggestion": advice, "replacement": replacement, "status": status, "reviewer_name": name, "reviewer_id": reviewer, "reviewer_avatar_url": s.fileURL(r, avatar), "created_at": created})
++			items = append(items, map[string]any{"id": aid, "field_path": path, "selected_text": selected, "suggestion": advice, "replacement": replacement, "status": status, "reviewer_name": name, "reviewer_id": reviewer, "reviewer_avatar_url": s.fileURL(r, avatar), "created_at": created, "result_resume_id": resultResume})
+ 		}
+ 		if rows.Err() != nil {
+ 			s.internal(w, r, "annotations iterate", rows.Err())
+@@ -299,7 +299,8 @@
+ 	}
+ 	share = refreshed
+ 	var path, old, selected, replacement, status string
+-	err = tx.QueryRow(r.Context(), `SELECT field_path,field_value,selected_text,replacement,status FROM resume_guidance_annotations WHERE id=$1 AND scope=$2 AND share_id=$3 FOR UPDATE`, aid, share.scope(), id).Scan(&path, &old, &selected, &replacement, &status)
++	var resultResume *int64
++	err = tx.QueryRow(r.Context(), `SELECT field_path,field_value,selected_text,replacement,status,result_resume_id FROM resume_guidance_annotations WHERE id=$1 AND scope=$2 AND share_id=$3 FOR UPDATE`, aid, share.scope(), id).Scan(&path, &old, &selected, &replacement, &status, &resultResume)
+ 	if errors.Is(err, pgx.ErrNoRows) {
+ 		Failure(w, r, 404, "NOT_FOUND", "建议不存在", nil)
+ 		return
+@@ -313,7 +314,7 @@
+ 			Failure(w, r, 409, "DECISION_FINAL", "这条建议已处理", nil)
+ 			return
+ 		}
+-		Success(w, r, 200, map[string]any{"status": status, "deduplicated": true})
++		Success(w, r, 200, map[string]any{"status": status, "deduplicated": true, "result_resume_id": resultResume})
+ 		return
+ 	}
+ 	if replacement == "" {
+@@ -333,11 +334,18 @@
+ 		replaceAnnotationField(entry, key, selected, replacement)
+ 		replaceAnnotationField(original, originalKey, selected, replacement)
+ 		raw, _ := json.Marshal(source)
+-		_, err = tx.Exec(r.Context(), `UPDATE resumes SET content_jsonb=$1,checksum=$2,revision=revision+1,updated_at=now() WHERE id=$3`, raw, fmt.Sprintf("%x", sha256.Sum256(raw)), share.resume)
++		var newID int64
++		err = tx.QueryRow(r.Context(), `INSERT INTO resumes(owner_id,template_id,title,content_jsonb,photo_file_id,photo_crop,checksum)
++ SELECT owner_id,template_id,regexp_replace(title,' · 指点修改版$','') || ' · 指点修改版',$1,photo_file_id,photo_crop,$2 FROM resumes WHERE id=$3 RETURNING id`, raw, fmt.Sprintf("%x", sha256.Sum256(raw)), share.resume).Scan(&newID)
++		resultResume = &newID
+ 		if err != nil {
+-			s.internal(w, r, "annotation source save", err)
+-			return
+-		}
++			s.internal(w, r, "annotation copy save", err)
++			return
++		}
++		if share.content["original_resume_id"] == nil {
++			share.content["original_resume_id"] = share.resume
++		}
++		share.content["source_resume_id"] = newID
+ 		if share.notification {
+ 			raw, _ = json.Marshal(share.payload)
+ 			_, err = tx.Exec(r.Context(), `UPDATE notifications SET payload_safe_jsonb=$2 WHERE id=$1`, id, raw)
+@@ -350,7 +358,7 @@
+ 			return
+ 		}
+ 	}
+-	_, err = tx.Exec(r.Context(), `UPDATE resume_guidance_annotations SET status=$2,decided_at=now() WHERE id=$1`, aid, in.Status)
++	_, err = tx.Exec(r.Context(), `UPDATE resume_guidance_annotations SET status=$2,decided_at=now(),result_resume_id=$3 WHERE id=$1`, aid, in.Status, resultResume)
+ 	if err == nil {
+ 		err = tx.Commit(r.Context())
+ 	}
+@@ -358,5 +366,5 @@
+ 		s.internal(w, r, "annotation decision commit", err)
+ 		return
+ 	}
+-	Success(w, r, 200, map[string]any{"status": in.Status})
+-}
++	Success(w, r, 200, map[string]any{"status": in.Status, "result_resume_id": resultResume})
++}
+--- a/internal/httpapi/resume_guidance_annotations_test.go
++++ b/internal/httpapi/resume_guidance_annotations_test.go
+@@ -42,7 +42,7 @@
+ 	}
+ 	defer db.Close()
+ 	_, err = db.Exec(ctx, `CREATE TABLE users(id bigint PRIMARY KEY,nickname text,status text,deleted_at timestamptz);
+- CREATE TABLE resumes(id bigint PRIMARY KEY,owner_id bigint,content_jsonb jsonb,revision bigint DEFAULT 1,checksum text,updated_at timestamptz,deleted_at timestamptz);
++ CREATE TABLE resumes(id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,title text DEFAULT '测试简历',template_id bigint,photo_file_id bigint,photo_crop jsonb,owner_id bigint,content_jsonb jsonb,revision bigint DEFAULT 1,checksum text,updated_at timestamptz,deleted_at timestamptz);
+  CREATE TABLE posts(id bigint PRIMARY KEY,author_id bigint,title text,content_jsonb jsonb,status text,visibility text,revision bigint DEFAULT 1,deleted_at timestamptz);
+  CREATE TABLE notifications(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,user_id bigint,type text,actor_id bigint,subject_type text,subject_id bigint,payload_safe_jsonb jsonb);
+  CREATE TABLE friendships(user_low_id bigint,user_high_id bigint);
+@@ -60,6 +60,13 @@
+ 		t.Fatal(err)
+ 	}
+ 	if _, err = db.Exec(ctx, string(migration)); err != nil {
++		t.Fatal(err)
++	}
++	copyMigration, err := os.ReadFile("../database/migrations/040_guidance_annotation_copies.sql")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err = db.Exec(ctx, string(copyMigration)); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	server := &Server{db: db, logger: slog.Default()}
+@@ -100,7 +107,7 @@
+ 		t.Fatal("owner missing pending")
+ 	}
+ 	call(2, "articles", "POST", "/"+aid+"/decision", `{"status":"ACCEPTED"}`, "", 403)
+-	call(1, "articles", "POST", "/"+aid+"/decision", `{"status":"ACCEPTED"}`, "", 200)
++	accepted := call(1, "articles", "POST", "/"+aid+"/decision", `{"status":"ACCEPTED"}`, "", 200)
+ 	call(1, "articles", "POST", "/"+aid+"/decision", `{"status":"ACCEPTED"}`, "", 200)
+ 	call(1, "articles", "POST", "/"+aid+"/decision", `{"status":"REJECTED"}`, "", 409)
+ 	if len(call(3, "articles", "GET", "", "", "", 200)["items"].([]any)) != 1 {
+@@ -110,8 +117,19 @@
+ 	var revision int
+ 	db.QueryRow(ctx, `SELECT content_jsonb,revision FROM resumes WHERE id=10`).Scan(&source, &revision)
+ 	db.QueryRow(ctx, `SELECT content_jsonb FROM posts WHERE id=20`).Scan(&shared)
+-	if revision != 2 || !strings.Contains(string(source), "前端开发与性能优化") || !strings.Contains(string(source), "SECRET") || !strings.Contains(string(source), `"italic": true`) || !strings.Contains(string(shared), "前端开发与性能优化") || strings.Contains(string(shared), "SECRET") || strings.Contains(string(shared), "PRIVATE") {
++	if revision != 1 || strings.Contains(string(source), "前端开发与性能优化") || !strings.Contains(string(source), "SECRET") || !strings.Contains(string(source), `"italic": true`) || !strings.Contains(string(shared), "前端开发与性能优化") || strings.Contains(string(shared), "SECRET") || strings.Contains(string(shared), "PRIVATE") {
+ 		t.Fatalf("invalid acceptance: %s / %s revision %d", source, shared, revision)
++	}
++	var copied []byte
++	copyID := int64(accepted["result_resume_id"].(float64))
++	db.QueryRow(ctx, `SELECT content_jsonb FROM resumes WHERE id=$1`, copyID).Scan(&copied)
++	if copyID == 10 || !strings.Contains(string(copied), "前端开发与性能优化") || !strings.Contains(string(copied), "SECRET") || !strings.Contains(string(copied), `"italic": true`) {
++		t.Fatal("copy missing content or privacy or styles")
++	}
++	var copies int
++	db.QueryRow(ctx, `SELECT count(*) FROM resumes WHERE id<>10`).Scan(&copies)
++	if copies != 1 {
++		t.Fatal("repeat acceptance created duplicate copy")
+ 	}
+ 	// Comments are public to allowed viewers; pending replacements remain private.
+ 	comment := `{"field_path":"work_experiences.0.description","field_value":"负责前端开发与性能优化","selected_text":"性能优化","suggestion":"可以补充性能指标"}`
+@@ -126,7 +144,7 @@
+ 	call(1, "articles", "POST", "/"+aid+"/decision", `{"status":"REJECTED"}`, "", 200)
+ 	result = call(2, "articles", "POST", "", body, "replace-3", 200)
+ 	aid = fmt.Sprintf("%.0f", result["id"])
+-	db.Exec(ctx, `UPDATE resumes SET content_jsonb=jsonb_set(content_jsonb,'{work_experiences,0,description}','"作者已修改"') WHERE id=10`)
++	db.Exec(ctx, `UPDATE resumes SET content_jsonb=jsonb_set(content_jsonb,'{work_experiences,0,description}','"作者已修改"') WHERE id=$1`, copyID)
+ 	call(1, "articles", "POST", "/"+aid+"/decision", `{"status":"ACCEPTED"}`, "", 409)
+ 	// Private invitation uses the same flow, never reveals original privacy fields.
+ 	db.Exec(ctx, `UPDATE resumes SET content_jsonb=jsonb_set(content_jsonb,'{work_experiences,0,description}','"负责开发网站"') WHERE id=10;
+--- /dev/null
++++ b/internal/database/migrations/040_guidance_annotation_copies.sql
+@@ -0,0 +1 @@
++ALTER TABLE resume_guidance_annotations ADD COLUMN result_resume_id bigint REFERENCES resumes(id) ON DELETE SET NULL;

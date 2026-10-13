@@ -1,0 +1,376 @@
+diff --git a/internal/httpapi/realtime.go b/internal/httpapi/realtime.go
+--- a/internal/httpapi/realtime.go
++++ b/internal/httpapi/realtime.go
+@@ -50,12 +50,17 @@
+ }
+ 
+ func (s *Server) createRealtimeToken(w http.ResponseWriter, r *http.Request) {
++	var cursor int64
++	if err := s.db.QueryRow(r.Context(), `SELECT COALESCE(max(id),0) FROM realtime_events WHERE user_id=$1`, UserID(r.Context())).Scan(&cursor); err != nil {
++		Failure(w, r, 500, "INTERNAL_ERROR", "创建实时令牌失败", nil)
++		return
++	}
+ 	token, err := s.tokens.IssueFor(UserID(r.Context()), SessionID(r.Context()), 2*time.Minute, "REALTIME")
+ 	if err != nil {
+ 		Failure(w, r, 500, "INTERNAL_ERROR", "创建实时令牌失败", nil)
+ 		return
+ 	}
+-	Success(w, r, 201, map[string]any{"token": token, "expires_in_seconds": 120, "websocket_path": "/api/v1/realtime"})
++	Success(w, r, 201, map[string]any{"token": token, "expires_in_seconds": 120, "websocket_path": "/api/v1/realtime", "cursor": strconv.FormatInt(cursor, 10)})
+ }
+ 
+ func (s *Server) realtimeAuth() http.Handler {
+@@ -126,14 +131,22 @@
+ 	idleTimer := time.NewTimer(realtimeIdleTimeout)
+ 	defer idleTimer.Stop()
+ 
+-	// Drain any events accumulated since cursor before entering the loop.
+-	last, ok := s.sendRealtimeBatch(r, conn, cursor)
+-	if !ok {
+-		return
+-	}
+-	if last > cursor {
+-		cursor = last
+-		idleTimer.Reset(realtimeIdleTimeout)
++	// Drain every page, including an initial backlog larger than 100 events.
++	drain := func() bool {
++		for {
++			last, ok := s.sendRealtimeBatch(r, conn, cursor)
++			if !ok {
++				return false
++			}
++			if last <= cursor {
++				return true
++			}
++			cursor = last
++			idleTimer.Reset(realtimeIdleTimeout)
++		}
++	}
++	if !drain() {
++		return
+ 	}
+ 
+ 	for {
+@@ -143,7 +156,9 @@
+ 		case <-r.Context().Done():
+ 			return
+ 		case <-sessionTicker.C:
+-			if !s.checkRealtimeSession(r, conn) {
++			// Worker/admin transactions write the durable outbox without Redis.
++			// Reconcile here as well as on Redis wakeups, including Redis outages.
++			if !drain() {
+ 				return
+ 			}
+ 		case <-idleTimer.C:
+@@ -153,18 +168,9 @@
+ 			if !ok {
+ 				return
+ 			}
+-			// Redis told us there's a new event; drain all pending.
+-			for {
+-				last, ok := s.sendRealtimeBatch(r, conn, cursor)
+-				if !ok {
+-					return
+-				}
+-				if last <= cursor {
+-					break
+-				}
+-				cursor = last
+-			}
+-			idleTimer.Reset(realtimeIdleTimeout)
++			if !drain() {
++				return
++			}
+ 		}
+ 	}
+ }
+@@ -196,7 +202,7 @@
+ 		_ = conn.SetWriteDeadline(time.Time{})
+ 		last = id
+ 	}
+-	return last, true
++	return last, rows.Err() == nil
+ }
+ 
+ // publishRealtimeNotify publishes a lightweight notification to the user's Redis channel.
+diff --git a/internal/httpapi/friends_chat.go b/internal/httpapi/friends_chat.go
+--- a/internal/httpapi/friends_chat.go
++++ b/internal/httpapi/friends_chat.go
+@@ -509,7 +509,9 @@
+ 		Failure(w, r, 500, "INTERNAL_ERROR", "发送失败", nil)
+ 		return
+ 	}
+-	s.emitEvent(r, peerID, "message.created", map[string]any{"message_id": id, "conversation_id": conversationID, "sender_id": UserID(r.Context()), "message_type": in.Type})
++	// The committed message trigger records events for both participants.
++	s.publishRealtimeNotify(r.Context(), peerID)
++	s.publishRealtimeNotify(r.Context(), UserID(r.Context()))
+ 	Success(w, r, 201, map[string]any{"id": id, "client_message_id": in.ClientMessageID, "type": in.Type})
+ }
+ func (s *Server) readConversation(w http.ResponseWriter, r *http.Request) {
+diff --git a/internal/httpapi/realtime_outbox_test.go b/internal/httpapi/realtime_outbox_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/httpapi/realtime_outbox_test.go
+@@ -0,0 +1,159 @@
++package httpapi
++
++import (
++	"context"
++	"fmt"
++	"github.com/fengzijian/bojian/internal/database"
++	"github.com/jackc/pgx/v5/pgxpool"
++	"github.com/redis/go-redis/v9"
++	"golang.org/x/net/websocket"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"os"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestRealtimeOutboxIntegration(t *testing.T) {
++	dsn := os.Getenv("REALTIME_TEST_DATABASE_URL")
++	if dsn == "" {
++		t.Skip("isolated database not configured")
++	}
++	u, err := url.Parse(dsn)
++	if err != nil || (u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1") {
++		t.Fatal("requires isolated local database")
++	}
++	ctx := context.Background()
++	admin, err := pgxpool.New(ctx, dsn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Close()
++	schema := fmt.Sprintf("realtime_outbox_%d", time.Now().UnixNano())
++	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
++	cfg, err := pgxpool.ParseConfig(dsn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cfg.ConnConfig.RuntimeParams["search_path"] = schema
++	db, err := pgxpool.NewWithConfig(ctx, cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close()
++	if err = database.Migrate(ctx, db); err != nil {
++		t.Fatal(err)
++	}
++	exec := func(sql string) {
++		t.Helper()
++		if _, err := db.Exec(ctx, sql); err != nil {
++			t.Fatalf("%s: %v", sql, err)
++		}
++	}
++	exec(`INSERT INTO users(public_id,nickname) VALUES('first','first'),('second','second'),('outsider','outsider');
++ INSERT INTO user_sessions(user_id,device_id,refresh_token_hash,platform,app_version,expires_at) VALUES(1,'test','fixture','ANDROID','1',now()+interval '1 hour');
++ INSERT INTO conversations DEFAULT VALUES;
++ INSERT INTO conversation_members(conversation_id,user_id) VALUES(1,1),(1,2);
++ INSERT INTO messages(conversation_id,sender_id,client_message_id,message_type,encrypted_payload) VALUES(1,1,'fixture','TEXT','{}');`)
++	count := func(kind string, user int64) int {
++		t.Helper()
++		var n int
++		if err := db.QueryRow(ctx, `SELECT count(*) FROM realtime_events WHERE event_type=$1 AND user_id=$2`, kind, user).Scan(&n); err != nil {
++			t.Fatal(err)
++		}
++		return n
++	}
++	if count("message.created", 1) != 1 || count("message.created", 2) != 1 || count("message.created", 3) != 0 {
++		t.Fatal("message recipients not isolated")
++	}
++	exec(`UPDATE conversation_members SET last_read_message_id=1 WHERE user_id=2; UPDATE conversation_members SET last_read_message_id=1 WHERE user_id=2;`)
++	if count("message.read", 1) != 1 || count("message.read", 2) != 1 {
++		t.Fatal("read receipts duplicate or missing")
++	}
++	tx, err := db.Begin(ctx)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err = tx.Exec(ctx, `INSERT INTO messages(conversation_id,sender_id,client_message_id,message_type,encrypted_payload) VALUES(1,1,'rollback','TEXT','{}')`); err != nil {
++		t.Fatal(err)
++	}
++	tx.Rollback(ctx)
++	if count("message.created", 1) != 1 {
++		t.Fatal("rolled-back message leaked")
++	}
++	exec(`INSERT INTO notifications(user_id,type,subject_type,payload_safe_jsonb) VALUES(1,'SYSTEM','USER','{}'); UPDATE notifications SET read_at=now();
++ INSERT INTO resumes(owner_id,title) VALUES(1,'fixture'); UPDATE resumes SET revision=revision+1 WHERE owner_id=1;
++ INSERT INTO files(owner_id,purpose,object_key,original_name,content_type,size_bytes) VALUES(1,'RESUME_IMPORT','fixture','fixture.pdf','application/pdf',1);
++ INSERT INTO resume_imports(owner_id,source_file_id) VALUES(1,1); UPDATE resume_imports SET status='FAILED';
++ INSERT INTO resume_exports(owner_id,resume_id,format) VALUES(1,1,'PDF'); UPDATE resume_exports SET status='SUCCEEDED';
++ INSERT INTO ai_tasks(owner_id,resume_id,task_type) VALUES(1,1,'POLISH'); UPDATE ai_tasks SET status='WAITING_CONFIRMATION';
++ INSERT INTO posts(author_id,title) VALUES(1,'fixture'); UPDATE posts SET status='PUBLISHED';
++ INSERT INTO post_comments(post_id,author_id,content) VALUES(1,2,'fixture');
++ INSERT INTO post_likes(post_id,user_id) VALUES(1,2); DELETE FROM post_likes;
++ INSERT INTO post_comment_likes(comment_id,user_id) VALUES(1,1); DELETE FROM post_comment_likes;
++ INSERT INTO post_comment_dislikes(comment_id,user_id) VALUES(1,1); DELETE FROM post_comment_dislikes;
++ INSERT INTO points_wallets(user_id) VALUES(1); UPDATE points_wallets SET available_points=10,revision=2;
++ INSERT INTO templates(name) VALUES('fixture');
++ INSERT INTO template_purchases(template_id,buyer_id,price_points) SELECT id,1,0 FROM templates LIMIT 1;
++ INSERT INTO friend_requests(requester_id,addressee_id) VALUES(1,2); UPDATE friend_requests SET status='REJECTED';
++ INSERT INTO appeals(user_id,subject_type,subject_id,reason) VALUES(1,'USER',1,'fixture'); UPDATE appeals SET status='RESOLVED';
++ INSERT INTO feedback(user_id,category,content) VALUES(1,'OTHER','fixture'); UPDATE feedback SET status='RESOLVED';
++ INSERT INTO recharge_orders(user_id,amount_cents,points,channel) VALUES(1,100,1,'TEST'); UPDATE recharge_orders SET status='PAID';
++ UPDATE users SET nickname='changed' WHERE id=1;`)
++	for _, kind := range []string{"SYSTEM_NOTIFICATION", "notification.read", "resume.updated", "job.updated", "article.updated", "article.comment", "article.reaction", "wallet.updated", "template.updated", "friend_request.updated", "appeals.updated", "feedback.updated", "recharge_orders.updated", "account.updated"} {
++		if count(kind, 1) == 0 {
++			t.Errorf("missing %s", kind)
++		}
++	}
++	if count("article.updated", 3) != 0 || count("resume.updated", 3) != 0 {
++		t.Fatal("private update leaked")
++	}
++	// Backlog must drain beyond a single 100-event page; DB-only admin/worker
++	// events must arrive even with Redis unavailable and an otherwise idle socket.
++	exec(`INSERT INTO realtime_events(event_id,user_id,event_type,payload_safe_jsonb) SELECT 'backlog:'||n,1,'fixture','{}' FROM generate_series(1,205) n;`)
++	var high int64
++	if err = db.QueryRow(ctx, `SELECT max(id) FROM realtime_events WHERE event_type<>'fixture'`).Scan(&high); err != nil {
++		t.Fatal(err)
++	}
++	redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6399", DialTimeout: 100 * time.Millisecond})
++	defer redisClient.Close()
++	s := &Server{db: db, redis: redisClient}
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		ctx := context.WithValue(context.WithValue(r.Context(), userIDKey, int64(1)), sessionIDKey, int64(1))
++		websocket.Server{Handler: websocket.Handler(s.realtimeConnection), Handshake: func(*websocket.Config, *http.Request) error { return nil }}.ServeHTTP(w, r.WithContext(ctx))
++	}))
++	defer server.Close()
++	conn, err := websocket.Dial("ws"+strings.TrimPrefix(server.URL, "http")+fmt.Sprintf("?cursor=%d", high), "", server.URL)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer conn.Close()
++	conn.SetDeadline(time.Now().Add(8 * time.Second))
++	for i := 0; i < 205; i++ {
++		var event map[string]any
++		if err = websocket.JSON.Receive(conn, &event); err != nil {
++			t.Fatalf("backlog stopped at %d: %v", i, err)
++		}
++		if event["type"] != "fixture" {
++			t.Fatalf("unexpected event: %v", event)
++		}
++	}
++	exec(`UPDATE resume_exports SET status='FAILED'`)
++	var event map[string]any
++	if err = websocket.JSON.Receive(conn, &event); err != nil {
++		t.Fatalf("worker event not delivered: %v", err)
++	}
++	if event["type"] != "job.updated" {
++		t.Fatalf("unexpected worker event %v", event)
++	}
++	// A second request using the last received cursor must not replay old events.
++	exec(`UPDATE user_sessions SET revoked_at=now() WHERE id=1`)
++	if err = websocket.JSON.Receive(conn, &event); err != nil || event["type"] != "SESSION_INVALID" {
++		t.Fatalf("invalidation: %v %v", event, err)
++	}
++}
+diff --git a/internal/database/migrations/036_foreground_realtime_outbox.sql b/internal/database/migrations/036_foreground_realtime_outbox.sql
+new file mode 100644
+--- /dev/null
++++ b/internal/database/migrations/036_foreground_realtime_outbox.sql
+@@ -0,0 +1,98 @@
++-- Record committed state changes for native clients, including writes from the
++-- independent admin API and workers. Payloads contain identifiers, never chat
++-- content, resume content or account credentials.
++CREATE FUNCTION realtime_outbox(target bigint, kind text, payload jsonb) RETURNS void
++LANGUAGE plpgsql AS $$
++BEGIN
++    IF target IS NULL THEN RETURN; END IF;
++    INSERT INTO realtime_events(event_id,user_id,event_type,payload_safe_jsonb)
++    VALUES ('rt:' || md5(random()::text || clock_timestamp()::text),target,kind,payload);
++END;
++$$;
++
++CREATE FUNCTION realtime_state_changed() RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE row_data jsonb; previous jsonb; recipient bigint; article bigint; owner bigint; payload jsonb; kind text;
++BEGIN
++    IF TG_OP = 'DELETE' THEN row_data := to_jsonb(OLD); ELSE row_data := to_jsonb(NEW); END IF;
++    IF TG_OP = 'UPDATE' THEN previous := to_jsonb(OLD); END IF;
++    CASE TG_TABLE_NAME
++    WHEN 'messages' THEN
++        payload := jsonb_build_object('message_id',NEW.id,'conversation_id',NEW.conversation_id,'sender_id',NEW.sender_id,'message_type',NEW.message_type);
++        FOR recipient IN SELECT user_id FROM conversation_members WHERE conversation_id=NEW.conversation_id AND left_at IS NULL LOOP
++            PERFORM realtime_outbox(recipient,'message.created',payload);
++        END LOOP;
++    WHEN 'conversation_members' THEN
++        IF NEW.last_read_message_id IS NOT DISTINCT FROM OLD.last_read_message_id THEN RETURN NEW; END IF;
++        payload := jsonb_build_object('conversation_id',NEW.conversation_id,'reader_id',NEW.user_id,'last_read_message_id',NEW.last_read_message_id);
++        FOR recipient IN SELECT user_id FROM conversation_members WHERE conversation_id=NEW.conversation_id AND left_at IS NULL LOOP
++            PERFORM realtime_outbox(recipient,'message.read',payload);
++        END LOOP;
++    WHEN 'notifications' THEN
++        IF TG_OP='UPDATE' AND NEW.read_at IS NOT DISTINCT FROM OLD.read_at THEN RETURN NEW; END IF;
++        kind := CASE WHEN TG_OP='INSERT' THEN 'SYSTEM_NOTIFICATION' ELSE 'notification.read' END;
++        PERFORM realtime_outbox(NEW.user_id,kind,jsonb_build_object('notification_id',NEW.id,'notification_type',NEW.type));
++    WHEN 'resumes' THEN
++        IF TG_OP='UPDATE' AND (row_data->'revision',row_data->'template_id',row_data->'status',row_data->'deleted_at') IS NOT DISTINCT FROM (previous->'revision',previous->'template_id',previous->'status',previous->'deleted_at') THEN RETURN NEW; END IF;
++        PERFORM realtime_outbox(NEW.owner_id,'resume.updated',jsonb_build_object('resume_id',NEW.id,'revision',NEW.revision,'status',NEW.status));
++    WHEN 'resume_imports', 'resume_exports', 'ai_tasks' THEN
++        IF TG_OP='UPDATE' AND NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;
++        kind := CASE TG_TABLE_NAME WHEN 'resume_imports' THEN 'RESUME_IMPORT' WHEN 'resume_exports' THEN 'RESUME_EXPORT' ELSE 'POLISH' END;
++        owner := (row_data->>'owner_id')::bigint;
++        IF owner IS NULL AND TG_TABLE_NAME='resume_exports' THEN SELECT owner_id INTO owner FROM resumes WHERE id=(row_data->>'resume_id')::bigint; END IF;
++        PERFORM realtime_outbox(owner,'job.updated',jsonb_build_object('job_type',kind,'job_id',NEW.id,'status',NEW.status));
++    WHEN 'posts' THEN
++        IF TG_OP='UPDATE' AND (NEW.status,NEW.revision,NEW.deleted_at) IS NOT DISTINCT FROM (OLD.status,OLD.revision,OLD.deleted_at) THEN RETURN NEW; END IF;
++        PERFORM realtime_outbox(NEW.author_id,'article.updated',jsonb_build_object('article_id',NEW.id,'status',NEW.status));
++    WHEN 'post_comments', 'post_likes', 'post_comment_likes', 'post_comment_dislikes' THEN
++        IF TG_TABLE_NAME IN ('post_comment_likes','post_comment_dislikes') THEN
++            SELECT post_id INTO article FROM post_comments WHERE id=(row_data->>'comment_id')::bigint;
++        ELSE article := (row_data->>'post_id')::bigint; END IF;
++        kind := CASE WHEN TG_TABLE_NAME='post_comments' THEN 'article.comment' ELSE 'article.reaction' END;
++        payload := jsonb_build_object('article_id',article,'comment_id',COALESCE(row_data->'comment_id',CASE WHEN TG_TABLE_NAME='post_comments' THEN row_data->'id' END));
++        -- Only the owner and participants receive updates; other users' private
++        -- notifications or drafts are never broadcast.
++        FOR recipient IN SELECT author_id FROM posts WHERE id=article UNION SELECT author_id FROM post_comments WHERE post_id=article AND deleted_at IS NULL LOOP
++            PERFORM realtime_outbox(recipient,kind,payload);
++        END LOOP;
++    WHEN 'points_wallets' THEN
++        IF TG_OP='UPDATE' AND (NEW.available_points,NEW.frozen_points,NEW.revision) IS NOT DISTINCT FROM (OLD.available_points,OLD.frozen_points,OLD.revision) THEN RETURN NEW; END IF;
++        PERFORM realtime_outbox(NEW.user_id,'wallet.updated',jsonb_build_object('revision',NEW.revision));
++    WHEN 'template_purchases' THEN
++        PERFORM realtime_outbox(NEW.buyer_id,'template.updated',jsonb_build_object('template_id',NEW.template_id));
++    WHEN 'friend_requests' THEN
++        IF TG_OP='UPDATE' AND NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;
++        payload := jsonb_build_object('friend_request_id',NEW.id,'status',NEW.status);
++        PERFORM realtime_outbox(NEW.requester_id,'friend_request.updated',payload);
++        PERFORM realtime_outbox(NEW.addressee_id,'friend_request.updated',payload);
++    WHEN 'appeals', 'feedback', 'recharge_orders', 'withdrawals' THEN
++        IF TG_OP='UPDATE' AND NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;
++        PERFORM realtime_outbox(NEW.user_id,TG_TABLE_NAME || '.updated',jsonb_build_object('id',NEW.id,'status',NEW.status));
++    WHEN 'users' THEN
++        -- Profile changes only. Token refresh/login bookkeeping emits nothing.
++        IF (row_data->'nickname',row_data->'avatar_file_id',row_data->'bio',row_data->'profile_visibility',row_data->'status') IS NOT DISTINCT FROM (previous->'nickname',previous->'avatar_file_id',previous->'bio',previous->'profile_visibility',previous->'status') THEN RETURN NEW; END IF;
++        PERFORM realtime_outbox(NEW.id,'account.updated','{}'::jsonb);
++    END CASE;
++    IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
++END;
++$$;
++
++CREATE TRIGGER realtime_message AFTER INSERT ON messages FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_read AFTER UPDATE OF last_read_message_id ON conversation_members FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_notification AFTER INSERT OR UPDATE OF read_at ON notifications FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_resume AFTER INSERT OR UPDATE ON resumes FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_import AFTER INSERT OR UPDATE OF status ON resume_imports FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_export AFTER INSERT OR UPDATE OF status ON resume_exports FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_ai AFTER INSERT OR UPDATE OF status ON ai_tasks FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_article AFTER INSERT OR UPDATE ON posts FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_comment AFTER INSERT OR UPDATE OR DELETE ON post_comments FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_like AFTER INSERT OR DELETE ON post_likes FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_comment_like AFTER INSERT OR DELETE ON post_comment_likes FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_comment_dislike AFTER INSERT OR DELETE ON post_comment_dislikes FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_wallet AFTER INSERT OR UPDATE ON points_wallets FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_purchase AFTER INSERT ON template_purchases FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_friend_request AFTER UPDATE OF status ON friend_requests FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_appeal AFTER UPDATE OF status ON appeals FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_feedback AFTER UPDATE OF status ON feedback FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_recharge AFTER UPDATE OF status ON recharge_orders FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_withdrawal AFTER UPDATE OF status ON withdrawals FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();
++CREATE TRIGGER realtime_profile AFTER UPDATE ON users FOR EACH ROW EXECUTE FUNCTION realtime_state_changed();

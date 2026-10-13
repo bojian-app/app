@@ -1,0 +1,1063 @@
+{
+  "date": "2026-10-12",
+  "status": "DEPLOYED_AND_HEALTHY",
+  "production_deployed": true,
+  "phone_apk_replaced": true,
+  "policy": "Only lawful company public sources; no internal evidence or enterprise authorization upload flow.",
+  "migration": "042_company_benefit_public_sources.sql",
+  "migration_sha256": "eb5d6a5559d5dd335d4cdc494f81984fa2d9aed28da3ebb354daa05a6d8ca5b5",
+  "rollout_order": [
+    "main-api-and-migration-042",
+    "admin-api",
+    "admin-web",
+    "new-apk"
+  ],
+  "apk": {
+    "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk",
+    "sha256": "831a7f133e59a18efbc4ba10ca2fc27f60167dd1aa3c55a91b5d8c0917dd80af",
+    "size_bytes": 30190219
+  },
+  "checks": {
+    "flutter_analyze": "PASS",
+    "flutter_full_suite": "287 PASS at r51",
+    "flutter_benefits_latest": "13 PASS including source restrictions and standalone discovery entry",
+    "flutter_release_apk": "PASS",
+    "main_benefits_and_uploads_real_postgresql": "PASS",
+    "main_storage_suite": "4 PASS",
+    "admin_go_full_suite": "PASS",
+    "admin_web_typecheck_and_build": "PASS",
+    "admin_sfc_publication_and_reports_boundary_checks": "PASS",
+    "main_go_full_suite": "FAIL: pre-existing TestGRPCAuthenticationAndRouteCoverage route/contract mismatch; HTTP benefits checks pass"
+  },
+  "additional_local_fixes": [
+    "Removed identical duplicate comment-dislike route registrations which caused service initialization panic.",
+    "Updated the saved-article test to use the current cancel-bookmark tooltip."
+  ],
+  "operational_followup": [
+    "Review each source for lawful enterprise publication, scope, accuracy and personal information before publishing.",
+    "Existing published rows move to SOURCE_REVIEW on migration; no automatic republication or evidence destruction.",
+    "Prior storage tokens may work until expiry; do not confirm/reuse old internal objects, and reconcile private retained objects under a defined retention policy.",
+    "Handle rights notices and counter-statements through an actual operational process; complaint classification is not a legal finding."
+  ],
+  "source_sha256": {
+    "main": {
+      "/Users/fengzijian/bojian-backend/internal/httpapi/company_benefit_model.go": "347cc31fbfca5af11ec0d1c1f4eb7f4ed010904b7d1ca423d965d27c27d55b8c",
+      "/Users/fengzijian/bojian-backend/internal/httpapi/company_benefits.go": "2a69224340ae1c63a991425ff1c87bd4d812c317fb2e86a23a0407c34c8094b2",
+      "/Users/fengzijian/bojian-backend/internal/httpapi/company_benefits_test.go": "3991dd8eaddf9b5f137bfd36a858417d64945ca9feb6cfa85b0e8ca9a703d449",
+      "/Users/fengzijian/bojian-backend/internal/httpapi/server.go": "7f2c1e845474873273682245e757b2ef081953c983cedf065bad517ef8865603",
+      "/Users/fengzijian/bojian-backend/internal/database/migrations/042_company_benefit_public_sources.sql": "eb5d6a5559d5dd335d4cdc494f81984fa2d9aed28da3ebb354daa05a6d8ca5b5"
+    },
+    "admin": {
+      "/Users/fengzijian/bojian-admin-backend/internal/httpapi/company_benefit_model.go": "7c532eac00cc7c0ea42664b0f1ef6cd88a6fe9aa4f48c5002b8be0bf4f44e43f",
+      "/Users/fengzijian/bojian-admin-backend/internal/httpapi/company_benefit_records.go": "1a89fba5fecb7876d2bfab12fae507c8e58a33ed4ee7916f57e620c2d6e3f90f",
+      "/Users/fengzijian/bojian-admin-backend/internal/httpapi/company_benefits.go": "f32e6b7fac92ba77cedb48c089bf85327a537fdf020ee159fe9a5d9f06fb36aa",
+      "/Users/fengzijian/bojian-admin-backend/internal/httpapi/company_benefits_test.go": "4beb4a266350385a3e8ace756aa276eee8f67aaeccf071cfea3417a6a9b3d3e6",
+      "/Users/fengzijian/bojian-admin-backend/internal/httpapi/company_benefit_public_sources_test.go": "cfa2ba5895dc522e30694e69a7adfa519e3c5ff571aac178a8892cedd51be7ac",
+      "/Users/fengzijian/bojian-admin-backend/internal/httpapi/company_benefit_reports_test.go": "5c9d10425db99b9750d61a88d74bc3df0ce891be176765cf95ba84eb89d40fd1",
+      "/Users/fengzijian/bojian-admin-backend/internal/httpapi/admin.go": "b47e4f07b8e605b3eabc16e2d03b88256497fe0ee1653aa6730452b323f714c3",
+      "/Users/fengzijian/bojian-admin-backend/internal/httpapi/testdata/042_company_benefit_public_sources.sql": "eb5d6a5559d5dd335d4cdc494f81984fa2d9aed28da3ebb354daa05a6d8ca5b5"
+    },
+    "web": {
+      "/Users/fengzijian/bojian-admin/apps/web-antd/src/views/operations/live/company-benefits.vue": "e02d029f6599208e10e366686ce152345622915936667692dd3db682eca230cc",
+      "/Users/fengzijian/bojian-admin/apps/web-antd/src/views/operations/live/moderation-reports.vue": "35cf4ee5b75ce82a2e60e572e1816c07646f5b91f5b02e8f9c52ec94e4459a16",
+      "/Users/fengzijian/bojian-admin/apps/web-antd/src/api/admin.ts": "3024e132d4d38018a825d9956b1e026853cdab035dbc589458a7dab3560a5886",
+      "/Users/fengzijian/bojian-admin/apps/web-antd/src/router/routes/modules/companies.ts": "192abc76cf1134610a59e7335194e887d5c1361d352014829b66eb3d881bf422"
+    },
+    "mobile": {
+      "/Users/fengzijian/bojian-mobile/lib/company_benefits.dart": "ca1dfb8d8beb5a91b287c3c8262d5f54050895eb195cec3f69d7f6ed9a865f92",
+      "/Users/fengzijian/bojian-mobile/test/company_benefits_test.dart": "232ff8f7007cba8225439c9df4fc6ca581e4e48d24b4623419b5a62c02d11fea",
+      "/Users/fengzijian/bojian-mobile/test/saved_articles_page_test.dart": "7ab6bead861ad1f5a400128051da77208d0476b36b9338471acb7c5bb5cd08b7",
+      "/Users/fengzijian/bojian-mobile/lib/company_benefits_art.dart": "7168f5471850cb6bdd46538c85a165d31b272156aa735c4d057f3f3a09647762",
+      "/Users/fengzijian/bojian-mobile/lib/app_icons.dart": "5c9f96be93b27b337cbb11b2199b541d0a642b5c625a5b10e0c772eef0ff842f",
+      "/Users/fengzijian/bojian-mobile/lib/profile_points_card.dart": "fc946c7865de82041c4609f50adba7519eac4158c148365ac779f4b7bd4908b8",
+      "/Users/fengzijian/bojian-mobile/lib/app_store.dart": "159caf7ec8b7ddb69054ad89376cc56e5966c44db3c153528d20f665ec0e6942",
+      "/Users/fengzijian/bojian-mobile/lib/account_pages.dart": "da097459010592fa9da60d2293417e500b2303f559d35b15404799c57ecd9209",
+      "/Users/fengzijian/bojian-mobile/test/profile_points_card_test.dart": "652cab844901e056e0ac1875d7f85c844779aa3bd01c7054193b7bf1aa5b37e3",
+      "/Users/fengzijian/bojian-mobile/lib/app_shell.dart": "df062f1261395d4b0a5bedac2d52380e7924fc22d9db3236fdc55cd59e3c7cee",
+      "/Users/fengzijian/bojian-mobile/lib/app_bottom_navigation.dart": "054482ee428398354a61adfd1c258fd4d1c9c69deef80f34c8d259108e1c30a6",
+      "/Users/fengzijian/bojian-mobile/test/app_bottom_navigation_test.dart": "0d39da1342715faf34f63b15851ff77c31d763a026f9be0cc839991a74db80b1",
+      "/Users/fengzijian/bojian-mobile/lib/discovery.dart": "67be858dadc74bc7c7ce6859dc9f68212afac62018b59e26c966f4d730cc333b",
+      "/Users/fengzijian/bojian-mobile/test/app_shell_navigation_test.dart": "f0a4049e6905d3bbef944b1650277c361f3e68161661b453fe9d3050f44cf11d",
+      "/Users/fengzijian/bojian-mobile/lib/startup_screen.dart": "4685f7c4566831b81e5bfa3fd94306ed8c7819f695bdde3d55dc115f13cf8a23",
+      "/Users/fengzijian/bojian-mobile/test/startup_screen_test.dart": "4ffcf0b6d4b57e7e3f4ea608251d44e3144dec7dd3e2cb68aa38bdcf7dcbd811",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/kotlin/com/example/bojian_mobile/StartupView.kt": "7b37f19664239d4286ff3fa484841fb87a1a643552ae28b73687bb45451b48d0",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/kotlin/com/example/bojian_mobile/MainActivity.kt": "bec79fd2eda2387c7a76c7be219ac51bfe0e615090c294d2e350431c6fe737ac",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/res/values/colors.xml": "646513dd5f11635c73c26a086baeb6065ba6721669c42bb1dc6443c8bd2c9b26",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/res/values/styles.xml": "f4418f1a01488521e3c90784130685ad74aa7d59b79af2eb3afd81e60601b4fe",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/res/values-night/styles.xml": "6bb5f7af26cd09e39ac18dc8630cd75c52d007c06bd8ab0136c2a34fe7cf5f4e",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/res/values-v31/styles.xml": "2e0d15c85d156731d1e8b08f404e7b5b11ecdec9fb9a8d345aaf7786f92b14e5",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/res/values-night-v31/styles.xml": "2e0d15c85d156731d1e8b08f404e7b5b11ecdec9fb9a8d345aaf7786f92b14e5",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/res/drawable/launch_background.xml": "c234d678c73968509ea0ab3947b0e6ef9c0d5408c72314605d351ac00aa49efa",
+      "/Users/fengzijian/bojian-mobile/android/app/src/main/res/drawable-v21/launch_background.xml": "c234d678c73968509ea0ab3947b0e6ef9c0d5408c72314605d351ac00aa49efa",
+      "/Users/fengzijian/bojian-mobile/ios/Runner/Base.lproj/LaunchScreen.storyboard": "9703faf8a31b0402f95185dbb7c717593473192660361548972e0768a0659a71",
+      "/Users/fengzijian/bojian-mobile/lib/main.dart": "2991cdcfcd6bc33a18c18c4bdd77697ac48875bf3b388bc7ef3d37cd35181a9a",
+      "/Users/fengzijian/bojian-mobile/lib/startup_scene.dart": "560fd13ab7e1f9aeefc58ed23f215fbce89f55ab27da317e1cf69774e4b465c5",
+      "/Users/fengzijian/bojian-mobile/lib/guidance_inline_note.dart": "9030c88b4e98eb94329a6e283cc90ab3433a2a63e24116fea1e3c061b1806c97",
+      "/Users/fengzijian/bojian-mobile/lib/resume_document.dart": "db6537400dc433652a6c3caa735800d246ac775a928106417c6c9d57470ae90a",
+      "/Users/fengzijian/bojian-mobile/lib/resume_guidance_view.dart": "dabe705f536cb35e2159f9b2961519b76a7455e66482ff6e772d9ca4c04c230f",
+      "/Users/fengzijian/bojian-mobile/lib/resume_guidance_review.dart": "5d481afd7a3aa3c499f928db07843de5bb93351b108aa82e66cc2a20b1052180",
+      "/Users/fengzijian/bojian-mobile/test/resume_guidance_review_test.dart": "52258c19fe1bfdc73e8f7f8d96459030ed8c7c6375e84d071123a0ed093ae689",
+      "/Users/fengzijian/bojian-mobile/test/resume_review_inline_layout_test.dart": "37e764f35ddaef263fb8c167c183618b33c342027ba50f4780c3ff12c4973dc7",
+      "/Users/fengzijian/bojian-mobile/test/resume_page_export_test.dart": "07abc42001536c2c69e0d6de7269c59eaf165e95b4b0751817f1ae0aeeaa1c44",
+      "/Users/fengzijian/bojian-mobile/lib/resume_guidance_annotations.dart": "b58d7b3714bc3cf27cb03a12a45cc22ba253cdcdaff1fc261bb5bad6eb556259",
+      "/Users/fengzijian/bojian-mobile/test/resume_guidance_annotations_test.dart": "9732b566e3f319beea55c17bd408fcf993855668ec0a63c22780cc84c38a70cf",
+      "/Users/fengzijian/bojian-mobile/test/resume_gesture_test.dart": "26ed9918abcfd16b4ccb725dd4e41400151207fd13fa1dd7082fee5a3a481fe6",
+      "/Users/fengzijian/bojian-mobile/lib/resume_guidance_privacy.dart": "f57430e6a62d2a63152250f96843914611c6e7f32949f685f19bafee353802ac",
+      "/Users/fengzijian/bojian-mobile/test/resume_guidance_privacy_test.dart": "c0d9bba0914b491ba2651535a5484824320dfb7432d84c84858097207adec19c",
+      "/Users/fengzijian/bojian-mobile/pubspec.yaml": "93de39d0d8efe8740f2a4f93c1cfb1373b5dc57d25beceabd5166af42e99a295",
+      "/Users/fengzijian/bojian-mobile/assets/fonts/annotation-ui.ttf": "d08d4ccfa84cad9f63007b16c01d68c6791aad4ce51c874b91192c983c87b919",
+      "/Users/fengzijian/bojian-mobile/assets/fonts/OFL.txt": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+      "/Users/fengzijian/bojian-mobile/assets/fonts/README.md": "97adb71c0b69c25bd913a962434dcfa78516a38cafd3aeaa1c99fff228ed2a16",
+      "/Users/fengzijian/bojian-mobile/lib/resume_pages.dart": "8692c12b8d279241844da2feaf023a48ad268370c968d48b54110a9514881f62",
+      "/Users/fengzijian/bojian-mobile/lib/resume_rename.dart": "d879928673589cd2a117e459296826028c2b14bdcf62b5ee663dd0c26f80f8a2",
+      "/Users/fengzijian/bojian-mobile/lib/guidance_region_comments.dart": "6cd6974eb9cefa84df1095d3f85cbd30790a5edfbbd90986dd77e67d2e6bec24",
+      "/Users/fengzijian/bojian-mobile/lib/user_display_name.dart": "24a0eff46400b2ae4e6227da18ce0b885cb634e71f2ac85a8b811ff335419ad9",
+      "/Users/fengzijian/bojian-mobile/lib/settings_page.dart": "5edc4ba2f642512bdacf4126756b97883a17bf01a562faedb858a619b6741aa6",
+      "/Users/fengzijian/bojian-mobile/lib/user_profile_page.dart": "1f5b5f1731cced1a261a354157a754910cd820064a89fdbbf686a7bd1fd5908f",
+      "/Users/fengzijian/bojian-mobile/lib/messages_page.dart": "7a6d07677e0578372b78eefb968dc6705aaccc66c9583ccaadf073cfca91ab4a",
+      "/Users/fengzijian/bojian-mobile/lib/resume_guidance_share.dart": "3eb5108a3826bc3dd47747138e56b5e57353d330838695a1c7d51dac30c771a1",
+      "/Users/fengzijian/bojian-mobile/lib/template_market.dart": "6dc314b2f063ee2b6f49ef63c9066be40a9f6b7c845f7e652a3d176595fbf6f5",
+      "/Users/fengzijian/bojian-mobile/lib/resume_delete.dart": "9014c6f74e83e3f43bec31ad3693188b34089ab5274af3402a380b71824c70ed",
+      "/Users/fengzijian/bojian-mobile/test/resume_delete_test.dart": "1cbef7ab38ec47d3f5b8a9db756637a0c842a1563ac6c65ec3abe8f025f61542",
+      "/Users/fengzijian/bojian-mobile/test/resume_actions_test.dart": "2dd8a5c2ae2fbc08d20ac7bcca0f3859c837c0d51121f29da7a416f199a73c39",
+      "/Users/fengzijian/bojian-mobile/test/guidance_visibility_test.dart": "d44c43b97b4c2580036a96797545e5cc580d6d66029513525acb6840a2598339",
+      "/Users/fengzijian/bojian-mobile/test/resume_guidance_share_test.dart": "44a4634f03ddf502efd561bb52273c7a21536c9192a7beae46e79e1101820cf8",
+      "/Users/fengzijian/bojian-mobile/test/support/fake_gateway.dart": "c8a838203a7c71ccf4503b588c4ddf9a43b89c52b86f98ba3fd2caa2e0bb5051",
+      "/Users/fengzijian/bojian-mobile/test/guidance_notification_summary_test.dart": "8eca78d1e1a747e72dc4eb017211d9fbd443ea5c6b9032df8ba055fa2edb99be",
+      "/Users/fengzijian/bojian-mobile/test/guidance_region_comments_test.dart": "03923ef1790322bce2c08dcd48698c2918fc0b63ada6721bcc5c71cae1693c9e",
+      "/Users/fengzijian/bojian-mobile/lib/article_comment_tile.dart": "d04a8cf68137b02aff4cb24df9cc7852df21c57fdf7342172b92f94ef4677ecf",
+      "/Users/fengzijian/bojian-mobile/test/comment_interactions_test.dart": "4bb0179e2f20b52a8afe2abd0e85558cf240d46daacf742c7d6c915b8ec596b7",
+      "/Users/fengzijian/bojian-mobile/test/story_detail_test.dart": "bbd84f0eed400376cedb67ddf115acbb59ec6299f607e8d26b6d1eafd5297050",
+      "/Users/fengzijian/bojian-mobile/test/guidance_inline_note_test.dart": "e17dc8bf02ed09471d587b22c576ca0220a309e24f3abfba7fdbc859cfbf7271",
+      "/Users/fengzijian/bojian-mobile/lib/legal_document.dart": "92724cbfc015b7bfdbab0ea7e0c617e9c34d324f25ca5729a29f0e53248cf65d",
+      "/Users/fengzijian/bojian-mobile/lib/legal_document_page.dart": "99e69c63506ded0f4957568f939a65aeee14f548e0b6f924d3d53168b35d8bcd",
+      "/Users/fengzijian/bojian-mobile/lib/auth_page.dart": "0e3b332e44bf5069249c81c87f2900d3f810244d1c5fa72b40b441202daf880d",
+      "/Users/fengzijian/bojian-mobile/test/legal_document_page_test.dart": "8f8b9c9f3ad3d26d04ee723b74ba81ba50d860f0bd110b5fa1b95e0e17ff71bc",
+      "/Users/fengzijian/bojian-mobile/pubspec.lock": "a829ddbd835c90f1f3f4411c1bb2ebffa42df0003a907005c91b8d989579b40a",
+      "/Users/fengzijian/bojian-mobile/scripts/generate_rpc.sh": "310564c52630939cd389b3e2d658fb37383eab00ebfd53d144bbd81345df4b73",
+      "/Users/fengzijian/bojian-mobile/scripts/build_android_release.sh": "3d28ac7e1649b8ba268cf84667a5c8ae750faaa9af07a7da98e893e20191e9b6"
+    }
+  },
+  "deployment": {
+    "status": "DEPLOYED_AND_HEALTHY",
+    "migration": "042_company_benefit_public_sources.sql",
+    "services": {
+      "api": {
+        "image": "bojian-api:company-benefits-public-sources-20261012-r1",
+        "sha256": "ed274f0bac2842b64370bed5fa2e8447aa218549c556dc8281bea6fc3269316b",
+        "health": "healthy"
+      },
+      "admin-api": {
+        "image": "bojian-admin-api:company-benefits-public-sources-20261012-r1",
+        "sha256": "a938613d69d84a780e5282d0fdf721ff882d81b3594b90fc7f29b5e3cd72bee9",
+        "health": "healthy"
+      },
+      "admin-web": {
+        "image": "bojian-admin-web:company-benefits-public-sources-20261012-r1",
+        "sha256": "aedb160aea4cf55ffc5b46e2e12a58534976abad4b184996f7ac17a6d73c820f",
+        "health": "healthy"
+      }
+    },
+    "backup_directory": "/home/ubuntu/bojian-company-benefits-public-sources-20261012-r1/backup",
+    "database_backup_sha256": "20f20223a91aff0c709ece12769ca3b83c996ff4b2c27f41e53d8a74e355b81a",
+    "checks": [
+      "PostgreSQL16 isolated release suites",
+      "artifact and static file checksums",
+      "migration and no unreviewed publication",
+      "origin HTTPS health/readiness",
+      "admin page and API authentication"
+    ],
+    "completed_at_epoch": 1791772023
+  },
+  "isolated_release_checks": {
+    "baseline_binary_reproduction": "Main and admin binary SHA-256 exactly match the prior production artifacts",
+    "main_deployed_packages": "go test ./cmd/... ./internal/... PASS",
+    "admin_all_packages": "go test ./... PASS",
+    "production_version_database": "Main and admin welfare suites PASS on isolated PostgreSQL16; QA container removed",
+    "admin_frontend_diff": "282 files unchanged; remaining 9 changes limited to welfare/report/menu/build metadata",
+    "scope": "No unrelated worktree route/gRPC/dependency changes included in the deployed release"
+  },
+  "deployment_script_sha256": "a4c0f9ea0255ffcdbff0f88d77a3935871032702e4d48e4a0ac080076edff4ab",
+  "qa_script_sha256": "b864f59c0038b09fea1c67d70404ce0a4c60089a4a0231f9ec66cb561283d9cb",
+  "phone_installation": {
+    "device": "b738806e",
+    "model": "PJD110",
+    "package": "com.example.bojian_mobile",
+    "mobile_revision": "apk-size-optimization-20261013-r59",
+    "installed_apk_sha256": "831a7f133e59a18efbc4ba10ca2fc27f60167dd1aa3c55a91b5d8c0917dd80af",
+    "data_preserved": true,
+    "verified_at": "2026-10-13T08:54:26.130243+00:00"
+  },
+  "previous_mobile_builds": [
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "920b6104f41030e9d71a86edda29c38486ad017896b95e8a0e7d617dd434c3f7",
+      "size_bytes": 90208535
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "d6cb94dee2db3deb0a50d0bb3fc837651c843f78c05bb9bfb86ef66eb2d9daa9",
+      "size_bytes": 90274079,
+      "mobile_revision": "benefits-visual-points-stability-20261012-r2",
+      "checks": {
+        "full_suite_before_final_keyboard_refinement": "223 PASS",
+        "final_benefits_and_points_suite": "20 PASS",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "4ef84da5331f419c2a3284e9d7f81cdc4886c46e7ab43626eecaffe40ddbe158",
+      "size_bytes": 90421535,
+      "mobile_revision": "navigation-five-tabs-20261012-r3",
+      "checks": {
+        "full_suite": "231 PASS",
+        "navigation_suite": "7 PASS: all five destinations, small screen, large text, semantics, stable bounds and reduced motion",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_navigation": "Five destinations in original order; discovery and welfare selection verified"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "4d5b645b74892a5760b187f1b65ddcfafa9f29be89fa18e048cc412b308eb974",
+      "size_bytes": 90421535,
+      "mobile_revision": "navigation-tiered-20261012-r4"
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "60af180f1d176fda1f3c7957f95419c5b4e5af2ebcf8bf3c7342c24584e42448",
+      "size_bytes": 90421535,
+      "mobile_revision": "navigation-two-level-20261012-r5"
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "242fbe9a6f4da50af17ef20835a2cc2ccf8877bf572828cc9c17f4e96ae42095",
+      "size_bytes": 90421535,
+      "mobile_revision": "navigation-four-tabs-20261012-r6",
+      "checks": {
+        "full_suite": "233 PASS",
+        "navigation_suite": "8 PASS: four tabs, small screen, large text, semantics, stable bounds, reduced motion and keyboard state retention",
+        "benefits_suite": "13 PASS: public sources, submission, independent routing, lazy loading and discovery state retention",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_navigation": "Four tabs verified; welfare opened from Discovery as a complete page and returned to Discovery"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "7864074156e35b309a0e67f37912c7b8e861c97556989af647a691d62cb9d4c1",
+      "size_bytes": 90290463,
+      "mobile_revision": "navigation-motion-20261012-r7",
+      "checks": {
+        "full_suite": "240 PASS before test-only TickerMode deprecated API cleanup",
+        "final_shell_suite": "7 PASS after cleanup",
+        "navigation_suite": "8 PASS: stable geometry, rapid selection, shallow-blue alpha-only selection transition, large text, semantics and reduced motion",
+        "benefits_suite": "13 PASS in full suite",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_navigation": "Normal and rapid switches exercised; four tabs retained; user confirmed the result works"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "82d7c962a553f6d04e056f8cd324bb1159b559613578a5fe30b2b21c2dba0633",
+      "size_bytes": 89952319,
+      "mobile_revision": "typographic-startup-20261012-r8",
+      "checks": {
+        "full_suite": "245 PASS",
+        "startup_suite": "9 PASS: no app icon, <=1200ms, one child initialization, interaction isolation, skip, reduced motion, lifecycle, disposal and large text",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS including Kotlin and Android launch resources",
+        "device_apk_checksum": "PASS",
+        "device_startup": "Cold launch captured text-only brand; home navigation accessibility restored; skip captured home before normal intro completion",
+        "ios_launch": "Background XML aligned and parsed; no physical iOS build or device verification"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "095d4102533b3a023f8714cb81a1ee923b1efd312cdb27a494ecf70cec2ba63d",
+      "size_bytes": 90214747,
+      "mobile_revision": "paper-flight-startup-20261012-r9",
+      "checks": {
+        "full_suite": "247 PASS",
+        "startup_suite": "11 PASS: <=2500ms, distinct rendered phases, one child initialization, interaction isolation, skip, reduced motion, lifecycle, disposal, small screen and enlarged portrait/landscape text",
+        "flutter_analyze": "PASS after final contrast refinement",
+        "release_apk": "PASS including Kotlin and Android launch resources",
+        "device_apk_checksum": "PASS",
+        "device_startup": "Cold orbit/fold/flight/portal/arrival captures; high-contrast skip on white wing; skip, reduced motion, interrupted/resumed launch and 2x text inspected; home accessibility and four navigation tabs restored",
+        "device_preferences": "Original font_scale and animator_duration_scale restored exactly after verification",
+        "ios_launch": "Dark background XML aligned and parsed; no physical iOS build or device verification"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "53cdf52df42a2acf2a582227089bea6a844e2d2d209ac1f1ee79acf762adc575",
+      "size_bytes": 90100059,
+      "mobile_revision": "dolphin-light-startup-20261012-r10",
+      "checks": {
+        "full_suite": "247 PASS; final outline-only refinement 11 startup tests PASS",
+        "startup_suite": "11 PASS: <=2300ms, constant light background at all sampled stages, first-frame brand semantics, moving dolphin scene, one child initialization, interaction isolation, skip, reduced motion, lifecycle, disposal and enlarged portrait/landscape text",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS including Kotlin and Android launch resources",
+        "device_apk_checksum": "PASS",
+        "device_startup": "Single continuous light dolphin scene captured at start, leap, paper tidy, wink and settled poses; fixed brand/caption; skip, reduced motion, interrupted/resumed launch, 2x text and four-tab home accessibility verified",
+        "device_preferences": "Original font_scale and animator_duration_scale restored exactly after verification",
+        "ios_launch": "Light background XML aligned and parsed; no physical iOS build or device verification"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "392e7efcac742001aa549b52be36ef7756258787ba4d3248674f89df1f4d3ed3",
+      "size_bytes": 90100059,
+      "mobile_revision": "guidance-comment-width-20261012-r11",
+      "checks": {
+        "guidance_and_document_suite": "13 PASS including inline cards, draft acceptance and A4 pagination",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "change": "Comment cards inset by 12 logical pixels on each side; compact vertical spacing; note height measured against narrower content width"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "248652f5860cc1fb7da7b281246ebe765ce483d425f40131c6f33b1bf48f2f5a",
+      "size_bytes": 90100059,
+      "mobile_revision": "guidance-comment-height-20261012-r12",
+      "checks": {
+        "guidance_and_document_suite": "13 PASS including inline cards, draft acceptance and A4 pagination",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "change": "Full text-column width restored; comment body 11.5/1.4, label 9.5/1.4, quote 10/1.35; horizontal/vertical padding 10/6 and gap 4; pagination uses the same compact typography"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "4b1bf66b6dfcfbc9c2d55f40685bcbc8b07e937f53d695279cc8eb5fc5bd6259",
+      "size_bytes": 90116443,
+      "mobile_revision": "guidance-wave-comments-20261012-r13",
+      "checks": {
+        "full_suite": "257 PASS",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_review": "Quoted sentence wave and plain comment below verified; historical field-only comments subsequently fixed in r14"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "89e83bdb586aa054292a21ff6b4293658fb20e5108786a37835047d2a4f1b818",
+      "size_bytes": 90100059,
+      "mobile_revision": "guidance-unified-wave-annotations-20261012-r14",
+      "checks": {
+        "full_suite": "259 PASS",
+        "guidance_and_layout_suite": "19 PASS",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_launch": "PASS; replacement install preserved application data",
+        "change": "Comments and replacements use same inline wave layout, with matching green/purple text; replacements retain staged accept/reject actions. Historical records without selected_text underline rendered field text across pages."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "c32cc373aad4fd537d912c30210b1f85e9c404ca2cbe06c793b5496e600621d0",
+      "size_bytes": 90280283,
+      "mobile_revision": "guidance-tap-region-20261012-r15",
+      "checks": {
+        "full_suite": "260 PASS",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_review": "Tapped original text on physical phone; complete region blue highlight and comment/replacement menu verified; dismissed without submitting",
+        "change": "Replaced SelectableText and selection toolbar with tappable paragraph regions and application menu. Complete original region sent to existing annotation composer. Scroll/pinch/pan and cancellation regression tests pass."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "b4319b313038df0ee45ab849936ba686d2e2932d4ac4dd57a8467ff233b0a160",
+      "size_bytes": 89969163,
+      "mobile_revision": "guidance-compact-toolbar-20261012-r16",
+      "checks": {
+        "targeted_suite": "6 PASS",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "3eac7b8890c3412cec8182d5383a1558eeaec87d525a4188c1bcc971dae9c296",
+      "size_bytes": 89952687,
+      "mobile_revision": "guidance-topbar-project-names-20261012-r17",
+      "checks": {
+        "full_suite": "261 PASS",
+        "guidance_privacy_gestures": "8 PASS",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_review": "Physical phone verified: project title readable, old bottom links absent, selected paragraph has no floating bubble and actions appear in app bar; cancelled without sending",
+        "change": "Keep project names visible. Remove floating action UI; region selection switches app bar to comment/replacement actions with cancellation."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "4c964a3391e539634390ebe42adf667f6241ccacb25a7b75a90ae65789022840",
+      "size_bytes": 89968987,
+      "mobile_revision": "guidance-cupertino-bubble-20261012-r18",
+      "checks": {
+        "guidance_privacy_gestures": "8 PASS",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_review": "Physical phone verified: normal app-bar title, softly rounded light bubble anchored above selected region, horizontal actions, no bottom links, project title visible; dismissed without sending",
+        "change": "Cupertino-style contextual bubble with local backdrop blur, light translucent surface, 18px corners, separator, soft shadows, pressed opacity and reduced-motion-aware fade. No app-bar annotation actions."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "bb4c5de9eeba4646e2b280b0cd577653407daf600ddce8de195254e2d4247b93",
+      "size_bytes": 89973641,
+      "mobile_revision": "guidance-glass-correct-label-20261012-r19",
+      "checks": {
+        "guidance_privacy_gestures": "8 PASS",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_review": "Physical phone verified: 评论 / 改正 in embedded regular-weight font, compact glass bubble with integrated pointer and highlighted edge; title normal, project names visible, bottom links absent; dismissed without sending",
+        "change": "Rebuilt bubble material, shape, typography and animation; renamed bubble action to 改正. Bundled renamed OFL Noto Sans SC subset for four menu characters."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "010258fa720e560f9dc6b3ae78640172c0637d2cced7b28d720d0f6aa2e4460e",
+      "size_bytes": 89973745,
+      "mobile_revision": "guidance-rewrite-label-20261012-r20",
+      "checks": {
+        "annotation_suite": "4 PASS",
+        "font_subset": "Required 评论改写 glyphs verified",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "change": "Bubble action label changed from 改正 to 改写, including embedded font subset."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "df79217f8b407c457689c8f89d05acdfb9dfc5488cefd0e037f8d7aafec398a2",
+      "size_bytes": 90039281,
+      "mobile_revision": "guidance-keyboard-insets-20261012-r21",
+      "checks": {
+        "annotation_suite": "6 PASS including long original text, 320x640 viewport, 300/340px keyboard, input/submit visibility and repeated keyboard opening",
+        "flutter_analyze": "PASS",
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "device_review": "Physical phone opened 改写 with actual keyboard and long prefilled text; input, caret, counter and submit button visibly above IME; dismissed without submitting",
+        "change": "Apply keyboard insets outside sheet viewport, cap quote height, adapt editor lines, reveal focused field after keyboard changes, pin submit area outside form scroller."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "4625fe6991f782101fffeae1283a78c78fefcb13e7b7c3f25fd8daa351b248b8",
+      "size_bytes": 90039281,
+      "mobile_revision": "resume-library-request-optimize-20261012-r22",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "change": "Resume library card label 请求指点 → 请求优化"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "4205877da91ad7dfff16cf57059878f69894d4c0d674101b5c954e420193695e",
+      "size_bytes": 90039281,
+      "mobile_revision": "resume-library-ai-entry-20261012-r23",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_share_suite": "9 PASS",
+        "change": "Add AI简历优化 entry with coming-soon toast; arrange four card actions in two columns; retain 请求优化 label."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "1c6ee5d40963823362daa430a72a368ada46a2b748d215763af3f141942fc180",
+      "size_bytes": 90039281,
+      "mobile_revision": "resume-card-action-layout-20261012-r24",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_share_suite": "9 PASS",
+        "change": "Move edit to card header and template switching to template label; retain two optimization actions in a single footer row."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "5aaea99d2824c02a618c870fddfb51805503a10ad8b0f84ef9fc289252cc150a",
+      "size_bytes": 90104817,
+      "mobile_revision": "resume-rename-compact-card-20261012-r25",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "rename_and_guidance_suite": "10 PASS",
+        "change": "Tap title to rename using title-only revision-guarded PATCH; compact title, spacing and single-line progress."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "644feea9354ffb3630a7a20ffec1293c0e32fc9feb56629632e7dd266bbe2e5d",
+      "size_bytes": 90104817,
+      "mobile_revision": "resume-edit-arrow-20261012-r26",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "change": "Replace edit text button with transparent right-arrow icon retaining edit navigation and tooltip."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "e079a62aa51976095651e0aebd30fab3db0ba7853ed7c432d0a266262f271535",
+      "size_bytes": 90104817,
+      "mobile_revision": "resume-arrow-no-padding-20261012-r27",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "change": "Remove arrow padding, minimum button size and preceding gap; transparent interaction overlay and no splash."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "e1f7807fd84965036c337d426fc3575c1a867f0fec7c2dfe9f27b02474942772",
+      "size_bytes": 90121201,
+      "mobile_revision": "resume-inline-name-inert-arrow-20261012-r28",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "rename_and_guidance_suite": "10 PASS including inline validation/retry/cancel and inert arrow",
+        "change": "Replace rename dialog with inline title editor; retain arrow visually and consume taps without navigation."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "ff108ea9500bb5851f39ac317c812e5a2964a66eb8491ded660856ee48da0151",
+      "size_bytes": 90121201,
+      "mobile_revision": "tab-no-press-overlay-20261012-r29",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "navigation_suite": "15 PASS",
+        "change": "Transparent tab interaction overlays and no splash; preserve animated selected surface."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "fa67f6bc99ba9dede6bc4b921b3fc86034f9e57c9d8715d2d18a02311689940d",
+      "size_bytes": 90203121,
+      "mobile_revision": "guidance-own-records-page-20261012-r30",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "guidance_annotation_and_share_suite": "17 PASS",
+        "change": "Rewrite composer shows original only in editor; own guidance history opens as full page with reviewer filter, legacy records, statuses, refresh and retry."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "74f3935214c11994a57829787a9210c73173649e6999a7b8cc9bf6392fe86caf",
+      "size_bytes": 90203121,
+      "mobile_revision": "guidance-my-advice-label-20261012-r31",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_annotation_suite": "8 PASS",
+        "change": "Rename own-history entry and page title to 我的优化建议; add 12 logical pixels of right padding to entry."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "5da065b77abd8ab8fb8cc9584eba2347a6c1daebb7150991d9229f99504679d5",
+      "size_bytes": 90301553,
+      "mobile_revision": "guidance-region-comment-threads-20261012-r32",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "region_comment_review_layout_suite": "27 PASS",
+        "full_suite": "266 PASS; 2 obsolete navigation expectations updated and both files rerun: 18 PASS",
+        "backend_integration": "Isolated PostgreSQL16 PASS; production migration and readiness PASS",
+        "change": "Region comment thread with replies; author comment count badges instead of inline comment text; bubble 查看评论 / 参与改写.",
+        "comment_metadata_review_suite": "9 PASS after avatar/date/name fallback adjustment",
+        "device_review": "Physical phone displayed 查看评论 / 参与改写 bubble and loaded live region comment without submitting data"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "d024f334c8b6774762904f6ad24060ecb125dbc43bb76046a76dc629f8366cf0",
+      "size_bytes": 90301553,
+      "mobile_revision": "guidance-region-comment-threads-20261012-r33",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "region_comment_review_layout_suite": "27 PASS",
+        "full_suite": "266 PASS; 2 obsolete navigation expectations updated and both files rerun: 18 PASS",
+        "backend_integration": "Isolated PostgreSQL16 PASS; production migration and readiness PASS",
+        "change": "Region comment thread with replies; author comment count badges instead of inline comment text; bubble 查看评论 / 参与改写.",
+        "comment_metadata_review_suite": "9 PASS after avatar/date/name fallback adjustment",
+        "device_review": "Physical phone displayed 查看评论 / 参与改写 bubble and loaded live region comment without submitting data"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "2bbaa367ddec22f12a6730e9ffef9051ed15d1b0584b8e653b8f495f86d9a776",
+      "size_bytes": 90301553,
+      "mobile_revision": "guidance-transparent-badges-20261012-r34",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_review_suite": "7 PASS",
+        "change": "Remove badge background and border; use comment-colored count and preserve full badge hit area."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "16918f2703b1dee7757c0928b08e75b32c6c14e8685468bba90ee1ce118c2426",
+      "size_bytes": 90301553,
+      "mobile_revision": "guidance-tinted-badges-20261012-r35",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "change": "Comment badge uses 16% opacity green background with matching solid green count; rounded borderless surface."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "7959a35c5fe63623b094f277299d78e9bb1bc13d41e4bda381e08d5e4015b3af",
+      "size_bytes": 90301553,
+      "mobile_revision": "nickname-display-fallback-20261013-r36",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_full_suite": "271 PASS",
+        "flutter_analyze": "PASS",
+        "change": "Unified missing/blank nickname display 未设置用户昵称 across profile, account, chats, search, article authors/replies, guidance and template creators. Comment sheet count uses 评论（数量）. Preserve raw profile data and friend remarks."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "c2a115ec3616ef49849ca8a7563fe1a8cf8714924ac8330a7f3d970d3549ed3f",
+      "size_bytes": 90317937,
+      "mobile_revision": "guidance-accepted-original-20261013-r37",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_annotation_review_suite": "15 PASS including staged and persisted accepted rewrite highlighting and original-text opening",
+        "flutter_analyze": "PASS",
+        "change": "Keep purple wavy highlights on accepted replacement text in author review; tapping opens original selected text, including staged acceptance and saved records."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "99a303834f12a62a678f0d1db6191f68bfe2cd65f54a35c1f08d961590f885d0",
+      "size_bytes": 90317937,
+      "mobile_revision": "guidance-accepted-text-color-20261013-r38",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_annotation_review_layout_suite": "26 PASS including glyph-only color rendering, accepted original-text opening, and badge-only comment interaction",
+        "flutter_analyze": "PASS",
+        "change": "Accepted rewrites use purple glyphs without waves; comments open only through count badges."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "63ece4a406c379f9d168638adff56530e5d6a3edc0a6eed1b871b847db000b9e",
+      "size_bytes": 90334321,
+      "mobile_revision": "guidance-hold-original-20261013-r39",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_annotation_review_layout_suite": "26 PASS including staged/persisted press-to-preview, release/cancel/drag/multitouch restoration and immutable resume content",
+        "gesture_document_export_suite": "10 PASS",
+        "flutter_analyze": "PASS",
+        "change": "Press accepted text to temporarily replace it with the original inline; release restores accepted content. Removed original-text sheet."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "61f655115e79fef1b4ad56320c99c057eb4ca1e6a8ba6eca135c06aaa2b18399",
+      "size_bytes": 90334321,
+      "mobile_revision": "guidance-hold-move-20261013-r40",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_annotation_review_gesture_suite": "17 PASS including move-outside hold persistence, stationary preview, secondary finger handling, release and cancellation",
+        "flutter_analyze": "PASS",
+        "change": "Keep original text visible while the initiating finger moves; freeze scrolling/panning/zoom during preview and restore on initiating pointer up/cancel."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "c5a383aab65e503173c8f49e094138a495b8de8008380fe0351d65e72f200466",
+      "size_bytes": 90334321,
+      "mobile_revision": "guidance-local-preview-compact-badges-20261013-r41",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_annotation_review_layout_suite": "28 PASS including independent adjacent accepted edits, preserved annotation styles and badges during held preview, compact badge text/collision avoidance",
+        "flutter_analyze": "PASS",
+        "change": "Only the pressed accepted passage previews its original; preserve other annotation styles and reanchor badges. Compact tinted 14px badges follow quote ends with text-safe gutter fallback and separate touch padding."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "914e5411c93ff7a063854d539668b9af626dad9b49f07ca10c15d2e0ff8aa7e9",
+      "size_bytes": 90334321,
+      "mobile_revision": "guidance-comments-local-sync-20261013-r42",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_annotation_review_comments_suite": "18 PASS including no requests on comment dismissal, reply count synchronization, document identity, scroll/zoom and staged acceptance preservation",
+        "flutter_analyze": "PASS",
+        "change": "Remove unconditional full review reload after comments close; synchronize comment records from modal fetches without replacing resume or rewrite state."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "816b1ff3e7f20a2ea3ad37ee89ad89059104af0c354d4180b2ae5dcf34d0381b",
+      "size_bytes": 90334321,
+      "mobile_revision": "guidance-original-black-20261013-r43",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_review_layout_suite": "21 PASS including black original preview and preserved neighboring annotation styles",
+        "flutter_analyze": "PASS",
+        "change": "Use resume body black for only the pressed original passage; restore purple accepted text on release."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "be10c02934bd74c8c1bd320bdca0395997a7247e15f417dc3ee03c1a13f6685a",
+      "size_bytes": 90530929,
+      "mobile_revision": "resume-library-delete-20261013-r44",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "resume_delete_rename_suite": "4 PASS including cancel, failure/retry, targeted removal, duplicate prevention, empty state and account switch protection",
+        "widget_input_regression_suite": "18 PASS",
+        "flutter_analyze": "PASS",
+        "change": "Add compact delete icon beside template row; Cupertino confirmation uses existing soft-delete API and removes local card only after success."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "f836db9d5967d2d4f6cc544c52f33bc4ce806e702b6454d587ab62d4e5301d7f",
+      "size_bytes": 90793133,
+      "mobile_revision": "resume-optimization-dropdown-20261013-r45",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "resume_actions_delete_rename_suite": "5 PASS including optimization dropdown routing, AI coming-soon feedback, right-side deletion and existing rename/delete behavior",
+        "flutter_analyze": "PASS",
+        "change": "Group request optimization and AI optimization under the left optimization dropdown; move deletion to the original right AI action position."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "c1fbccd54516dfb4292dc98aa227c4dbd54c0fab17265427b73d6dd435fcc08b",
+      "size_bytes": 90793133,
+      "mobile_revision": "guidance-role-visibility-20261013-r46",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_full_suite": "283 PASS",
+        "guidance_visibility_review_annotations_comments_layout_suite": "35 PASS",
+        "flutter_analyze": "PASS",
+        "change": "Own share opens plain resume detail. Feedback notification selects actor for author review. All accessible comments remain visible; rewrite records and purple marks show only selected reviewer to author and only self to other viewers. Preserve local-original hold and annotation styles."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "60e325406a0912e7b7e81b0416322342c2c58273ae4f8659180ef492cbd96197",
+      "size_bytes": 90645677,
+      "mobile_revision": "guidance-remove-my-action-20261013-r47",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "guidance_visibility_annotations_suite": "12 PASS",
+        "flutter_analyze": "PASS",
+        "change": "Remove non-owner My optimization suggestions action from guidance app bar; visible comments and own rewrites remain in document."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "d51de0dc80f9cc8498dcf61f454e7feb181e07ea758291c29ecca1faa3c38f31",
+      "size_bytes": 90727597,
+      "mobile_revision": "guidance-own-inline-rewrite-status-20261013-r48",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_full_suite": "284 PASS before final badge spacing adjustment; subsequent final visibility/layout suite 18 PASS",
+        "guidance_visibility_annotations_review_layout_suite": "34 PASS",
+        "flutter_analyze": "PASS",
+        "change": "Other viewers see their own purple rewrites in place of original text with pending/accepted/rejected status tags. No below-text rewrite notes. Preserve comment anchors and canonical request quotes, local black-original hold and author review controls."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "0230c3bb575648b1a0de282664d5c6205a848cf4f25e8d0b97de4eca95614255",
+      "size_bytes": 90727597,
+      "mobile_revision": "guidance-notification-actor-kind-20261013-r49",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "notification_chat_guidance_visibility_suite": "14 PASS",
+        "flutter_analyze": "PASS",
+        "backend_isolated_postgresql": "7 PASS: notification summaries, pagination/delivery, guidance annotations/sharing/fields",
+        "change": "Show feedback actor avatar/name and explicit green comment/reply or purple rewrite badge; backend personalizes titles and identifies historical annotations without exposing private snapshots. Unknown historical kind remains general guidance."
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "33a4530062d956c5eed1d44ef3222e86577c47b9961a62baf63bf1dbe8834619",
+      "size_bytes": 90957073,
+      "mobile_revision": "guidance-comments-sheet-redesign-20261013-r50",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_full_suite": "286 PASS",
+        "guidance_comments_review_visibility_suite": "16 PASS",
+        "flutter_analyze": "PASS",
+        "visual_preview": "Native widget screenshots inspected with Chinese font; normal and keyboard layouts",
+        "change": "Redesign comments as a draggable light sheet with centered count header, circular avatars, aligned text, indented collapsible reply threads and a fixed pill composer. Keep reply parent IDs, retry keys, keyboard clearance and no full-review reload."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "installed_apk_sha256": "33a4530062d956c5eed1d44ef3222e86577c47b9961a62baf63bf1dbe8834619",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T06:16:36.126419+00:00"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "4f237cad9fedfe6f120b21080e4ef67ab963d8d5ade670efc273cdf6c8b0fe3b",
+      "size_bytes": 90957073,
+      "mobile_revision": "article-comments-design-sync-20261013-r51",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_full_suite": "287 PASS",
+        "article_comments_and_input_suite": "18 PASS included in full suite",
+        "flutter_analyze": "PASS",
+        "visual_preview": "Native Chinese-font screenshots inspected at normal size and with keyboard inset",
+        "change": "Synchronize article comments with resume comments: circular avatars, muted nickname/reply target, compact body and metadata, indented collapsible replies without cards, count in parentheses, pill composer and text send button. Preserve reply IDs, comment like/dislike, article reactions and drafts on failure."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "mobile_revision": "article-comments-design-sync-20261013-r51",
+        "installed_apk_sha256": "4f237cad9fedfe6f120b21080e4ef67ab963d8d5ade670efc273cdf6c8b0fe3b",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T06:38:06.666939+00:00"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "c0b216fb820a7c5b14262627a320bd1dfad1478f42f069c141d4c198fd90a880",
+      "size_bytes": 91022609,
+      "mobile_revision": "comments-keyboard-single-motion-20261013-r52",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "guidance_comments_review_visibility_suite": "26 PASS",
+        "keyboard_motion_regression": "PASS: one coordinated inset/extent motion, restores .70 and manually adjusted .82 extent, incremental IME metrics, drafts preserved, safe dismissal mid-animation",
+        "change": "Use one 180ms animation for keyboard inset and derived sheet extent; remove focus/send/cancel/zero-inset independent resize animations. Keep the draggable scroll controller attached in loading, error and empty states."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "mobile_revision": "comments-keyboard-single-motion-20261013-r52",
+        "installed_apk_sha256": "c0b216fb820a7c5b14262627a320bd1dfad1478f42f069c141d4c198fd90a880",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T06:55:31.921454+00:00"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "9dd060d63f69ba5cfe88f8e9e93ae9d0543658943059ac22c3e378e04ffef11e",
+      "size_bytes": 91022609,
+      "mobile_revision": "comments-keyboard-opaque-continuous-20261013-r53",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "guidance_comments_review_visibility_suite": "27 PASS",
+        "keyboard_motion_regression": "PASS: opaque white bottom pixel samples immediately after IME hide and mid-transition; 16ms metric updates continue moving; stable roomy sheet top; .70/.82 resting extents and 24px system navigation inset; drafts and reply targeting preserved",
+        "change": "Keep the opaque sheet anchored to the screen bottom with a stable full-height parent. Move keyboard clearance inside the material; lift the top only on insufficient space. Retarget a critically damped spring preserving velocity in the animation phase, rather than restarting eased post-frame animations. Preserve bottom safe-area padding."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "mobile_revision": "comments-keyboard-opaque-continuous-20261013-r53",
+        "installed_apk_sha256": "9dd060d63f69ba5cfe88f8e9e93ae9d0543658943059ac22c3e378e04ffef11e",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T07:10:43.591798+00:00"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "e30236a1310578186ad5f65058c5f090f03b6ec510b07ab332f18bd31f986d4d",
+      "size_bytes": 91022609,
+      "mobile_revision": "guidance-compact-rewrite-note-20261013-r54",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "guidance_rewrite_review_layout_visibility_suite": "41 PASS",
+        "note_measurement_and_decisions": "7 PASS: actual/allocated heights at 250/310 widths, long replacement/reason, 1/1.5 text scale, compact typography, decision callbacks/disabled/busy and resolved/read-only status",
+        "visual_preview": "Chinese-font native widget screenshot inspected at 390x844; compact pending author rewrite integrated with resume body",
+        "change": "Scale author pending rewrite typography with the document (7.5px floor), reduce line/vertical spacing and use compact transparent text decisions with gray secondary action. Share typography/scaler/shaping metrics between height reservation and rendering; preserve purple marks, adoption/save and original-hold behavior."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "mobile_revision": "guidance-compact-rewrite-note-20261013-r54",
+        "installed_apk_sha256": "e30236a1310578186ad5f65058c5f090f03b6ec510b07ab332f18bd31f986d4d",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T07:29:57.209714+00:00"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "0564d90b6f85a3ea696805ddbb066b55b8bc23dac63ee42fcce1f1f67da36d8e",
+      "size_bytes": 91088145,
+      "mobile_revision": "guidance-compact-rewrite-card-20261013-r55",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "guidance_rewrite_review_layout_visibility_suite": "43 PASS",
+        "note_measurement_card_and_decisions": "9 PASS: exact natural/reserved heights including 95px narrow wrapped controls; rounded faint lavender card without shadow; compact typography; decisions/disabled/busy/status; plain comments stay unboxed",
+        "visual_preview": "Native Chinese-font screenshot inspected at 390x844",
+        "change": "Wrap pending author rewrites in a compact faint lavender card with .5px border, 7px corners, 8px horizontal and 5/3px vertical inner padding. Keep scaled purple text and compact transparent footer actions. Card frame remains outside scroll content; reservation accounts for inner width and padding. Preserve comment styling and accepted original-hold/save flows."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "mobile_revision": "guidance-compact-rewrite-card-20261013-r55",
+        "installed_apk_sha256": "0564d90b6f85a3ea696805ddbb066b55b8bc23dac63ee42fcce1f1f67da36d8e",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T07:44:12.874037+00:00"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "228805c335c54dd890da711419737ae9ed573e2020503da5dc75e38ab51817c0",
+      "size_bytes": 91727121,
+      "mobile_revision": "native-legal-documents-20261013-r56",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "legal_auth_settings_suite": "21 PASS",
+        "legal_document_coverage": "11 PASS: 13 agreement sections, 9 privacy chapters, all metadata/placeholders, 6 system capability and 3 provider rows, narrow/large-text/landscape/wide layouts, directory, native auth/dialog/settings navigation with unchanged consent and no reading-triggered auth requests or external launch",
+        "visual_preview": "Chinese-font native screenshots inspected: agreement/privacy first page, provider disclosures and directory",
+        "change": "Bundle the full user-supplied legal documents in typed local data and native selectable pages with directory, emphasized key clauses and responsive tables. Route auth footer, pending consent dialog links and settings to native pages. Preserve supplied unresolved fields; reading remains independent of agreement acceptance."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "mobile_revision": "native-legal-compact-header-20261013-r57",
+        "installed_apk_sha256": "821026bded20d4a4dc6276c1d6ef8cfc6abca8a44191af25790c9194d20b77a0",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T08:27:36.030328+00:00"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "821026bded20d4a4dc6276c1d6ef8cfc6abca8a44191af25790c9194d20b77a0",
+      "size_bytes": 91727121,
+      "mobile_revision": "native-legal-compact-header-20261013-r57",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "legal_auth_settings_ui_suite": "20 PASS",
+        "existing_content_test": "FAIL: privacy operator placeholder has already been replaced with company information; content preserved. Bundled documents test excluded from UI rerun.",
+        "change": "Left-align native legal page titles beside back button; remove body brand and duplicate large title."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "mobile_revision": "benefit-source-visible-20261013-r58",
+        "installed_apk_sha256": "51e6533e4b423cdb4b8241abdd8fbf99fd5ac5fd894868710b83ac44e2526200",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T08:43:38.759512+00:00"
+      }
+    },
+    {
+      "path": "/Users/fengzijian/bojian-mobile/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "51e6533e4b423cdb4b8241abdd8fbf99fd5ac5fd894868710b83ac44e2526200",
+      "size_bytes": 91661585,
+      "mobile_revision": "benefit-source-visible-20261013-r58",
+      "checks": {
+        "release_apk": "PASS",
+        "device_apk_checksum": "PASS",
+        "flutter_analyze": "PASS",
+        "company_benefits_tests": "14 PASS",
+        "change": "Always display per-benefit source address, publisher and optional date before summary entry; retain per-benefit source validation and submission payload."
+      },
+      "phone_installation": {
+        "device": "b738806e",
+        "model": "PJD110",
+        "package": "com.example.bojian_mobile",
+        "mobile_revision": "apk-size-optimization-20261013-r59",
+        "installed_apk_sha256": "831a7f133e59a18efbc4ba10ca2fc27f60167dd1aa3c55a91b5d8c0917dd80af",
+        "data_preserved": true,
+        "verified_at": "2026-10-13T08:54:26.130243+00:00"
+      }
+    }
+  ],
+  "mobile_revision": "apk-size-optimization-20261013-r59",
+  "mobile_revision_checks": {
+    "flutter_analyze": "PASS",
+    "regression_tests": "310 PASS; excluded pre-existing Bundled documents placeholder assertion mismatch",
+    "release_build": "3 ABIs PASS",
+    "device_install": "PASS; data preserved",
+    "installed_sha256": "MATCH",
+    "launch": "PASS"
+  },
+  "mobile_status": "INSTALLED_AND_VERIFIED",
+  "legal_documents": {
+    "source": "User-supplied copy; user explicitly chose preserving placeholders",
+    "user_agreement_sections": 13,
+    "privacy_policy_chapters": 9,
+    "privacy_version": "V2.0（替代2026年9月3日版本）",
+    "update_date": "2026年10月【　】日",
+    "effective_date": "2026年10月【　】日",
+    "delivery": "Bundled native in-app pages; no legal document HTTP requests or external navigation",
+    "business_copy_followup": [
+      "Confirm external AI import separate-consent flow against the supplied draft.",
+      "Confirm project-name snapshot filtering and accepted rewrite copy/version descriptions against current sharing and review behavior.",
+      "Confirm draft content deletion/withdrawal descriptions against available user controls."
+    ]
+  }
+}

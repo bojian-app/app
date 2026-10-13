@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-09",
+  "image": "bojian-api:realtime-20261009-r2",
+  "binary_sha256": "10c1265e21a28d29c7bf5c2b4d1fffbbec0aebb065c899eb9898c3302214a11a",
+  "apk_sha256": "90dd6a533a3d6c9bc6af3ce8ccd18b0eb6c80b668dce0425b3c1d2c5e0652df7",
+  "tests": 159,
+  "android_transport": "SSE via Cronet, HTTP/3 compatible",
+  "other_platform_transport": "WebSocket",
+  "backend_patches": [
+    "realtime.patch",
+    "realtime-stream.patch"
+  ],
+  "background_push": false,
+  "realtime_tests": 10,
+  "device_connection_duration_ms": 106695,
+  "device_initial_unhandled_exceptions": 0,
+  "device_initial_transport_failures": 0,
+  "device_foreground_connections": 2,
+  "device_foreground_cycle_unhandled_exceptions": 0,
+  "device_foreground_cycle_recovered_transport_failures": 1
+}

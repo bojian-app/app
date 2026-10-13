@@ -1,0 +1,9 @@
+{
+  "image": "bojian-api:comment-threads-20261012-r1",
+  "sha256": "654fe7ea8e2221fd57e187eeeb7a6bf1dc733d1b780f46ea3e3ba20e09a89b41",
+  "migration": "043_guidance_comment_replies.sql",
+  "isolated_postgresql_test": "PASS",
+  "readiness": "PASS",
+  "source_path": "/tmp/bojian-comment-threads-release/source",
+  "mobile_revision": "guidance-region-comment-threads-20261012-r33"
+}

@@ -1,0 +1,484 @@
+--- a/internal/jobs/worker.go
++++ b/internal/jobs/worker.go
+@@ -8,7 +8,6 @@
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
+-	"html"
+ 	"io"
+ 	"log/slog"
+ 	"net/http"
+@@ -336,7 +335,33 @@
+ 	}
+ 	defer os.RemoveAll(dir)
+ 	input := filepath.Join(dir, "resume.html")
+-	if err = os.WriteFile(input, renderResumeHTML(job.Title, job.Content), 0600); err != nil {
++	photo := ""
++	var photoBytes []byte
++	var photoKey string
++	photoErr := w.db.QueryRow(workCtx, `SELECT f.object_key FROM resumes r JOIN files f ON f.id=r.photo_file_id WHERE r.id=$1 AND r.owner_id=$2 AND f.status='READY' AND f.deleted_at IS NULL AND EXISTS(SELECT 1 FROM resume_exports WHERE id=$3 AND version_id IS NULL)`, job.ResumeID, job.OwnerID, job.ID).Scan(&photoKey)
++	if photoErr == nil {
++		reader, readErr := w.objects.Get(workCtx, photoKey)
++		if readErr != nil {
++			return fail("EXPORT_PHOTO_READ_FAILED", readErr)
++		}
++		data, readErr := io.ReadAll(io.LimitReader(reader, (5<<20)+1))
++		reader.Close()
++		if readErr != nil || len(data) > 5<<20 {
++			return fail("EXPORT_PHOTO_READ_FAILED", errors.New("photo unavailable"))
++		}
++		photoBytes, readErr = normalizeExportPhoto(data)
++		if readErr != nil {
++			return fail("EXPORT_PHOTO_READ_FAILED", readErr)
++		}
++		photoPath := filepath.Join(dir, "photo.png")
++		if writeErr := os.WriteFile(photoPath, photoBytes, 0600); writeErr != nil {
++			return fail("EXPORT_PHOTO_READ_FAILED", writeErr)
++		}
++		photo = (&url.URL{Scheme: "file", Path: photoPath}).String()
++	} else if !errors.Is(photoErr, pgx.ErrNoRows) {
++		return fail("EXPORT_PHOTO_READ_FAILED", photoErr)
++	}
++	if err = os.WriteFile(input, renderStructuredResumeHTML(job.Title, job.Content, photo), 0600); err != nil {
+ 		return fail("TEMP_FILE_FAILED", err)
+ 	}
+ 	format := strings.ToLower(job.Format)
+@@ -352,6 +377,12 @@
+ 	data, err := os.ReadFile(output)
+ 	if err != nil {
+ 		return fail("EXPORT_OUTPUT_MISSING", err)
++	}
++	if format == "docx" && len(photoBytes) > 0 {
++		data, err = embedDOCXPhoto(data, photoBytes, photo)
++		if err != nil {
++			return fail("EXPORT_PHOTO_EMBED_FAILED", err)
++		}
+ 	}
+ 	filename := fmt.Sprintf("resume-%d.%s", job.ResumeID, format)
+ 	key, err := w.objects.ObjectKey(job.OwnerID, "RESUME_EXPORT", filename)
+@@ -582,11 +613,3 @@
+ 	}
+ 	return sections
+ }
+-func renderResumeHTML(title string, content json.RawMessage) []byte {
+-	var pretty bytes.Buffer
+-	if json.Indent(&pretty, content, "", "  ") != nil {
+-		pretty.Write(content)
+-	}
+-	document := `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:18mm}body{font-family:"Noto Sans CJK SC",sans-serif;color:#111;line-height:1.5}h1{font-size:24px}pre{white-space:pre-wrap;word-break:break-word;font:14px/1.6 "Noto Sans CJK SC",sans-serif}</style></head><body><h1>` + html.EscapeString(title) + `</h1><pre>` + html.EscapeString(pretty.String()) + `</pre></body></html>`
+-	return []byte(document)
+-}
+--- a/internal/httpapi/resume_jobs.go
++++ b/internal/httpapi/resume_jobs.go
+@@ -1,6 +1,8 @@
+ package httpapi
+ 
+ import (
++ "time"
++	"context"
+ 	"encoding/json"
+ 	"errors"
+ 	"net/http"
+@@ -368,7 +370,13 @@
+ 	if status == "SUCCEEDED" && fileID != nil && s.objects != nil {
+ 		var key string
+ 		if s.db.QueryRow(r.Context(), `SELECT object_key FROM files WHERE id=$1 AND owner_id=$2`, fileID, UserID(r.Context())).Scan(&key) == nil {
+-			if url, expires, err := s.objects.PresignDownload(r.Context(), key); err == nil {
++			sign := s.objects.PresignDownload
++			if origin, ok := s.objects.(interface {
++				PresignOriginDownload(context.Context, string) (string, time.Time, error)
++			}); ok {
++				sign = origin.PresignOriginDownload
++			}
++			if url, expires, err := sign(r.Context(), key); err == nil {
+ 				data["download_url"] = url
+ 				data["download_expires_at"] = expires
+ 			}
+--- /dev/null
++++ b/internal/jobs/resume_export_html.go
+@@ -0,0 +1,162 @@
++package jobs
++
++import (
++	"encoding/json"
++	"fmt"
++	"html"
++	"strings"
++)
++
++func renderResumeHTML(title string, content json.RawMessage) []byte {
++	return renderStructuredResumeHTML(title, content, "")
++}
++func renderStructuredResumeHTML(title string, content json.RawMessage, photo string) []byte {
++	var source map[string]any
++	_ = json.Unmarshal(content, &source)
++	obj := func(v any) map[string]any { m, _ := v.(map[string]any); return m }
++	text := func(m map[string]any, k string) string { v, _ := m[k].(string); return strings.TrimSpace(v) }
++	esc := html.EscapeString
++	lines := func(s string) string { return strings.ReplaceAll(esc(s), "\n", "<br>") }
++	var body strings.Builder
++	paragraph := func(value string) {
++		if value != "" {
++			body.WriteString("<p>" + lines(value) + "</p>")
++		}
++	}
++	detail := func(m map[string]any, k string) {
++		rich := obj(m[k+"_rich"])
++		blocks, _ := rich["blocks"].([]any)
++		if len(blocks) == 0 {
++			paragraph(text(m, k))
++			return
++		}
++		number := 0
++		for _, v := range blocks {
++			b := obj(v)
++			spans, _ := b["spans"].([]any)
++			if len(spans) == 0 {
++				continue
++			}
++			body.WriteString("<p>")
++			switch text(b, "kind") {
++			case "bullet":
++				body.WriteString("• ")
++				number = 0
++			case "numbered":
++				number++
++				body.WriteString(fmt.Sprintf("%d. ", number))
++			default:
++				number = 0
++			}
++			for _, raw := range spans {
++				span := obj(raw)
++				rawText, _ := span["text"].(string)
++				value := lines(rawText)
++				if span["bold"] == true {
++					value = "<b>" + value + "</b>"
++				}
++				if span["italic"] == true {
++					value = "<i>" + value + "</i>"
++				}
++				if span["underline"] == true {
++					value = "<u>" + value + "</u>"
++				}
++				if span["strikethrough"] == true {
++					value = "<s>" + value + "</s>"
++				}
++				body.WriteString(value)
++			}
++			body.WriteString("</p>")
++		}
++	}
++	personal := obj(source["personal_info"])
++	job := obj(source["job_expectation"])
++	name := text(personal, "full_name")
++	if name == "" {
++		name = text(source, "name")
++	}
++	if name == "" {
++		name = title
++	}
++	body.WriteString("<table class='header' width='671' cellpadding='0' cellspacing='0'><tr><td width='571'><h1>" + esc(name) + "</h1>")
++	paragraph(text(job, "position"))
++	var contacts []string
++	for _, k := range []string{"phone", "email", "birth_date"} {
++		if v := text(personal, k); v != "" {
++			contacts = append(contacts, v)
++		}
++	}
++	if gender := strings.ToLower(text(personal, "gender")); gender == "male" || gender == "男" {
++		contacts = append(contacts, "男")
++	} else if gender == "female" || gender == "女" {
++		contacts = append(contacts, "女")
++	}
++	paragraph(strings.Join(contacts, "   ·   "))
++	body.WriteString("</td>")
++	if photo != "" {
++		body.WriteString("<td width='100' align='right' style='width:75pt;text-align:right'><img width='100' height='120' src='" + esc(photo) + "'></td>")
++	}
++	body.WriteString("</tr></table><hr size='1' noshade>")
++	var expected []string
++	for _, field := range []struct{ key, label string }{{"position", "期望职位"}, {"city", "期望城市"}, {"industry", "期望行业"}, {"salary", "期望薪资"}} {
++		if v := text(job, field.key); v != "" {
++			expected = append(expected, field.label+": "+v)
++		}
++	}
++	if len(expected) > 0 || text(job, "preference") != "" || job["preference_rich"] != nil {
++		body.WriteString("<h2>求职期望</h2>")
++		paragraph(strings.Join(expected, "   ·   "))
++		detail(job, "preference")
++	}
++	for _, section := range []struct {
++		key, label, heading string
++		meta, details       []string
++	}{
++		{"educations", "教育经历", "institution", []string{"degree", "field_of_study"}, []string{"campus_experience", "thesis_description"}},
++		{"work_experiences", "工作经历", "company", []string{"position", "industry"}, []string{"description"}},
++		{"projects", "项目经历", "name", []string{"role", "url"}, []string{"description", "achievements"}},
++		{"skills", "技能", "name", nil, []string{"description"}},
++		{"certifications", "证书", "name", []string{"issuer"}, nil},
++	} {
++		rows, _ := source[section.key].([]any)
++		visible := false
++		for _, raw := range rows {
++			entry := obj(raw)
++			meaningful := false
++			for _, value := range entry {
++				if s, ok := value.(string); ok && strings.TrimSpace(s) != "" {
++					meaningful = true
++				}
++			}
++			if !meaningful {
++				continue
++			}
++			if !visible {
++				body.WriteString("<h2>" + section.label + "</h2>")
++				visible = true
++			}
++			body.WriteString("<h3>" + esc(text(entry, section.heading)) + "</h3>")
++			var meta []string
++			for _, k := range section.meta {
++				if v := text(entry, k); v != "" {
++					meta = append(meta, v)
++				}
++			}
++			start, end := text(entry, "start_date"), text(entry, "end_date")
++			if section.key == "certifications" {
++				start = text(entry, "date")
++			}
++			if entry["current"] == true || entry["is_current"] == true || end == "present" || end == "current" {
++				end = "至今"
++			}
++			dates := strings.Trim(strings.Join([]string{start, end}, " - "), " -")
++			if len(meta) > 0 || dates != "" {
++				body.WriteString("<table class='metadata' width='671' cellpadding='0' cellspacing='0'><tr><td width='490'>" + esc(strings.Join(meta, " · ")) + "</td><td width='181' align='right' nowrap style='text-align:right'>" + esc(dates) + "</td></tr></table>")
++			}
++			for _, k := range section.details {
++				detail(entry, k)
++			}
++		}
++	}
++	return []byte(`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:16.23mm}body,h1,h2,h3,p,td{font-family:"Noto Sans CJK SC",sans-serif;color:#26292e}body{font-size:10.5pt;line-height:1.38}p{white-space:pre-wrap;margin:0 0 7pt}h1{font-size:25pt;margin:0 0 7pt}h2{font-size:12pt;margin:14pt 0 8pt;page-break-after:avoid}h3{font-size:11pt;margin:8pt 0 7pt;page-break-after:avoid}table{border-collapse:collapse;width:100%}.header td{vertical-align:top}.header p,.metadata{font-size:9.5pt}.metadata{color:#555;margin-bottom:8pt}hr{border:0;border-top:1.5pt solid #26292e;margin:10pt 0 8pt}</style></head><body>` + body.String() + `</body></html>`)
++}
+--- /dev/null
++++ b/internal/jobs/resume_export_html_test.go
+@@ -0,0 +1,25 @@
++package jobs
++
++import (
++	"encoding/json"
++	"strings"
++	"testing"
++)
++
++func TestStructuredExportIncludesEveryEntryAndPhoto(t *testing.T) {
++	page := string(renderStructuredResumeHTML("简历", json.RawMessage(`{"personal_info":{"full_name":"李明","phone":"13800000000"},"job_expectation":{"position":"工程师","preference":"个人介绍"},"educations":[{"institution":"测试大学","degree":"本科"}],"work_experiences":[{"company":"公司一","description":"第一份工作"},{"company":"公司二","description":"第二份工作"}],"projects":[{"name":"项目一","achievements":"项目成果"}],"skills":[{"name":"技能一","description":"技能介绍"}],"certifications":[{"name":"证书一","issuer":"颁发单位"}]}`), "file:///tmp/photo.png"))
++	for _, v := range []string{"李明", "工程师", "个人介绍", "测试大学", "公司一", "公司二", "第一份工作", "第二份工作", "项目成果", "技能介绍", "证书一", "file:///tmp/photo.png"} {
++		if !strings.Contains(page, v) {
++			t.Fatalf("missing %s", v)
++		}
++	}
++	if strings.Contains(page, "personal_info") || strings.Contains(page, "<pre>") {
++		t.Fatal("raw JSON exported")
++	}
++}
++func TestRichExportEscapesTextAndRetainsStyles(t *testing.T) {
++	page := string(renderResumeHTML("简历", json.RawMessage(`{"job_expectation":{"preference_rich":{"blocks":[{"kind":"bullet","spans":[{"text":"React ","bold":true},{"text":"<script> & 开发","italic":true}]}]}}}`)))
++	if !strings.Contains(page, "<b>React </b>") || !strings.Contains(page, "&lt;script&gt; &amp; 开发") || !strings.Contains(page, "• ") {
++		t.Fatal("rich text lost")
++	}
++}
+--- /dev/null
++++ b/internal/jobs/resume_export_docx.go
+@@ -0,0 +1,123 @@
++package jobs
++
++import (
++	"archive/zip"
++	"bytes"
++	"errors"
++	_ "golang.org/x/image/webp"
++	"html"
++	"image"
++	_ "image/jpeg"
++	"image/png"
++	"io"
++	"regexp"
++	"strings"
++)
++
++func normalizeExportPhoto(data []byte) ([]byte, error) {
++	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
++	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > 16_000_000 {
++		return nil, errors.New("invalid export photo")
++	}
++	img, _, err := image.Decode(bytes.NewReader(data))
++	if err != nil {
++		return nil, errors.New("invalid export photo")
++	}
++	var out bytes.Buffer
++	if err := png.Encode(&out, img); err != nil {
++		return nil, err
++	}
++	return out.Bytes(), nil
++}
++
++// LibreOffice imports HTML images as local file links. Embed the saved portrait
++// in the DOCX package so it survives deletion of the worker's temporary folder.
++func embedDOCXPhoto(data, photo []byte, photoURI string) ([]byte, error) {
++	source, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
++	if err != nil {
++		return nil, err
++	}
++	relationship := regexp.MustCompile(`<Relationship\b[^>]*>`)
++	target := regexp.MustCompile(`Target="[^"]*"`)
++	external := regexp.MustCompile(`\s+TargetMode="External"`)
++	embedded := false
++	var relations []byte
++	var imageIDs []string
++	for _, file := range source.File {
++		if file.Name != "word/_rels/document.xml.rels" {
++			continue
++		}
++		reader, err := file.Open()
++		if err != nil {
++			return nil, err
++		}
++		relations, err = io.ReadAll(io.LimitReader(reader, 30<<20))
++		reader.Close()
++		if err != nil {
++			return nil, err
++		}
++		relations = relationship.ReplaceAllFunc(relations, func(rel []byte) []byte {
++			text := string(rel)
++			if !strings.Contains(text, `/relationships/image"`) || !strings.Contains(text, `TargetMode="External"`) {
++				return rel
++			}
++			attr := target.FindString(text)
++			if len(attr) < 9 || html.UnescapeString(attr[8:len(attr)-1]) != photoURI {
++				return rel
++			}
++			embedded = true
++			idAttr := regexp.MustCompile(`Id="([^"]+)"`).FindStringSubmatch(text)
++			if len(idAttr) == 2 {
++				imageIDs = append(imageIDs, idAttr[1])
++			}
++			rel = target.ReplaceAllLiteral(rel, []byte(`Target="media/resume-photo.png"`))
++			return external.ReplaceAll(rel, nil)
++		})
++	}
++	var output bytes.Buffer
++	writer := zip.NewWriter(&output)
++	for _, file := range source.File {
++		reader, err := file.Open()
++		if err != nil {
++			return nil, err
++		}
++		content, err := io.ReadAll(io.LimitReader(reader, 30<<20))
++		reader.Close()
++		if err != nil {
++			return nil, err
++		}
++		if file.Name == "word/_rels/document.xml.rels" {
++			content = relations
++		}
++		if file.Name == "word/document.xml" {
++			for _, id := range imageIDs {
++				content = bytes.ReplaceAll(content, []byte(`r:link="`+id+`"`), []byte(`r:embed="`+id+`"`))
++			}
++		}
++		if file.Name == "[Content_Types].xml" && !bytes.Contains(content, []byte(`Extension="png"`)) {
++			content = bytes.Replace(content, []byte("</Types>"), []byte(`<Default Extension="png" ContentType="image/png"/></Types>`), 1)
++		}
++		header := file.FileHeader
++		entry, err := writer.CreateHeader(&header)
++		if err != nil {
++			return nil, err
++		}
++		if _, err := entry.Write(content); err != nil {
++			return nil, err
++		}
++	}
++	if !embedded {
++		return nil, errors.New("export portrait relationship missing")
++	}
++	entry, err := writer.Create("word/media/resume-photo.png")
++	if err != nil {
++		return nil, err
++	}
++	if _, err := entry.Write(photo); err != nil {
++		return nil, err
++	}
++	if err := writer.Close(); err != nil {
++		return nil, err
++	}
++	return output.Bytes(), nil
++}
+--- /dev/null
++++ b/internal/jobs/resume_export_docx_test.go
+@@ -0,0 +1,56 @@
++package jobs
++
++import (
++	"archive/zip"
++	"bytes"
++	"image"
++	"image/png"
++	"io"
++	"strings"
++	"testing"
++)
++
++func TestDOCXPortraitIsEmbedded(t *testing.T) {
++	var b bytes.Buffer
++	w := zip.NewWriter(&b)
++	for name, content := range map[string]string{"[Content_Types].xml": `<Types></Types>`, "word/_rels/document.xml.rels": `<Relationships><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="file:///tmp/photo.png" TargetMode="External"/><Relationship Id="link" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"/></Relationships>`, "word/document.xml": `<document><a:blip r:link="rId2"/></document>`} {
++		e, _ := w.Create(name)
++		e.Write([]byte(content))
++	}
++	w.Close()
++	var photo bytes.Buffer
++	png.Encode(&photo, image.NewRGBA(image.Rect(0, 0, 5, 6)))
++	result, err := embedDOCXPhoto(b.Bytes(), photo.Bytes(), "file:///tmp/photo.png")
++	if err != nil {
++		t.Fatal(err)
++	}
++	z, err := zip.NewReader(bytes.NewReader(result), int64(len(result)))
++	if err != nil {
++		t.Fatal(err)
++	}
++	files := map[string]string{}
++	for _, f := range z.File {
++		r, _ := f.Open()
++		data, _ := io.ReadAll(r)
++		r.Close()
++		files[f.Name] = string(data)
++	}
++	if !strings.Contains(files["word/document.xml"], `r:embed="rId2"`) || strings.Contains(files["word/document.xml"], `r:link="rId2"`) {
++		t.Fatal("drawing still references external image")
++	}
++	if files["word/media/resume-photo.png"] != photo.String() {
++		t.Fatal("portrait was not embedded")
++	}
++	rel := files["word/_rels/document.xml.rels"]
++	if strings.Contains(rel, "file:///tmp") || !strings.Contains(rel, `Target="media/resume-photo.png"`) || !strings.Contains(rel, `Target="https://example.com" TargetMode="External"`) {
++		t.Fatal("incorrect relationship rewrite")
++	}
++	if !strings.Contains(files["[Content_Types].xml"], `ContentType="image/png"`) {
++		t.Fatal("missing PNG content type")
++	}
++}
++func TestInvalidPhotoRejected(t *testing.T) {
++	if _, err := normalizeExportPhoto([]byte("invalid")); err == nil {
++		t.Fatal("invalid photo accepted")
++	}
++}
+--- a/internal/storage/kodo.go
++++ b/internal/storage/kodo.go
+@@ -163,6 +163,7 @@
+ 	return k.uploader.UploadReader(ctx, body, &uploader.ObjectOptions{
+ 		BucketName:  k.bucket,
+ 		ObjectName:  &objectKey,
++		FileName:    path.Base(objectKey),
+ 		ContentType: contentType,
+ 	}, nil)
+ }

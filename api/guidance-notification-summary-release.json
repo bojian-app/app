@@ -1,0 +1,20 @@
+{
+  "image": "bojian-api:guidance-notification-summary-20261013-r1",
+  "sha256": "c34e501f85c1386ca5b79c1b92b15f5f37e262deab054b88a4b820ab3a9cb73b",
+  "source_path": "/tmp/bojian-guidance-notification-summary-release/source",
+  "source_sha256": {
+    "guidance_notification_summary.go": "8a7127fa671ac72add14d84671a4085e46a277be41c6496ca6438735aeb393e9",
+    "guidance_notification_summary_test.go": "2f0896dc60457bd3a78de3c62a7fb8166cc7fb5ea97ded6f447751536eb2d525",
+    "finance_notifications.go": "15e8860f9b4d1c08201b4d20ac4aa8311c00a86fab54a0f948c8ae7d7ff2ba68",
+    "resume_guidance_annotations.go": "171395028bea90d555fe8dd612834a5a67172c8cc3288b96a364f36b09131fbc",
+    "resume_guidance_annotations_test.go": "bf36a9f09df7bfd2b2d111d673ff58556608b29494f88d683659222895197956",
+    "resume_guidance_review.go": "4f64c338cfbdd49b9274b0a3a9ee0a856f8a1c25287428ab1a3d795dd1bd67c5",
+    "notification_guidance.go": "1e7388a042be838b86927dd57f3a7c9fe71debc04273ff9fa7ef2d71a534f439"
+  },
+  "isolated_postgresql_test": "7 PASS",
+  "production_deployed": true,
+  "readiness": "PASS",
+  "verified_at": "2026-10-13T04:10:50.519033+00:00",
+  "mobile_revision": "guidance-notification-actor-kind-20261013-r49",
+  "phone_apk_sha256": "0230c3bb575648b1a0de282664d5c6205a848cf4f25e8d0b97de4eca95614255"
+}

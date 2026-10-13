@@ -1,0 +1,165 @@
+--- a/internal/storage/kodo.go
++++ b/internal/storage/kodo.go
+@@ -39,6 +39,7 @@
+ 	uploader     *uploader.UploadManager
+ 	objects      *objects.Bucket
+ 	downloadHTTP *http.Client
++	originURLs   downloader.DownloadURLsProvider
+ }
+ 
+ func NewKodo(cfg config.Qiniu) (*Kodo, error) {
+@@ -62,6 +63,12 @@
+ 		}),
+ 		objects:      objectsManager.Bucket(cfg.Bucket),
+ 		downloadHTTP: &http.Client{Timeout: 30 * time.Second},
++		originURLs: downloader.SignURLsProvider(
++			downloader.NewDefaultSrcURLsProvider(cfg.AccessKey, nil),
++			downloader.NewCredentialsSigner(creds),
++			// Origin URLs are consumed immediately and require a short deadline.
++			&downloader.SignOptions{TTL: time.Minute},
++		),
+ 	}, nil
+ }
+ 
+@@ -109,17 +116,28 @@
+ }
+ 
+ func (k *Kodo) Get(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+-	downloadURL, _, err := k.PresignDownload(ctx, objectKey)
++	// Worker reads use the authenticated storage origin. Client-facing links
++	// still use the configured CDN in PresignDownload.
++	urls, err := downloader.GetURLStrings(ctx, k.originURLs, objectKey, &downloader.GenerateOptions{BucketName: k.bucket})
+ 	if err != nil {
+-		return nil, err
++		if ctx.Err() != nil {
++			return nil, ctx.Err()
++		}
++		return nil, errors.New("qiniu origin lookup failed")
+ 	}
+-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
++	if len(urls) == 0 {
++		return nil, errors.New("qiniu returned no origin download URL")
++	}
++	request, err := http.NewRequestWithContext(ctx, http.MethodGet, urls[0], nil)
+ 	if err != nil {
+-		return nil, err
++		return nil, errors.New("qiniu origin download URL is invalid")
+ 	}
+ 	response, err := k.downloadHTTP.Do(request)
+ 	if err != nil {
+-		return nil, err
++		if ctx.Err() != nil {
++			return nil, ctx.Err()
++		}
++		return nil, errors.New("qiniu origin connection failed")
+ 	}
+ 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+ 		_ = response.Body.Close()
+@@ -132,7 +150,6 @@
+ 	return k.uploader.UploadReader(ctx, body, &uploader.ObjectOptions{
+ 		BucketName:  k.bucket,
+ 		ObjectName:  &objectKey,
+-		FileName:    path.Base(objectKey),
+ 		ContentType: contentType,
+ 	}, nil)
+ }
+--- a/internal/storage/kodo_test.go
++++ b/internal/storage/kodo_test.go
+@@ -4,9 +4,8 @@
+ 	"context"
+ 	"encoding/base64"
+ 	"encoding/json"
+-	"github.com/qiniu/go-sdk/v7/storagev2/http_client"
+-	"github.com/qiniu/go-sdk/v7/storagev2/region"
+-	"github.com/qiniu/go-sdk/v7/storagev2/uploader"
++	"errors"
++	"github.com/qiniu/go-sdk/v7/storagev2/downloader"
+ 	"io"
+ 	"net/http"
+ 	"net/http/httptest"
+@@ -91,44 +90,53 @@
+ 	}
+ }
+ 
+-func TestPutReaderIncludesFilename(t *testing.T) {
+-	received := make(chan bool, 1)
++func TestWorkerGetReadsSignedOriginWhileClientLinksUseCDN(t *testing.T) {
+ 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+-		if err := r.ParseMultipartForm(1 << 20); err != nil {
+-			t.Error(err)
+-			http.Error(w, "bad form", 400)
+-			return
++		if r.Method != http.MethodGet || r.URL.Path != "/folder/简历.pdf" || r.URL.Query().Get("token") == "" {
++			t.Error("origin request must carry the object path and download signature")
+ 		}
+-		defer r.MultipartForm.RemoveAll()
+-		file, header, err := r.FormFile("file")
+-		if err != nil {
+-			t.Error(err)
+-			http.Error(w, "missing file", 400)
+-			return
+-		}
+-		defer file.Close()
+-		body, _ := io.ReadAll(file)
+-		if header.Filename != "preview.png" || string(body) != "png bytes" || r.FormValue("key") != "templates/15/versions/1/preview.png" {
+-			t.Errorf("unexpected upload: filename=%q key=%q", header.Filename, r.FormValue("key"))
+-		}
+-		received <- true
+-		w.Header().Set("Content-Type", "application/json")
+-		w.Header().Set("X-Reqid", "local-upload-test")
+-		w.Write([]byte(`{"key":"templates/15/versions/1/preview.png"}`))
++		w.Write([]byte("resume bytes"))
+ 	}))
+ 	defer server.Close()
+ 	client := testKodo(t)
+-	client.uploader = uploader.NewUploadManager(&uploader.UploadManagerOptions{Options: http_client.Options{
+-		Credentials: client.credentials, Regions: &region.Region{Up: region.Endpoints{Preferred: []string{server.URL}}},
+-	}})
+-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+-	defer cancel()
+-	if err := client.Put(ctx, "templates/15/versions/1/preview.png", "image/png", strings.NewReader("png bytes")); err != nil {
++	client.originURLs = downloader.SignURLsProvider(
++		downloader.NewStaticDomainBasedURLsProvider([]string{server.URL}),
++		downloader.NewCredentialsSigner(client.credentials),
++		&downloader.SignOptions{TTL: time.Minute},
++	)
++	body, err := client.Get(context.Background(), "folder/简历.pdf")
++	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	select {
+-	case <-received:
+-	default:
+-		t.Fatal("upload did not reach storage")
++	defer body.Close()
++	data, err := io.ReadAll(body)
++	if err != nil || string(data) != "resume bytes" {
++		t.Fatalf("unexpected origin body, err=%v", err)
++	}
++	url, _, err := client.PresignDownload(context.Background(), "folder/简历.pdf")
++	if err != nil || !strings.HasPrefix(url, "https://cdn.example.com/") {
++		t.Fatal("client-facing domain changed")
+ 	}
+ }
++
++type originFailureTransport struct{}
++
++func (originFailureTransport) RoundTrip(r *http.Request) (*http.Response, error) {
++	return nil, errors.New("transport failed at " + r.URL.String())
++}
++
++func TestOriginConnectionFailureDoesNotLeakDownloadSignature(t *testing.T) {
++	client := testKodo(t)
++	client.originURLs = downloader.NewStaticDomainBasedURLsProvider([]string{"https://origin.example.com"})
++	client.downloadHTTP = &http.Client{Transport: originFailureTransport{}}
++	_, err := client.Get(context.Background(), "private/resume.pdf?token=secret")
++	if err == nil || err.Error() != "qiniu origin connection failed" {
++		t.Fatalf("unsafe error: %v", err)
++	}
++	ctx, cancel := context.WithCancel(context.Background())
++	cancel()
++	_, err = client.Get(ctx, "resume.pdf")
++	if !errors.Is(err, context.Canceled) {
++		t.Fatalf("expected cancellation, got %v", err)
++	}
++}

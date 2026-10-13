@@ -1,0 +1,274 @@
+--- a/internal/httpapi/auth_handlers.go
++++ b/internal/httpapi/auth_handlers.go
+@@ -17,7 +17,6 @@
+ 
+ 	"github.com/fengzijian/bojian/internal/auth"
+ 	"github.com/jackc/pgx/v5"
+-	"github.com/wenlng/go-captcha/v2/rotate"
+ )
+ 
+ var phonePattern = regexp.MustCompile(`^1[3-9][0-9]{9}$`)
+@@ -25,6 +24,10 @@
+ const testSMSCode = "123456"
+ 
+ func (s *Server) createCaptcha(w http.ResponseWriter, r *http.Request) {
++	if strings.EqualFold(r.URL.Query().Get("type"), "SLIDE") {
++		s.createSlideCaptcha(w, r)
++		return
++	}
+ 	capt, err := rotateCaptcha()
+ 	if err != nil {
+ 		Failure(w, r, http.StatusServiceUnavailable, "CAPTCHA_UNAVAILABLE", "验证码服务暂不可用", nil)
+@@ -55,7 +58,8 @@
+ 
+ func (s *Server) verifyCaptcha(w http.ResponseWriter, r *http.Request) {
+ 	var input struct {
+-		Angle int `json:"angle"`
++		Angle *int `json:"angle"`
++		X     *int `json:"x"`
+ 	}
+ 	if err := decodeJSON(w, r, &input); err != nil {
+ 		Failure(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "请求体格式错误", nil)
+@@ -67,15 +71,11 @@
+ 		Failure(w, r, http.StatusUnprocessableEntity, "CAPTCHA_EXPIRED", "验证码已过期", nil)
+ 		return
+ 	}
+-	target, err := strconv.Atoi(strings.TrimSpace(expected))
+-	if err != nil {
+-		Failure(w, r, http.StatusUnprocessableEntity, "CAPTCHA_EXPIRED", "验证码已过期", nil)
+-		return
+-	}
+-	if input.Angle < 0 || input.Angle > 720 || !rotate.Validate(input.Angle, target, captchaAnglePadding) {
++	if !validCaptchaAnswer(expected, input.Angle, input.X) {
+ 		Failure(w, r, http.StatusUnprocessableEntity, "CAPTCHA_INVALID", "验证码错误", nil)
+ 		return
+ 	}
++
+ 	token := newSecret(24)
+ 	if err := s.redis.Set(r.Context(), "captcha-token:"+token, "1", 5*time.Minute).Err(); err != nil {
+ 		Failure(w, r, http.StatusServiceUnavailable, "REDIS_UNAVAILABLE", "验证码服务暂不可用", nil)
+@@ -180,14 +180,14 @@
+ 		Failure(w, r, http.StatusUnprocessableEntity, "SMS_CODE_INVALID", "验证码错误", nil)
+ 		return
+ 	}
++	deviceID, platform, appVersion, ok := deviceHeaders(w, r)
++	if !ok {
++		return
++	}
+ 	phoneHash := hashText(phoneForProvider(input.Phone))
+ 	expected, err := s.redis.GetDel(r.Context(), "sms-code:"+phoneHash+":LOGIN").Result()
+ 	if err != nil || subtle.ConstantTimeCompare([]byte(hashText(input.Code)), []byte(expected)) != 1 {
+ 		Failure(w, r, http.StatusUnprocessableEntity, "SMS_CODE_INVALID", "验证码错误或已过期", nil)
+-		return
+-	}
+-	deviceID, platform, appVersion, ok := deviceHeaders(w, r)
+-	if !ok {
+ 		return
+ 	}
+ 	tx, err := s.db.Begin(r.Context())
+@@ -333,7 +333,7 @@
+ 	deviceID := strings.TrimSpace(r.Header.Get("X-Device-Id"))
+ 	platform := strings.ToUpper(strings.TrimSpace(r.Header.Get("X-Platform")))
+ 	appVersion := strings.TrimSpace(r.Header.Get("X-App-Version"))
+-	if deviceID == "" || len(deviceID) > 128 || (platform != "WINDOWS" && platform != "MACOS") || appVersion == "" {
++	if deviceID == "" || len(deviceID) > 128 || (platform != "WINDOWS" && platform != "MACOS" && platform != "ANDROID" && platform != "IOS") || appVersion == "" {
+ 		Failure(w, r, http.StatusBadRequest, "CLIENT_HEADERS_REQUIRED", "缺少有效的设备、平台或版本请求头", nil)
+ 		return "", "", "", false
+ 	}
+--- /dev/null
++++ b/internal/httpapi/captcha_slide.go
+@@ -0,0 +1,112 @@
++package httpapi
++
++import (
++	"fmt"
++	"net/http"
++	"strconv"
++	"strings"
++	"sync"
++	"time"
++
++	"github.com/wenlng/go-captcha-assets/resources/imagesv2"
++	"github.com/wenlng/go-captcha-assets/resources/tiles"
++	"github.com/wenlng/go-captcha/v2/base/option"
++	"github.com/wenlng/go-captcha/v2/rotate"
++	"github.com/wenlng/go-captcha/v2/slide"
++)
++
++var slideOnce sync.Once
++var slideReady slide.Captcha
++var slideError error
++
++func slideCaptcha() (slide.Captcha, error) {
++	slideOnce.Do(func() {
++		backgrounds, err := imagesv2.GetImages()
++		if err != nil {
++			slideError = err
++			return
++		}
++		tileAssets, err := tiles.GetTiles()
++		if err != nil {
++			slideError = err
++			return
++		}
++		graphs := make([]*slide.GraphImage, 0, len(tileAssets))
++		for _, tile := range tileAssets {
++			graphs = append(graphs, &slide.GraphImage{
++				OverlayImage: tile.OverlayImage,
++				ShadowImage:  tile.ShadowImage,
++				MaskImage:    tile.MaskImage,
++			})
++		}
++		builder := slide.NewBuilder(
++			slide.WithImageSize(option.Size{Width: 320, Height: 180}),
++			slide.WithRangeGraphSize(option.RangeVal{Min: 44, Max: 52}),
++			slide.WithRangeGraphAnglePos([]option.RangeVal{{Min: 0, Max: 0}}),
++		)
++		builder.SetResources(slide.WithBackgrounds(backgrounds), slide.WithGraphImages(graphs))
++		slideReady = builder.Make()
++	})
++	return slideReady, slideError
++}
++
++func (s *Server) createSlideCaptcha(w http.ResponseWriter, r *http.Request) {
++	capt, err := slideCaptcha()
++	if err != nil {
++		Failure(w, r, 503, "CAPTCHA_UNAVAILABLE", "验证码服务暂不可用", nil)
++		return
++	}
++	data, err := capt.Generate()
++	if err != nil || data == nil || data.GetData() == nil {
++		Failure(w, r, 503, "CAPTCHA_UNAVAILABLE", "验证码服务暂不可用", nil)
++		return
++	}
++	block := data.GetData()
++	master, err := data.GetMasterImage().ToBase64()
++	if err != nil {
++		Failure(w, r, 503, "CAPTCHA_UNAVAILABLE", "验证码服务暂不可用", nil)
++		return
++	}
++	piece, err := data.GetTileImage().ToBase64()
++	if err != nil {
++		Failure(w, r, 503, "CAPTCHA_UNAVAILABLE", "验证码服务暂不可用", nil)
++		return
++	}
++	id := newSecret(18)
++	maxX := 320 - block.Width
++	// The solution stays server-side and is consumed once, like rotation challenges.
++	expected := fmt.Sprintf("SLIDE:%d:%d", block.X, maxX)
++	if err := s.redis.Set(r.Context(), "captcha:"+id, expected, 5*time.Minute).Err(); err != nil {
++		Failure(w, r, 503, "REDIS_UNAVAILABLE", "验证码服务暂不可用", nil)
++		return
++	}
++	Success(w, r, http.StatusCreated, map[string]any{
++		"id": id, "kind": "SLIDE", "master_image_data_url": master,
++		"thumb_image_data_url": piece, "piece_y": block.Y, "max_x": maxX,
++		"expires_at": time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339),
++	})
++}
++
++func validCaptchaAnswer(expected string, angle, x *int) bool {
++	if strings.HasPrefix(expected, "SLIDE:") {
++		parts := strings.Split(expected, ":")
++		if len(parts) != 3 || x == nil {
++			return false
++		}
++		target, err := strconv.Atoi(parts[1])
++		if err != nil {
++			return false
++		}
++		maxX, err := strconv.Atoi(parts[2])
++		if err != nil {
++			return false
++		}
++		if *x < 0 || *x > maxX {
++			return false
++		}
++		return *x >= target-4 && *x <= target+4
++	}
++	target, err := strconv.Atoi(strings.TrimSpace(expected))
++	return err == nil && angle != nil && *angle >= 0 && *angle <= 720 &&
++		rotate.Validate(*angle, target, captchaAnglePadding)
++}
+--- /dev/null
++++ b/internal/httpapi/mobile_auth_test.go
+@@ -0,0 +1,79 @@
++package httpapi
++
++import (
++	"net/http/httptest"
++	"strings"
++	"testing"
++)
++
++func TestMobileAndDesktopDeviceHeaders(t *testing.T) {
++	for _, platform := range []string{"ANDROID", "IOS", "WINDOWS", "MACOS", "android"} {
++		r := httptest.NewRequest("POST", "/", nil)
++		r.Header.Set("X-Device-Id", "test-device")
++		r.Header.Set("X-Platform", platform)
++		r.Header.Set("X-App-Version", "1.0.0")
++		if _, _, _, ok := deviceHeaders(httptest.NewRecorder(), r); !ok {
++			t.Fatalf("rejected %s", platform)
++		}
++	}
++	for _, invalid := range []string{"WEB", "", "ANDROID_WITHOUT_DEVICE"} {
++		r := httptest.NewRequest("POST", "/", nil)
++		r.Header.Set("X-Platform", invalid)
++		r.Header.Set("X-App-Version", "1.0.0")
++		if _, _, _, ok := deviceHeaders(httptest.NewRecorder(), r); ok {
++			t.Fatal("accepted invalid headers")
++		}
++	}
++}
++func TestSlideCaptchaValidation(t *testing.T) {
++	capt, err := slideCaptcha()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for i := 0; i < 10; i++ {
++		data, err := capt.Generate()
++		if err != nil {
++			t.Fatal(err)
++		}
++		block := data.GetData()
++		if block.X <= 4 || block.X > 320-block.Width || block.Y < 0 || block.Y+block.Height > 180 {
++			t.Fatalf("bad geometry: %+v", block)
++		}
++		master, err := data.GetMasterImage().ToBase64()
++		if err != nil || !strings.HasPrefix(master, "data:image/jpeg;base64,") {
++			t.Fatal("invalid master")
++		}
++		piece, err := data.GetTileImage().ToBase64()
++		if err != nil || !strings.HasPrefix(piece, "data:image/png;base64,") {
++			t.Fatal("invalid piece")
++		}
++	}
++	x := 160
++	wrong := 180
++	negative := -1
++	large := 300
++	angle := 200
++	if !validCaptchaAnswer("SLIDE:160:270", nil, &x) {
++		t.Fatal("valid answer rejected")
++	}
++	for _, value := range []*int{nil, &wrong, &negative, &large} {
++		if validCaptchaAnswer("SLIDE:160:270", &angle, value) {
++			t.Fatal("invalid slide answer accepted")
++		}
++	}
++	if !validCaptchaAnswer("160", &angle, nil) {
++		t.Fatal("rotation compatibility broken")
++	}
++	if validCaptchaAnswer("160", nil, &x) {
++		t.Fatal("slide answer accepted for rotation")
++	}
++}
++
++func TestInvalidClientHeadersRejectedBeforeCodeConsumption(t *testing.T) {
++	r := httptest.NewRequest("POST", "/api/v1/auth/phone/exchange", strings.NewReader(`{"phone":"13812345678","code":"000000"}`))
++	w := httptest.NewRecorder()
++	(&Server{}).phoneExchange(w, r)
++	if w.Code != 400 || !strings.Contains(w.Body.String(), "CLIENT_HEADERS_REQUIRED") {
++		t.Fatalf("bad response: %d %s", w.Code, w.Body.String())
++	}
++}

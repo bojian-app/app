@@ -1,0 +1,192 @@
+--- /dev/null
++++ b/internal/database/migrations/038_article_like_notifications.sql
+@@ -0,0 +1,44 @@
++-- One notification per author, liker and article. Repeated requests and
++-- unlike/re-like must not flood the recipient's inbox.
++CREATE UNIQUE INDEX article_like_notification_once
++ON notifications(user_id,actor_id,subject_id)
++WHERE type='ARTICLE_LIKE' AND subject_type='ARTICLE';
++
++CREATE FUNCTION notify_article_like(article_id bigint, liker_id bigint, liked_at timestamptz)
++RETURNS void LANGUAGE plpgsql AS $$
++BEGIN
++    INSERT INTO notifications(user_id,type,actor_id,subject_type,subject_id,payload_safe_jsonb,created_at)
++    SELECT p.author_id,'ARTICLE_LIKE',liker_id,'ARTICLE',p.id,
++        jsonb_build_object('title','收到新的赞',
++            'body',COALESCE(NULLIF(btrim(actor.nickname),''),'用户') || '赞了你的文章《' || p.title || '》'),
++        liked_at
++    FROM posts p
++    JOIN users owner ON owner.id=p.author_id AND owner.status='ACTIVE' AND owner.deleted_at IS NULL
++    JOIN users actor ON actor.id=liker_id AND actor.status='ACTIVE' AND actor.deleted_at IS NULL
++    WHERE p.id=article_id AND p.author_id<>liker_id AND p.status='PUBLISHED' AND p.deleted_at IS NULL
++      AND NOT EXISTS(SELECT 1 FROM user_blocks b
++        WHERE (b.blocker_id=liker_id AND b.blocked_id=p.author_id)
++           OR (b.blocker_id=p.author_id AND b.blocked_id=liker_id))
++    ON CONFLICT DO NOTHING;
++END;
++$$;
++
++CREATE FUNCTION article_like_notification_inserted() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    PERFORM notify_article_like(NEW.post_id,NEW.user_id,NEW.created_at);
++    RETURN NEW;
++END;
++$$;
++CREATE TRIGGER notify_article_like_insert
++AFTER INSERT ON post_likes FOR EACH ROW EXECUTE FUNCTION article_like_notification_inserted();
++
++-- Repair existing missed notifications from actual likes, preserving the
++-- original action time. The notification trigger creates durable realtime events.
++DO $$
++DECLARE existing record;
++BEGIN
++    FOR existing IN SELECT post_id,user_id,created_at FROM post_likes ORDER BY created_at,id LOOP
++        PERFORM notify_article_like(existing.post_id,existing.user_id,existing.created_at);
++    END LOOP;
++END;
++$$;
+--- /dev/null
++++ b/internal/httpapi/article_like_notifications_test.go
+@@ -0,0 +1,142 @@
++package httpapi
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"log/slog"
++	"net/http/httptest"
++	"net/url"
++	"os"
++	"testing"
++	"time"
++
++	"github.com/fengzijian/bojian/internal/database"
++	"github.com/jackc/pgx/v5/pgxpool"
++)
++
++func TestArticleLikeNotificationsIntegration(t *testing.T) {
++	dsn := os.Getenv("LIKE_NOTIFICATION_TEST_DATABASE_URL")
++	if dsn == "" {
++		t.Skip("isolated database not configured")
++	}
++	u, err := url.Parse(dsn)
++	if err != nil || (u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1") {
++		t.Fatal("requires isolated local database")
++	}
++	ctx := context.Background()
++	admin, err := pgxpool.New(ctx, dsn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Close()
++	schema := fmt.Sprintf("article_like_notifications_%d", time.Now().UnixNano())
++	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
++	cfg, err := pgxpool.ParseConfig(dsn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cfg.ConnConfig.RuntimeParams["search_path"] = schema
++	db, err := pgxpool.NewWithConfig(ctx, cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close()
++	exec := func(sql string) {
++		t.Helper()
++		if _, err := db.Exec(ctx, sql); err != nil {
++			t.Fatal(err)
++		}
++	}
++	exec(`CREATE TABLE schema_migrations(version text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now()); INSERT INTO schema_migrations(version) VALUES('038_article_like_notifications.sql');`)
++	if err = database.Migrate(ctx, db); err != nil {
++		t.Fatal(err)
++	}
++	exec(`INSERT INTO users(public_id,nickname) VALUES('owner','作者'),('liker','小林'),('other','其他用户'),('blocked','被屏蔽'),('inactive','停用用户'),('deleted','已删除');
++ UPDATE users SET status='BANNED' WHERE id=5; UPDATE users SET deleted_at=now() WHERE id=6;
++ INSERT INTO user_blocks(blocker_id,blocked_id) VALUES(1,4);
++ INSERT INTO posts(author_id,title,status,visibility) VALUES(1,'面试复盘','PUBLISHED','PUBLIC'),(1,'第二篇','PUBLISHED','PUBLIC'),(1,'草稿','DRAFT','PUBLIC'),(1,'已删除','PUBLISHED','PUBLIC'),(3,'其他作者的文章','PUBLISHED','PUBLIC');
++ UPDATE posts SET deleted_at=now() WHERE id=4;
++ INSERT INTO post_likes(post_id,user_id,created_at) VALUES(1,2,'2026-10-08T10:00:00Z'),(1,1,now()),(3,2,now()),(4,2,now()),(1,4,now()),(1,5,now()),(1,6,now());
++ DELETE FROM schema_migrations WHERE version='038_article_like_notifications.sql';`)
++	if err = database.Migrate(ctx, db); err != nil {
++		t.Fatal(err)
++	}
++	count := func(user int64) int {
++		t.Helper()
++		var n int
++		if err := db.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE type='ARTICLE_LIKE' AND user_id=$1`, user).Scan(&n); err != nil {
++			t.Fatal(err)
++		}
++		return n
++	}
++	if count(1) != 1 || count(2) != 0 || count(3) != 0 {
++		t.Fatal("historical notification missing or sent to wrong user")
++	}
++	var body string
++	var created time.Time
++	if err = db.QueryRow(ctx, `SELECT payload_safe_jsonb->>'body',created_at FROM notifications WHERE type='ARTICLE_LIKE'`).Scan(&body, &created); err != nil {
++		t.Fatal(err)
++	}
++	if body != "小林赞了你的文章《面试复盘》" || created.UTC().Format(time.RFC3339) != "2026-10-08T10:00:00Z" {
++		t.Fatal("historical payload/time incorrect")
++	}
++	exec(`INSERT INTO post_likes(post_id,user_id) VALUES(1,2) ON CONFLICT DO NOTHING;
++ DELETE FROM post_likes WHERE post_id=1 AND user_id=2; INSERT INTO post_likes(post_id,user_id) VALUES(1,2);
++ INSERT INTO post_likes(post_id,user_id) VALUES(2,2); INSERT INTO post_likes(post_id,user_id) VALUES(5,2);`)
++	if count(1) != 2 || count(3) != 1 {
++		t.Fatal("new notifications missing or duplicate re-like notification")
++	}
++	tx, err := db.Begin(ctx)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err = tx.Exec(ctx, `INSERT INTO post_likes(post_id,user_id) VALUES(2,3)`); err != nil {
++		t.Fatal(err)
++	}
++	tx.Rollback(ctx)
++	if count(1) != 2 {
++		t.Fatal("rolled-back like created a notification")
++	}
++	var events int
++	if err = db.QueryRow(ctx, `SELECT count(*) FROM realtime_events e JOIN notifications n ON n.id=(e.payload_safe_jsonb->>'notification_id')::bigint WHERE e.event_type='SYSTEM_NOTIFICATION' AND n.type='ARTICLE_LIKE' AND e.user_id=n.user_id`).Scan(&events); err != nil {
++		t.Fatal(err)
++	}
++	if events != 3 {
++		t.Fatalf("missing durable notification events: %d", events)
++	}
++	// Verify that the normal notification API includes the correct recipient's
++	// unread count and article target, and excludes other authors' notifications.
++	server := &Server{db: db, logger: slog.Default()}
++	authCtx := context.WithValue(ctx, userIDKey, int64(1))
++	w := httptest.NewRecorder()
++	r := httptest.NewRequest("GET", "/api/v1/notifications", nil).WithContext(authCtx)
++	server.listNotifications(w, r)
++	if w.Code != 200 {
++		t.Fatal(w.Body.String())
++	}
++	var result struct {
++		Data struct {
++			Unread int `json:"unread_count"`
++			Items  []struct {
++				SubjectID int64  `json:"subject_id"`
++				Type      string `json:"type"`
++			} `json:"items"`
++		} `json:"data"`
++	}
++	if err = json.Unmarshal(w.Body.Bytes(), &result); err != nil {
++		t.Fatal(err)
++	}
++	if result.Data.Unread != 2 || len(result.Data.Items) != 2 || result.Data.Items[0].SubjectID != 2 {
++		t.Fatalf("incorrect inbox: %s", w.Body.String())
++	}
++	if err = database.Migrate(ctx, db); err != nil {
++		t.Fatal(err)
++	}
++	if count(1) != 2 {
++		t.Fatal("migration rerun duplicated notifications")
++	}
++}

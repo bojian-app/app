@@ -1,0 +1,22 @@
+{
+  "baseImage": "bojian-api:20260910-01",
+  "baseSourceCommit": "d21916b838593ce64bd9800d274fe303808267a2",
+  "image": "bojian-api:mobile-auth-20261007",
+  "binarySHA256": "854ec57e21f95cf1bf7c4e8a605ec8862f788606eb93d9f994f010ea83070ef4",
+  "patch": "mobile-auth.patch",
+  "schemaChanges": false,
+  "changes": [
+    "Android/iOS device headers",
+    "Slide captcha opt-in",
+    "Validate headers before consuming SMS code"
+  ],
+  "verification": [
+    "go test ./...",
+    "flutter test (29 passed)",
+    "flutter analyze",
+    "flutter build apk --release",
+    "Live HTTPS slide captcha response",
+    "Live HTTPS Android headers accepted (invalid token returns SESSION_INVALID)"
+  ],
+  "phoneVerification": "Release APK installed; latest network probe blocked by TCP reset and QUIC idle timeout; no SMS sent"
+}
