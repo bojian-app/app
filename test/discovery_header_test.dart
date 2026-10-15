@@ -8,7 +8,7 @@ import 'support/fake_gateway.dart';
 
 void main() {
   testWidgets(
-    'Search stays in discovery; tabs respond to swipes and taps; creation is an icon',
+    'Search stays in discovery; tabs respond to swipes and taps; header has no publish shortcut',
     (tester) async {
       tester.view.physicalSize = const Size(320, 720);
       tester.view.devicePixelRatio = 1;
@@ -35,7 +35,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('发现'), findsNothing);
       expect(find.text('开始创作'), findsNothing);
-      expect(find.byKey(const ValueKey('discovery-create')), findsOneWidget);
+      expect(find.byKey(const ValueKey('discovery-create')), findsNothing);
       final search = find.byKey(const ValueKey('discovery-search'));
       await tester.tap(search);
       await tester.enterText(search, '不存在的关键词');
@@ -67,9 +67,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller().index, 0);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byKey(const ValueKey('discovery-create')));
-      await tester.pumpAndSettle();
-      expect(find.byType(StoryComposer), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       store.dispose();
     },

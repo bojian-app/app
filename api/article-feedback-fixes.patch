@@ -1,0 +1,256 @@
+--- a/internal/httpapi/articles.go
++++ b/internal/httpapi/articles.go
+@@ -136,6 +136,18 @@
+ 		return
+ 	}
+ 	rows.Close()
++	ids := make([]int64, len(page))
++	for i, item := range page {
++		ids[i] = item.id
++	}
++	counts, err := s.articleCommentCounts(r, ids)
++	if err != nil {
++		s.internal(w, r, "feed comment counts", err)
++		return
++	}
++	for _, item := range page {
++		item.data["comment_count"] = counts[item.id]
++	}
+ 	avatarURLs := map[int64]string{}
+ 	for authorID, fileID := range avatars {
+ 		avatarURLs[authorID] = s.fileURL(r, fileID)
+@@ -211,7 +223,12 @@
+ 		s.internal(w, r, "article metadata", err)
+ 		return
+ 	}
+-	Success(w, r, 200, map[string]any{"id": id, "author_id": authorID, "author": map[string]any{"id": authorID, "public_id": publicID, "display_name": name, "city": city, "employment_status": employment, "avatar_url": s.fileURL(r, avatar)}, "title": title, "content": content, "status": status, "visibility": visibility, "revision": revision, "published_at": published, "like_count": likes, "favorite_count": favorites, "share_count": shares, "is_liked": liked, "is_favorited": favorited})
++	counts, err := s.articleCommentCounts(r, []int64{id})
++	if err != nil {
++		s.internal(w, r, "article comment count", err)
++		return
++	}
++	Success(w, r, 200, map[string]any{"id": id, "author_id": authorID, "comment_count": counts[id], "author": map[string]any{"id": authorID, "public_id": publicID, "display_name": name, "city": city, "employment_status": employment, "avatar_url": s.fileURL(r, avatar)}, "title": title, "content": content, "status": status, "visibility": visibility, "revision": revision, "published_at": published, "like_count": likes, "favorite_count": favorites, "share_count": shares, "is_liked": liked, "is_favorited": favorited})
+ }
+ 
+ func (s *Server) updateArticle(w http.ResponseWriter, r *http.Request) {
+--- /dev/null
++++ b/internal/httpapi/article_comment_counts.go
+@@ -0,0 +1,29 @@
++package httpapi
++
++import (
++	"net/http"
++	"strings"
++)
++
++// Use precisely the same visibility rules as the comment list, including replies.
++// Batch counts so a feed page does not issue one database query per article.
++func (s *Server) articleCommentCounts(r *http.Request, ids []int64) (map[int64]int64, error) {
++	counts := make(map[int64]int64, len(ids))
++	if len(ids) == 0 {
++		return counts, nil
++	}
++	predicate := strings.ReplaceAll(visibleArticleComments, "$1", "c.post_id")
++	rows, err := s.db.Query(r.Context(), `SELECT c.post_id,count(*)`+commentJoins+` WHERE c.post_id=ANY($1::bigint[]) AND `+predicate+` GROUP BY c.post_id`, ids, UserID(r.Context()))
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	for rows.Next() {
++		var id, count int64
++		if err := rows.Scan(&id, &count); err != nil {
++			return nil, err
++		}
++		counts[id] = count
++	}
++	return counts, rows.Err()
++}
+--- /dev/null
++++ b/internal/httpapi/article_feedback_test.go
+@@ -0,0 +1,149 @@
++package httpapi
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"log/slog"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"os"
++	"testing"
++	"time"
++
++	"github.com/fengzijian/bojian/internal/database"
++	"github.com/jackc/pgx/v5/pgxpool"
++)
++
++func TestArticleFeedbackIntegration(t *testing.T) {
++	dsn := os.Getenv("ARTICLE_FEEDBACK_TEST_DATABASE_URL")
++	if dsn == "" {
++		t.Skip("isolated database not configured")
++	}
++	u, err := url.Parse(dsn)
++	if err != nil || u.Hostname() != "127.0.0.1" {
++		t.Fatal("requires local database")
++	}
++	ctx := context.Background()
++	admin, err := pgxpool.New(ctx, dsn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Close()
++	schema := fmt.Sprintf("article_feedback_%d", time.Now().UnixNano())
++	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
++	cfg, err := pgxpool.ParseConfig(dsn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cfg.ConnConfig.RuntimeParams["search_path"] = schema
++	db, err := pgxpool.NewWithConfig(ctx, cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close()
++	if err := database.Migrate(ctx, db); err != nil {
++		t.Fatal(err)
++	}
++	exec := func(sql string) {
++		t.Helper()
++		if _, err := db.Exec(ctx, sql); err != nil {
++			t.Fatal(err)
++		}
++	}
++	scalar := func(sql string) int64 {
++		t.Helper()
++		var n int64
++		if err := db.QueryRow(ctx, sql).Scan(&n); err != nil {
++			t.Fatal(err)
++		}
++		return n
++	}
++	exec(`INSERT INTO users(public_id,nickname) VALUES('owner','作者'),('reader','读者'),('other','回复者'),('blocked','屏蔽用户');
++ INSERT INTO posts(author_id,title,status,visibility,published_at) VALUES(1,'评论测试','PUBLISHED','PUBLIC',now()),(1,'无评论','PUBLISHED','PUBLIC',now()-interval '1 day');
++ INSERT INTO post_comments(post_id,author_id,content) VALUES(1,2,'第一条');`)
++	if scalar(`SELECT count(*) FROM notifications WHERE type='ARTICLE_COMMENT' AND user_id=1`) != 1 {
++		t.Fatal("owner notification missing")
++	}
++	exec(`INSERT INTO post_comments(post_id,author_id,content,parent_id,reply_to_id) VALUES(1,3,'回复',1,1);`)
++	if scalar(`SELECT count(*) FROM notifications WHERE type='COMMENT_REPLY' AND user_id=2`) != 1 {
++		t.Fatal("reply notification missing")
++	}
++	if scalar(`SELECT count(*) FROM notifications WHERE type='ARTICLE_COMMENT' AND user_id=1`) != 2 {
++		t.Fatal("owner reply notification missing")
++	}
++	exec(`INSERT INTO post_comments(post_id,author_id,content) VALUES(1,1,'作者自评');
++ INSERT INTO post_comments(post_id,author_id,content,parent_id,reply_to_id) VALUES(1,2,'回复作者',3,3);`)
++	if scalar(`SELECT count(*) FROM notifications WHERE payload_safe_jsonb->>'comment_id'='3'`) != 0 {
++		t.Fatal("self notification")
++	}
++	if scalar(`SELECT count(*) FROM notifications WHERE payload_safe_jsonb->>'comment_id'='4'`) != 1 {
++		t.Fatal("duplicate owner/reply recipient")
++	}
++	exec(`INSERT INTO user_blocks(blocker_id,blocked_id) VALUES(1,4);
++ INSERT INTO post_comments(post_id,author_id,content) VALUES(1,4,'已屏蔽');
++ INSERT INTO post_comments(post_id,author_id,content,status) VALUES(1,2,'隐藏','HIDDEN');
++ INSERT INTO post_comments(post_id,author_id,content,deleted_at) VALUES(1,2,'删除',now());`)
++	if scalar(`SELECT count(*) FROM notifications WHERE (payload_safe_jsonb->>'comment_id')::bigint>=5`) != 0 {
++		t.Fatal("hidden/deleted/blocked notification")
++	}
++	if scalar(`SELECT count(*) FROM realtime_events WHERE event_type='SYSTEM_NOTIFICATION'`) != scalar(`SELECT count(*) FROM notifications`) {
++		t.Fatal("notification realtime event missing")
++	}
++	s := &Server{db: db, logger: slog.Default()}
++	request := func(path string) *http.Request {
++		r := httptest.NewRequest("GET", path, nil)
++		return r.WithContext(context.WithValue(r.Context(), userIDKey, int64(1)))
++	}
++	counts, err := s.articleCommentCounts(request("/"), []int64{1, 2})
++	if err != nil || counts[1] != 4 || counts[2] != 0 {
++		t.Fatalf("counts=%v err=%v", counts, err)
++	}
++	check := func(handler http.HandlerFunc, r *http.Request) map[string]any {
++		t.Helper()
++		w := httptest.NewRecorder()
++		handler(w, r)
++		if w.Code != 200 {
++			t.Fatalf("%s: %d %s", r.URL, w.Code, w.Body.String())
++		}
++		var envelope map[string]any
++		if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
++			t.Fatal(err)
++		}
++		return envelope
++	}
++	feed := check(s.listFeed, request("/api/v1/feed?limit=1"))
++	item := feed["data"].(map[string]any)["items"].([]any)[0].(map[string]any)
++	if item["comment_count"] != float64(4) {
++		t.Fatal(item)
++	}
++	cursor := feed["meta"].(map[string]any)["next_cursor"].(string)
++	next := check(s.listFeed, request("/api/v1/feed?limit=1&cursor="+url.QueryEscape(cursor)))
++	if next["data"].(map[string]any)["items"].([]any)[0].(map[string]any)["comment_count"] != float64(0) {
++		t.Fatal(next)
++	}
++	exec(`INSERT INTO post_likes(post_id,user_id) VALUES(1,2);`)
++	trend := check(s.listFeed, request("/api/v1/feed/trending"))
++	if trend["data"].(map[string]any)["items"].([]any)[0].(map[string]any)["comment_count"] != float64(4) {
++		t.Fatal(trend)
++	}
++	r := request("/api/v1/articles/1")
++	r.SetPathValue("id", "1")
++	detail := check(s.articleDetail, r)
++	if detail["data"].(map[string]any)["comment_count"] != float64(4) {
++		t.Fatal(detail)
++	}
++	comments := check(s.listArticleComments, r)
++	if comments["data"].(map[string]any)["total"] != float64(4) {
++		t.Fatal(comments)
++	}
++	exec(`UPDATE post_comments SET status='HIDDEN' WHERE id=1;`)
++	counts, err = s.articleCommentCounts(request("/"), []int64{1})
++	if err != nil || counts[1] != 2 {
++		t.Fatalf("hidden root counts=%v err=%v", counts, err)
++	}
++}
+--- /dev/null
++++ b/internal/database/migrations/044_article_comment_notifications.sql
+@@ -0,0 +1,34 @@
++-- New comments notify the article author and the direct reply recipient once each.
++-- Notifications and their durable realtime events commit with the comment.
++CREATE FUNCTION article_comment_notification_inserted() RETURNS trigger
++LANGUAGE plpgsql AS $$
++BEGIN
++    IF NEW.status <> 'VISIBLE' OR NEW.deleted_at IS NOT NULL THEN RETURN NEW; END IF;
++    INSERT INTO notifications(user_id,type,actor_id,subject_type,subject_id,payload_safe_jsonb,created_at)
++    SELECT recipient.id,
++        CASE WHEN recipient.id=target.author_id THEN 'COMMENT_REPLY' ELSE 'ARTICLE_COMMENT' END,
++        NEW.author_id,'ARTICLE',p.id,
++        jsonb_build_object('title',CASE WHEN recipient.id=target.author_id THEN '收到新的回复' ELSE '收到新的评论' END,
++            'body',COALESCE(NULLIF(btrim(actor.nickname),''),'用户') ||
++                CASE WHEN recipient.id=target.author_id THEN '回复了你的评论：' ELSE '评论了你的文章《' || p.title || '》：' END || left(NEW.content,120),
++            'comment_id',NEW.id), NEW.created_at
++    FROM posts p
++    JOIN users owner ON owner.id=p.author_id AND owner.status='ACTIVE' AND owner.deleted_at IS NULL
++    JOIN users actor ON actor.id=NEW.author_id AND actor.status='ACTIVE' AND actor.deleted_at IS NULL
++    LEFT JOIN post_comments target ON target.id=NEW.reply_to_id AND target.post_id=p.id
++        AND target.status='VISIBLE' AND target.deleted_at IS NULL
++    JOIN users recipient ON (recipient.id=p.author_id OR recipient.id=target.author_id)
++        AND recipient.status='ACTIVE' AND recipient.deleted_at IS NULL
++    WHERE p.id=NEW.post_id AND p.status='PUBLISHED' AND p.deleted_at IS NULL
++        AND recipient.id<>NEW.author_id
++        AND (recipient.id=p.author_id OR p.visibility='PUBLIC' OR
++            (p.visibility='FRIENDS' AND EXISTS(SELECT 1 FROM friendships f
++                WHERE f.user_low_id=LEAST(recipient.id,p.author_id) AND f.user_high_id=GREATEST(recipient.id,p.author_id))))
++        AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE
++            (b.blocker_id=recipient.id AND b.blocked_id IN (NEW.author_id,p.author_id)) OR
++            (b.blocked_id=recipient.id AND b.blocker_id IN (NEW.author_id,p.author_id)));
++    RETURN NEW;
++END;
++$$;
++CREATE TRIGGER notify_article_comment_insert AFTER INSERT ON post_comments
++FOR EACH ROW EXECUTE FUNCTION article_comment_notification_inserted();

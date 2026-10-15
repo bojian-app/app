@@ -6,7 +6,6 @@ import 'article_rich_content.dart';
 import 'article_reaction_button.dart';
 import 'resume_guidance_view.dart';
 import 'guidance_feed_card.dart';
-import 'story_composer.dart';
 export 'story_composer.dart';
 import 'profile_avatar.dart';
 import 'article_comment_tile.dart';
@@ -135,89 +134,72 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          key: const ValueKey('discovery-search'),
-                          controller: search,
-                          focusNode: searchFocus,
-                          textInputAction: TextInputAction.search,
-                          onChanged: (value) =>
-                              setState(() => query = value.trim()),
-                          onSubmitted: (_) => searchFocus.unfocus(),
-                          decoration: InputDecoration(
-                            hintText: '搜索',
-                            fillColor: Colors.white,
-                            prefixIcon: const Padding(
-                              padding: EdgeInsets.all(14),
-                              child: AppIcon(
-                                AppIcons.search,
-                                size: 20,
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                  child: TextField(
+                    key: const ValueKey('discovery-search'),
+                    controller: search,
+                    focusNode: searchFocus,
+                    textInputAction: TextInputAction.search,
+                    textAlignVertical: TextAlignVertical.center,
+                    style: const TextStyle(fontSize: 16, color: ink),
+                    onChanged: (value) => setState(() => query = value.trim()),
+                    onSubmitted: (_) => searchFocus.unfocus(),
+                    decoration: InputDecoration(
+                      hintText: '搜索',
+                      hintStyle: const TextStyle(
+                        fontSize: 15,
+                        color: Color(0xFF969BA4),
+                        fontWeight: FontWeight.w400,
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF3F4F5),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      prefixIcon: const Padding(
+                        padding: EdgeInsets.all(13),
+                        child: AppIcon(
+                          AppIcons.search,
+                          size: 20,
+                          color: Color(0xFF969BA4),
+                        ),
+                      ),
+                      suffixIcon: search.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: '清空搜索',
+                              onPressed: () {
+                                search.clear();
+                                setState(() => query = '');
+                                searchFocus.requestFocus();
+                              },
+                              icon: const AppIcon(
+                                AppIcons.clear,
+                                size: 18,
                                 color: muted,
                               ),
                             ),
-                            suffixIcon: search.text.isEmpty
-                                ? null
-                                : IconButton(
-                                    tooltip: '清空搜索',
-                                    onPressed: () {
-                                      search.clear();
-                                      setState(() => query = '');
-                                      searchFocus.requestFocus();
-                                    },
-                                    icon: const AppIcon(
-                                      AppIcons.clear,
-                                      size: 18,
-                                      color: muted,
-                                    ),
-                                  ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide(
-                                color: blue.withValues(alpha: .3),
-                              ),
-                            ),
-                          ),
-                        ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
                       ),
-                      const SizedBox(width: 12),
-                      Tooltip(
-                        message: '发布文章',
-                        child: IconButton.filled(
-                          key: const ValueKey('discovery-create'),
-                          onPressed: () =>
-                              openPage(context, StoryComposer(store: store)),
-                          style: IconButton.styleFrom(
-                            backgroundColor: blue,
-                            foregroundColor: Colors.white,
-                            fixedSize: const Size(48, 48),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          icon: const AppIcon(
-                            AppIcons.createArticle,
-                            size: 22,
-                            color: Colors.white,
-                          ),
-                        ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
                       ),
-                    ],
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
                   child: Material(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
@@ -584,12 +566,6 @@ class StoryCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Tag(
-                    story.category,
-                    color: story.category == '简历求指点'
-                        ? const Color(0xFF509B87)
-                        : blue,
-                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -822,9 +798,18 @@ class _StoryDetailState extends State<StoryDetail> {
         'GetArticlesId',
         path: {'id': '${widget.story.id}'},
       );
-      if (!mounted || result.data['content'] == null) return;
+      if (!mounted) return;
       setState(() {
-        bodyContent = decodeStory(result.data).content;
+        if (result.data['content'] != null) {
+          bodyContent = decodeStory(result.data).content;
+        }
+        if (!widget.store.pending.contains('like-${widget.story.id}') &&
+            result.data.containsKey('like_count')) {
+          widget.story.likes = integer(result.data['like_count']);
+          if (result.data.containsKey('is_liked')) {
+            widget.story.liked = result.data['is_liked'] == true;
+          }
+        }
         bodyError = null;
       });
     } catch (_) {
@@ -1024,7 +1009,7 @@ class _StoryDetailState extends State<StoryDetail> {
       refreshTimer?.cancel();
       refreshTimer = Timer(const Duration(milliseconds: 200), () {
         if (mounted) {
-          if (event['type'] == 'article.updated') loadBody();
+          loadBody();
           loadComments(silent: true);
           for (final root in expandedThreads.toList()) {
             loadThread(root);
@@ -1074,21 +1059,7 @@ class _StoryDetailState extends State<StoryDetail> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        actions: [
-          const DismissKeyboardButton(),
-          ArticleReactionButton(
-            key: const ValueKey('detail-bookmark'),
-            reaction: ArticleReaction.bookmark,
-            active: widget.story.saved,
-            onTap: widget.store.pending.contains('bookmark-${widget.story.id}')
-                ? null
-                : () => runRequest(
-                    context,
-                    () => widget.store.bookmark(widget.story),
-                  ),
-          ),
-          const SizedBox(width: 8),
-        ],
+        actions: [const DismissKeyboardButton()],
       ),
       body: ListView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1160,6 +1131,43 @@ class _StoryDetailState extends State<StoryDetail> {
           ),
           if (bodyError != null)
             TextButton(onPressed: loadBody, child: Text('$bodyError，点击重试')),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              key: const ValueKey('article-end-actions'),
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ArticleReactionButton(
+                  key: const ValueKey('detail-like'),
+                  count: widget.story.likes,
+                  reaction: ArticleReaction.like,
+                  active: widget.story.liked,
+                  onTap:
+                      widget.store.pending.contains('like-${widget.story.id}')
+                      ? null
+                      : () => runRequest(
+                          context,
+                          () => widget.store.like(widget.story),
+                        ),
+                ),
+                const SizedBox(width: 8),
+                ArticleReactionButton(
+                  key: const ValueKey('detail-bookmark'),
+                  reaction: ArticleReaction.bookmark,
+                  active: widget.story.saved,
+                  onTap:
+                      widget.store.pending.contains(
+                        'bookmark-${widget.story.id}',
+                      )
+                      ? null
+                      : () => runRequest(
+                          context,
+                          () => widget.store.bookmark(widget.story),
+                        ),
+                ),
+              ],
+            ),
+          ),
           const Divider(),
           const SizedBox(height: 18),
           Text(
@@ -1371,20 +1379,6 @@ class _StoryDetailState extends State<StoryDetail> {
                           );
                         },
                       ),
-                      ArticleReactionButton(
-                        key: const ValueKey('detail-like'),
-                        reaction: ArticleReaction.like,
-                        active: widget.story.liked,
-                        onTap:
-                            widget.store.pending.contains(
-                              'like-${widget.story.id}',
-                            )
-                            ? null
-                            : () => runRequest(
-                                context,
-                                () => widget.store.like(widget.story),
-                              ),
-                      ),
                     ],
                   ),
                 ],
@@ -1482,7 +1476,7 @@ class _StorySearchState extends State<StorySearch> {
                     textInputAction: TextInputAction.search,
                     onSubmitted: (_) => dismissKeyboard(),
                     decoration: InputDecoration(
-                      hintText: '搜索经验、简历或作者',
+                      hintText: '搜索',
                       prefixIcon: const AppIcon(AppIcons.search),
                       suffixIcon: query.isEmpty
                           ? null

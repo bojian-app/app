@@ -1,11 +1,46 @@
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_pages.dart';
+import 'package:bojian_mobile/resume_rename.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
 
 void main() {
+  testWidgets('Losing focus closes all rename controls without saving', (
+    tester,
+  ) async {
+    final api = FakeGateway();
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    final resume = ResumeDraft(id: 42, title: '原名称');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              ResumeInlineName(store: store, resume: resume),
+              const TextField(key: ValueKey('other-input')),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('原名称'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('resume-rename-input')),
+      '未保存',
+    );
+    await tester.tap(find.byKey(const ValueKey('other-input')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('resume-rename-input')), findsNothing);
+    expect(find.byTooltip('保存名称'), findsNothing);
+    expect(find.byTooltip('取消改名'), findsNothing);
+    expect(find.text('原名称'), findsOneWidget);
+    expect(api.calls, isNot(contains('PatchResumesId')));
+  });
+
   testWidgets(
     'Rename rejects blank names, preserves input on failure and patches only title with latest revision',
     (tester) async {

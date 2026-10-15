@@ -1,4 +1,4 @@
-package com.example.bojian_mobile
+package cn.kelance.bojian
 
 import android.app.Activity
 import android.content.Intent

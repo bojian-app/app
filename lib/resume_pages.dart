@@ -24,6 +24,7 @@ import 'resume_updated_label.dart';
 import 'resume_market_document.dart';
 import 'template_market.dart';
 import 'resume_template_picker.dart';
+import 'resume_polish_page.dart';
 import 'resume_guidance_share.dart';
 
 import 'dart:async';
@@ -355,7 +356,10 @@ class ResumeLibrary extends StatelessWidget {
                             size: 17,
                             color: blue,
                           ),
-                          onPressed: () => toast(context, 'AI简历优化即将上线'),
+                          onPressed: () => openPage(
+                            context,
+                            ResumePolishPage(store: store, resume: resume),
+                          ),
                           child: const Text('AI简历优化'),
                         ),
                       ],
@@ -537,6 +541,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
                   : existing && currentDraft.photoURL.isNotEmpty
                   ? Image.network(
                       currentDraft.photoURL,
+                      cacheWidth: 280,
                       fit: BoxFit.cover,
                       alignment: const Alignment(0, -0.35),
                       errorBuilder: (_, _, _) => TextButton(

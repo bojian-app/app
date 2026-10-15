@@ -56,69 +56,68 @@ void main() {
         .setMockMethodCallHandler(launcherChannel, null);
   });
 
-  test(
-    'Bundled documents retain every section and the supplied placeholders',
-    () {
-      final terms = legalDocumentFor(LegalDocumentKind.userAgreement);
-      final privacy = legalDocumentFor(LegalDocumentKind.privacyPolicy);
-      expect(terms.sections.map((section) => section.title), [
-        '第一条 定义',
-        '第二条 服务内容与功能边界',
-        '第三条 协议的订立与同意机制',
-        '第四条 账号、登录与会话管理',
-        '第五条 用户内容',
-        '第六条 用户行为规范',
-        '第七条 简历求指点与修改意见的特别约定',
-        '第八条 积分与模板服务',
-        '第九条 知识产权',
-        '第十条 免责声明与责任限制',
-        '第十一条 通知与送达',
-        '第十二条 法律适用与争议解决',
-        '第十三条 附则',
-      ]);
-      expect(privacy.sections.map((section) => section.title), [
-        '一、我们如何收集和使用您的个人信息',
-        '二、设备权限与本地功能说明',
-        '三、对外提供（委托处理与共享）',
-        '四、存储地点、期限与安全措施',
-        '五、您的权利',
-        '六、账号注销',
-        '七、未成年人保护',
-        '八、政策更新',
-        '九、联系我们',
-      ]);
-      for (final document in [terms, privacy]) {
-        expect(document.metadata, contains('更新日期：2026年10月【　】日'));
-        expect(document.metadata, contains('生效日期：2026年10月【　】日'));
-        expect(document.plainText, contains('【运营主体全称】'));
-        expect(document.plainText, contains('【待补充：撤回渠道】'));
-        expect(
-          document.sections.map((section) => section.id).toSet(),
-          hasLength(document.sections.length),
-        );
-        expect(
-          document.introduction.every((paragraph) => paragraph.emphasized),
-          isTrue,
-        );
-      }
-      expect(terms.plainText, contains('【客服邮箱/电话】'));
-      expect(terms.plainText, contains('【待与业务确认余额处理规则】'));
-      expect(terms.plainText, contains('【运营主体住所地】'));
-      expect(terms.plainText, contains('template-purchase-v1'));
-      expect(terms.plainText, contains('DOCX格式导出文件的正文为页面图像'));
-      expect(terms.plainText, contains('字段过滤不等于匿名化处理'));
-      expect(privacy.metadata, contains('版本：V2.0（替代2026年9月3日版本）'));
-      expect(privacy.plainText, contains('完整源文件（包括其中的文字、照片及其他全部内容）'));
-      expect(privacy.plainText, contains('该方式不属于端到端加密'));
-      expect(privacy.plainText, contains('【最终清除及备份清理期限待补充】'));
-      expect(privacy.plainText, contains('【待补充：最低使用年龄、年龄核验及监护人流程】'));
-      expect(privacy.plainText, contains('【姓名/部门，待补充】'));
+  test('Bundled documents retain sections, supplied identity and remaining placeholders', () {
+    final terms = legalDocumentFor(LegalDocumentKind.userAgreement);
+    final privacy = legalDocumentFor(LegalDocumentKind.privacyPolicy);
+    expect(terms.sections.map((section) => section.title), [
+      '第一条 定义',
+      '第二条 服务内容与功能边界',
+      '第三条 协议的订立与同意机制',
+      '第四条 账号、登录与会话管理',
+      '第五条 用户内容',
+      '第六条 用户行为规范',
+      '第七条 简历求指点与修改意见的特别约定',
+      '第八条 积分与模板服务',
+      '第九条 知识产权',
+      '第十条 免责声明与责任限制',
+      '第十一条 通知与送达',
+      '第十二条 法律适用与争议解决',
+      '第十三条 附则',
+    ]);
+    expect(privacy.sections.map((section) => section.title), [
+      '一、我们如何收集和使用您的个人信息',
+      '二、设备权限与本地功能说明',
+      '三、对外提供（委托处理与共享）',
+      '四、存储地点、期限与安全措施',
+      '五、您的权利',
+      '六、账号注销',
+      '七、未成年人保护',
+      '八、政策更新',
+      '九、联系我们',
+    ]);
+    for (final document in [terms, privacy]) {
+      expect(document.metadata, contains('更新日期：2026年10月【　】日'));
+      expect(document.metadata, contains('生效日期：2026年10月【　】日'));
+      expect(document.plainText, contains('【待补充：撤回渠道】'));
       expect(
-        privacy.sections.first.blocks.whereType<LegalSubheading>(),
-        hasLength(13),
+        document.sections.map((section) => section.id).toSet(),
+        hasLength(document.sections.length),
       );
-    },
-  );
+      expect(
+        document.introduction.every((paragraph) => paragraph.emphasized),
+        isTrue,
+      );
+    }
+    expect(terms.plainText, contains('【运营主体全称】'));
+    expect(terms.plainText, contains('【客服邮箱/电话】'));
+    expect(terms.plainText, contains('【待与业务确认余额处理规则】'));
+    expect(terms.plainText, contains('【运营主体住所地】'));
+    expect(terms.plainText, contains('template-purchase-v1'));
+    expect(terms.plainText, contains('DOCX格式导出文件的正文为页面图像'));
+    expect(terms.plainText, contains('字段过滤不等于匿名化处理'));
+    expect(privacy.metadata, contains('版本：V2.0（替代2026年9月3日版本）'));
+    expect(privacy.plainText, contains('完整源文件（包括其中的文字、照片及其他全部内容）'));
+    expect(privacy.plainText, contains('该方式不属于端到端加密'));
+    expect(privacy.plainText, contains('【最终清除及备份清理期限待补充】'));
+    expect(privacy.plainText, contains('【待补充：最低使用年龄、年龄核验及监护人流程】'));
+    expect(privacy.plainText, contains('珠海科岚盛网络科技有限公司'));
+    expect(privacy.plainText, contains('个人信息保护负责人：冯子健'));
+    expect(privacy.plainText, contains('fengzijian@kelantech.cn'));
+    expect(
+      privacy.sections.first.blocks.whereType<LegalSubheading>(),
+      hasLength(13),
+    );
+  });
 
   test(
     'Privacy permissions and third-party disclosures retain all table cells',

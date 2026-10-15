@@ -20,6 +20,17 @@ class ResumeInlineName extends StatefulWidget {
 class _ResumeInlineNameState extends State<ResumeInlineName> {
   late final controller = TextEditingController(text: widget.resume.title);
   late String title = widget.resume.title;
+  final nameFocus = FocusNode();
+  final tapGroup = Object();
+
+  @override
+  void initState() {
+    super.initState();
+    nameFocus.addListener(() {
+      if (!nameFocus.hasFocus && editing && !saving) cancel();
+    });
+  }
+
   bool editing = false;
   bool saving = false;
   String? error;
@@ -40,6 +51,7 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
 
   @override
   void dispose() {
+    nameFocus.dispose();
     controller.dispose();
     super.dispose();
   }
@@ -132,67 +144,73 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
       );
     }
     // Consume taps around the controls so the card's preview does not open.
-    return GestureDetector(
-      onTap: () {},
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('resume-rename-input'),
-                  controller: controller,
-                  autofocus: true,
-                  readOnly: saving,
-                  style: titleStyle,
-                  maxLength: 160,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => save(),
-                  decoration: const InputDecoration(
-                    hintText: '简历名称',
-                    counterText: '',
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: 7),
-                    filled: false,
-                    border: UnderlineInputBorder(),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFFDCE5F6)),
-                    ),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: blue),
+    return TextFieldTapRegion(
+      groupId: tapGroup,
+      child: GestureDetector(
+        onTap: () {},
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('resume-rename-input'),
+                    controller: controller,
+                    focusNode: nameFocus,
+                    groupId: tapGroup,
+                    onTapOutside: (_) => nameFocus.unfocus(),
+                    autofocus: true,
+                    readOnly: saving,
+                    style: titleStyle,
+                    maxLength: 160,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => save(),
+                    decoration: const InputDecoration(
+                      hintText: '简历名称',
+                      counterText: '',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 7),
+                      filled: false,
+                      border: UnderlineInputBorder(),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFFDCE5F6)),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: blue),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              if (saving)
-                const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              else ...[
-                action('取消改名', AppIcons.close, cancel),
-                action('保存名称', AppIcons.confirm, save),
+                if (saving)
+                  const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else ...[
+                  action('取消改名', AppIcons.close, cancel),
+                  action('保存名称', AppIcons.confirm, save),
+                ],
               ],
-            ],
-          ),
-          if (error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 4),
-              child: Text(
-                error!,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.error,
+            ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: Text(
+                  error!,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

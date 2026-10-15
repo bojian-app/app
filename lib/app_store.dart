@@ -528,6 +528,13 @@ class AppStore extends ChangeNotifier {
       'account.updated' => {'profile'},
       _ => <String>{},
     };
+    if (const {'article.comment', 'article.reaction'}.contains(type)) {
+      final data = event['data'] is Map ? event['data'] as Map : const {};
+      final id = integer(data['article_id']);
+      if (stories.any((story) => story.id == id)) {
+        sections.add('article-metrics:$id');
+      }
+    }
     _scheduleRealtimeRefresh(sections);
   }
 
@@ -545,7 +552,13 @@ class AppStore extends ChangeNotifier {
         dirty.map((section) async {
           final previous = sectionRequests[section];
           if (previous != null) await previous;
-          if (alive && isAuthenticated && version == epoch) await load(section);
+          if (alive && isAuthenticated && version == epoch) {
+            if (section.startsWith('article-metrics:')) {
+              await refreshArticleMetrics(int.parse(section.split(':').last));
+            } else {
+              await load(section);
+            }
+          }
         }),
       );
     });
@@ -864,6 +877,8 @@ class AppStore extends ChangeNotifier {
                       'RESUME_GUIDANCE_FEEDBACK' => '简历优化建议',
                       'FRIEND_REQUEST' => '好友申请通知',
                       'ARTICLE_LIKE' => '收到新的赞',
+                      'ARTICLE_COMMENT' => '收到新的评论',
+                      'COMMENT_REPLY' => '收到新的回复',
                       _ => '系统通知',
                     },
               body,
@@ -1035,16 +1050,48 @@ class AppStore extends ChangeNotifier {
           rethrow;
         }
       });
+  Future<void> refreshArticleMetrics(int id) async {
+    final version = epoch;
+    try {
+      final response = await request('GetArticlesId', path: {'id': '$id'});
+      if (!alive || version != epoch) return;
+      for (final story in stories.where((story) => story.id == id)) {
+        if (response.data.containsKey('comment_count')) {
+          story.commentCount = integer(response.data['comment_count']);
+        }
+        if (!pending.contains('like-$id')) {
+          if (response.data.containsKey('like_count')) {
+            story.likes = integer(response.data['like_count']);
+          }
+          if (response.data.containsKey('is_liked')) {
+            story.liked = response.data['is_liked'] == true;
+          }
+        }
+      }
+      changed();
+    } catch (_) {
+      // Keep the existing counts on temporary failures; pull-to-refresh retries.
+    }
+  }
+
   Future<void> article(Story story) async {
+    final version = epoch;
     final v = await request(
       'GetArticlesIdComments',
       path: {'id': '${story.id}'},
       query: {'limit': '50'},
     );
+    if (!alive || version != epoch) return;
     story.comments = items(v.data).map(ArticleComment.fromJson).toList();
     story.commentCount = v.data.containsKey('total')
         ? integer(v.data['total'])
-        : story.comments.length;
+        : story.comments.fold<int>(
+            0,
+            (sum, c) => sum + (c.deleted ? 0 : 1) + c.replyCount,
+          );
+    for (final entry in stories) {
+      if (entry.id == story.id) entry.commentCount = story.commentCount;
+    }
     changed();
   }
 

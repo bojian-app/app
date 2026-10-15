@@ -354,6 +354,7 @@ class _MarketThumbnail extends StatelessWidget {
         ? placeholder
         : Image.network(
             url,
+            cacheWidth: 720,
             fit: BoxFit.contain,
             errorBuilder: (_, _, _) => placeholder,
           );
@@ -393,6 +394,7 @@ class _StandardThumbnailState extends State<_StandardThumbnail> {
               height: rect.height * scale,
               child: Image.network(
                 widget.resume.photoURL,
+                cacheWidth: 240,
                 fit: BoxFit.cover,
                 alignment: const Alignment(0, -.35),
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),

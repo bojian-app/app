@@ -1,0 +1,10 @@
+--- a/internal/httpapi/resume_guidance_test.go
++++ b/internal/httpapi/resume_guidance_test.go
+@@ -55,6 +55,7 @@
+  CREATE TABLE resume_guidance_suggestions(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,post_id bigint,reviewer_id bigint,field_path text,suggestion text,replacement text,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now(),UNIQUE(post_id,reviewer_id,field_path));
+  CREATE TABLE resume_guidance_revisions(id bigint,post_id bigint,saved_by bigint,decisions jsonb);
+  CREATE TABLE realtime_events(event_id text,user_id bigint,event_type text,payload_safe_jsonb jsonb);
++ CREATE TABLE post_comments(id bigint PRIMARY KEY,post_id bigint,author_id bigint,parent_id bigint,reply_to_id bigint,status text DEFAULT 'VISIBLE',deleted_at timestamptz);
+  CREATE TABLE post_likes(post_id bigint,created_at timestamptz DEFAULT now(),user_id bigint);
+  CREATE TABLE post_collections(post_id bigint,created_at timestamptz DEFAULT now(),user_id bigint);
+  CREATE TABLE post_shares(post_id bigint,created_at timestamptz DEFAULT now());

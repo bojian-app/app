@@ -1,11 +1,10 @@
-package com.example.bojian_mobile
+package cn.kelance.bojian
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -73,6 +72,13 @@ class MainActivity : FlutterActivity() {
         resumeFiles?.handleActivityResult(requestCode, resultCode, data)
     }
 
+    // Flutter delegates an unhandled root-route back action here. Keep the
+    // task and engine alive, just like pressing Home, on every Android version.
+    override fun popSystemNavigator(): Boolean {
+        if (!isTaskRoot) return false
+        return moveTaskToBack(false)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -129,10 +135,10 @@ class MainActivity : FlutterActivity() {
             isAllCaps = false
             textSize = 14f
             setTextColor(0xFF697586.toInt())
-            background = GradientDrawable().apply {
-                cornerRadius = 24f * density
-                setColor(0x80FFFFFF.toInt())
-            }
+            background = null
+            stateListAnimator = null
+            elevation = 0f
+            typeface = android.graphics.Typeface.create(typeface, android.graphics.Typeface.NORMAL)
             minWidth = 0
             minimumWidth = 0
             setPadding((8 * density).toInt(), 0, (8 * density).toInt(), 0)
@@ -142,7 +148,7 @@ class MainActivity : FlutterActivity() {
             }
         }
         skipButton = skip
-        val skipWidth = maxOf(72f, skip.paint.measureText(skip.text.toString()) / density + 32f)
+        val skipWidth = maxOf(48f, skip.paint.measureText(skip.text.toString()) / density + 16f)
         val skipLayout = FrameLayout.LayoutParams(
             (skipWidth * density).toInt(), (48 * density).toInt(), Gravity.TOP or Gravity.END
         ).apply {

@@ -1,4 +1,5 @@
 import 'package:bojian_mobile/app_store.dart';
+import 'package:bojian_mobile/article_reaction_button.dart';
 import 'package:bojian_mobile/article_rich_content.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/discovery.dart';
@@ -32,10 +33,38 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ArticleReactionButton>(
+              find.byKey(const ValueKey('detail-like')),
+            )
+            .count,
+        article.likes,
+      );
       expect(find.text(article.title), findsOneWidget);
       expect(find.text('正文'), findsNothing);
       expect(find.text('经验分享'), findsNothing);
       expect(find.text('文章正文内容'), findsOneWidget);
+      final actions = find.byKey(const ValueKey('article-end-actions'));
+      expect(
+        find.descendant(of: actions, matching: find.byType(ArticleReactionButton)),
+        findsNWidgets(2),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.byType(ArticleReactionButton),
+        ),
+        findsNothing,
+      );
+      expect(
+        tester.getTopLeft(actions).dy,
+        greaterThan(tester.getBottomLeft(find.byType(ArticleRichBody)).dy),
+      );
+      expect(
+        tester.getBottomLeft(actions).dy,
+        lessThan(tester.getTopLeft(find.text('评论（0）')).dy),
+      );
       await tester.enterText(find.byType(TextField), '这份复盘很有用');
       await tester.pump();
       await tester.tap(find.byTooltip('发送评论'));

@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/settings_page.dart';
@@ -38,6 +40,53 @@ Future<void> tapText(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets(
+    'Cache size updates after decoding and clearing removes the entry',
+    (tester) async {
+      final cache = PaintingBinding.instance.imageCache;
+      cache.clear();
+      cache.clearLiveImages();
+      addTearDown(() {
+        cache.clear();
+        cache.clearLiveImages();
+      });
+      final store = await testStore(authenticated: true);
+      addTearDown(store.dispose);
+      await tester.pumpWidget(MaterialApp(home: SettingsPage(store: store)));
+      await tester.scrollUntilVisible(find.text('图片缓存'), 160);
+      expect(find.text('0 B'), findsOneWidget);
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawRect(
+        const Rect.fromLTWH(0, 0, 64, 64),
+        Paint()..color = Colors.blue,
+      );
+      final picture = recorder.endRecording();
+      final image = await tester.runAsync(() => picture.toImage(64, 64));
+      picture.dispose();
+      var decodes = 0;
+      ImageStreamCompleter load() {
+        decodes++;
+        return OneFrameImageStreamCompleter(
+          Future.value(ImageInfo(image: image!)),
+        );
+      }
+
+      cache.putIfAbsent('same-image', load);
+      await tester.pump();
+      cache.putIfAbsent('same-image', load);
+      await tester.pump(const Duration(seconds: 1));
+      expect(decodes, 1);
+      expect(find.text('16.0 KB'), findsOneWidget);
+      await tapText(tester, '图片缓存');
+      await tester.tap(find.widgetWithText(TextButton, '清理'));
+      await tester.pumpAndSettle();
+      expect(cache.containsKey('same-image'), isFalse);
+      expect(find.text('0 B'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets('Remote logout preserves current login and failed rows', (
     tester,
   ) async {

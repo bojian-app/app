@@ -7,6 +7,73 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fake_gateway.dart';
 
 void main() {
+  test(
+    'Realtime count refresh preserves loaded feed pages and reaction state',
+    () async {
+      final api = FakeGateway();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      store.stories.clear();
+      final first = decodeStory({
+        'id': 88,
+        'comment_count': 0,
+        'like_count': 2,
+      });
+      final second = decodeStory({'id': 89});
+      store.stories.addAll([first, second]);
+      store.cursors['feed'] = 'next-page';
+      api.documents['GetArticlesId'] = {
+        'comment_count': 7,
+        'like_count': 9,
+        'is_liked': true,
+      };
+      await store.refreshArticleMetrics(88);
+      expect(store.stories, [first, second]);
+      expect(store.cursors['feed'], 'next-page');
+      expect(first.commentCount, 7);
+      expect(first.likes, 9);
+      store.pending.add('like-88');
+      api.documents['GetArticlesId'] = {
+        'comment_count': 8,
+        'like_count': 2,
+        'is_liked': false,
+      };
+      await store.refreshArticleMetrics(88);
+      expect(first.commentCount, 8);
+      expect(first.likes, 9);
+      expect(first.liked, true);
+    },
+  );
+
+  test(
+    'Comment totals include replies and synchronize detached feed entries',
+    () async {
+      final api = FakeGateway();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      final feed = decodeStory({'id': 88, 'comment_count': 0});
+      final detail = decodeStory({'id': 88});
+      store.stories.add(feed);
+      api.documents['GetArticlesIdComments'] = {
+        'total': 63,
+        'items': [
+          {'id': 1, 'reply_count': 4},
+        ],
+      };
+      await store.article(detail);
+      expect(feed.commentCount, 63);
+      expect(detail.commentCount, 63);
+      api.documents['GetArticlesIdComments'] = {
+        'items': [
+          {'id': 1, 'reply_count': 4},
+          {'id': 2, 'is_deleted': true, 'reply_count': 2},
+        ],
+      };
+      await store.article(detail);
+      expect(feed.commentCount, 7);
+    },
+  );
+
   testWidgets(
     'Replies target the selected comment; reactions use server state and failures retain it',
     (tester) async {

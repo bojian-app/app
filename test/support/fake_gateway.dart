@@ -1,3 +1,4 @@
+import 'package:bojian_mobile/guidance_help.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/api/generated/auth.pb.dart' as auth;
@@ -197,6 +198,7 @@ class FakeGateway implements ApiGateway {
 Future<AppStore> testStore({
   bool authenticated = false,
   bool seeded = false,
+  bool guidanceHelpSeen = true,
   FakeGateway? api,
 }) async {
   final store = AppStore(
@@ -207,6 +209,14 @@ Future<AppStore> testStore({
   if (authenticated) {
     await store.signIn('13812345678', '654321');
     await store.loadAll();
+  }
+  if (guidanceHelpSeen) {
+    for (final tour in guidanceTourIds) {
+      await store.storage.write(
+        guidanceTourStorageKey(store.userID, tour),
+        'seen',
+      );
+    }
   }
   return store;
 }

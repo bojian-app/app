@@ -145,6 +145,7 @@ class GuidanceInlineNote extends StatelessWidget {
       width: metrics.buttonWidth(accept ? '采纳' : '不采纳'),
       height: metrics.actionHeight,
       child: TextButton(
+        key: ValueKey(accept ? 'tour-accept' : 'tour-reject'),
         onPressed: disabled || busy ? null : () => onDecide(accept),
         style: accept
             ? buttonStyle

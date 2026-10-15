@@ -47,3 +47,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local signing material and tool caches
+*.p12
+*.pfx
+*.csr
+*.jks
+*.keystore
+/.pnpm-store/
+/material/

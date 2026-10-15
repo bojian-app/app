@@ -174,7 +174,11 @@ void main() {
     tester,
   ) async {
     await launch(tester, guest: true);
-    await tester.tap(find.byTooltip('发布文章'));
+    await tester.tap(find.text('我的').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我的文章'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('写文章'));
     await tester.pumpAndSettle();
     final editor = tester.widget<quill.QuillEditor>(
       find.byKey(const ValueKey('composer-body')),

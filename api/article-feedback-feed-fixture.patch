@@ -1,0 +1,10 @@
+--- a/internal/httpapi/home_feed_integration_test.go
++++ b/internal/httpapi/home_feed_integration_test.go
+@@ -52,6 +52,7 @@
+  CREATE TABLE friendships(user_low_id bigint,user_high_id bigint);
+  CREATE TABLE notifications(user_id bigint,actor_id bigint,type text,subject_type text,subject_id bigint);
+  CREATE TABLE user_blocks(blocker_id bigint,blocked_id bigint);
++ CREATE TABLE post_comments(id bigint PRIMARY KEY,post_id bigint,author_id bigint,parent_id bigint,reply_to_id bigint,status text DEFAULT 'VISIBLE',deleted_at timestamptz);
+  CREATE TABLE post_likes(post_id bigint,created_at timestamptz DEFAULT now(),user_id bigint,UNIQUE(post_id,user_id));
+  CREATE TABLE post_collections(post_id bigint,created_at timestamptz DEFAULT now(),user_id bigint,UNIQUE(post_id,user_id));
+  CREATE TABLE post_shares(id bigint GENERATED ALWAYS AS IDENTITY,post_id bigint,created_at timestamptz DEFAULT now(),user_id bigint,idempotency_key text,UNIQUE(user_id,idempotency_key));

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import 'design.dart';
@@ -127,14 +128,18 @@ class _StartupScreenState extends State<StartupScreen>
                               top: 12,
                               end: 16,
                             ),
-                            child: TextButton(
+                            child: CupertinoButton(
                               onPressed: _finish,
-                              style: TextButton.styleFrom(
-                                backgroundColor: const Color(0xE6F7F8FA),
-                                foregroundColor: const Color(0xFF697586),
-                                minimumSize: const Size(72, 48),
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(48, 48),
+                              child: const Text(
+                                '跳过',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
+                                  color: Color(0xFF697586),
+                                ),
                               ),
-                              child: const Text('跳过'),
                             ),
                           ),
                         ),

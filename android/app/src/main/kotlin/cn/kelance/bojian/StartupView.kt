@@ -1,4 +1,4 @@
-package com.example.bojian_mobile
+package cn.kelance.bojian
 
 import android.content.Context
 import android.graphics.Canvas

@@ -74,15 +74,6 @@ class GuidanceFeedCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    '简历求指点',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: accent,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 14),

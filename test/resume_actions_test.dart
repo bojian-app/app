@@ -1,6 +1,7 @@
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_guidance_share.dart';
 import 'package:bojian_mobile/resume_pages.dart';
+import 'package:bojian_mobile/resume_polish_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,7 +36,9 @@ void main() {
       expect(find.byType(ResumePreview), findsNothing);
       await tester.tap(find.byKey(const ValueKey('resume-ai-optimize-42')));
       await tester.pumpAndSettle();
-      expect(find.text('AI简历优化即将上线'), findsOneWidget);
+      expect(find.byType(ResumePolishPage), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
       expect(find.text('请求优化'), findsNothing);
       await tester.tap(menu);
       await tester.pumpAndSettle();

@@ -1,0 +1,63 @@
+{
+  "status": "DEPLOYED_AND_HEALTHY",
+  "production_deployed": true,
+  "image": "bojian-api:article-feedback-20261013-r1",
+  "previous_image": "bojian-api:guidance-notification-summary-20261013-r1",
+  "sha256": "73874a0682a9e85201b04ef1ac9ebb9d8e5fc349b801ba9f84bc987e10895c55",
+  "test_sha256": "d6243ed6a259e4f4ff283f938a1b87be847266b7325c84978a17403178793d0e",
+  "migration": "044_article_comment_notifications.sql",
+  "source_path": "/tmp/bojian-article-feedback-release/source",
+  "remote_release_path": "/home/ubuntu/bojian-article-feedback-20261013-r1",
+  "source_changes": {
+    "internal/httpapi/resume_guidance_test.go": {
+      "before_sha256": "f041046d71a8da45051ffc9b803c2e8bb6d9d14936976276eaa407fb4784687b",
+      "after_sha256": "c31e1ffb739297b4cf7130077830b72d9ad4722fd544884ec6121649c4397b09"
+    },
+    "internal/httpapi/article_feedback_test.go": {
+      "before_sha256": null,
+      "after_sha256": "0d26a7fc0a8d4b63c787c8e3be2afff0af4ba9c757f38a863376d644cdfcaf5d"
+    },
+    "internal/httpapi/articles.go": {
+      "before_sha256": "a11ec8830beceddc51e6d1ad8592aebf4db04083e2adc5ecfec04dd5066b12eb",
+      "after_sha256": "aa0dfefe92ddede0098402d139080ca63bb96d7ce7f0f039869d5675ab56459d"
+    },
+    "internal/httpapi/article_comment_counts.go": {
+      "before_sha256": null,
+      "after_sha256": "9999898061610bbbc0a1bf9c0e0f6745ee238dfd1a2cf8c23c79dc4d0be1d301"
+    },
+    "internal/httpapi/home_feed_integration_test.go": {
+      "before_sha256": "a51b9e0be205582e7b287e1031edc03ae1b9e07a2133bfa90caba23bea55baab",
+      "after_sha256": "c0599dc16ac5e424adb414177a4a442f5dd8ea2df568b2bf0ad72f5365549936"
+    },
+    "internal/database/migrations/044_article_comment_notifications.sql": {
+      "before_sha256": null,
+      "after_sha256": "95f8a55afe7a6260c843c4d6da406462b342018abfa8b100a430d77b8639f79d"
+    }
+  },
+  "historical_notifications_backfilled": false,
+  "verified_at": "2026-10-13T13:05:46.738916+00:00",
+  "checks": {
+    "isolated_postgresql16": "11 top-level tests passed, including feed pagination, article comments and reactions, notification outbox, guidance sharing and previous guidance notification summaries",
+    "running_binary_sha256": "PASS",
+    "migration_044": "PASS",
+    "comment_notification_trigger": "ENABLED",
+    "api_container_health": "healthy",
+    "public_https_ready_from_server": "PASS",
+    "public_https_ready_from_local": "Local TLS handshake failed, including direct no-proxy retry",
+    "other_services": "healthy/unchanged"
+  },
+  "backup_path": "/home/ubuntu/bojian-article-feedback-20261013-r1/database.before.dump",
+  "rollback_compose_backups": [
+    "/home/ubuntu/bojian-article-feedback-20261013-r1/compose.production.before.yaml",
+    "/home/ubuntu/bojian-article-feedback-20261013-r1/compose.admin.before.yaml"
+  ],
+  "mobile_install": {
+    "installed": true,
+    "device_model": "OPPO PJD110",
+    "mode": "release arm64, preserve data",
+    "apk_sha256": "2a27231bb8237e30113aa6dfaec3d1a375f5f18465a5534fef1a1e2e8bf85aba",
+    "verified_at": "2026-10-13T14:27:25.834302+00:00",
+    "launch": "Status ok, COLD, 457ms",
+    "warm_resume_check": "not completed: device disconnected after launch"
+  }
+}

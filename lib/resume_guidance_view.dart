@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'guidance_inline_note.dart';
+import 'guidance_help.dart';
 import 'guidance_region_comments.dart';
 
 import 'package:flutter/material.dart';
@@ -627,126 +628,214 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(
-        ownerDetail
-            ? '简历详情'
-            : ownerReview && widget.reviewerKey != null
-            ? '审阅指点'
-            : '简历指点',
-      ),
-      actions: [
-        if (ownerReview && widget.reviewerKey != null)
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: TextButton(
-              onPressed: staged.isEmpty || saving ? null : saveReview,
-              child: saving
-                  ? const SizedBox(
-                      width: 17,
-                      height: 17,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('保存'),
-            ),
-          ),
+  Widget build(BuildContext context) => GuidanceWalkthrough(
+    store: widget.store,
+    id: ownerLanding
+        ? 'participants'
+        : ownerReview
+        ? 'review'
+        : ownerDetail
+        ? 'author-detail'
+        : 'reviewer',
+    ready: data != null,
+    steps: [
+      if (ownerLanding) ...[
+        const GuidanceStep(
+          'guidance-participant-',
+          '选择一位指点者',
+          '点击这里，逐位查看对方的评论和改写建议。列表可下拉刷新。',
+          prefix: true,
+        ),
+      ] else if (ownerDetail) ...[
+        const GuidanceStep(
+          'tour-document',
+          '这是你的简历预览',
+          '上下滑动阅读，双指缩放。要处理大家的建议，请从“消息 → 系统通知”进入指点通知，再选择参与者。',
+        ),
+      ] else if (ownerReview) ...[
+        const GuidanceStep(
+          'tour-document',
+          '对照原文审阅',
+          '上下滑动查看建议。波浪线表示评论，点击评论标记可以回复；改写内容会附在原文附近。',
+        ),
+        const GuidanceStep(
+          'guidance-inline-note-',
+          '比较这条改写',
+          '这里展示对方建议的文字。早期建议如提示手动调整，请到简历编辑页修改。',
+          prefix: true,
+        ),
+        const GuidanceStep(
+          'tour-accept',
+          '先采纳，预览效果',
+          '点击“采纳”可预览替换后的简历；按住替换后的文字查看原文。原文变化或建议重叠时，请核对后手动调整。',
+        ),
+        const GuidanceStep(
+          'tour-reject',
+          '不适合可以不采纳',
+          '点击“不采纳”会直接提交这个决定。评论不用采纳，点击对应评论即可交流。',
+        ),
+        const GuidanceStep(
+          'tour-save',
+          '最后一定要保存',
+          '采纳后点击这里，才会保存为新简历，原简历会保留。没有待保存的采纳内容时按钮不可用。完成后可返回查看其他人的建议。',
+        ),
+      ] else ...[
+        const GuidanceStep(
+          'tour-document',
+          '先看看这份简历',
+          '上下滑动阅读，双指捏合缩放，放大后拖动查看。隐藏的个人信息不能选中或改写。',
+        ),
+        const GuidanceStep(
+          'resume-annotation-region-',
+          '点这段文字开始指点',
+          '点击简历文字区域，会出现“查看评论”和“参与改写”。点击菜单外可取消选中。',
+          prefix: true,
+        ),
+        const GuidanceStep(
+          'resume-annotation-region-',
+          '评论，说说你的看法',
+          '选中后点击“查看评论”，就能讨论这段内容。已有讨论会显示波浪线和评论数量，点击标记也能进入。',
+          prefix: true,
+        ),
+        const GuidanceStep(
+          'resume-annotation-region-',
+          '改写，给出具体写法',
+          '选中后点击“参与改写”。提交后仅你和作者可见，等待作者采纳；按住改写后的文字可对照原文。',
+          prefix: true,
+        ),
+        const GuidanceStep(
+          'tour-feedback',
+          '也可以按项目给建议',
+          '点击这里，选择简历项目后填写建议。这类建议不会直接替换原文。',
+        ),
       ],
-    ),
-    body: data == null
-        ? Center(
-            child: error == null
-                ? const CircularProgressIndicator(strokeWidth: 2)
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(error!),
-                      TextButton(onPressed: load, child: const Text('重新加载')),
-                    ],
-                  ),
-          )
-        : ownerLanding
-        ? GuidanceParticipantList(
-            title: '${data!['title'] ?? '分享的简历'}',
-            records: records,
-            onReview: openReviewer,
-            onRefresh: load,
-          )
-        : Column(
-            children: [
-              if (ownerReview && reviewerRecords.isNotEmpty)
-                GuidanceReviewHeading(
-                  participant: GuidanceParticipant(
-                    widget.reviewerKey!,
-                    reviewerRecords,
-                  ),
-                ),
-              if (data!['is_owner'] != true &&
-                  '${data!['question'] ?? ''}'.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '${data!['question']}',
-                      style: const TextStyle(fontSize: 13, height: 1.6),
+    ],
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text(
+          ownerDetail
+              ? '简历详情'
+              : ownerReview && widget.reviewerKey != null
+              ? '审阅指点'
+              : '简历指点',
+        ),
+        actions: [
+          if (ownerReview && widget.reviewerKey != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: TextButton(
+                key: const ValueKey('tour-save'),
+                onPressed: staged.isEmpty || saving ? null : saveReview,
+                child: saving
+                    ? const SizedBox(
+                        width: 17,
+                        height: 17,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('保存'),
+              ),
+            ),
+        ],
+      ),
+      body: data == null
+          ? Center(
+              child: error == null
+                  ? const CircularProgressIndicator(strokeWidth: 2)
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(error!),
+                        TextButton(onPressed: load, child: const Text('重新加载')),
+                      ],
+                    ),
+            )
+          : ownerLanding
+          ? GuidanceParticipantList(
+              title: '${data!['title'] ?? '分享的简历'}',
+              records: records,
+              onReview: openReviewer,
+              onRefresh: load,
+            )
+          : Column(
+              children: [
+                if (ownerReview && reviewerRecords.isNotEmpty)
+                  GuidanceReviewHeading(
+                    participant: GuidanceParticipant(
+                      widget.reviewerKey!,
+                      reviewerRecords,
                     ),
                   ),
-                ),
-              Expanded(
-                child: data!['snapshot'] == null
-                    ? SingleChildScrollView(
-                        padding: const EdgeInsets.all(20),
-                        child: ArticleRichBody(
-                          content: Map<String, dynamic>.from(
-                            data!['legacy_content'] as Map? ?? {},
-                          ),
-                        ),
-                      )
-                    : ResumeDocumentView(
-                        key: documentKey,
-                        resume: displayResume,
-                        onAnnotate: data!['is_owner'] == true ? null : annotate,
-                        reviewNotes: ownerReview
-                            ? inlineNotes(context)
-                            : const [],
-                        reviewNoteBuilder: ownerReview
-                            ? (context, key) {
-                                final record = reviewerRecords.firstWhere(
-                                  (v) => guidanceRecordKey(v) == key,
-                                );
-                                return GuidanceInlineNote(
-                                  key: ValueKey('guidance-inline-note-$key'),
-                                  record: record,
-                                  paperScale: documentScale(context),
-                                  canDecide: ownerReview,
-                                  busy: busyRecord == key,
-                                  disabled: busyRecord != null || saving,
-                                  active: activeRecord == key,
-                                  onDecide: (accept) =>
-                                      decideInline(record, accept),
-                                );
-                              }
-                            : null,
-                        reviewHighlights: ownerDetail
-                            ? const []
-                            : reviewHighlights,
-                        onReviewTap: ownerDetail ? null : openReviewMarks,
+                if (data!['is_owner'] != true &&
+                    '${data!['question'] ?? ''}'.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${data!['question']}',
+                        style: const TextStyle(fontSize: 13, height: 1.6),
                       ),
-              ),
-            ],
-          ),
-    bottomNavigationBar: data?['can_review'] == true
-        ? SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: FilledButton(
-                onPressed: feedback,
-                child: const Text('给出建议'),
-              ),
+                    ),
+                  ),
+                Expanded(
+                  key: const ValueKey('tour-document'),
+                  child: data!['snapshot'] == null
+                      ? SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: ArticleRichBody(
+                            content: Map<String, dynamic>.from(
+                              data!['legacy_content'] as Map? ?? {},
+                            ),
+                          ),
+                        )
+                      : ResumeDocumentView(
+                          key: documentKey,
+                          resume: displayResume,
+                          onAnnotate: data!['is_owner'] == true
+                              ? null
+                              : annotate,
+                          reviewNotes: ownerReview
+                              ? inlineNotes(context)
+                              : const [],
+                          reviewNoteBuilder: ownerReview
+                              ? (context, key) {
+                                  final record = reviewerRecords.firstWhere(
+                                    (v) => guidanceRecordKey(v) == key,
+                                  );
+                                  return GuidanceInlineNote(
+                                    key: ValueKey('guidance-inline-note-$key'),
+                                    record: record,
+                                    paperScale: documentScale(context),
+                                    canDecide: ownerReview,
+                                    busy: busyRecord == key,
+                                    disabled: busyRecord != null || saving,
+                                    active: activeRecord == key,
+                                    onDecide: (accept) =>
+                                        decideInline(record, accept),
+                                  );
+                                }
+                              : null,
+                          reviewHighlights: ownerDetail
+                              ? const []
+                              : reviewHighlights,
+                          onReviewTap: ownerDetail ? null : openReviewMarks,
+                        ),
+                ),
+              ],
             ),
-          )
-        : null,
+      bottomNavigationBar: data?['can_review'] == true
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: FilledButton(
+                  key: const ValueKey('tour-feedback'),
+                  onPressed: feedback,
+                  child: const Text('给出建议'),
+                ),
+              ),
+            )
+          : null,
+    ),
   );
 }
 
@@ -814,61 +903,81 @@ class _GuidanceFeedbackState extends State<_GuidanceFeedback> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !sending,
-    child: SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          24,
-          20,
-          20 + MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              '给出建议',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 20),
-            DropdownButtonFormField<String>(
-              initialValue: field,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: '针对哪一项'),
-              items: widget.fields.entries
-                  .map(
-                    (e) => DropdownMenuItem(
-                      value: e.key,
-                      child: Text(
-                        e.value,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: sending ? null : (v) => setState(() => field = v!),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: suggestion,
-              enabled: !sending,
-              minLines: 3,
-              maxLines: 6,
-              maxLength: 10000,
-              decoration: const InputDecoration(hintText: '写下具体的修改建议'),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: sending ? null : submit,
-                child: Text(sending ? '正在发送…' : '发送建议'),
+  Widget build(BuildContext context) => GuidanceWalkthrough(
+    store: widget.store,
+    id: 'feedback',
+    steps: const [
+      GuidanceStep('tour-feedback-field', '选好建议对应的项目', '展开这里，选择你想点评的简历内容。'),
+      GuidanceStep(
+        'tour-feedback-input',
+        '写下具体建议',
+        '说明哪里可以改进、为什么，以及怎么修改。这里是文字建议，不会直接替换原文。',
+      ),
+      GuidanceStep(
+        'tour-feedback-send',
+        '确认后发送',
+        '点击“发送建议”提交。发送失败时输入会保留，可检查网络后重试。',
+      ),
+    ],
+    child: PopScope(
+      canPop: !sending,
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            24,
+            20,
+            20 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '给出建议',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              DropdownButtonFormField<String>(
+                key: const ValueKey('tour-feedback-field'),
+                initialValue: field,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: '针对哪一项'),
+                items: widget.fields.entries
+                    .map(
+                      (e) => DropdownMenuItem(
+                        value: e.key,
+                        child: Text(
+                          e.value,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: sending ? null : (v) => setState(() => field = v!),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const ValueKey('tour-feedback-input'),
+                controller: suggestion,
+                enabled: !sending,
+                minLines: 3,
+                maxLines: 6,
+                maxLength: 10000,
+                decoration: const InputDecoration(hintText: '写下具体的修改建议'),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const ValueKey('tour-feedback-send'),
+                  onPressed: sending ? null : submit,
+                  child: Text(sending ? '正在发送…' : '发送建议'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     ),

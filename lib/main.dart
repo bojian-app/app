@@ -13,6 +13,10 @@ import 'resume_pages.dart';
 
 void main(List<String> args) {
   WidgetsFlutterBinding.ensureInitialized();
+  // Keep decoded previews bounded while browsing; old entries are evicted by LRU.
+  PaintingBinding.instance.imageCache
+    ..maximumSize = 160
+    ..maximumSizeBytes = 32 * 1024 * 1024;
   runApp(MyApp(nativeStartup: args.contains('--native-startup')));
 }
 

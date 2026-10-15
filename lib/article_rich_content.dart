@@ -123,6 +123,7 @@ class ArticleRichBody extends StatelessWidget {
         if (url != null && ['https', 'http'].contains(url.scheme))
           Image.network(
             url.toString(),
+            cacheWidth: 1440,
             fit: BoxFit.contain,
             semanticLabel: '${data['alt'] ?? ''}',
             errorBuilder: (_, _, _) => Text(

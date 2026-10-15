@@ -1,3 +1,4 @@
+import 'guidance_help.dart';
 import 'user_display_name.dart';
 
 import 'package:flutter/material.dart';
@@ -682,166 +683,198 @@ class _RegionCommentsState extends State<_RegionComments>
   @override
   Widget build(BuildContext context) {
     final groups = threads;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        sheetHeight = constraints.maxHeight;
-        minimumContentHeight = MediaQuery.textScalerOf(context).scale(200);
-        return DraggableScrollableSheet(
-          controller: sheet,
-          expand: false,
-          initialChildSize: .70,
-          minChildSize: .45,
-          maxChildSize: .94,
-          snap: true,
-          snapSizes: const [.70],
-          builder: (context, scroll) => Material(
-            key: const ValueKey('region-comments-panel'),
-            color: Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-            clipBehavior: Clip.antiAlias,
-            child: SafeArea(
-              top: false,
-              maintainBottomViewPadding: true,
-              child: Padding(
-                key: const ValueKey('region-comments-keyboard-padding'),
-                padding: EdgeInsets.only(
-                  bottom:
-                      (animatedKeyboardInset -
-                              MediaQuery.viewPaddingOf(context).bottom)
-                          .clamp(0.0, double.infinity),
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) => Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 9, bottom: 3),
-                        child: Container(
-                          width: 28,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE0E2E5),
-                            borderRadius: BorderRadius.circular(2),
+    return GuidanceWalkthrough(
+      store: widget.store,
+      id: widget.owner ? 'owner-comments' : 'comments',
+      ready: items != null && error == null,
+      steps: [
+        GuidanceStep(
+          'region-comments-list',
+          '围绕这段内容讨论',
+          widget.owner
+              ? '点击一条评论或“回复”开始回复。展开回复可查看完整讨论，再次点击可以收起。'
+              : '这里展示当前选区的讨论。点击评论或“回复”可回复对方，展开回复可查看完整讨论。',
+        ),
+        GuidanceStep(
+          'tour-comment-composer',
+          widget.owner ? '选择评论后再回复' : '写评论，也能回复',
+          widget.owner
+              ? '先点击上方评论，再在这里输入并发送。点击“取消回复”可退出回复状态。'
+              : '输入看法后点击“发送”。回复时这里会显示回复对象，点击“取消回复”可改为发表新评论。区域评论对可访问这份分享的用户可见。',
+        ),
+        const GuidanceStep(
+          'tour-comment-close',
+          '关闭后继续指点',
+          '点击这里返回简历。已输入的内容请先发送；发送失败可保留输入重试。',
+        ),
+      ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          sheetHeight = constraints.maxHeight;
+          minimumContentHeight = MediaQuery.textScalerOf(context).scale(200);
+          return DraggableScrollableSheet(
+            controller: sheet,
+            expand: false,
+            initialChildSize: .70,
+            minChildSize: .45,
+            maxChildSize: .94,
+            snap: true,
+            snapSizes: const [.70],
+            builder: (context, scroll) => Material(
+              key: const ValueKey('region-comments-panel'),
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SafeArea(
+                top: false,
+                maintainBottomViewPadding: true,
+                child: Padding(
+                  key: const ValueKey('region-comments-keyboard-padding'),
+                  padding: EdgeInsets.only(
+                    bottom:
+                        (animatedKeyboardInset -
+                                MediaQuery.viewPaddingOf(context).bottom)
+                            .clamp(0.0, double.infinity),
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 9, bottom: 3),
+                          child: Container(
+                            width: 28,
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0E2E5),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
                           ),
                         ),
-                      ),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 44,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 56,
-                              ),
-                              child: Text(
-                                '评论${items == null ? '' : '（${items!.length}）'}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF24262B),
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 56,
+                                ),
+                                child: Text(
+                                  '评论${items == null ? '' : '（${items!.length}）'}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF24262B),
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
-                            ),
-                            Positioned(
-                              right: 6,
-                              child: IconButton(
-                                tooltip: '关闭评论',
-                                onPressed: () => Navigator.pop(context),
-                                style: IconButton.styleFrom(
-                                  overlayColor: Colors.transparent,
-                                ),
-                                icon: const Icon(
-                                  Icons.close,
-                                  size: 21,
-                                  color: Color(0xFF34363C),
+                              Positioned(
+                                right: 6,
+                                child: IconButton(
+                                  key: const ValueKey('tour-comment-close'),
+                                  tooltip: '关闭评论',
+                                  onPressed: () => Navigator.pop(context),
+                                  style: IconButton.styleFrom(
+                                    overlayColor: Colors.transparent,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.close,
+                                    size: 21,
+                                    color: Color(0xFF34363C),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      Expanded(
-                        child: CustomScrollView(
-                          key: const ValueKey('region-comments-list'),
-                          controller: scroll,
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          slivers: [
-                            if (error != null ||
-                                items == null ||
-                                groups.isEmpty)
-                              SliverFillRemaining(
-                                hasScrollBody: false,
-                                child: error != null
-                                    ? Center(
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(24),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                error!,
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  color: muted,
+                        Expanded(
+                          child: CustomScrollView(
+                            key: const ValueKey('region-comments-list'),
+                            controller: scroll,
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            slivers: [
+                              if (error != null ||
+                                  items == null ||
+                                  groups.isEmpty)
+                                SliverFillRemaining(
+                                  hasScrollBody: false,
+                                  child: error != null
+                                      ? Center(
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(24),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  error!,
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color: muted,
+                                                  ),
                                                 ),
-                                              ),
-                                              TextButton(
-                                                onPressed: load,
-                                                child: const Text('重新加载'),
-                                              ),
-                                            ],
+                                                TextButton(
+                                                  onPressed: load,
+                                                  child: const Text('重新加载'),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        )
+                                      : items == null
+                                      ? const Center(
+                                          child: SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                        )
+                                      : const Center(
+                                          child: Text(
+                                            '还没有评论，聊聊你的看法',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: Color(0xFFA3A7AF),
+                                            ),
                                           ),
                                         ),
-                                      )
-                                    : items == null
-                                    ? const Center(
-                                        child: SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        ),
-                                      )
-                                    : const Center(
-                                        child: Text(
-                                          '还没有评论，聊聊你的看法',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: Color(0xFFA3A7AF),
-                                          ),
-                                        ),
-                                      ),
-                              )
-                            else
-                              SliverPadding(
-                                padding: const EdgeInsets.only(
-                                  top: 2,
-                                  bottom: 14,
+                                )
+                              else
+                                SliverPadding(
+                                  padding: const EdgeInsets.only(
+                                    top: 2,
+                                    bottom: 14,
+                                  ),
+                                  sliver: SliverList.builder(
+                                    itemCount: groups.length,
+                                    itemBuilder: (_, index) =>
+                                        threadRow(groups[index]),
+                                  ),
                                 ),
-                                sliver: SliverList.builder(
-                                  itemCount: groups.length,
-                                  itemBuilder: (_, index) =>
-                                      threadRow(groups[index]),
-                                ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      composer(constraints.maxHeight),
-                    ],
+                        KeyedSubtree(
+                          key: const ValueKey('tour-comment-composer'),
+                          child: composer(constraints.maxHeight),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

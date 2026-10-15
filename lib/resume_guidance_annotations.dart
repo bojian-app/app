@@ -1,3 +1,4 @@
+import 'guidance_help.dart';
 import 'user_display_name.dart';
 
 import 'dart:convert';
@@ -157,115 +158,139 @@ class _AnnotationComposerState extends State<_AnnotationComposer> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !sending,
-    child: Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SafeArea(
-        top: false,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final lineHeight = MediaQuery.textScalerOf(context).scale(16) * 1.5;
-            final lines = ((constraints.maxHeight - 160) / lineHeight)
-                .floor()
-                .clamp(2, 6);
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          widget.replace ? '替换内容' : '评论这段内容',
-                          style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        if (!widget.replace) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: canvasColor,
-                              borderRadius: BorderRadius.circular(12),
+  Widget build(BuildContext context) => GuidanceWalkthrough(
+    store: widget.store,
+    id: 'rewrite',
+    steps: const [
+      GuidanceStep(
+        'tour-rewrite-input',
+        '把原文改成你建议的写法',
+        '这里已填入选中的原文。请修改为完整的替换内容；提交后仅你和作者可见。',
+      ),
+      GuidanceStep(
+        'annotation-submit',
+        '提交给作者确认',
+        '点击这里发送改写。你的预览会显示改写及采纳状态，按住改写后的文字可查看原文；作者采纳并保存后才会生成新简历。发送失败时输入会保留，可重试。',
+      ),
+    ],
+    child: PopScope(
+      canPop: !sending,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: SafeArea(
+          top: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final lineHeight =
+                  MediaQuery.textScalerOf(context).scale(16) * 1.5;
+              final lines = ((constraints.maxHeight - 160) / lineHeight)
+                  .floor()
+                  .clamp(2, 6);
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.replace ? '替换内容' : '评论这段内容',
+                            style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w600,
                             ),
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxHeight: math.min(
-                                  100,
-                                  constraints.maxHeight * .22,
-                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (!widget.replace) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: canvasColor,
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: SingleChildScrollView(
-                                child: Text(
-                                  widget.selected,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    height: 1.5,
-                                    color: muted,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxHeight: math.min(
+                                    100,
+                                    constraints.maxHeight * .22,
+                                  ),
+                                ),
+                                child: SingleChildScrollView(
+                                  child: Text(
+                                    widget.selected,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      height: 1.5,
+                                      color: muted,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 12),
+                          ],
+                          KeyedSubtree(
+                            key: const ValueKey('tour-rewrite-input'),
+                            child: TextField(
+                              key: inputKey,
+                              controller: text,
+                              focusNode: inputFocus,
+                              enabled: !sending,
+                              autofocus: false,
+                              minLines: 2,
+                              maxLines: lines,
+                              scrollPadding: const EdgeInsets.all(12),
+                              maxLength: widget.replace ? 20000 : 10000,
+                              decoration: InputDecoration(
+                                hintText: widget.replace
+                                    ? '填写建议替换的内容'
+                                    : '写下你的评论',
+                              ),
+                            ),
                           ),
-                          const SizedBox(height: 12),
                         ],
-                        TextField(
-                          key: inputKey,
-                          controller: text,
-                          focusNode: inputFocus,
-                          enabled: !sending,
-                          autofocus: true,
-                          minLines: 2,
-                          maxLines: lines,
-                          scrollPadding: const EdgeInsets.all(12),
-                          maxLength: widget.replace ? 20000 : 10000,
-                          decoration: InputDecoration(
-                            hintText: widget.replace ? '填写建议替换的内容' : '写下你的评论',
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.replace) ...[
+                          const Text(
+                            '改写内容仅你和作者可见。',
+                            style: TextStyle(fontSize: 12, color: muted),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            key: const ValueKey('annotation-submit'),
+                            onPressed: sending ? null : submit,
+                            child: Text(
+                              sending
+                                  ? '正在发送…'
+                                  : widget.replace
+                                  ? '提交替换建议'
+                                  : '发送评论',
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.replace) ...[
-                        const Text(
-                          '改写内容仅你和作者可见。',
-                          style: TextStyle(fontSize: 12, color: muted),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          key: const ValueKey('annotation-submit'),
-                          onPressed: sending ? null : submit,
-                          child: Text(
-                            sending
-                                ? '正在发送…'
-                                : widget.replace
-                                ? '提交替换建议'
-                                : '发送评论',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     ),

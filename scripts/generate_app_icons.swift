@@ -4,6 +4,8 @@ import AppKit
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let source = NSImage(contentsOf: root.appendingPathComponent("assets/branding/app_icon.png"))!
+// Keep the original artwork intact; apply the same inset to every app icon.
+let artworkScale: CGFloat = 0.855
 
 func png(_ size: Int, opaque: Bool = false, scale: CGFloat = 1) -> Data {
     let alpha: CGImageAlphaInfo = opaque ? .noneSkipLast : .premultipliedLast
@@ -16,9 +18,10 @@ func png(_ size: Int, opaque: Bool = false, scale: CGFloat = 1) -> Data {
         context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: side, height: side))
     }
-    let inset = side * (1 - scale) / 2
+    let renderedScale = scale * artworkScale
+    let inset = side * (1 - renderedScale) / 2
     let original = source.cgImage(forProposedRect: nil, context: nil, hints: nil)!
-    context.draw(original, in: CGRect(x: inset, y: inset, width: side * scale, height: side * scale))
+    context.draw(original, in: CGRect(x: inset, y: inset, width: side * renderedScale, height: side * renderedScale))
     let bitmap = NSBitmapImageRep(cgImage: context.makeImage()!)
     return bitmap.representation(using: .png, properties: [:])!
 }
@@ -53,6 +56,7 @@ for size in [192, 512] {
     try write(png(size), "web/icons/Icon-\(size).png")
     try write(png(size, opaque: true, scale: 0.8), "web/icons/Icon-maskable-\(size).png")
 }
+try write(png(1024, opaque: true), "build/previews/app_icon_store_1024.png")
 try write(png(32), "web/favicon.png")
 try write(png(256), "linux/runner/resources/app_icon.png")
 

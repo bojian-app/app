@@ -1,0 +1,11 @@
+{
+  "modelVersion": "5.1.0",
+  "name": "bojian",
+  "version": "1.0.0",
+  "description": "博简鸿蒙宿主工程",
+  "main": "",
+  "author": "",
+  "license": "",
+  "dependencies": {},
+  "devDependencies": {}
+}

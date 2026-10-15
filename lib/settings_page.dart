@@ -1,6 +1,7 @@
 import 'user_display_name.dart';
 
 import 'dart:io';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -27,11 +28,32 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool savingPrivacy = false;
+  Timer? cacheRefresh;
+  int imageCacheBytes = PaintingBinding.instance.imageCache.currentSizeBytes;
+
+  void refreshImageCache() {
+    final bytes = PaintingBinding.instance.imageCache.currentSizeBytes;
+    if (mounted && bytes != imageCacheBytes) {
+      setState(() => imageCacheBytes = bytes);
+    }
+  }
+
+  @override
+  void dispose() {
+    cacheRefresh?.cancel();
+    super.dispose();
+  }
+
   String version = '1.0.0';
   @override
   void initState() {
     super.initState();
     if (Platform.isAndroid) _loadVersion();
+    // Images finish decoding after this page builds; ImageCache is not a Listenable.
+    cacheRefresh = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => refreshImageCache(),
+    );
   }
 
   Future<void> _loadVersion() async {
@@ -95,7 +117,7 @@ class _SettingsPageState extends State<SettingsPage> {
     PaintingBinding.instance.imageCache
       ..clear()
       ..clearLiveImages();
-    setState(() {});
+    refreshImageCache();
     toast(context, '图片缓存已清理');
   }
 
@@ -104,8 +126,13 @@ class _SettingsPageState extends State<SettingsPage> {
     listenable: widget.store,
     builder: (context, _) {
       final store = widget.store;
-      final cached =
-          PaintingBinding.instance.imageCache.currentSizeBytes / (1024 * 1024);
+      final cached = imageCacheBytes == 0
+          ? '0 B'
+          : imageCacheBytes < 1024
+          ? '$imageCacheBytes B'
+          : imageCacheBytes < 1024 * 1024
+          ? '${(imageCacheBytes / 1024).toStringAsFixed(1)} KB'
+          : '${(imageCacheBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
       return Scaffold(
         appBar: AppBar(title: const Text('隐私与设置')),
         body: Center(
@@ -211,7 +238,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     _SettingsRow(
                       icon: AppIcons.imageCache,
                       title: '图片缓存',
-                      value: '${cached.toStringAsFixed(1)} MB',
+                      value: cached,
+                      subtitle: '图片内存缓存，最多保留 32 MB，自动淘汰旧图片',
                       onTap: _clearImages,
                     ),
                   ],

@@ -363,6 +363,7 @@ class MarketTemplateArtwork extends StatelessWidget {
         ? fallback
         : Image.network(
             url,
+            cacheWidth: 720,
             fit: BoxFit.contain,
             loadingBuilder: (context, child, progress) => progress == null
                 ? child

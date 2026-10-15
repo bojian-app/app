@@ -434,7 +434,11 @@ class _MessagesPageState extends State<MessagesPage> {
       });
       return;
     }
-    if (item.type == 'ARTICLE_LIKE' &&
+    if (const {
+          'ARTICLE_LIKE',
+          'ARTICLE_COMMENT',
+          'COMMENT_REPLY',
+        }.contains(item.type) &&
         item.subjectType == 'ARTICLE' &&
         item.subjectID > 0) {
       await runRequest(context, () async {
@@ -795,6 +799,7 @@ class _ChatPageState extends State<ChatPage> {
                 row['type'] == 'IMAGE' && Uri.tryParse(url)?.scheme == 'https'
                 ? Image.network(
                     url,
+                    cacheWidth: 540,
                     width: 180,
                     fit: BoxFit.contain,
                     errorBuilder: (_, _, _) => Text(
