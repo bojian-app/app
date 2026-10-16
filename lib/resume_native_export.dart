@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:archive/archive.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
@@ -12,8 +13,10 @@ import 'package:share_plus/share_plus.dart';
 import 'api/bojian_api.dart';
 
 const resumeDocumentFontFamily = 'ResumeDocument';
-const resumeFontRegularAsset = 'assets/fonts/resume-regular.ttf';
-const resumeFontBoldAsset = 'assets/fonts/resume-semibold.ttf';
+const resumeDocumentTypeface = '寒蝉全圆体';
+const resumeFontRegularAsset = 'assets/fonts/chill-round-f.ttf';
+// Upstream supplies a regular face; renderers synthesize emphasized text.
+const resumeFontBoldAsset = resumeFontRegularAsset;
 
 class ResumeExportSpan {
   const ResumeExportSpan({
@@ -203,7 +206,12 @@ Future<Uint8List> _pdf(
   Uint8List bold,
 ) async {
   final document = PdfDocument();
-  final fonts = [_PdfTypeface(document, regular), _PdfTypeface(document, bold)];
+  final synthesizeBold = listEquals(regular, bold);
+  final regularTypeface = _PdfTypeface(document, regular);
+  final fonts = [
+    regularTypeface,
+    synthesizeBold ? regularTypeface : _PdfTypeface(document, bold),
+  ];
   for (final sheet in layout.pages) {
     final page = PdfPage(
       document,
@@ -241,6 +249,11 @@ Future<Uint8List> _pdf(
             ? span.width / advance
             : 1.0;
         canvas.setColor(_color(span.color));
+        final strokeBold = span.bold && synthesizeBold;
+        if (strokeBold) {
+          canvas.saveContext();
+          canvas.setLineWidth(span.size * .025);
+        }
         var x = span.x;
         for (final piece in typeface.pieces(span.text)) {
           final font = typeface.font(piece.rank);
@@ -260,10 +273,14 @@ Future<Uint8List> _pdf(
             span.italic ? 0 : x,
             span.italic ? 0 : layout.height - line.baseline,
             scale: scale,
+            mode: strokeBold
+                ? PdfTextRenderingMode.fillAndStroke
+                : PdfTextRenderingMode.fill,
           );
           if (span.italic) canvas.restoreContext();
           x += font.stringMetrics(piece.text).advanceWidth * span.size * scale;
         }
+        if (strokeBold) canvas.restoreContext();
         if (span.underline || span.strike) {
           canvas.setLineWidth(math.max(.5, span.size / 18));
           for (final y in [
@@ -429,7 +446,7 @@ Uint8List _word(ResumeExportLayout layout, Uint8List regular, Uint8List bold) {
       for (final span in spans) {
         if (span.x > right + .75) body.write('<w:r><w:tab/></w:r>');
         body.write(
-          '<w:r><w:rPr><w:rFonts w:ascii="Noto Sans SC" w:hAnsi="Noto Sans SC" w:eastAsia="Noto Sans SC" w:cs="Noto Sans SC"/><w:sz w:val="${(span.size * 2).round()}"/><w:szCs w:val="${(span.size * 2).round()}"/><w:color w:val="${_rgb(span.color)}"/>${span.bold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.underline ? '<w:u w:val="single"/>' : ''}${span.strike ? '<w:strike/>' : ''}</w:rPr><w:t xml:space="preserve">${_xml(span.text)}</w:t></w:r>',
+          '<w:r><w:rPr><w:rFonts w:ascii="$resumeDocumentTypeface" w:hAnsi="$resumeDocumentTypeface" w:eastAsia="$resumeDocumentTypeface" w:cs="$resumeDocumentTypeface"/><w:sz w:val="${(span.size * 2).round()}"/><w:szCs w:val="${(span.size * 2).round()}"/><w:color w:val="${_rgb(span.color)}"/>${span.bold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.underline ? '<w:u w:val="single"/>' : ''}${span.strike ? '<w:strike/>' : ''}</w:rPr><w:t xml:space="preserve">${_xml(span.text)}</w:t></w:r>',
         );
         right = span.x + span.width;
       }
@@ -453,15 +470,16 @@ Uint8List _word(ResumeExportLayout layout, Uint8List regular, Uint8List bold) {
   );
   const key = '{00112233-4455-6677-8899-AABBCCDDEEFF}';
   final keyBytes = List<int>.generate(16, (i) => i * 17);
+  final hasBoldFace = !listEquals(regular, bold);
   add('word/fonts/regular.odttf', _obfuscated(regular, keyBytes));
-  add('word/fonts/bold.odttf', _obfuscated(bold, keyBytes));
+  if (hasBoldFace) add('word/fonts/bold.odttf', _obfuscated(bold, keyBytes));
   text(
     'word/fontTable.xml',
-    '<?xml version="1.0"?><w:fonts xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships"><w:font w:name="Noto Sans SC"><w:family w:val="swiss"/><w:embedRegular r:id="regular" w:fontKey="$key"/><w:embedBold r:id="bold" w:fontKey="$key"/></w:font></w:fonts>',
+    '<?xml version="1.0"?><w:fonts xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships"><w:font w:name="$resumeDocumentTypeface"><w:family w:val="swiss"/><w:embedRegular r:id="regular" w:fontKey="$key"/>${hasBoldFace ? '<w:embedBold r:id="bold" w:fontKey="$key"/>' : ''}</w:font></w:fonts>',
   );
   text(
     'word/_rels/fontTable.xml.rels',
-    '<?xml version="1.0"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="regular" Type="${rel}font" Target="fonts/regular.odttf"/><Relationship Id="bold" Type="${rel}font" Target="fonts/bold.odttf"/></Relationships>',
+    '<?xml version="1.0"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="regular" Type="${rel}font" Target="fonts/regular.odttf"/>${hasBoldFace ? '<Relationship Id="bold" Type="${rel}font" Target="fonts/bold.odttf"/>' : ''}</Relationships>',
   );
   return Uint8List.fromList(ZipEncoder().encode(zip));
 }

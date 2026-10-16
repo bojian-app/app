@@ -335,7 +335,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
           photo: photo,
           captureScript: captureScript,
           rendererScript: rendererScript,
-          fontStyles: "@font-face{font-family:ResumeDocument;src:url('regular.ttf');font-weight:400}@font-face{font-family:ResumeDocument;src:url('bold.ttf');font-weight:600 900}",
+          fontStyles: "@font-face{font-family:ResumeDocument;src:url('regular.ttf');font-weight:400}",
         ),
       );
       await web.loadFile(htmlFile.path);

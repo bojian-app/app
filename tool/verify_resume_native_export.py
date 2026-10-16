@@ -23,7 +23,12 @@ def check_pdf(path, expected_records=52):
         assert text.count(token) == 1, f"Lost or duplicated text: {token} in {path}"
     images = []
     bullet_checked = False
+    stroked_text = []
     for page in document:
+        stroked_text.extend(
+            "".join(chr(char[0]) for char in span["chars"])
+            for span in page.get_texttrace() if span["type"] == 1
+        )
         actual = page.get_image_info()
         assert all(pymupdf.Rect(item["bbox"]).get_area() < page.rect.get_area() * .5
                    for item in actual), f"A page was exported as an image: {path}"
@@ -51,6 +56,8 @@ def check_pdf(path, expected_records=52):
                         assert height < span["size"] * 7, "Bullet rendered as another glyph"
                         bullet_checked = True
     assert images == [1, 0], f"Unexpected pictures: {images} in {path}"
+    assert not any("交付记录" in text or "English italic" in text
+                   for text in stroked_text), "Bold rendering leaked into regular text"
     return {"pages": len(document), "records": expected_records,
             "displayed_images": images, "bullet_visually_verified": bullet_checked}
 
@@ -64,7 +71,9 @@ def check_word(path):
         assert len(root.findall("./w:body/w:p", ns)) > 40, "Editable paragraphs are missing"
         assert len([name for name in archive.namelist() if name.startswith("word/media/")]) == 1
         assert archive.getinfo("word/fonts/regular.odttf").file_size > 1000
-        assert archive.getinfo("word/fonts/bold.odttf").file_size > 1000
+        font_table = ET.fromstring(archive.read("word/fontTable.xml"))
+        if font_table.find(".//w:embedBold", ns) is not None:
+            assert archive.getinfo("word/fonts/bold.odttf").file_size > 1000
     return {"editable_paragraphs": True, "embedded_fonts": True, "portrait_only": True}
 
 

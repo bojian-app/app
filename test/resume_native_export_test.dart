@@ -153,6 +153,13 @@ void main() {
       isFalse,
     );
     expect(zip.findFile('word/fonts/regular.odttf'), isNotNull);
+    // A single-face family must keep its real name and let Word synthesize bold.
+    expect(xml, contains('w:eastAsia="$resumeDocumentTypeface"'));
+    final fontTable = utf8.decode(zip.findFile('word/fontTable.xml')!.content);
+    expect(fontTable, contains('w:name="$resumeDocumentTypeface"'));
+    expect(fontTable, contains('<w:embedRegular '));
+    expect(fontTable, isNot(contains('<w:embedBold ')));
+    expect(zip.findFile('word/fonts/bold.odttf'), isNull);
     final pdf = await encodeNativeResume(layout, 'PDF', regular, bold);
     expect(latin1.decode(pdf.take(5).toList()), '%PDF-');
     if (Platform.environment['BOJIAN_EXPORT_QA'] == '1') {
@@ -228,7 +235,7 @@ void main() {
         rendererScript: await rootBundle.loadString(
           'assets/templates/market_renderer.js',
         ),
-        fontStyles: "@font-face{font-family:ResumeDocument;src:url('regular.ttf');font-weight:400}@font-face{font-family:ResumeDocument;src:url('bold.ttf');font-weight:600 900}",
+        fontStyles: "@font-face{font-family:ResumeDocument;src:url('regular.ttf');font-weight:400}",
       );
       await File('${output.path}/market.html').writeAsString(marketHtml);
       await File('${output.path}/regular.ttf').writeAsBytes(regular);

@@ -77,13 +77,12 @@ flutter:
     - assets/branding/app_icon.png
     - assets/templates/
     - assets/fonts/OFL.txt
+    - assets/fonts/ChillRound-OFL.txt
   fonts:
     - family: ResumeDocument
       fonts:
-        - asset: assets/fonts/resume-regular.ttf
+        - asset: assets/fonts/chill-round-f.ttf
           weight: 400
-        - asset: assets/fonts/resume-semibold.ttf
-          weight: 600
     - family: AnnotationUI
       fonts:
         - asset: assets/fonts/annotation-ui.ttf
