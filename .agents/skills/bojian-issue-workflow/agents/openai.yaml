@@ -1,0 +1,4 @@
+interface:
+  display_name: "博简 Issue 驱动开发"
+  short_description: "博简项目先建 Issue、开发验证、关联提交，并在推送成功后记录结果关闭任务"
+  default_prompt: "使用 $bojian-issue-workflow 为本次博简变更先建立 Issue，再开发验证，并在已获授权的推送完成后关闭 Issue。"
