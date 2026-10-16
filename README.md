@@ -1,100 +1,80 @@
-# 博简 App
+# 博简手机 App
 
-Flutter 移动客户端，使用设备默认字体和与 `bojian-macos` 一致的应用图标。
+本仓库仅维护手机端 App：Android、iOS，以及正在适配的鸿蒙工程。共享业务代码使用 Flutter；后端服务与管理端在各自项目中维护。
 
-## 应用标识
+## 工程目录
 
-Android applicationId / namespace、iOS / macOS Bundle ID 与 Linux application ID 统一为 `cn.kelance.bojian`；Apple 测试目标为 `cn.kelance.bojian.RunnerTests`。Android 当前仍使用已有调试证书签名，正式发布前需配置发布证书。包名变更后会作为新应用安装，不覆盖旧包名应用或自动迁移其本地数据。
+| 目录 | 用途 |
+| --- | --- |
+| `lib/` | Flutter 业务代码、HTTP 客户端和生成的认证消息类型 |
+| `android/` | Android 原生宿主、文件收发和系统设置通道 |
+| `ios/` | iOS 原生宿主、签名配置和关联域名配置副本 |
+| `ohos/` | 鸿蒙接入工程，尚不可运行或发布，详见 [接入说明](ohos/README.md) |
+| `assets/` | App 图标、字体及许可证、简历模板渲染资源 |
+| `api/proto/auth.proto` | 客户端使用的认证消息协议 |
+| `test/` | 单元测试与 Widget 测试 |
+| `integration_test/`、`test_driver/` | 真机联通性与性能验证 |
+| `scripts/`、`tool/` | 手机构建、资源生成和诊断工具 |
 
-## 鸿蒙接入
+应用包名统一为 `cn.kelance.bojian`。Android 当前使用调试证书签名，正式发布前需配置发布证书。iOS 使用 Xcode 配置对应的开发团队和签名。
 
-已新增包名为 `cn.kelance.bojian` 的 `ohos/` 宿主工程，目前为接入准备阶段，尚不可运行或发布。SDK / 插件兼容性、原生桥接、后端平台识别和签名仍待完成；状态与操作说明见 [鸿蒙接入说明](ohos/README.md)。
+## 开发与验证
 
-## 运行
+使用满足 `pubspec.yaml` 中 Dart SDK 约束的 Flutter 工具链，依赖版本以 `pubspec.lock` 为准。
 
 ```sh
 flutter pub get
-flutter run --release
+flutter analyze
+flutter test
+flutter run --release -d <手机设备ID>
 ```
 
-默认连接 正式环境的 HTTP API `https://bojian.kelance.cn/api/v1`。修改环境时使用包含 `/api/v1` 前缀的完整 HTTPS 地址：
+默认服务地址为 `https://bojian.kelance.cn/api/v1`。可在运行或构建时覆盖：
 
 ```sh
-flutter run --release --dart-define=BOJIAN_API_BASE_URL=https://your-server.example/api/v1
+flutter run --release -d <手机设备ID> --dart-define=BOJIAN_API_BASE_URL=https://your-server.example/api/v1
 ```
 
-## Android 精简发布包
+地址必须使用 HTTPS 并包含 `/api/v1` 前缀。认证凭证保存在系统安全存储中；测试响应位于 `test/support/`。
+
+## Android 构建
 
 ```sh
 sh scripts/build_android_release.sh
 ```
 
-按处理器架构生成三个独立 APK，手机只安装其中一个：当前 PJD110 使用 `app-arm64-v8a-release.apk`，32 位 ARM 设备使用 `app-armeabi-v7a-release.apk`，x86_64 设备使用对应包。不要再将包含全部架构的 `app-release.apk` 作为默认分发包。可通过 `FLUTTER_BIN` 指定 Flutter 可执行文件。
+可通过 `FLUTTER_BIN` 指定 Flutter 可执行文件。脚本按 `armeabi-v7a`、`arm64-v8a`、`x86_64` 分别生成 APK，并把安装包和配套 Dart 调试符号归档到 `artifacts/android/<UTC时间>/`。
 
-脚本将 APK 和配套 Dart 调试符号归档到 `artifacts/android/<UTC时间>/`；每次发布应一起备份该目录，排查崩溃时使用对应符号执行 `flutter symbolize`。符号不放进安装包，也不随 `flutter clean` 删除。脚本保留 `pubspec.yaml` 的版本号，避免按架构增加版本号影响覆盖安装；正式升级仍需递增构建号。
+手机只安装匹配其处理器架构的 APK。发布时应一起备份 APK 和调试符号；构建脚本保留 `pubspec.yaml` 的版本号，正式升级前需递增构建号。
 
-## 数据与接口
+## iOS 构建与关联域名
 
-生产代码不包含示例账号、文章、简历、好友、消息或虚构积分。未登录时提示登录；接口返回空列表时显示空态；请求失败显示错误和重试入口。测试用响应仅位于 `test/support`。
-
-认证使用后端 HTTP API 的滑块拼图、短信、登录及刷新接口。业务请求使用后端 HTTP JSON 信封，覆盖文章、评论、收藏、简历、好友、通知、资料、积分和模板。凭证保存在系统安全存储中；退出会清空账号数据，并丢弃旧请求的迟到响应。
-
-当前手机端支持免费模板领取；付费模板购买、身份材料提交和包含多条结构化经历的段落编辑仍需在桌面端操作。手机编辑简历会保留未编辑的结构化字段，并使用 revision 防止覆盖其他端的更新。
-
-导入简历支持 PDF、DOC、DOCX，文件最大 20 MB。“从本机文件上传”打开系统文件选择器；Android 的“从微信文件上传”可在微信打开文件后，通过“用其他应用打开”选择“博简”，也可以选择已保存的微信文件。iOS 先将微信文件保存到“文件”再选择。从微信传入文件后自动上传并解析；本机选择文件后点击“上传并解析”。导入时显示读取、上传、AI 识别与整理、进入校对的阶段进度，不显示估算百分比。解析完成后进入编辑页检查，点击保存才确认创建简历。取消选择或导入不会自动创建简历。
-
-后端解析任务通过七牛 SDK 查询存储源站，以一分钟有效期签名读取文件，避免依赖客户端 CDN 域名。2026-10-08 已部署 `bojian-api:origin-read-20261008-r2`，真机导入任务完成解析并进入待确认状态。补丁和部署记录见 `api/origin-read.patch`、`api/origin-read-release.json`。客户端 CDN 下载仍需修复 CDN 连接。
-
-简历预览按 macOS 标准 PDF 的 A4 尺寸、页边距、字号和章节顺序，直接从结构化数据排版并以 Flutter 文本绘制。长段落按完整行分页，支持双指缩放，保留设备默认字体，不下载或渲染 PDF。不同系统的默认字体度量可能导致换行位置与 macOS 略有差异；目前采用标准版式，市场自定义 HTML/DOCX 模板尚未映射为原生页面。
-
-## 后端兼容性与联测
-
-后端已支持 `ANDROID` / `IOS`，兼容 `WINDOWS` / `MACOS`。移动端通过 `POST /api/v1/auth/captchas?type=SLIDE` 获取拼图，使用 `{ "x": 位移 }` 校验；默认请求仍返回桌面端旋转验证码。答案只保存在服务端，验证后单次失效。
-
-登录先校验设备、平台和版本请求头，再消耗短信验证码。此次最小更新已部署为 `bojian-api:mobile-auth-20261007`；补丁在 `api/mobile-auth.patch`，基线、校验值与验证记录在 `api/mobile-auth-release.json`。保留原镜像及部署文件备份，可回退。
-
-未勾选协议时，获取验证码会弹出含协议链接的确认窗；选择“同意并继续”后才勾选并请求图形验证，取消不发起验证码或短信请求。拼图对齐后松开滑块自动验证，失败后刷新挑战。
-
-2026-10-07 更新后的服务端经 HTTPS 验证了健康检查、滑块拼图响应及 Android 请求头校验。早先手机的健康检查和旋转验证码联测通过；本次复测出现 TCP/TLS 连接重置及 HTTP/3 网络空闲超时，尚未完成新版手机联测。Android 使用内置 Cronet 并启用 HTTP/3，保留完整证书校验及 HTTP/2 回退。尚未自动发送短信或验证账号业务。以下探测不会发送短信：
+在安装 Xcode 和 iOS SDK 的 macOS 上构建：
 
 ```sh
-flutter drive --profile -d <设备ID> --driver=test_driver/performance_driver.dart --target=integration_test/connectivity_test.dart
+flutter build ios --release --no-codesign
 ```
 
-## 验证与协议生成
+该命令用于验证未签名构建，安装或发布需在 Xcode 中完成签名、归档和导出。
 
-```sh
-flutter analyze
-flutter test
-flutter build apk --release
-```
+`ios/Runner/Runner.entitlements` 声明关联域名。对应的 [apple-app-site-association](ios/universal-links/apple-app-site-association) 是服务器配置副本，部署至关联域名的 `/.well-known/apple-app-site-association`；它不会随 App 构建自动部署。变更开发团队或 Bundle ID 时，需要同步核对该文件的 `appID`。
 
-协议副本在 `api/proto`，生成结果在 `lib/api/generated`。安装 `protoc` 和 Dart `protoc_plugin` 后运行 `scripts/generate_rpc.sh` 更新。
+## 鸿蒙构建
 
-简历编辑页支持独立的简历头像上传、更换、移除，支持 JPG/PNG/WebP（5 MB 内）。照片变更随保存提交，调用简历照片上传授权、文件完成和照片提交接口；新建简历先获取简历 ID。预览在首张 A4 纸右上角显示照片，加载失败提供重试。
+保留 `ohos/` 和 `scripts/harmonyos_profile_info.py`。目前 SDK/Dart 版本、插件与原生通道仍有适配阻塞，不能使用普通 Flutter 的 Android 构建结果代替鸿蒙 HAP。环境准备、隔离工具链和验收步骤见 [鸿蒙接入说明](ohos/README.md)。
 
-2026-10-08 图片访问修复部署为 `bojian-api:origin-images-20261008`，简历照片等图片使用存储源站的一分钟签名链接，普通文件下载保留原策略。源码基于同一已验证的后端提交，无数据库变更，记录见 `api/origin-images-release.json`。
+## 资源与工具
 
-选择简历照片后进入 5:6 裁剪页：可拖动裁剪框取景，拖动右下角或双指调整大小；取消保留原照片。确认后生成裁剪图片，保存时上传，因此页面预览、桌面端和导出使用同一份照片。裁剪临时文件在替换、移除或完成保存后清理。
+- `swift scripts/generate_app_icons.swift`：在 macOS 上从 `assets/branding/app_icon.png` 生成 Android/iOS 图标及商店图标预览。鸿蒙资源由其宿主工程维护。
+- `sh scripts/generate_rpc.sh`：使用 `protoc` 和 `protoc_plugin`，从认证协议更新 `lib/api/generated/auth.pb.dart`。业务接口使用 HTTP JSON。
+- `tool/api_probe.dart`：服务连通性诊断工具。
+- `tool/verify_resume_native_export.py`：检查测试生成的 PDF/Word 原生文字及可编辑性。
+- `scripts/harmonyos_profile_info.py`：从鸿蒙签名 Profile 提取公开的应用登记字段。
 
-界面图标统一使用 Hugeicons 1.2 的 Stroke Rounded 系列，语义定义集中在 `lib/app_icons.dart`。导航、列表、操作按钮及默认返回/关闭图标共用同一风格；点赞、收藏、通知保留状态区别。应用 Logo 和设备默认文字字体保持原设置。
+简历支持 PDF、DOC、DOCX 导入，大小上限 20 MB；校对后保存。Android 支持从微信通过“用其他应用打开”接收文件；iOS 可先保存到“文件”再选择。简历预览和 PDF/Word 导出共用排版结果，PDF 保留可复制文字、Word 保留可编辑文字。字体、模板脚本及许可证属于 App 运行资源，应随仓库保留。
 
-工作经历按段显示公司、职位、行业、起止时间、在职状态及工作内容；支持新增、删除及上移/下移，保存和导出遵循列表顺序。教育经历同样逐段编辑学校、专业、学历、入学/毕业时间、在校经历及毕业论文，并支持新增、删除、上移/下移。未修改的原始富文本及额外字段随各段经历保留。
+## 本地文件与缓存
 
-简历编辑页使用分组表单、顶部章节快速定位和固定保存入口，窄屏单列表单，较宽屏幕中的手机/邮箱及职位/城市并排显示。保留设备默认字体和 Hugeicons 图标。
+`build/`、`.dart_tool/` 等是可重新生成的构建缓存，可通过 `flutter clean` 清理，再执行 `flutter pub get` 恢复依赖配置。
 
-简历预览右上角提供导出入口，可选择 PDF 或 Word（DOCX）。两种格式直接使用 Flutter 预览的同一份 A4 页面绘制结果，以 288 dpi 固定页面保存，字体、照片、换行和分页与预览保持一致。Word 的正文为页面图像，不能直接编辑文字。打包在后台 isolate 完成；Android 使用系统文件保存窗口选择位置，也可通过系统分享面板分享文件。关闭导出面板或切换账号会中止导出，并清理临时文件。
-
-2026-10-08 导出服务修复记录见 `api/resume-export.patch` 和 `api/resume-export-release.json`：结构化排版替代原始 JSON 输出，补齐存储上传文件名参数，导出下载使用一分钟 HTTPS 源站签名链接。无数据库变更。
-
-简历库卡片显示简历名称、接口返回的更新时间（设备本地时间）、当前模板和内容完善进度。模板区域包含切换入口；点击整张卡片进入预览。完善进度来自八项简历内容的非空比例，不作为 AI 评分。缺少更新时间时不生成占位文案。
-
-系统仅保留“标准模板”，使用原商务蓝版式。旧内置模板标识统一兼容标准模板。切换面板使用卡片网格和固定确认按钮，仅列标准模板及 `/me/templates` 中 `source: ACQUIRED` 的模板，去重并排除作者自己的模板和未购买模板，不提供市场跳转入口。切换市场模板前重新校验购买记录和可用 DOM，使用最新 revision 保存真实 `template_id`，保留简历正文。简历卡片显示实际选用的模板名称。
-
-已购买模板通过服务端 DOM（HTML/CSS）绑定结构化简历字段，在 WebView 内以 A4 分页展示；PDF 与固定页 Word 复用同一页面捕获结果。离线 html2canvas 1.4.1（MIT）位于 `assets/templates/`。模板脚本、外部导航和网络资源加载被阻止，照片嵌入页面；缺失模板图片或不支持的模板结构会提示失败，不回退成另一套版式。标准模板继续使用 Flutter 原生排版与导出。
-
-模板市场使用真实预览网格，支持模板/作者搜索、免费/积分/我的模板筛选、保留筛选条件的游标分页及下拉刷新。详情页可放大预览、免费获取或积分购买，并选择已有简历使用或创建使用该模板的新简历。只有真实购买记录显示“已获取”；加载失败、预览缺失及暂无模板均使用真实状态。购买需要确认价格和余额，重试复用幂等键；服务端在事务内校验确认时的价格及模板版本。变更与可回滚部署记录见 `api/template-market.patch` 和 `api/template-market-release.json`，无数据库变更。
-
-AI 简历优化入口位于简历卡片「简历优化」菜单，支持清晰专业、精简表达、突出成果三种方向及补充要求。使用已有 `PostResumesIdPolishJobs` / `GetPolishJobsId` 接口生成真实建议，逐项对比原文与优化结果，可勾选、预览并保存。只允许采纳已有描述类字段，不采纳身份、公司、学校、日期、模板等字段的 AI 变更；修改过的描述清除旧富文本，未采纳字段和其他元数据原样保留。
-
-任务 ID、基线和选择保存在按账号及简历隔离的安全存储中，退出页面后可继续查看。生成可放弃，等待有时限，网络失败只重查已有任务；保存使用原始 revision 的 `If-Match`，版本冲突不覆盖原文，保存响应丢失可在重试或重开时核实。旧服务的 `/polish-jobs/{id}/apply` 会全量替换 AI 输出且忽略逐字段决策，因此手机端改用已有的受版本保护的 `PatchResumesId` 保存选中字段，保存成功后关闭不再使用的全量任务。没有新增后端部署或数据库迁移。生成结果不自动保存，用户应核对事实后采用。
+`artifacts/` 是发布归档；`material/`、本机证书及私钥文件是签名材料。这些内容已被 Git 忽略，不作为普通缓存删除，也不能提交凭证。

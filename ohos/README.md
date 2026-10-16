@@ -20,7 +20,7 @@
 2. 本机未安装 DevEco Studio / HarmonyOS SDK，无法编译 ArkTS 或生成 HAP。
 3. 当前 pub.dev 依赖的安全存储、文件选择、系统分享、URL 打开、WebView，以及富文本编辑器的原生依赖需要适配版本或自行实现；不能仅凭上游列表“已适配”认定当前版本可用。参考 https://gitcode.com/OpenHarmony-Flutter/docs/blob/main/ThirdpartyLibrarites.md 。
 4. `cn.kelance.bojian/settings` 原生通道需要设备信息、版本及系统设置实现；简历文件接收、保存与系统分享流程需要鸿蒙实现和真机验证。
-5. `lib/app_store.dart` 当前只识别 iOS / Android / macOS，其余平台回落 WINDOWS。上线前必须添加真实鸿蒙平台标识，并同步后端认证、设备会话校验；禁止以 WINDOWS 伪装完成鸿蒙接入。现有 `api/mobile-auth.patch` 中后端仅接受 WINDOWS / MACOS / ANDROID / IOS。
+5. `lib/app_store.dart` 当前只识别 iOS / Android / macOS，其余平台回落 WINDOWS。上线前必须添加真实鸿蒙平台标识，并在独立后端项目中同步认证、设备会话校验；禁止以 WINDOWS 伪装完成鸿蒙接入。此前后端仅接受 WINDOWS / MACOS / ANDROID / IOS，接入时需重新核对。
 6. 华为开发者账号已有，但尚未创建此鸿蒙应用，也没有签名 Profile / appIdentifier。
 
 ## 华为账号准备

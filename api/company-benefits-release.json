@@ -1,9 +1,0 @@
-{
-  "api_image": "bojian-api:company-benefits-20261010-r1",
-  "api_sha256": "49a26c00e2492e4ed50284a24a84c702fccde1f71330533517214e233b939f93",
-  "admin_api_image": "bojian-admin-api:company-benefits-20261010-r1",
-  "admin_api_sha256": "e2724ae525f6bd9054215033d954aa9dfb3b308fb499786f0499406a78de1e63",
-  "admin_web_image": "bojian-admin-web:company-benefits-20261010-r1",
-  "migration": "041_company_benefits.sql",
-  "android_package": "com.example.bojian_mobile"
-}

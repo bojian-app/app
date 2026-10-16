@@ -1,5 +1,5 @@
 // Run from the project root: swift scripts/generate_app_icons.swift
-// Source: bojian-macos/Bojian/Assets.xcassets/AppIcon.appiconset/BojianAppIcon-512@2x.png
+// Generates Android and iOS icons from the shared mobile app artwork.
 import AppKit
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -41,46 +41,16 @@ try write(png(432, scale: 0.7), "android/app/src/main/res/drawable-xxxhdpi/ic_la
 try write(Data(contentsOf: root.appendingPathComponent("assets/branding/app_icon.png")),
     "android/app/src/main/res/drawable-nodpi/startup_mascot.png")
 
-for platform in ["ios", "macos"] {
-    let directory = "\(platform)/Runner/Assets.xcassets/AppIcon.appiconset"
+do {
+    let directory = "ios/Runner/Assets.xcassets/AppIcon.appiconset"
     let catalog = try JSONSerialization.jsonObject(with: Data(contentsOf:
         root.appendingPathComponent("\(directory)/Contents.json"))) as! [String: Any]
     for entry in catalog["images"] as! [[String: String]] {
         let points = Double(entry["size"]!.components(separatedBy: "x")[0])!
         let scale = Double(entry["scale"]!.dropLast())!
-        try write(png(Int(points * scale), opaque: platform == "ios"), "\(directory)/\(entry["filename"]!)")
+        try write(png(Int(points * scale), opaque: true), "\(directory)/\(entry["filename"]!)")
     }
 }
 
-for size in [192, 512] {
-    try write(png(size), "web/icons/Icon-\(size).png")
-    try write(png(size, opaque: true, scale: 0.8), "web/icons/Icon-maskable-\(size).png")
-}
 try write(png(1024, opaque: true), "build/previews/app_icon_store_1024.png")
-try write(png(32), "web/favicon.png")
-try write(png(256), "linux/runner/resources/app_icon.png")
-
-// Windows ICO directory followed by PNG images at each supported size.
-let sizes = [16, 24, 32, 48, 64, 128, 256]
-let images = sizes.map { png($0) }
-var ico = Data()
-func appendLE(_ value: Int, bytes: Int) {
-    for shift in 0..<bytes { ico.append(UInt8((value >> (shift * 8)) & 255)) }
-}
-appendLE(0, bytes: 2)
-appendLE(1, bytes: 2)
-appendLE(sizes.count, bytes: 2)
-var offset = 6 + sizes.count * 16
-for (size, data) in zip(sizes, images) {
-    appendLE(size == 256 ? 0 : size, bytes: 1)
-    appendLE(size == 256 ? 0 : size, bytes: 1)
-    appendLE(0, bytes: 2)
-    appendLE(1, bytes: 2)
-    appendLE(32, bytes: 2)
-    appendLE(data.count, bytes: 4)
-    appendLE(offset, bytes: 4)
-    offset += data.count
-}
-for data in images { ico.append(data) }
-try write(ico, "windows/runner/resources/app_icon.ico")
 print("Generated application icons from assets/branding/app_icon.png")
