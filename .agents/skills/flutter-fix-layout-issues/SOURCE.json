@@ -1,0 +1,7 @@
+{
+  "name": "flutter-fix-layout-issues",
+  "source": "flutter/agent-plugins",
+  "revision": "0ef3972f93e2baa4156ba1cbb1e515cd53079c68",
+  "path": "skills/flutter-fix-layout-issues",
+  "sha256": "e82c82b4245ef502bd93bc543d4f5968f4ee8043fa7556ffebcb34f30651fc9b"
+}
