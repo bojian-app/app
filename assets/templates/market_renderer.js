@@ -146,3 +146,86 @@
   };
   start().catch(e=>tell({type:'error',message:String(e.message||e)}));
 })();
+
+// Export live DOM geometry and editable text, never a canvas of the whole page.
+window.exportNativeLayout = async function(token) {
+  try {
+    const sx=595.28/794, sy=841.89/1123;
+    const color=value=>{
+      const m=value.match(/[\d.]+/g); if(!m || value==='transparent')return 0;
+      const a=m.length>3?Math.round(Number(m[3])*255):255;
+      return a*16777216+Number(m[0])*65536+Number(m[1])*256+Number(m[2]);
+    };
+    const baselineCache=new Map();
+    function baseline(style) {
+      const key=style.font;
+      if(baselineCache.has(key))return baselineCache.get(key);
+      const probe=document.createElement('div');
+      Object.assign(probe.style,{position:'absolute',left:'-10000px',top:'0',font:style.font,whiteSpace:'pre'});
+      const span=document.createElement('span');span.textContent='Hg中';
+      const marker=document.createElement('span');Object.assign(marker.style,{display:'inline-block',width:'0',height:'0'});
+      probe.append(span,marker);document.body.append(probe);
+      const range=document.createRange();range.selectNodeContents(span);
+      const value=marker.getBoundingClientRect().top-range.getBoundingClientRect().top;
+      probe.remove();baselineCache.set(key,value);return value;
+    }
+    const output=[];
+    for(const page of document.querySelectorAll('.paper')) {
+      const origin=page.getBoundingClientRect(), clip=page.querySelector('.inner').getBoundingClientRect();
+      const visible=r=>r.width>0 && r.height>0 && r.left>=clip.left-.5 && r.right<=clip.right+.5 && r.bottom>clip.top+.5 && r.top<clip.bottom-.5;
+      const lines=[],rules=[],pictures=[];
+      for(const node of page.querySelectorAll('.flow *')) {
+        const style=getComputedStyle(node);
+        if(style.display==='none'||style.visibility==='hidden'||Number(style.opacity)===0)continue;
+        for(const r of node.getClientRects()) {
+          if(!visible(r))continue;
+          const background=color(style.backgroundColor);
+          if(background>>>24)rules.push({x:(r.left-origin.left)*sx,y:(r.top-origin.top)*sy,width:r.width*sx,height:r.height*sy,thickness:0,color:background});
+          for(const side of ['Top','Bottom']) {
+            const thickness=parseFloat(style['border'+side+'Width']);
+            if(thickness && style['border'+side+'Style']!=='none')rules.push({x:(r.left-origin.left)*sx,y:((side==='Top'?r.top:r.bottom)-origin.top)*sy,width:r.width*sx,height:0,thickness:thickness*sy,color:color(style['border'+side+'Color'])});
+          }
+          for(const side of ['Left','Right']) {
+            const thickness=parseFloat(style['border'+side+'Width']);
+            if(thickness && style['border'+side+'Style']!=='none')rules.push({x:((side==='Left'?r.left:r.right)-origin.left)*sx,y:(r.top-origin.top)*sy,width:thickness*sx,height:r.height*sy,thickness:0,color:color(style['border'+side+'Color'])});
+          }
+        }
+      }
+      const walker=document.createTreeWalker(page.querySelector('.flow'),NodeFilter.SHOW_TEXT);
+      let node;
+      while((node=walker.nextNode())) {
+        const parent=node.parentElement,style=getComputedStyle(parent);
+        if(style.display==='none'||style.visibility==='hidden'||!node.nodeValue.trim())continue;
+        const segments=typeof Intl.Segmenter==='function'?[...new Intl.Segmenter('zh',{granularity:'grapheme'}).segment(node.nodeValue)].map(s=>({text:s.segment,index:s.index})):Array.from(node.nodeValue).map((text,i,a)=>({text,index:a.slice(0,i).join('').length}));
+        let current=null;
+        for(const part of segments) {
+          const range=document.createRange();range.setStart(node,part.index);range.setEnd(node,part.index+part.text.length);
+          const r=range.getBoundingClientRect();
+          if(!visible(r)||/[\r\n]/.test(part.text)){current=null;continue;}
+          if(!current||Math.abs(current.rawTop-r.top)>.5) {
+            const size=parseFloat(style.fontSize)*sx;
+            const span={text:'',x:(r.left-origin.left)*sx,width:0,size,color:color(style.color),bold:Number(style.fontWeight)>=600,italic:style.fontStyle==='italic',underline:style.textDecorationLine.includes('underline'),strike:style.textDecorationLine.includes('line-through')};
+            current={rawTop:r.top,top:(r.top-origin.top)*sy,height:r.height*sy,baseline:(r.top-origin.top+baseline(style))*sy,spans:[span]};
+            lines.push(current);
+          }
+          const span=current.spans[0];span.text+=part.text;span.width=(r.right-origin.left)*sx-span.x;
+        }
+      }
+      for(const image of page.querySelectorAll('.flow img')) {
+        const r=image.getBoundingClientRect();if(!visible(r))continue;
+        const canvas=document.createElement('canvas');canvas.width=Math.round(r.width*3);canvas.height=Math.round(r.height*3);
+        const ctx=canvas.getContext('2d');const style=getComputedStyle(image);
+        const fit=style.objectFit;let w=canvas.width,h=canvas.height,x=0,y=0;
+        if(fit==='cover'||fit==='contain') {
+          const scale=(fit==='cover'?Math.max:Math.min)(w/image.naturalWidth,h/image.naturalHeight);
+          w=image.naturalWidth*scale;h=image.naturalHeight*scale;x=(canvas.width-w)/2;y=(canvas.height-h)/2;
+        }
+        ctx.drawImage(image,x,y,w,h);
+        pictures.push({data:canvas.toDataURL('image/png').split(',')[1],x:(r.left-origin.left)*sx,y:(r.top-origin.top)*sy,width:r.width*sx,height:r.height*sy});
+        canvas.width=0;canvas.height=0;
+      }
+      output.push({lines:lines.map(({rawTop,...line})=>line),rules,pictures});
+    }
+    BojianPages.postMessage(JSON.stringify({type:'native-layout',token,pages:output}));
+  } catch(e) {BojianPages.postMessage(JSON.stringify({type:'error',token,message:String(e.message||e)}));}
+};

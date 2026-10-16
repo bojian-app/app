@@ -8,6 +8,9 @@ import 'api/bojian_api.dart';
 import 'app_store.dart';
 
 const maximumResumeFileBytes = 20 * 1024 * 1024;
+
+enum ResumeImportPhase { reading, uploading, parsing, ready }
+
 const resumeMimeTypes = {
   'pdf': 'application/pdf',
   'doc': 'application/msword',
@@ -97,6 +100,7 @@ class ResumeImporter {
     XFile file, {
     required void Function(String) onProgress,
     required bool Function() isCancelled,
+    void Function(ResumeImportPhase)? onPhase,
   }) async {
     final epoch = store.epoch;
     var taskID = 0;
@@ -109,6 +113,7 @@ class ResumeImporter {
 
     try {
       check();
+      onPhase?.call(ResumeImportPhase.reading);
       final dot = file.name.lastIndexOf('.');
       final extension = dot > 0
           ? file.name.substring(dot + 1).toLowerCase()
@@ -123,6 +128,7 @@ class ResumeImporter {
         file.name.substring(0, dot).runes.take(160),
       );
       onProgress('正在准备上传…');
+      onPhase?.call(ResumeImportPhase.uploading);
       final auth = await store.request(
         'PostFilesUploads',
         body: {
@@ -144,6 +150,8 @@ class ResumeImporter {
         body: {},
       );
       check();
+      onPhase?.call(ResumeImportPhase.parsing);
+      onProgress('正在提交 AI 解析…');
       final task = await store.request(
         'PostResumeImports',
         body: {'file_id': fileID, 'name': name.isEmpty ? '导入的简历' : name},
@@ -168,6 +176,7 @@ class ResumeImporter {
             path: {'id': '${data['resume_id']}'},
           );
           check();
+          onPhase?.call(ResumeImportPhase.ready);
           return decodeResume(saved.data);
         }
         if (status == 'WAITING_CONFIRMATION') {
@@ -184,9 +193,12 @@ class ResumeImporter {
             content['job_expectation'] = {'preference': raw};
           }
           final draft = decodeResume({'title': name, 'content': content});
+          onPhase?.call(ResumeImportPhase.ready);
           return ResumeDraft(
             id: 0,
             importID: taskID,
+            photoFileID: integer(data['photo_file_id']),
+            photoURL: data['photo_url'] as String? ?? '',
             title: draft.title,
             name: draft.name,
             position: draft.position,

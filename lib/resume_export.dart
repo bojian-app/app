@@ -10,7 +10,7 @@ import 'app_icons.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
-import 'resume_page_export.dart';
+import 'resume_native_export.dart';
 
 const exportMimeTypes = {
   'PDF': 'application/pdf',
@@ -192,11 +192,11 @@ class ResumeExportSheet extends StatefulWidget {
     super.key,
     required this.store,
     required this.resume,
-    this.capturePages,
+    this.captureLayout,
   });
   final AppStore store;
   final ResumeDraft resume;
-  final CaptureResumePages? capturePages;
+  final CaptureResumeLayout? captureLayout;
   @override
   State<ResumeExportSheet> createState() => _ResumeExportSheetState();
 }
@@ -222,9 +222,9 @@ class _ResumeExportSheetState extends State<ResumeExportSheet> {
     bool cancelled() =>
         !mounted || epoch != widget.store.epoch || !widget.store.alive;
     try {
-      final result = widget.capturePages != null
-          ? await exportPreviewPages(
-              capture: widget.capturePages!,
+      final result = widget.captureLayout != null
+          ? await exportNativeResume(
+              capture: widget.captureLayout!,
               title: widget.resume.title,
               format: format,
               isCancelled: cancelled,

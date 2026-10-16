@@ -262,21 +262,10 @@ class ProfilePage extends StatelessWidget {
               ),
             ),
           ],
-          if (!store.isAuthenticated || store.errors['profile'] != null)
+          if (!store.isAuthenticated)
             DataStatus(store: store, section: 'profile', empty: false),
           if (store.isAuthenticated) ...[
-            SizedBox(
-              height: 24,
-              child: store.loading.contains('profile')
-                  ? const Padding(
-                      padding: EdgeInsets.only(top: 12),
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: LinearProgressIndicator(minHeight: 2),
-                      ),
-                    )
-                  : null,
-            ),
+            const SizedBox(height: 24),
             _SignOutButton(store: store),
           ],
         ],

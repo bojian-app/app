@@ -203,8 +203,8 @@ void main() {
         expectStableLayout();
 
         // Wallet events can refresh the profile independently of claiming.
-        // Its progress indicator must use the existing gap, without moving
-        // the sign-out button or changing this scrolled page's extent.
+        // Refresh stays silent without moving the sign-out button or changing
+        // this scrolled page's extent.
         await tester.scrollUntilVisible(signOut, 80);
         await tester.pumpAndSettle();
         final signOutRect = tester.getRect(signOut);
@@ -212,7 +212,7 @@ void main() {
         api.profileResponse = Completer<ApiDocument>();
         final refreshing = store.load('profile');
         await tester.pump();
-        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+        expect(find.byType(LinearProgressIndicator), findsNothing);
         expect(tester.getRect(signOut), signOutRect);
         expect(scroll.position.pixels, bottomOffset);
         api.profileResponse!.complete(ApiDocument(api.documents['GetMe']!));

@@ -446,9 +446,15 @@ class ResumeLibrary extends StatelessWidget {
 }
 
 class ResumeEditor extends StatefulWidget {
-  const ResumeEditor({super.key, required this.store, required this.draft});
+  const ResumeEditor({
+    super.key,
+    required this.store,
+    required this.draft,
+    this.onSaved,
+  });
   final AppStore store;
   final ResumeDraft draft;
+  final VoidCallback? onSaved;
   @override
   State<ResumeEditor> createState() => _ResumeEditorState();
 }
@@ -1619,8 +1625,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
       return;
     }
     if (saved) {
-      Navigator.pop(context);
       toast(context, '简历已保存');
+      if (widget.onSaved != null) {
+        widget.onSaved!();
+      } else {
+        Navigator.pop(context);
+      }
     } else {
       setState(() => saving = false);
     }
@@ -1712,21 +1722,21 @@ class _ResumePreviewState extends State<ResumePreview> {
                   builder: (_) => ResumeExportSheet(
                     store: store,
                     resume: resume,
-                    capturePages:
+                    captureLayout:
                         ({required isCancelled, required onProgress}) async {
                           if (resume.usesMarketTemplate) {
                             final view = marketDocumentKey.currentState;
                             if (view == null) {
                               throw const ApiFailure("请等待预览加载完成");
                             }
-                            return view.capturePages(
+                            return view.captureLayout(
                               isCancelled: isCancelled,
                               onProgress: onProgress,
                             );
                           }
                           final view = documentKey.currentState;
                           if (view == null) throw const ApiFailure("请等待预览加载完成");
-                          return view.capturePages(
+                          return view.captureLayout(
                             isCancelled: isCancelled,
                             onProgress: onProgress,
                           );
@@ -1954,11 +1964,13 @@ class ImportResume extends StatefulWidget {
     this.initialFile,
     this.pickFile,
     this.importer,
+    this.onSaved,
   });
   final AppStore store;
   final XFile? initialFile;
   final Future<XFile?> Function()? pickFile;
   final ResumeImporter? importer;
+  final VoidCallback? onSaved;
   @override
   State<ImportResume> createState() => _ImportResumeState();
 }
@@ -1970,6 +1982,7 @@ class _ImportResumeState extends State<ImportResume> {
   bool busy = false;
   int operation = 0;
   String? stage, error;
+  ResumeImportPhase phase = ResumeImportPhase.reading;
 
   @override
   void initState() {
@@ -1977,11 +1990,18 @@ class _ImportResumeState extends State<ImportResume> {
     selected = widget.initialFile;
     files.activeImports++;
     files.incoming.addListener(receiveShared);
+    if (selected != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && operation == 0) upload();
+      });
+    }
   }
 
   void receiveShared() {
     final file = files.incoming.value;
     if (file == null) return;
+    files.incoming.value = null;
+    if (selected?.path == file.path) return;
     operation++;
     setState(() {
       selected = file;
@@ -1989,7 +2009,7 @@ class _ImportResumeState extends State<ImportResume> {
       stage = null;
       error = null;
     });
-    files.incoming.value = null;
+    upload();
   }
 
   Future<void> chooseLocal() async {
@@ -2023,6 +2043,7 @@ class _ImportResumeState extends State<ImportResume> {
     setState(() {
       busy = true;
       stage = '正在读取文件…';
+      phase = ResumeImportPhase.reading;
       error = null;
     });
     try {
@@ -2031,6 +2052,11 @@ class _ImportResumeState extends State<ImportResume> {
               .importFile(
                 file,
                 isCancelled: () => !mounted || token != operation,
+                onPhase: (value) {
+                  if (mounted && token == operation) {
+                    setState(() => phase = value);
+                  }
+                },
                 onProgress: (text) {
                   if (mounted && token == operation) {
                     setState(() => stage = text);
@@ -2042,7 +2068,11 @@ class _ImportResumeState extends State<ImportResume> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ResumeEditor(store: widget.store, draft: draft),
+          builder: (_) => ResumeEditor(
+            store: widget.store,
+            draft: draft,
+            onSaved: widget.onSaved,
+          ),
         ),
       );
     } on ImportCancelled {
@@ -2077,7 +2107,7 @@ class _ImportResumeState extends State<ImportResume> {
             const SizedBox(height: 14),
             Text(
               Platform.isAndroid
-                  ? '在微信打开简历文件，通过“用其他应用打开”选择“博简”，即可带入文件。'
+                  ? '在微信打开简历文件 → 点击右上角“…” → 用其他应用打开 → 选择“博简”。返回后会自动上传并解析，无需再次选择文件。'
                   : '先将微信中的简历保存到“文件”，再选择已保存的文件上传。',
               style: const TextStyle(fontSize: 14, height: 1.7, color: muted),
             ),
@@ -2145,9 +2175,9 @@ class _ImportResumeState extends State<ImportResume> {
     body: ListView(
       padding: const EdgeInsets.all(22),
       children: [
-        const Text(
-          '选择简历文件',
-          style: TextStyle(fontSize: 23, fontWeight: FontWeight.w700),
+        Text(
+          busy ? '正在导入简历' : '选择简历文件',
+          style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 10),
         const Text(
@@ -2155,14 +2185,22 @@ class _ImportResumeState extends State<ImportResume> {
           style: TextStyle(fontSize: 13, color: muted, height: 1.7),
         ),
         const SizedBox(height: 24),
-        source(
-          '从微信文件上传',
-          '导入聊天中收到的简历',
-          AppIcons.wechat,
-          const Color(0xFF509B87),
-          fromWeChat,
-        ),
-        source('从本机文件上传', '选择手机或文件应用中的简历', AppIcons.folder, blue, chooseLocal),
+        if (!busy)
+          source(
+            '从微信文件上传',
+            '导入聊天中收到的简历',
+            AppIcons.wechat,
+            const Color(0xFF509B87),
+            fromWeChat,
+          ),
+        if (!busy)
+          source(
+            '从本机文件上传',
+            '选择手机或文件应用中的简历',
+            AppIcons.folder,
+            blue,
+            chooseLocal,
+          ),
         if (picking)
           const Padding(
             padding: EdgeInsets.all(16),
@@ -2212,11 +2250,45 @@ class _ImportResumeState extends State<ImportResume> {
           ),
           if (busy) ...[
             const SizedBox(height: 16),
-            const Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+            Panel(
+              key: const ValueKey('resume-import-progress'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Semantics(liveRegion: true, child: Text(stage ?? '正在处理…')),
+                  const SizedBox(height: 12),
+                  for (final step in ResumeImportPhase.values)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            step.index < phase.index
+                                ? Icons.check_circle
+                                : step == phase
+                                ? Icons.pending
+                                : Icons.radio_button_unchecked,
+                            size: 18,
+                            color: step.index <= phase.index ? blue : muted,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(switch (step) {
+                            ResumeImportPhase.reading => '读取文件',
+                            ResumeImportPhase.uploading => '上传文件',
+                            ResumeImportPhase.parsing => 'AI 识别与整理',
+                            ResumeImportPhase.ready => '进入内容校对',
+                          }),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '解析时间取决于文件大小和内容复杂度，请稍候。',
+                    style: TextStyle(fontSize: 12, color: muted),
+                  ),
+                ],
               ),
             ),
             TextButton(onPressed: cancel, child: const Text('取消导入')),

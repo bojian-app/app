@@ -21,7 +21,6 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
   late final controller = TextEditingController(text: widget.resume.title);
   late String title = widget.resume.title;
   final nameFocus = FocusNode();
-  final tapGroup = Object();
 
   @override
   void initState() {
@@ -144,8 +143,8 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
       );
     }
     // Consume taps around the controls so the card's preview does not open.
+    // Keep the default editable tap group shared with selection handles/menus.
     return TextFieldTapRegion(
-      groupId: tapGroup,
       child: GestureDetector(
         onTap: () {},
         behavior: HitTestBehavior.opaque,
@@ -159,7 +158,6 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
                     key: const ValueKey('resume-rename-input'),
                     controller: controller,
                     focusNode: nameFocus,
-                    groupId: tapGroup,
                     onTapOutside: (_) => nameFocus.unfocus(),
                     autofocus: true,
                     readOnly: saving,

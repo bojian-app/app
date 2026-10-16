@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
+import 'resume_native_export.dart';
 
 import 'resume_additional_fields.dart';
 
@@ -98,6 +101,7 @@ String marketDocumentHtml({
   required String captureScript,
   required String rendererScript,
   String photo = '',
+  String fontStyles = '',
 }) {
   final payload = jsonEncode({
     'html': dom['html'],
@@ -110,15 +114,15 @@ String marketDocumentHtml({
   );
   return '''<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=826,initial-scale=0.43,minimum-scale=0.3,maximum-scale=2.5">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:">
-<style>$css</style><style>
-html,body{margin:0!important;padding:0!important;background:#f5f7fa!important;font-family:sans-serif!important}
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src file: data:">
+<style>$fontStyles</style><style>$css</style><style>
+html,body{margin:0!important;padding:0!important;background:#f5f7fa!important;font-family:'ResumeDocument',sans-serif!important}
 #pages{padding:16px;width:794px;margin:0 auto}
 .paper{width:794px;height:1123px;position:relative;background:white;overflow:hidden;margin-bottom:16px}
 .inner{position:absolute;left:61.5px;top:61.5px;width:671px;height:1000px;overflow:hidden}
 #flow,.flow{position:absolute;left:0;top:0;width:671px;height:1000px;column-width:671px;column-gap:32px;column-fill:auto}
 #flow{left:-100000px}
-#flow *, .flow *{font-family:sans-serif!important}
+#flow *, .flow *{font-family:'ResumeDocument',sans-serif!important}
 p{white-space:pre-wrap} img{max-width:100%}
 </style></head><body><div id="flow"></div><div id="pages"></div>
 <script>const payload=$payload;</script><script>$captureScript</script><script>$rendererScript</script>
@@ -144,6 +148,8 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
   String? error;
   int pages = 0, operation = 0, captureToken = 0;
   Completer<Uint8List>? captured;
+  Completer<ResumeExportLayout>? nativeLayout;
+  Directory? documentDirectory;
   @override
   void initState() {
     super.initState();
@@ -164,6 +170,13 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
     operation++;
     if (captured != null && !captured!.isCompleted) {
       captured!.completeError(const ApiFailure('导出已取消'));
+    }
+    if (nativeLayout != null && !nativeLayout!.isCompleted) {
+      nativeLayout!.completeError(const ApiFailure('导出已取消'));
+    }
+    final directory = documentDirectory;
+    if (directory != null) {
+      unawaited(directory.delete(recursive: true).catchError((_) => directory));
     }
     super.dispose();
   }
@@ -231,6 +244,25 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       if (!mounted || request != operation || epoch != widget.store.epoch) {
         return;
       }
+      final directory = await Directory.systemTemp.createTemp(
+        'bojian-market-document-',
+      );
+      for (final entry in {
+        'regular.ttf': resumeFontRegularAsset,
+        'bold.ttf': resumeFontBoldAsset,
+      }.entries) {
+        final data = await rootBundle.load(entry.value);
+        await File('${directory.path}/${entry.key}').writeAsBytes(
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        );
+      }
+      if (!mounted || request != operation || epoch != widget.store.epoch) {
+        await directory.delete(recursive: true);
+        return;
+      }
+      final previousDirectory = documentDirectory;
+      documentDirectory = directory;
+      final htmlFile = File('${directory.path}/document.html');
       final web = WebViewController();
       await web.setJavaScriptMode(JavaScriptMode.unrestricted);
       await web.setBackgroundColor(canvasColor);
@@ -248,11 +280,21 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
                 pages = integer(data['count']);
               });
             }
+            if (data['type'] == 'native-layout' &&
+                data['token'] == captureToken &&
+                nativeLayout != null &&
+                !nativeLayout!.isCompleted) {
+              nativeLayout!.complete(marketExportLayout(data['pages'] as List));
+            }
             if (data['type'] == 'error') {
               final failure = ApiFailure(
                 data['message'] as String? ?? '模板版面加载失败',
               );
               if (data['token'] == captureToken &&
+                  nativeLayout != null &&
+                  !nativeLayout!.isCompleted) {
+                nativeLayout!.completeError(failure);
+              } else if (data['token'] == captureToken &&
                   captured != null &&
                   !captured!.isCompleted) {
                 captured!.completeError(failure);
@@ -267,6 +309,9 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
               captured!.complete(base64Decode(data['data'] as String));
             }
           } catch (_) {
+            if (nativeLayout != null && !nativeLayout!.isCompleted) {
+              nativeLayout!.completeError(const ApiFailure('模板版面数据无效'));
+            }
             if (mounted) setState(() => error = '模板版面数据无效');
           }
         },
@@ -274,7 +319,8 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       await web.setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (request) =>
-              request.url == 'about:blank' ||
+              request.url == Uri.file(htmlFile.path).toString() ||
+                  request.url == 'about:blank' ||
                   request.url.startsWith('data:text/html')
               ? NavigationDecision.navigate
               : NavigationDecision.prevent,
@@ -282,19 +328,55 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       );
       if (!mounted || request != operation) return;
       setState(() => controller = web);
-      await web.loadHtmlString(
+      await htmlFile.writeAsString(
         marketDocumentHtml(
           dom: dom.data,
           resume: widget.resume,
           photo: photo,
           captureScript: captureScript,
           rendererScript: rendererScript,
+          fontStyles: "@font-face{font-family:ResumeDocument;src:url('regular.ttf');font-weight:400}@font-face{font-family:ResumeDocument;src:url('bold.ttf');font-weight:600 900}",
         ),
       );
+      await web.loadFile(htmlFile.path);
+      if (previousDirectory != null) {
+        unawaited(
+          previousDirectory
+              .delete(recursive: true)
+              .catchError((_) => previousDirectory),
+        );
+      }
     } catch (e) {
       if (mounted && request == operation) {
         setState(() => error = e is ApiFailure ? e.message : '模板版面加载失败，请重试');
       }
+    }
+  }
+
+  Future<ResumeExportLayout> captureLayout({
+    required bool Function() isCancelled,
+    required ValueChanged<String> onProgress,
+  }) async {
+    if (!ready || controller == null) throw const ApiFailure('请等待预览加载完成');
+    final request = operation;
+    final epoch = widget.store.epoch;
+    if (isCancelled()) throw const ApiFailure('导出已取消');
+    onProgress('正在准备模板文字和排版…');
+    final waiting = Completer<ResumeExportLayout>();
+    nativeLayout = waiting;
+    captureToken++;
+    try {
+      await controller!.runJavaScript('exportNativeLayout($captureToken)');
+      final result = await waiting.future.timeout(const Duration(seconds: 45));
+      if (!mounted ||
+          request != operation ||
+          epoch != widget.store.epoch ||
+          isCancelled()) {
+        throw const ApiFailure('导出已取消');
+      }
+      return result;
+    } finally {
+      nativeLayout = null;
     }
   }
 
@@ -363,4 +445,57 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
         ),
     ],
   );
+}
+
+ResumeExportLayout marketExportLayout(List data) {
+  if (data.isEmpty || data.length > 30) throw const ApiFailure('模板导出页数无效');
+  double n(Map value, String key) => (value[key] as num).toDouble();
+  return ResumeExportLayout([
+    for (final page in data.cast<Map>())
+      ResumeExportPage(
+        lines: [
+          for (final line in (page['lines'] as List).cast<Map>())
+            ResumeExportLine(
+              top: n(line, 'top'),
+              height: n(line, 'height'),
+              baseline: n(line, 'baseline'),
+              spans: [
+                for (final span in (line['spans'] as List).cast<Map>())
+                  ResumeExportSpan(
+                    text: span['text'] as String,
+                    x: n(span, 'x'),
+                    width: n(span, 'width'),
+                    size: n(span, 'size'),
+                    color: (span['color'] as num).toInt(),
+                    bold: span['bold'] == true,
+                    italic: span['italic'] == true,
+                    underline: span['underline'] == true,
+                    strike: span['strike'] == true,
+                  ),
+              ],
+            ),
+        ],
+        rules: [
+          for (final rule in (page['rules'] as List).cast<Map>())
+            ResumeExportRule(
+              n(rule, 'x'),
+              n(rule, 'y'),
+              n(rule, 'width'),
+              n(rule, 'thickness'),
+              (rule['color'] as num).toInt(),
+              height: n(rule, 'height'),
+            ),
+        ],
+        pictures: [
+          for (final image in (page['pictures'] as List).cast<Map>())
+            ResumeExportPicture(
+              base64Decode(image['data'] as String),
+              n(image, 'x'),
+              n(image, 'y'),
+              n(image, 'width'),
+              n(image, 'height'),
+            ),
+        ],
+      ),
+  ]);
 }

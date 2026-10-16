@@ -11,6 +11,7 @@ import 'package:flutter/physics.dart';
 
 import 'app_store.dart';
 import 'resume_templates.dart';
+import 'resume_native_export.dart';
 import 'resume_additional_fields.dart';
 import 'api/bojian_api.dart';
 import 'resume_guidance_privacy.dart';
@@ -279,7 +280,7 @@ class ResumeDocument {
        ) {
     final builder = _ResumeTypesetter(
       this,
-      fontFamily,
+      fontFamily ?? resumeDocumentFontFamily,
       reviewChanges,
       reviewNotes,
     );
@@ -1296,7 +1297,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       originalMark = mark;
       originalPreview = ResumeDocument(
         widget.resume,
-        fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+        fontFamily: resumeDocumentFontFamily,
         photoURL: photoURL,
         reviewNotes: widget.reviewNotes,
         reviewChanges: [
@@ -1573,6 +1574,110 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
     super.dispose();
   }
 
+  Future<ResumeExportLayout> captureLayout({
+    required bool Function() isCancelled,
+    required ValueChanged<String> onProgress,
+  }) async {
+    final resume = widget.resume.copy();
+    final store = widget.store;
+    final epoch = store?.epoch;
+    const font = resumeDocumentFontFamily;
+    void check() {
+      if (!mounted || isCancelled() || store?.epoch != epoch) {
+        throw const ApiFailure('导出已取消');
+      }
+    }
+
+    check();
+    ui.Image? photo;
+    ResumeDocument? exportDocument;
+    try {
+      var url = photoURL;
+      if (resume.photoFileID > 0 || url.isNotEmpty) {
+        onProgress('正在准备简历照片…');
+        if (store != null && resume.id > 0) {
+          final response = await store.request(
+            'GetResumesId',
+            path: {'id': '${resume.id}'},
+          );
+          check();
+          if (response.data['photo_file_id'] != null &&
+              integer(response.data['photo_file_id']) != resume.photoFileID) {
+            throw const ApiFailure('简历照片已更新，请刷新预览后导出');
+          }
+          url = response.data['photo_url'] as String? ?? url;
+        }
+        if (Uri.tryParse(url)?.scheme != 'https') {
+          throw const ApiFailure('简历照片暂不可用，请重试');
+        }
+        final ready = Completer<ui.Image>();
+        final stream = NetworkImage(url).resolve(ImageConfiguration.empty);
+        late ImageStreamListener listener;
+        listener = ImageStreamListener(
+          (info, _) {
+            if (!ready.isCompleted) ready.complete(info.image.clone());
+          },
+          onError: (_, _) {
+            if (!ready.isCompleted) {
+              ready.completeError(const ApiFailure('简历照片下载失败，请重试'));
+            }
+          },
+        );
+        stream.addListener(listener);
+        try {
+          photo = await ready.future.timeout(const Duration(seconds: 30));
+        } finally {
+          stream.removeListener(listener);
+        }
+        check();
+      }
+      exportDocument = ResumeDocument(resume, fontFamily: font, photoURL: url);
+      final pages = <ResumeExportPage>[];
+      for (var index = 0; index < exportDocument.pages.length; index++) {
+        check();
+        onProgress('正在准备第 ${index + 1}/${exportDocument.pages.length} 页文字…');
+        Uint8List? portrait;
+        final rect = exportDocument.pages[index].photo;
+        if (photo != null && rect != null) {
+          final recorder = ui.PictureRecorder();
+          final canvas = Canvas(recorder)..scale(3);
+          paintImage(
+            canvas: canvas,
+            rect: Offset.zero & rect.size,
+            image: photo,
+            fit: BoxFit.cover,
+            alignment: const Alignment(0, -.35),
+          );
+          final picture = recorder.endRecording();
+          final image = await picture.toImage(
+            (rect.width * 3).round(),
+            (rect.height * 3).round(),
+          );
+          picture.dispose();
+          try {
+            final bytes = await image.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+            if (bytes == null) throw const ApiFailure('头像导出失败，请重试');
+            portrait = bytes.buffer.asUint8List(
+              bytes.offsetInBytes,
+              bytes.lengthInBytes,
+            );
+          } finally {
+            image.dispose();
+          }
+        }
+        pages.add(resumeExportSheet(exportDocument, index, portrait: portrait));
+        await Future<void>.delayed(Duration.zero);
+      }
+      check();
+      return ResumeExportLayout(pages);
+    } finally {
+      photo?.dispose();
+      exportDocument?.dispose();
+    }
+  }
+
   Future<List<Uint8List>> capturePages({
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
@@ -1580,7 +1685,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
     final resume = widget.resume.copy();
     final store = widget.store;
     final epoch = store?.epoch;
-    final font = Theme.of(context).textTheme.bodyMedium?.fontFamily;
+    const font = resumeDocumentFontFamily;
     void check() {
       if (!mounted || isCancelled() || store?.epoch != epoch) {
         throw const ApiFailure('导出已取消');
@@ -1682,7 +1787,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
   @override
   Widget build(BuildContext context) {
     final resume = widget.resume;
-    final font = Theme.of(context).textTheme.bodyMedium?.fontFamily;
+    const font = resumeDocumentFontFamily;
     final key = jsonEncode([
       resume.source,
       resume.template,
@@ -2198,6 +2303,162 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
   }
 }
 
+/// Snapshot already typeset lines, preserving the preview's breaks and baselines.
+ResumeExportPage resumeExportSheet(
+  ResumeDocument document,
+  int index, {
+  Uint8List? portrait,
+}) {
+  final sheet = document.pages[index];
+  final lines = <ResumeExportLine>[];
+  for (final ink in sheet.ink) {
+    final painter = ink.text;
+    final text = painter.text!.toPlainText();
+    final ranges = <({int start, int end, TextStyle style})>[];
+    var offset = 0;
+    void visit(InlineSpan span, TextStyle inherited) {
+      if (span is! TextSpan) return;
+      final style = inherited.merge(span.style);
+      final value = span.text ?? '';
+      if (value.isNotEmpty) {
+        ranges.add((start: offset, end: offset + value.length, style: style));
+      }
+      offset += value.length;
+      for (final child in span.children ?? <InlineSpan>[]) {
+        visit(child, style);
+      }
+    }
+
+    visit(
+      painter.text!,
+      const TextStyle(
+        fontFamily: resumeDocumentFontFamily,
+        fontSize: 10,
+        color: resumePaperInk,
+      ),
+    );
+    for (final metric in painter.computeLineMetrics()) {
+      if (metric.baseline <= ink.sourceTop ||
+          metric.baseline > ink.sourceTop + ink.height + .1) {
+        continue;
+      }
+      final point = painter.getPositionForOffset(
+        Offset(metric.left + .001, metric.baseline - metric.ascent / 2),
+      );
+      final boundary = painter.getLineBoundary(point);
+      final spans = <ResumeExportSpan>[];
+      for (final range in ranges) {
+        final start = math.max(boundary.start, range.start);
+        var end = math.min(boundary.end, range.end);
+        while (end > start &&
+            (text[end - 1] == '\n' || text[end - 1] == '\r')) {
+          end--;
+        }
+        if (end <= start || range.style.color?.a == 0) continue;
+        final boxes = painter.getBoxesForSelection(
+          TextSelection(baseOffset: start, extentOffset: end),
+        );
+        if (boxes.isEmpty) continue;
+        final left = boxes.map((b) => b.left).reduce(math.min);
+        final right = boxes.map((b) => b.right).reduce(math.max);
+        final style = range.style;
+        spans.add(
+          ResumeExportSpan(
+            text: text.substring(start, end),
+            x: ink.position.dx + left,
+            width: right - left,
+            size: style.fontSize ?? 10,
+            color: (style.color ?? resumePaperInk).toARGB32(),
+            bold:
+                (style.fontWeight ?? FontWeight.w400).value >=
+                FontWeight.w600.value,
+            italic: style.fontStyle == FontStyle.italic,
+            underline:
+                style.decoration?.contains(TextDecoration.underline) ?? false,
+            strike:
+                style.decoration?.contains(TextDecoration.lineThrough) ?? false,
+          ),
+        );
+      }
+      if (spans.isNotEmpty) {
+        lines.add(
+          ResumeExportLine(
+            top:
+                ink.position.dy +
+                metric.baseline -
+                metric.ascent -
+                ink.sourceTop,
+            baseline: ink.position.dy + metric.baseline - ink.sourceTop,
+            height: metric.height,
+            spans: spans,
+          ),
+        );
+      }
+    }
+  }
+  final footer = TextPainter(
+    text: TextSpan(
+      text: '${index + 1}',
+      style: const TextStyle(
+        fontFamily: resumeDocumentFontFamily,
+        fontSize: 9,
+        color: Colors.grey,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final metric = footer.computeLineMetrics().first;
+  lines.add(
+    ResumeExportLine(
+      top: resumePaperSize.height - 34,
+      height: metric.height,
+      baseline: resumePaperSize.height - 34 + metric.baseline,
+      spans: [
+        ResumeExportSpan(
+          text: '${index + 1}',
+          x: (resumePaperSize.width - footer.width) / 2,
+          width: footer.width,
+          size: 9,
+          color: Colors.grey.toARGB32(),
+        ),
+      ],
+    ),
+  );
+  footer.dispose();
+  final rect = sheet.photo;
+  return ResumeExportPage(
+    lines: lines,
+    rules: [
+      for (final y in sheet.entryDividers)
+        ResumeExportRule(
+          resumePaperMargin,
+          y,
+          resumePaperSize.width - 2 * resumePaperMargin,
+          .6,
+          0xFFDFE5EE,
+        ),
+      if (sheet.dividerY case final double y)
+        ResumeExportRule(
+          resumePaperMargin,
+          y,
+          resumePaperSize.width - 2 * resumePaperMargin,
+          1.5,
+          document.layout.accent.toARGB32(),
+        ),
+    ],
+    pictures: [
+      if (portrait != null && rect != null)
+        ResumeExportPicture(
+          portrait,
+          rect.left,
+          rect.top,
+          rect.width,
+          rect.height,
+        ),
+    ],
+  );
+}
+
 class _SheetPainter extends CustomPainter {
   _SheetPainter(this.document, this.index, this.regions);
   final List<ResumeReviewRegion> regions;
@@ -2311,7 +2572,11 @@ void paintResumeSheet(
   final footer = TextPainter(
     text: TextSpan(
       text: '${index + 1}',
-      style: const TextStyle(fontSize: 9, color: Colors.grey),
+      style: const TextStyle(
+        fontFamily: resumeDocumentFontFamily,
+        fontSize: 9,
+        color: Colors.grey,
+      ),
     ),
     textDirection: TextDirection.ltr,
   )..layout();

@@ -12,10 +12,10 @@ class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store});
   final AppStore store;
   @override
-  State<AppShell> createState() => _AppShellState();
+  State<AppShell> createState() => AppShellState();
 }
 
-class _AppShellState extends State<AppShell>
+class AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin {
   int selected = 0;
   final visited = <int>{0};

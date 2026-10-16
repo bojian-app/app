@@ -1,0 +1,29 @@
+{
+  "status": "DEPLOYED_AND_READY",
+  "production_deployed": true,
+  "proposed_image": "bojian-api:import-photo-20261015-r1",
+  "previous_image": "bojian-api:resume-import-lite-20261015-r1",
+  "source_path": "/tmp/bojian-import-photo-fix/source",
+  "remote_release_path": "/home/ubuntu/bojian-import-photo-20261015-r1",
+  "binary_sha256": "a42a78ef4e6c33205d9c6cbee8e94586e7e68a9a642b76d440aa68f0f50ca927",
+  "checks": {
+    "backend_business_regression": "PASS",
+    "local_database_photo_persistence": "PASS, cancellation removes uncommitted photo",
+    "local_database_confirmation_and_preview": "PASS, ownership validation, idempotent confirmation, signed preview URL, internal metadata stripping",
+    "flutter_import_and_photo_tests": "15 passed",
+    "real_docx_portrait_and_ai": "PASS: PNG portrait 208133 bytes; 1292 text characters; 2 work entries, 1 education entry, 5 skills",
+    "deployed_binary_sha256": "PASS",
+    "api_ready": "PASS"
+  },
+  "mobile": {
+    "installed": true,
+    "device_serial": "b738806e",
+    "preserved_data": true,
+    "apk_sha256": "d2ca33457e549dd852075063cb5e0bb1677507927cc9865c276df075685f9578",
+    "launch": "PASS, cold launch 415 ms"
+  },
+  "database_schema_change": false,
+  "image": "bojian-api:import-photo-20261015-r1",
+  "verified_at": "2026-10-15T13:22:46.775814+00:00",
+  "backup_path": "/home/ubuntu/bojian-import-photo-20261015-r1/database.before.dump"
+}

@@ -1,0 +1,26 @@
+{
+  "status": "DEPLOYED_AND_READY",
+  "production_deployed": true,
+  "previous_image": "bojian-api:article-feedback-20261013-r1",
+  "proposed_image": "bojian-api:resume-import-lite-20261015-r1",
+  "binary_sha256": "08061b02a404ac7abe845ab0621a458e5abaef6a9fec204e69ea12a9c1cea87b",
+  "source_path": "/tmp/bojian-lite-import-fix/source",
+  "remote_release_path": "/home/ubuntu/bojian-docx-lite-20261015-r1",
+  "changes": [
+    "Convert DOC/DOCX visible pages to a task-local PDF before recognition",
+    "Keep Lite for document recognition and use the configured AI model to compose resume fields",
+    "Preserve originals, bound conversion time and output size, and remove temporary PDFs"
+  ],
+  "checks": {
+    "go_test_internal_and_cmd": "PASS",
+    "original_docx_converted_pdf_lite": "PASS, 1292 characters",
+    "full_ai_pipeline": "PASS: original DOCX -> rendered PDF -> Lite recognized 1292 characters -> AI composed 2 work entries, 1 education entry, 5 skills",
+    "running_binary_sha256": "PASS",
+    "api_ready": "PASS"
+  },
+  "mobile_update_required": false,
+  "database_schema_change": false,
+  "image": "bojian-api:resume-import-lite-20261015-r1",
+  "verified_at": "2026-10-15T13:10:27.153506+00:00",
+  "backup_path": "/home/ubuntu/bojian-docx-lite-20261015-r1/database.before.dump"
+}

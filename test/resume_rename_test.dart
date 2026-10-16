@@ -7,6 +7,53 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fake_gateway.dart';
 
 void main() {
+  testWidgets(
+    'Cursor and selection controls keep rename editing and unsaved text',
+    (tester) async {
+      final api = FakeGateway();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      final input = find.byKey(const ValueKey('resume-rename-input'));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                ResumeInlineName(
+                  store: store,
+                  resume: ResumeDraft(id: 42, title: '原名称'),
+                ),
+                // Flutter selection handles and menus use the default editable tap group.
+                TextFieldTapRegion(
+                  child: TextButton(
+                    onPressed: () {
+                      tester.widget<TextField>(input).controller!.selection =
+                          const TextSelection.collapsed(offset: 2);
+                    },
+                    child: const Text('移动光标'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('原名称'));
+      await tester.pumpAndSettle();
+      await tester.enterText(input, '修改后的简历名称');
+      await tester.tap(input);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('移动光标'));
+      await tester.pumpAndSettle();
+      expect(input, findsOneWidget);
+      final field = tester.widget<TextField>(input);
+      expect(field.controller!.text, '修改后的简历名称');
+      expect(field.controller!.selection.baseOffset, 2);
+      expect(find.byTooltip('保存名称'), findsOneWidget);
+      expect(api.calls, isNot(contains('PatchResumesId')));
+    },
+  );
+
   testWidgets('Losing focus closes all rename controls without saving', (
     tester,
   ) async {

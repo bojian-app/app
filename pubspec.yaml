@@ -46,6 +46,7 @@ dependencies:
   share_plus: ^13.3.1
   pdf: ^3.13.1
   archive: ^4.3.0
+  vector_math: ^2.4.0
   webview_flutter: ^4.14.1
   flutter_quill: ^11.6.0
 
@@ -77,6 +78,12 @@ flutter:
     - assets/templates/
     - assets/fonts/OFL.txt
   fonts:
+    - family: ResumeDocument
+      fonts:
+        - asset: assets/fonts/resume-regular.ttf
+          weight: 400
+        - asset: assets/fonts/resume-semibold.ttf
+          weight: 600
     - family: AnnotationUI
       fonts:
         - asset: assets/fonts/annotation-ui.ttf

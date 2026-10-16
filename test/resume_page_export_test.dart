@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_document.dart';
 import 'package:bojian_mobile/resume_guidance_review.dart';
-import 'package:bojian_mobile/resume_page_export.dart';
+import 'package:bojian_mobile/resume_native_export.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -53,7 +53,15 @@ void main() {
           expect(header.getUint32(16), 2381);
           expect(header.getUint32(20), 3368);
         }
-        final word = await encodePreviewPages(pages, 'DOCX');
+        final layout = await key.currentState!.captureLayout(
+          isCancelled: () => false,
+          onProgress: (_) {},
+        );
+        final regular = (await rootBundle.load(resumeFontRegularAsset)).buffer
+            .asUint8List();
+        final bold = (await rootBundle.load(resumeFontBoldAsset)).buffer
+            .asUint8List();
+        final word = await encodeNativeResume(layout, 'DOCX', regular, bold);
         final archive = ZipDecoder().decodeBytes(word);
         final xml = utf8.decode(archive.findFile('word/document.xml')!.content);
         expect(
@@ -61,13 +69,12 @@ void main() {
           pages.length - 1,
         );
         expect(xml, contains('w:top="0" w:right="0" w:bottom="0" w:left="0"'));
-        for (var i = 0; i < pages.length; i++) {
-          expect(
-            archive.findFile('word/media/page${i + 1}.png')!.content,
-            orderedEquals(pages[i]),
-          );
-        }
-        final pdf = await encodePreviewPages(pages, 'PDF');
+        expect(
+          archive.files.where((f) => f.name.startsWith('word/media/')),
+          isEmpty,
+        );
+        expect(xml, contains('预览一致性'));
+        final pdf = await encodeNativeResume(layout, 'PDF', regular, bold);
         final pdfText = latin1.decode(pdf);
         expect(pdfText.startsWith('%PDF'), isTrue);
         expect(
@@ -161,10 +168,10 @@ void main() {
   test('Cancellation after capture prevents file generation', () async {
     var cancelled = false;
     await expectLater(
-      exportPreviewPages(
+      exportNativeResume(
         capture: ({required isCancelled, required onProgress}) async {
           cancelled = true;
-          return <Uint8List>[];
+          return const ResumeExportLayout([]);
         },
         title: '简历',
         format: 'PDF',

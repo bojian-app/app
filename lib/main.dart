@@ -31,6 +31,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final AppStore store = widget.store ?? AppStore();
   final navigatorKey = GlobalKey<NavigatorState>();
+  final shellKey = GlobalKey<AppShellState>();
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
   final files = ResumeFiles.instance;
   bool openingImport = false;
@@ -93,7 +94,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       files.incoming.value = null;
       navigator.push(
         MaterialPageRoute<void>(
-          builder: (_) => ImportResume(store: store, initialFile: file),
+          builder: (_) => ImportResume(
+            store: store,
+            initialFile: file,
+            onSaved: () {
+              shellKey.currentState?.select(1);
+              navigator.popUntil((route) => route.isFirst);
+            },
+          ),
         ),
       );
     });
@@ -160,7 +168,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ],
         ),
         child: entryAllowed
-            ? AppShell(key: const ValueKey('signed-in-home'), store: store)
+            ? AppShell(key: shellKey, store: store)
             : AuthPage(key: const ValueKey('signed-out-home'), store: store),
       ),
     );

@@ -45,6 +45,7 @@ class ResumeFiles {
       error.value = data['error'] as String;
     }
     if (data is Map && data['path'] is String && data['name'] is String) {
+      if (incoming.value?.path == data['path']) return;
       incoming.value = SharedResumeFile(
         data['path'] as String,
         originalName: data['name'] as String,

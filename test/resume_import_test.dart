@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:bojian_mobile/api/bojian_api.dart';
@@ -27,6 +28,7 @@ class ImportGateway extends FakeGateway {
       'status': 'WAITING_CONFIRMATION',
       'parsed_content': {
         'personal_info': {'full_name': '文件中的姓名', 'phone': '13812345678'},
+        'job_expectation': {'position': '软件工程师'},
         'work_experiences': [
           {'company': '第一段经历', 'description': '贡献一'},
           {'company': '第二段经历', 'description': '贡献二'},
@@ -65,6 +67,106 @@ XFile selectedFile({String name = '我的简历.PDF', int size = 20}) =>
     XFile.fromData(Uint8List(size), path: '/test/$name');
 
 void main() {
+  testWidgets('Shared file starts automatically and opens review once', (
+    tester,
+  ) async {
+    final api = ImportGateway();
+    final store = await testStore(authenticated: true, api: api);
+    var returnedToLibrary = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: ImportResume(
+          store: store,
+          initialFile: selectedFile(),
+          onSaved: () => returnedToLibrary = true,
+          importer: ResumeImporter(
+            store: store,
+            upload: (_, _, _) async {},
+            delay: (_) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(ResumeEditor), findsOneWidget);
+    expect(api.calls.where((c) => c == 'PostResumeImports'), hasLength(1));
+    expect(api.calls, isNot(contains('PostResumeImportsIdConfirm')));
+    expect(returnedToLibrary, isFalse);
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('PostResumeImportsIdConfirm'));
+    expect(returnedToLibrary, isTrue);
+  });
+
+  testWidgets(
+    'Incoming file shows progress, ignores duplicate, and supports cancellation and retry',
+    (tester) async {
+      final api = ImportGateway();
+      final store = await testStore(authenticated: true, api: api);
+      final gate = Completer<void>();
+      final directory = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('bojian-share-'),
+      );
+      addTearDown(() => directory!.delete(recursive: true));
+      final shared = await tester.runAsync(
+        () => File('${directory!.path}/简历.pdf').writeAsString('%PDF-test'),
+      );
+      var uploads = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: ImportResume(
+            store: store,
+            importer: ResumeImporter(
+              store: store,
+              upload: (_, _, _) async {
+                uploads++;
+                await gate.future;
+              },
+              delay: (_) async {},
+            ),
+          ),
+        ),
+      );
+      final files = ResumeFiles.instance;
+      files.receive({'path': shared!.path, 'name': '简历.pdf'});
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(uploads, 1);
+      expect(
+        find.byKey(const ValueKey('resume-import-progress')),
+        findsOneWidget,
+      );
+      expect(find.text('AI 识别与整理'), findsOneWidget);
+      expect(find.text('正在上传文件…'), findsNWidgets(2));
+      files.receive({'path': shared.path, 'name': '简历.pdf'});
+      await tester.pump();
+      expect(uploads, 1);
+      await tester.scrollUntilVisible(find.text('取消导入'), 200);
+      await tester.tap(find.text('取消导入'));
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('resume-import-progress')),
+        findsNothing,
+      );
+      expect(api.calls, isNot(contains('PostResumeImports')));
+      await tester.ensureVisible(find.byKey(const ValueKey('resume-upload')));
+      await tester.tap(find.byKey(const ValueKey('resume-upload')));
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      await tester.pumpAndSettle();
+      expect(find.byType(ResumeEditor), findsOneWidget);
+      expect(uploads, 2);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   test('Shared files preserve their display name and cached file path', () {
     final files = ResumeFiles.instance;
     files.receive({'path': '/cache/random.pdf', 'name': '我的微信简历.pdf'});
@@ -87,11 +189,14 @@ void main() {
           expect(api.calls, isNot(contains('PostResumeImports')));
         },
       );
+      final phases = <ResumeImportPhase>[];
       final draft = await importer.importFile(
         selectedFile(),
         onProgress: (_) {},
         isCancelled: () => false,
+        onPhase: phases.add,
       );
+      expect(phases, ResumeImportPhase.values);
       expect(draft.name, '文件中的姓名');
       expect(draft.importID, 3);
       expect(draft.id, 0);
@@ -131,6 +236,28 @@ void main() {
       expect(api.calls, isNot(contains('PostResumes')));
     },
   );
+
+  test('Imported portrait survives review and draft copies', () async {
+    final api = ImportGateway();
+    api.documents['GetResumeImportsId']!['photo_file_id'] = 51;
+    api.documents['GetResumeImportsId']!['photo_url'] =
+        'https://cdn.example.test/imported-portrait.png';
+    final store = await testStore(authenticated: true, api: api);
+    final draft =
+        await ResumeImporter(
+          store: store,
+          upload: (_, _, _) async {},
+          delay: (_) async {},
+        ).importFile(
+          selectedFile(name: '简历.docx'),
+          onProgress: (_) {},
+          isCancelled: () => false,
+        );
+    expect(draft.photoFileID, 51);
+    expect(draft.photoURL, 'https://cdn.example.test/imported-portrait.png');
+    expect(draft.copy().photoFileID, 51);
+    expect(draft.copy().photoURL, draft.photoURL);
+  });
 
   test(
     'Invalid and oversized files fail before requesting upload authorization',

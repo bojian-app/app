@@ -1,0 +1,581 @@
+--- a/internal/jobs/worker.go
++++ b/internal/jobs/worker.go
+@@ -277,11 +277,14 @@
+ 	if err != nil {
+ 		return fail("IMPORT_AI_PARSE_FAILED", err)
+ 	}
++	photo, err := extractDOCXPortrait(input)
++	if err != nil {
++		return fail("IMPORT_PHOTO_READ_FAILED", err)
++	}
+ 	if err := lease.Stop(); err != nil {
+ 		return true, err
+ 	}
+-	command, err := w.db.Exec(ctx, `UPDATE resume_imports SET status='WAITING_CONFIRMATION',parsed_content_jsonb=$1,unresolved_source_text=$2,worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$3 AND worker_id=$4 AND status='RUNNING' AND lease_expires_at>now()`, parsed, text, job.ID, w.workerID)
+-	if err = updateOwned(command, err); err != nil {
++	if err := w.completeResumeImport(ctx, job, parsed, text, photo); err != nil {
+ 		return true, err
+ 	}
+ 	w.emit(ctx, job.OwnerID, "job.updated", map[string]any{"job_type": "RESUME_IMPORT", "job_id": job.ID, "status": "WAITING_CONFIRMATION"})
+--- /dev/null
++++ b/internal/jobs/resume_import_photo.go
+@@ -0,0 +1,135 @@
++package jobs
++
++import (
++	"archive/zip"
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"image"
++	"io"
++	"path/filepath"
++	"strings"
++
++	"github.com/jackc/pgx/v5"
++)
++
++const importPhotoField = "__import_photo_file_id"
++
++// Preserve a single unambiguous portrait image from the original Word package.
++// Multiple plausible images are left for the user to choose rather than guessed.
++func extractDOCXPortrait(filename string) ([]byte, error) {
++	if !strings.EqualFold(filepath.Ext(filename), ".docx") {
++		return nil, nil
++	}
++	archive, err := zip.OpenReader(filename)
++	if err != nil {
++		return nil, err
++	}
++	defer archive.Close()
++	var portrait []byte
++	seen := map[[32]byte]bool{}
++	for _, entry := range archive.File {
++		if !strings.HasPrefix(entry.Name, "word/media/") || entry.UncompressedSize64 > 5<<20 {
++			continue
++		}
++		r, err := entry.Open()
++		if err != nil {
++			return nil, err
++		}
++		data, err := io.ReadAll(io.LimitReader(r, (5<<20)+1))
++		r.Close()
++		if err != nil {
++			return nil, err
++		}
++		if len(data) > 5<<20 {
++			continue
++		}
++		cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
++		if err != nil || cfg.Width < 80 || cfg.Height < 80 || cfg.Width > cfg.Height || cfg.Width*2 < cfg.Height {
++			continue
++		}
++		sum := sha256.Sum256(data)
++		if seen[sum] {
++			continue
++		}
++		seen[sum] = true
++		data, err = normalizeExportPhoto(data)
++		if err != nil || len(data) > 5<<20 {
++			continue
++		}
++		if portrait != nil {
++			return nil, nil
++		}
++		portrait = data
++	}
++	return portrait, nil
++}
++
++func (w *Worker) completeResumeImport(ctx context.Context, job importJob, parsed json.RawMessage, text string, photo []byte) error {
++	var content map[string]any
++	if err := json.Unmarshal(parsed, &content); err != nil {
++		return err
++	}
++	delete(content, importPhotoField)
++	key := ""
++	cleanup := false
++	if len(photo) > 0 {
++		var err error
++		key, err = w.objects.ObjectKey(job.OwnerID, "RESUME_PHOTO", fmt.Sprintf("import-%d-portrait.png", job.ID))
++		if err != nil {
++			return err
++		}
++		_, err = w.db.Exec(ctx, `INSERT INTO object_cleanup_jobs(object_key,next_attempt_at) VALUES($1,now()+interval '24 hours') ON CONFLICT(object_key) DO UPDATE SET next_attempt_at=EXCLUDED.next_attempt_at,last_error='',updated_at=now()`, key)
++		if err != nil {
++			return err
++		}
++		cleanup = true
++		defer func() {
++			if cleanup {
++				w.deleteExportObject(key)
++			}
++		}()
++		if err = w.objects.Put(ctx, key, "image/png", bytes.NewReader(photo)); err != nil {
++			return err
++		}
++	}
++	tx, err := w.db.Begin(ctx)
++	if err != nil {
++		return err
++	}
++	defer tx.Rollback(ctx)
++	if len(photo) > 0 {
++		sum := sha256.Sum256(photo)
++		var id int64
++		err = tx.QueryRow(ctx, `INSERT INTO files(owner_id,purpose,object_key,original_name,content_type,size_bytes,sha256,status,completed_at) VALUES($1,'RESUME_PHOTO',$2,'imported-portrait.png','image/png',$3,$4,'READY',now()) RETURNING id`, job.OwnerID, key, len(photo), hex.EncodeToString(sum[:])).Scan(&id)
++		if err != nil {
++			return err
++		}
++		content[importPhotoField] = id
++	}
++	parsed, err = json.Marshal(content)
++	if err != nil {
++		return err
++	}
++	command, err := tx.Exec(ctx, `UPDATE resume_imports SET status='WAITING_CONFIRMATION',parsed_content_jsonb=$1,unresolved_source_text=$2,worker_id=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$3 AND worker_id=$4 AND status='RUNNING' AND lease_expires_at>now()`, parsed, text, job.ID, w.workerID)
++	if err = updateOwned(command, err); err != nil {
++		return err
++	}
++	if key != "" {
++		if _, err = tx.Exec(ctx, `DELETE FROM object_cleanup_jobs WHERE object_key=$1`, key); err != nil {
++			return err
++		}
++	}
++	if err = tx.Commit(ctx); err != nil {
++		if !errors.Is(err, pgx.ErrTxCommitRollback) {
++			cleanup = false
++		}
++		return err
++	}
++	cleanup = false
++	return nil
++}
+--- /dev/null
++++ b/internal/jobs/resume_import_photo_test.go
+@@ -0,0 +1,66 @@
++package jobs
++
++import (
++	"archive/zip"
++	"bytes"
++	"image"
++	"image/png"
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++func TestDOCXPortraitExtraction(t *testing.T) {
++	portrait := func(w, h int) []byte {
++		var b bytes.Buffer
++		if err := png.Encode(&b, image.NewRGBA(image.Rect(0, 0, w, h))); err != nil {
++			t.Fatal(err)
++		}
++		return b.Bytes()
++	}
++	for _, test := range []struct {
++		name   string
++		images map[string][]byte
++		want   bool
++	}{
++		{"portrait", map[string][]byte{"word/media/image1.png": portrait(180, 240)}, true},
++		{"no_picture", nil, false},
++		{"decoration", map[string][]byte{"word/media/banner.png": portrait(400, 100)}, false},
++		{"ambiguous", map[string][]byte{"word/media/a.png": portrait(180, 240), "word/media/b.png": portrait(160, 240)}, false},
++		{"duplicate", map[string][]byte{"word/media/a.png": portrait(180, 240), "word/media/b.png": portrait(180, 240)}, true},
++		{"unrelated_part", map[string][]byte{"customXml/a.png": portrait(180, 240)}, false},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			filename := filepath.Join(t.TempDir(), "resume.docx")
++			f, err := os.Create(filename)
++			if err != nil {
++				t.Fatal(err)
++			}
++			z := zip.NewWriter(f)
++			for name, data := range test.images {
++				w, err := z.Create(name)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if _, err = w.Write(data); err != nil {
++					t.Fatal(err)
++				}
++			}
++			z.Close()
++			f.Close()
++			got, err := extractDOCXPortrait(filename)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if (len(got) > 0) != test.want {
++				t.Fatalf("portrait presence=%v", len(got) > 0)
++			}
++			if test.want {
++				cfg, format, err := image.DecodeConfig(bytes.NewReader(got))
++				if err != nil || format != "png" || cfg.Width != 180 || cfg.Height != 240 {
++					t.Fatal("portrait was not preserved")
++				}
++			}
++		})
++	}
++}
+--- /dev/null
++++ b/internal/jobs/resume_import_photo_integration_test.go
+@@ -0,0 +1,112 @@
++package jobs
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"github.com/jackc/pgx/v5/pgxpool"
++	"io"
++	"log/slog"
++	"net/url"
++	"os"
++	"testing"
++	"time"
++)
++
++type importPhotoObjects struct{ data map[string][]byte }
++
++func (o *importPhotoObjects) ObjectKey(owner int64, purpose, name string) (string, error) {
++	return fmt.Sprintf("%d/%s/%s", owner, purpose, name), nil
++}
++func (o *importPhotoObjects) Get(context.Context, string) (io.ReadCloser, error) {
++	return nil, errors.New("unexpected get")
++}
++func (o *importPhotoObjects) Put(_ context.Context, key, _ string, r io.Reader) error {
++	b, e := io.ReadAll(r)
++	o.data[key] = b
++	return e
++}
++func (o *importPhotoObjects) Delete(_ context.Context, key string) error {
++	delete(o.data, key)
++	return nil
++}
++
++func TestImportPortraitPersistenceIntegration(t *testing.T) {
++	dsn := os.Getenv("TEMPLATE_TEST_DATABASE_URL")
++	if dsn == "" {
++		t.Skip("isolated database required")
++	}
++	u, err := url.Parse(dsn)
++	if err != nil || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") {
++		t.Fatal("local database required")
++	}
++	ctx := context.Background()
++	admin, err := pgxpool.New(ctx, dsn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Close()
++	schema := fmt.Sprintf("import_photo_worker_%d", time.Now().UnixNano())
++	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
++	cfg, _ := pgxpool.ParseConfig(dsn)
++	cfg.ConnConfig.RuntimeParams["search_path"] = schema
++	db, err := pgxpool.NewWithConfig(ctx, cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close()
++	_, err = db.Exec(ctx, `CREATE TABLE files(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,owner_id bigint,purpose text,object_key text,original_name text,content_type text,size_bytes bigint,sha256 text,status text,completed_at timestamptz);
++ CREATE TABLE resume_imports(id bigint PRIMARY KEY,status text,parsed_content_jsonb jsonb,unresolved_source_text text,worker_id text,lease_expires_at timestamptz,updated_at timestamptz);
++ CREATE TABLE object_cleanup_jobs(object_key text PRIMARY KEY,next_attempt_at timestamptz,last_error text,updated_at timestamptz,worker_id text);
++ INSERT INTO resume_imports(id,status,worker_id,lease_expires_at) VALUES(1,'RUNNING','worker',now()+interval '10 minutes'),(2,'RUNNING','worker',now()+interval '10 minutes'),(3,'CANCELED',NULL,NULL);`)
++	if err != nil {
++		t.Fatal(err)
++	}
++	objects := &importPhotoObjects{data: map[string][]byte{}}
++	worker := New(slog.Default(), db, objects, Options{})
++	worker.workerID = "worker"
++	parsed := json.RawMessage(`{"personal_info":{"full_name":"Name"},"__import_photo_file_id":999}`)
++	if err = worker.completeResumeImport(ctx, importJob{ID: 1, OwnerID: 1}, parsed, "source", []byte("validated-png")); err != nil {
++		t.Fatal(err)
++	}
++	var saved []byte
++	var status string
++	var fileID int64
++	if err = db.QueryRow(ctx, "SELECT parsed_content_jsonb,status FROM resume_imports WHERE id=1").Scan(&saved, &status); err != nil {
++		t.Fatal(err)
++	}
++	var data map[string]json.RawMessage
++	json.Unmarshal(saved, &data)
++	json.Unmarshal(data[importPhotoField], &fileID)
++	if fileID <= 0 || fileID == 999 || status != "WAITING_CONFIRMATION" || len(objects.data) != 1 {
++		t.Fatal("portrait not atomically persisted")
++	}
++	var owner int64
++	var purpose string
++	if err = db.QueryRow(ctx, "SELECT owner_id,purpose FROM files WHERE id=$1", fileID).Scan(&owner, &purpose); err != nil || owner != 1 || purpose != "RESUME_PHOTO" {
++		t.Fatal("wrong photo ownership")
++	}
++	if err = worker.completeResumeImport(ctx, importJob{ID: 2, OwnerID: 1}, parsed, "source", nil); err != nil {
++		t.Fatal(err)
++	}
++	if err = db.QueryRow(ctx, "SELECT parsed_content_jsonb FROM resume_imports WHERE id=2").Scan(&saved); err != nil {
++		t.Fatal(err)
++	}
++	json.Unmarshal(saved, &data)
++	var clean map[string]json.RawMessage
++	json.Unmarshal(saved, &clean)
++	if _, ok := clean[importPhotoField]; ok {
++		t.Fatal("forged photo metadata survived")
++	}
++	if err = worker.completeResumeImport(ctx, importJob{ID: 3, OwnerID: 1}, parsed, "source", []byte("other-png")); !errors.Is(err, errLeaseLost) {
++		t.Fatalf("stale lease result=%v", err)
++	}
++	var count int
++	if err = db.QueryRow(ctx, "SELECT count(*) FROM files").Scan(&count); err != nil || count != 1 || len(objects.data) != 1 {
++		t.Fatal("canceled import retained orphan photo")
++	}
++}
+--- a/internal/jobs/resume_import_ai_test.go
++++ b/internal/jobs/resume_import_ai_test.go
+@@ -16,6 +16,11 @@
+ 	if filename == "" {
+ 		t.Skip("set BOJIAN_IMPORT_SMOKE_FILE for a real provider regression")
+ 	}
++	photo, err := extractDOCXPortrait(filename)
++	if err != nil || len(photo) == 0 {
++		t.Fatal("original DOCX portrait was not preserved")
++	}
++	t.Logf("Original portrait extracted: png_bytes=%d", len(photo))
+ 	worker := New(slog.Default(), nil, nil, Options{
+ 		LibreOfficePath: "/usr/bin/libreoffice",
+ 		AIBaseURL:       os.Getenv("AI_POLISH_BASE_URL"), AIAPIKey: os.Getenv("AI_POLISH_API_KEY"),
+--- a/internal/httpapi/resume_jobs.go
++++ b/internal/httpapi/resume_jobs.go
+@@ -1,12 +1,12 @@
+ package httpapi
+ 
+ import (
+- "time"
+ 	"context"
+ 	"encoding/json"
+ 	"errors"
+ 	"net/http"
+ 	"strings"
++	"time"
+ 
+ 	"github.com/jackc/pgx/v5"
+ )
+@@ -54,7 +54,13 @@
+ 		Failure(w, r, 500, "INTERNAL_ERROR", "读取导入任务失败", nil)
+ 		return
+ 	}
+-	Success(w, r, 200, map[string]any{"id": id, "name": name, "status": status, "parsed_content": parsed, "resume_id": resumeID, "unresolved_source_text": unresolved, "error_code": code, "error_message": message, "retry_count": retry, "finished_at": finished})
++	photoID := importedPhotoID(parsed)
++	var photoURL string
++	if photoID > 0 {
++		photoURL = s.fileURL(r, &photoID)
++	}
++	parsed = withoutImportPhoto(parsed)
++	Success(w, r, 200, map[string]any{"photo_file_id": photoID, "photo_url": photoURL, "id": id, "name": name, "status": status, "parsed_content": parsed, "resume_id": resumeID, "unresolved_source_text": unresolved, "error_code": code, "error_message": message, "retry_count": retry, "finished_at": finished})
+ }
+ 
+ func (s *Server) retryResumeImport(w http.ResponseWriter, r *http.Request) {
+@@ -128,7 +134,8 @@
+ 	defer tx.Rollback(r.Context())
+ 	var name, status string
+ 	var existing *int64
+-	if err = tx.QueryRow(r.Context(), `SELECT name,status,resume_id FROM resume_imports WHERE id=$1 AND owner_id=$2 FOR UPDATE`, id, UserID(r.Context())).Scan(&name, &status, &existing); errors.Is(err, pgx.ErrNoRows) {
++	var sourceContent json.RawMessage
++	if err = tx.QueryRow(r.Context(), `SELECT name,status,resume_id,parsed_content_jsonb FROM resume_imports WHERE id=$1 AND owner_id=$2 FOR UPDATE`, id, UserID(r.Context())).Scan(&name, &status, &existing, &sourceContent); errors.Is(err, pgx.ErrNoRows) {
+ 		Failure(w, r, 404, "IMPORT_NOT_FOUND", "导入任务不存在", nil)
+ 		return
+ 	}
+@@ -145,8 +152,21 @@
+ 		return
+ 	}
+ 	var resumeID int64
++	// Trust the worker's photo reference, never a client-supplied file ID.
++	var photoID *int64
++	if candidate := importedPhotoID(sourceContent); candidate > 0 {
++		var valid int64
++		photoErr := tx.QueryRow(r.Context(), `SELECT id FROM files WHERE id=$1 AND owner_id=$2 AND purpose='RESUME_PHOTO' AND status='READY' AND deleted_at IS NULL FOR SHARE`, candidate, UserID(r.Context())).Scan(&valid)
++		if photoErr == nil {
++			photoID = &valid
++		} else if !errors.Is(photoErr, pgx.ErrNoRows) {
++			Failure(w, r, 500, "INTERNAL_ERROR", "读取导入照片失败", nil)
++			return
++		}
++	}
++	in.Content = withoutImportPhoto(in.Content)
+ 	checksum := draftChecksum(in.Content, json.RawMessage(`[]`), nil)
+-	if err = tx.QueryRow(r.Context(), `INSERT INTO resumes(owner_id,title,content_jsonb,checksum) VALUES($1,$2,$3,$4) RETURNING id`, UserID(r.Context()), name, in.Content, checksum).Scan(&resumeID); err == nil {
++	if err = tx.QueryRow(r.Context(), `INSERT INTO resumes(owner_id,title,content_jsonb,checksum,photo_file_id) VALUES($1,$2,$3,$4,$5) RETURNING id`, UserID(r.Context()), name, in.Content, checksum, photoID).Scan(&resumeID); err == nil {
+ 		_, err = tx.Exec(r.Context(), `UPDATE resume_imports SET status='SUCCEEDED',parsed_content_jsonb=$1,resume_id=$2,finished_at=now(),updated_at=now() WHERE id=$3`, in.Content, resumeID, id)
+ 	}
+ 	if err != nil || tx.Commit(r.Context()) != nil {
+--- /dev/null
++++ b/internal/httpapi/resume_import_photos.go
+@@ -0,0 +1,30 @@
++package httpapi
++
++import "encoding/json"
++
++const importPhotoField = "__import_photo_file_id"
++
++func importedPhotoID(content json.RawMessage) int64 {
++	var fields map[string]json.RawMessage
++	if json.Unmarshal(content, &fields) != nil {
++		return 0
++	}
++	var id int64
++	if json.Unmarshal(fields[importPhotoField], &id) != nil || id <= 0 {
++		return 0
++	}
++	return id
++}
++
++func withoutImportPhoto(content json.RawMessage) json.RawMessage {
++	var fields map[string]json.RawMessage
++	if json.Unmarshal(content, &fields) != nil {
++		return content
++	}
++	delete(fields, importPhotoField)
++	clean, err := json.Marshal(fields)
++	if err != nil {
++		return content
++	}
++	return clean
++}
+--- /dev/null
++++ b/internal/httpapi/resume_import_photos_test.go
+@@ -0,0 +1,126 @@
++package httpapi
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"github.com/jackc/pgx/v5/pgxpool"
++	"io"
++	"net/http/httptest"
++	"net/url"
++	"os"
++	"strings"
++	"testing"
++	"time"
++)
++
++type importPhotoTestStore struct{}
++
++func (importPhotoTestStore) ObjectKey(int64, string, string) (string, error) { panic("unexpected") }
++func (importPhotoTestStore) AuthorizeUpload(context.Context, string, string, int64) (string, string, time.Time, error) {
++	panic("unexpected")
++}
++func (importPhotoTestStore) Get(context.Context, string) (io.ReadCloser, error) { panic("unexpected") }
++func (importPhotoTestStore) PresignDownload(context.Context, string) (string, time.Time, error) {
++	return "https://cdn.example.test/portrait.png", time.Now().Add(time.Hour), nil
++}
++
++func TestImportedPhotoMetadata(t *testing.T) {
++	raw := json.RawMessage(`{"personal_info":{"full_name":"Name"},"__import_photo_file_id":42}`)
++	if importedPhotoID(raw) != 42 || importedPhotoID(json.RawMessage(`{"__import_photo_file_id":-1}`)) != 0 {
++		t.Fatal("invalid ID parsing")
++	}
++	clean := withoutImportPhoto(raw)
++	if strings.Contains(string(clean), importPhotoField) || !strings.Contains(string(clean), "Name") {
++		t.Fatal("internal photo reference leaked")
++	}
++}
++
++func TestImportPortraitConfirmationIntegration(t *testing.T) {
++	dsn := os.Getenv("TEMPLATE_TEST_DATABASE_URL")
++	if dsn == "" {
++		t.Skip("isolated integration database required")
++	}
++	u, err := url.Parse(dsn)
++	if err != nil || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") {
++		t.Fatal("local database required")
++	}
++	ctx := context.Background()
++	admin, err := pgxpool.New(ctx, dsn)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Close()
++	schema := fmt.Sprintf("import_photo_%d", time.Now().UnixNano())
++	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
++		t.Fatal(err)
++	}
++	defer admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
++	cfg, _ := pgxpool.ParseConfig(dsn)
++	cfg.ConnConfig.RuntimeParams["search_path"] = schema
++	db, err := pgxpool.NewWithConfig(ctx, cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close()
++	_, err = db.Exec(ctx, `CREATE TABLE files(id bigint PRIMARY KEY,owner_id bigint,purpose text,status text,deleted_at timestamptz,object_key text DEFAULT 'portrait');
++ CREATE TABLE resume_imports(id bigint PRIMARY KEY,owner_id bigint,name text,status text,resume_id bigint,parsed_content_jsonb jsonb,finished_at timestamptz,updated_at timestamptz,unresolved_source_text text DEFAULT 'source',error_code text,error_message_safe text,retry_count int DEFAULT 0);
++ CREATE TABLE resumes(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,owner_id bigint,title text,content_jsonb jsonb,checksum text,photo_file_id bigint);
++ CREATE TABLE realtime_events(event_id text,user_id bigint,event_type text,payload_safe_jsonb jsonb);
++ INSERT INTO files(id,owner_id,purpose,status,deleted_at) VALUES(42,1,'RESUME_PHOTO','READY',NULL),(99,2,'RESUME_PHOTO','READY',NULL);
++ INSERT INTO resume_imports(id,owner_id,name,status,parsed_content_jsonb) VALUES(1,1,'Test','WAITING_CONFIRMATION','{"__import_photo_file_id":42}'),(2,1,'Other','WAITING_CONFIRMATION','{"__import_photo_file_id":99}'),(3,1,'None','WAITING_CONFIRMATION','{}');`)
++	if err != nil {
++		t.Fatal(err)
++	}
++	server := &Server{db: db, objects: importPhotoTestStore{}}
++	preview := httptest.NewRequest("GET", "/", nil)
++	preview.SetPathValue("id", "1")
++	preview = preview.WithContext(context.WithValue(ctx, userIDKey, int64(1)))
++	previewOut := httptest.NewRecorder()
++	server.getResumeImport(previewOut, preview)
++	if previewOut.Code != 200 || !strings.Contains(previewOut.Body.String(), "https://cdn.example.test/portrait.png") || strings.Contains(previewOut.Body.String(), importPhotoField) {
++		t.Fatalf("portrait preview failed: %s", previewOut.Body.String())
++	}
++
++	for _, tc := range []struct {
++		id   string
++		want *int64
++	}{{"1", func() *int64 { v := int64(42); return &v }()}, {"2", nil}, {"3", nil}} {
++		r := httptest.NewRequest("POST", "/", strings.NewReader(`{"content":{"personal_info":{"full_name":"Name"},"__import_photo_file_id":99}}`))
++		r.SetPathValue("id", tc.id)
++		r = r.WithContext(context.WithValue(ctx, userIDKey, int64(1)))
++		out := httptest.NewRecorder()
++		server.confirmResumeImport(out, r)
++		if out.Code != 201 {
++			t.Fatalf("confirm %s: %d %s", tc.id, out.Code, out.Body.String())
++		}
++		var envelope struct {
++			Data struct {
++				ID int64 `json:"resume_id"`
++			} `json:"data"`
++		}
++		if err = json.Unmarshal(out.Body.Bytes(), &envelope); err != nil {
++			t.Fatal(err)
++		}
++		var photo *int64
++		var content []byte
++		if err = db.QueryRow(ctx, "SELECT photo_file_id,content_jsonb FROM resumes WHERE id=$1", envelope.Data.ID).Scan(&photo, &content); err != nil {
++			t.Fatal(err)
++		}
++		if (photo == nil) != (tc.want == nil) || (photo != nil && *photo != *tc.want) {
++			t.Fatal("untrusted or missing portrait")
++		}
++		if strings.Contains(string(content), importPhotoField) {
++			t.Fatal("metadata retained in saved content")
++		}
++		// Repeating confirmation must return the same resume rather than lose its photo.
++		r = httptest.NewRequest("POST", "/", strings.NewReader(`{"content":{}}`))
++		r.SetPathValue("id", tc.id)
++		r = r.WithContext(context.WithValue(ctx, userIDKey, int64(1)))
++		out = httptest.NewRecorder()
++		server.confirmResumeImport(out, r)
++		if out.Code != 200 {
++			t.Fatal("confirmation is not idempotent")
++		}
++	}
++}
