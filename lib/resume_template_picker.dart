@@ -164,8 +164,8 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
                                   children: [
                                     Text(
                                       loadError!,
-                                      style: const TextStyle(
-                                        color: muted,
+                                      style: TextStyle(
+                                        color: context.colors.muted,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -176,9 +176,12 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
                                   ],
                                 )
                               : purchased.isEmpty
-                              ? const Text(
+                              ? Text(
                                   '暂无已购买模板',
-                                  style: TextStyle(color: muted, fontSize: 12),
+                                  style: TextStyle(
+                                    color: context.colors.muted,
+                                    fontSize: 12,
+                                  ),
                                 )
                               : const SizedBox.shrink(),
                         ),
@@ -190,9 +193,9 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
             ),
             Container(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: borderColor)),
+              decoration: BoxDecoration(
+                color: context.colors.surface,
+                border: Border(top: BorderSide(color: context.colors.border)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -264,7 +267,7 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
                     : id == 0
                     ? '系统模板'
                     : '已购买',
-                style: const TextStyle(color: muted, fontSize: 11),
+                style: TextStyle(color: context.colors.muted, fontSize: 11),
               ),
             ),
             Container(
@@ -273,7 +276,9 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: active ? blue : Colors.transparent,
-                border: Border.all(color: active ? blue : borderColor),
+                border: Border.all(
+                  color: active ? blue : context.colors.border,
+                ),
               ),
               child: active
                   ? const Center(
@@ -294,11 +299,15 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
       button: true,
       label: '${design['name']}',
       child: Material(
-        color: active ? const Color(0xFFF0F5FF) : Colors.white,
+        color: active
+            ? (context.isDark
+                  ? context.colors.accentSoft
+                  : const Color(0xFFF0F5FF))
+            : context.colors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
-            color: active ? blue : borderColor,
+            color: active ? blue : context.colors.border,
             width: active ? 1.5 : 1,
           ),
         ),
@@ -344,9 +353,12 @@ class _MarketThumbnail extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const AppIcon(AppIcons.templates, size: 28, color: muted),
+          AppIcon(AppIcons.templates, size: 28, color: context.colors.muted),
           const SizedBox(height: 8),
-          const Text('预览暂不可用', style: TextStyle(color: muted, fontSize: 10)),
+          Text(
+            '预览暂不可用',
+            style: TextStyle(color: context.colors.muted, fontSize: 10),
+          ),
         ],
       ),
     );

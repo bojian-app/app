@@ -34,11 +34,13 @@ class ProfileAvatar extends StatelessWidget {
     this.variant,
     this.file,
     this.size = 36,
+    this.borderRadius,
   });
   final String seed, url;
   final int? variant;
   final XFile? file;
   final double size;
+  final double? borderRadius;
   @override
   Widget build(BuildContext context) {
     final fallback = CustomPaint(
@@ -46,7 +48,7 @@ class ProfileAvatar extends StatelessWidget {
       size: Size.square(size),
     );
     return ClipRRect(
-      borderRadius: BorderRadius.circular(size * .34),
+      borderRadius: BorderRadius.circular(borderRadius ?? size * .34),
       child: SizedBox.square(
         dimension: size,
         child: file != null

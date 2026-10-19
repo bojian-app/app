@@ -46,3 +46,11 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // 0.2.0.11's polaris dependency is unavailable from the documented repository.
+    val douyinSdkVersion = "0.2.0.10"
+    implementation("com.bytedance.ies.ugc.aweme:opensdk-china-external:$douyinSdkVersion")
+    implementation("com.bytedance.ies.ugc.aweme:opensdk-common:$douyinSdkVersion")
+    implementation("com.bytedance.ies.ugc.aweme:openokhttp-china-external:$douyinSdkVersion")
+}

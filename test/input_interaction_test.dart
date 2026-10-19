@@ -23,6 +23,18 @@ Future<void> launch(WidgetTester tester, {bool guest = false}) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> launchBinding(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final api = FakeGateway();
+  api.documents['GetMe']!.remove('phone_masked');
+  final store = await testStore(authenticated: true, api: api);
+  await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+  await tester.pumpAndSettle();
+}
+
 EditableText editable(WidgetTester tester, Finder field) => tester.widget(
   find.descendant(of: field, matching: find.byType(EditableText)),
 );
@@ -35,14 +47,13 @@ Future<void> keyboard(WidgetTester tester) async {
 
 void main() {
   testWidgets(
-    'Landscape login preserves input and keeps actions above keyboard',
+    'Binding preserves input through rotation and keeps actions above keyboard',
     (tester) async {
-      await launch(tester);
-      final phone = find.byKey(const ValueKey('auth-phone'));
-      final code = find.byKey(const ValueKey('auth-code'));
+      await launchBinding(tester);
+      final phone = find.byKey(const ValueKey('phone-binding-phone'));
+      final code = find.byKey(const ValueKey('phone-binding-code'));
       await tester.enterText(phone, '13812345678');
       await tester.enterText(code, '123456');
-      await tester.tap(find.text('我已阅读并同意'));
       await tester.tap(code);
       await tester.pumpAndSettle();
       final focus = editable(tester, code).focusNode;
@@ -50,25 +61,15 @@ void main() {
       tester.view.physicalSize = const Size(844, 390);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(
-        tester.getRect(find.byKey(const ValueKey('auth-brand'))).right,
-        lessThan(tester.getRect(phone).left),
-      );
       expect(editable(tester, phone).controller.text, '13812345678');
       expect(editable(tester, code).controller.text, '123456');
       expect(editable(tester, code).focusNode, same(focus));
       expect(focus.hasFocus, isTrue);
-      expect(
-        tester
-            .widget<Checkbox>(find.byKey(const ValueKey('auth-consent')))
-            .value,
-        isTrue,
-      );
 
       tester.view.viewInsets = const FakeViewPadding(bottom: 230);
       addTearDown(tester.view.resetViewInsets);
       await tester.pumpAndSettle();
-      final submit = find.byKey(const ValueKey('auth-submit'));
+      final submit = find.byKey(const ValueKey('phone-binding-confirm'));
       await tester.ensureVisible(submit);
       await tester.pumpAndSettle();
       expect(tester.getRect(submit).bottom, lessThanOrEqualTo(160));
@@ -91,12 +92,12 @@ void main() {
   testWidgets('Touching blank space dismisses focus and preserves text', (
     tester,
   ) async {
-    await launch(tester);
-    final field = find.byKey(const ValueKey('auth-phone'));
+    await launchBinding(tester);
+    final field = find.byKey(const ValueKey('phone-binding-phone'));
     await tester.enterText(field, '13812345678');
     await tester.pumpAndSettle();
     expect(editable(tester, field).focusNode.hasFocus, isTrue);
-    await tester.tap(find.text('欢迎回到博简'));
+    await tester.tap(find.text('绑定手机号'));
     await tester.pumpAndSettle();
     expect(editable(tester, field).focusNode.hasFocus, isFalse);
     expect(editable(tester, field).controller.text, '13812345678');
@@ -105,21 +106,21 @@ void main() {
   testWidgets('Next moves to code and Done dismisses without submitting', (
     tester,
   ) async {
-    await launch(tester);
+    await launchBinding(tester);
     await tester.enterText(
-      find.byKey(const ValueKey('auth-phone')),
+      find.byKey(const ValueKey('phone-binding-phone')),
       '13812345678',
     );
     await tester.testTextInput.receiveAction(TextInputAction.next);
     await tester.pumpAndSettle();
-    final field = find.byKey(const ValueKey('auth-code'));
+    final field = find.byKey(const ValueKey('phone-binding-code'));
     expect(editable(tester, field).focusNode.hasFocus, isTrue);
     await tester.enterText(field, '123456');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(editable(tester, field).focusNode.hasFocus, isFalse);
-    expect(find.byKey(const ValueKey('auth-error')), findsNothing);
-    expect(find.text('欢迎回到博简'), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-binding-error')), findsNothing);
+    expect(find.text('绑定手机号'), findsOneWidget);
   });
 
   testWidgets('Dragging resume form dismisses focus without losing edits', (
@@ -127,7 +128,9 @@ void main() {
   ) async {
     final semantics = tester.ensureSemantics();
     await launch(tester, guest: true);
-    await tester.tap(find.byKey(const ValueKey('nav-1')));
+    await tester.tap(find.byKey(const ValueKey('nav-3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
     await tester.pumpAndSettle();
     final card = find
         .ancestor(of: find.text('产品经理 · 社招简历'), matching: find.byType(InkWell))
@@ -161,7 +164,7 @@ void main() {
     await tester.enterText(field, '收起键盘也不能丢失这段话');
     await keyboard(tester);
     expect(tester.getRect(field).bottom, lessThanOrEqualTo(544));
-    await tester.tap(find.byTooltip('发送评论'));
+    await tester.tap(find.byKey(const ValueKey('article-comment-send')));
     await tester.pumpAndSettle();
     expect(editable(tester, field).focusNode.hasFocus, isFalse);
     expect(editable(tester, field).controller.text, isEmpty);
@@ -174,11 +177,7 @@ void main() {
     tester,
   ) async {
     await launch(tester, guest: true);
-    await tester.tap(find.text('我的').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('我的文章'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('写文章'));
+    await tester.tap(find.byKey(const ValueKey('discovery-create')));
     await tester.pumpAndSettle();
     final editor = tester.widget<quill.QuillEditor>(
       find.byKey(const ValueKey('composer-body')),
@@ -192,7 +191,11 @@ void main() {
     editor.focusNode.requestFocus();
     await tester.pumpAndSettle();
     await keyboard(tester);
-    await tester.tap(find.byTooltip('收起键盘'));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == '收起键盘',
+      ),
+    );
     await tester.pumpAndSettle();
     expect(editor.focusNode.hasFocus, isFalse);
     expect(editor.controller.document.toPlainText(), '第一段\n第二段\n');
@@ -208,7 +211,11 @@ void main() {
     await tester.enterText(field, '不存在的关键词');
     await tester.pumpAndSettle();
     expect(find.text('没有找到相关内容'), findsOneWidget);
-    await tester.tap(find.byTooltip('清空搜索'));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == '清空搜索',
+      ),
+    );
     await tester.pumpAndSettle();
     expect(editable(tester, field).focusNode.hasFocus, isTrue);
     expect(editable(tester, field).controller.text, isEmpty);

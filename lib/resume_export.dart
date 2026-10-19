@@ -321,14 +321,14 @@ class _ResumeExportSheetState extends State<ResumeExportSheet> {
           if (file == null && !busy) ...[
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const AppIcon(AppIcons.pdf, color: blue),
+              leading: AppIcon(AppIcons.pdf, color: context.colors.accent),
               title: const Text('PDF'),
               subtitle: const Text('适合投递、预览和打印'),
               onTap: () => generate('PDF'),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const AppIcon(AppIcons.word, color: blue),
+              leading: AppIcon(AppIcons.word, color: context.colors.accent),
               title: const Text('Word'),
               subtitle: const Text('固定版式，与预览完全一致'),
               onTap: () => generate('DOCX'),

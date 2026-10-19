@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/discovery.dart';
 import 'package:bojian_mobile/design.dart';
+import 'package:bojian_mobile/playful_refresh.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,6 +33,38 @@ class DelayedFeed extends FakeGateway {
 }
 
 void main() {
+  testWidgets(
+    'Discovery refresh no longer depends on resume loading or its errors',
+    (tester) async {
+      final api = DelayedFeed();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      store.errors['resumes'] = '服务器暂不可用';
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: Scaffold(body: DiscoveryPage(store: store)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final refresh = tester.widget<PlayfulRefresh>(
+        find.byType(PlayfulRefresh).first,
+      );
+      expect(refresh.hasError!(), isFalse);
+      api.calls.clear();
+      await refresh.onRefresh();
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('GetFeed'));
+      expect(api.calls, isNot(contains('GetResumes')));
+      expect(refresh.hasError!(), isFalse);
+      api.failing = 'GetFeed';
+      await refresh.onRefresh();
+      await tester.pumpAndSettle();
+      expect(refresh.hasError!(), isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'Only new records enter; existing cards keep their elements and move gradually',
     (tester) async {

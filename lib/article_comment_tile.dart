@@ -36,7 +36,9 @@ class ArticleCommentTile extends StatelessWidget {
         currentUserID > 0 &&
         comment.authorID == currentUserID;
     final actionStyle = TextButton.styleFrom(
-      foregroundColor: const Color(0xFF878B93),
+      foregroundColor: (context.isDark
+          ? context.colors.muted
+          : const Color(0xFF878B93)),
       overlayColor: Colors.transparent,
       minimumSize: const Size(30, 26),
       padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -46,7 +48,7 @@ class ArticleCommentTile extends StatelessWidget {
         fontSize: 11,
         fontWeight: FontWeight.w500,
       ),
-    );
+    ).withoutHover();
     Widget reaction(bool dislike) {
       final active = dislike ? comment.disliked : comment.liked;
       final count = dislike ? comment.dislikes : comment.likes;
@@ -83,9 +85,13 @@ class ArticleCommentTile extends StatelessWidget {
                 ? Container(
                     width: nested ? 24 : 32,
                     height: nested ? 24 : 32,
-                    color: canvasColor,
-                    child: const Center(
-                      child: AppIcon(AppIcons.comment, color: muted, size: 16),
+                    color: context.colors.canvas,
+                    child: Center(
+                      child: AppIcon(
+                        AppIcons.comment,
+                        color: context.colors.muted,
+                        size: 16,
+                      ),
                     ),
                   )
                 : ProfileAvatar(
@@ -110,7 +116,7 @@ class ArticleCommentTile extends StatelessWidget {
                             children: [
                               TextSpan(text: userDisplayName(comment.author)),
                               if (nested && comment.replyToName.isNotEmpty) ...[
-                                const WidgetSpan(
+                                WidgetSpan(
                                   alignment: PlaceholderAlignment.middle,
                                   child: Padding(
                                     padding: EdgeInsets.symmetric(
@@ -119,7 +125,9 @@ class ArticleCommentTile extends StatelessWidget {
                                     child: Icon(
                                       Icons.chevron_right_rounded,
                                       size: 12,
-                                      color: Color(0xFFB4B6BA),
+                                      color: (context.isDark
+                                          ? context.colors.muted
+                                          : Color(0xFFB4B6BA)),
                                     ),
                                   ),
                                 ),
@@ -131,8 +139,10 @@ class ArticleCommentTile extends StatelessWidget {
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF93969C),
+                          style: TextStyle(
+                            color: (context.isDark
+                                ? context.colors.muted
+                                : Color(0xFF93969C)),
                             fontSize: 12,
                             height: 1.25,
                           ),
@@ -149,14 +159,18 @@ class ArticleCommentTile extends StatelessWidget {
                             vertical: 1,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF1F2F4),
+                            color: (context.isDark
+                                ? context.colors.inset
+                                : const Color(0xFFF1F2F4)),
                             borderRadius: BorderRadius.circular(3),
                           ),
                           child: Text(
                             isAuthor ? '作者' : '我',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 9,
-                              color: Color(0xFF8F939A),
+                              color: (context.isDark
+                                  ? context.colors.muted
+                                  : Color(0xFF8F939A)),
                             ),
                           ),
                         ),
@@ -174,7 +188,11 @@ class ArticleCommentTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.45,
-                      color: comment.deleted ? muted : const Color(0xFF24262B),
+                      color: comment.deleted
+                          ? context.colors.muted
+                          : (context.isDark
+                                ? context.colors.ink
+                                : const Color(0xFF24262B)),
                     ),
                   ),
                 ),
@@ -187,9 +205,11 @@ class ArticleCommentTile extends StatelessWidget {
                       if (comment.createdAt != null)
                         Text(
                           resumeUpdatedLabel(comment.createdAt!),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10.5,
-                            color: Color(0xFFB0B3B9),
+                            color: (context.isDark
+                                ? context.colors.muted
+                                : Color(0xFFB0B3B9)),
                           ),
                         ),
                       if (onReply != null)

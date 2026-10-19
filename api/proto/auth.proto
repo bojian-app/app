@@ -8,6 +8,7 @@ service AuthenticationService {
   rpc VerifyCaptcha(VerifyCaptchaRequest) returns (CaptchaVerification);
   rpc SendSMS(SendSMSRequest) returns (SMSResponse);
   rpc PhoneLogin(PhoneLoginRequest) returns (LoginResponse);
+  rpc ConfirmRegistration(ConfirmRegistrationRequest) returns (LoginResponse);
   rpc RefreshToken(RefreshTokenRequest) returns (TokenResponse);
   rpc CreateWeChatQR(CreateWeChatQRRequest) returns (WeChatQRSession);
   rpc GetWeChatQR(WeChatQRRequest) returns (WeChatQRSession);
@@ -19,8 +20,17 @@ message Captcha { string id = 1; string master_image_data_url = 2; string thumb_
 message VerifyCaptchaRequest { string id = 1; int32 angle = 2; }
 message CaptchaVerification { string captcha_token = 1; }
 message SendSMSRequest { string phone = 1; string captcha_token = 2; string purpose = 3; }
-message SMSResponse { int32 retry_after_seconds = 1; }
+message SMSResponse {
+  int32 retry_after_seconds = 1;
+  // SUBMITTED means accepted; only a successful receipt is DELIVERED.
+  string delivery_status = 2;
+}
 message PhoneLoginRequest { string phone = 1; string code = 2; }
+message ConfirmRegistrationRequest {
+  string registration_token = 1;
+  bool confirmed = 2;
+  map<string, string> agreement_versions = 3;
+}
 message RefreshTokenRequest { string refresh_token = 1; }
 message UserIdentity { int64 id = 1; string public_id = 2; }
 message LoginResponse {
@@ -29,6 +39,10 @@ message LoginResponse {
   string refresh_token = 3;
   string refresh_expires_at = 4;
   UserIdentity user = 5;
+  // No account or login session exists until registration is confirmed.
+  bool registration_required = 6;
+  string registration_token = 7;
+  int32 registration_expires_in_seconds = 8;
 }
 message TokenResponse {
   string access_token = 1;

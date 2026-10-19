@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -24,6 +25,7 @@ import io.flutter.plugin.platform.PlatformPlugin
 
 class MainActivity : FlutterActivity() {
     private var resumeFiles: ResumeFileBridge? = null
+    private var douyinLogin: DouyinLoginBridge? = null
     private var platformPlugin: PlatformPlugin? = null
 
     override fun providePlatformPlugin(activity: Activity?, flutterEngine: FlutterEngine): PlatformPlugin? =
@@ -32,15 +34,18 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         resumeFiles = ResumeFileBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        douyinLogin = DouyinLoginBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "cn.kelance.bojian/settings")
             .setMethodCallHandler { call, result ->
                 try {
                     when (call.method) {
                         "deviceInfo" -> {
-                            val maker = Build.MANUFACTURER.trim()
-                            val model = Build.MODEL.trim()
-                            val fullModel = if (model.startsWith(maker, ignoreCase = true)) model else "$maker $model"
-                            result.success(mapOf("model" to fullModel, "os_version" to Build.VERSION.RELEASE))
+                            Thread {
+                                val model = deviceDisplayName()
+                                runOnUiThread {
+                                    result.success(mapOf("model" to model, "os_version" to Build.VERSION.RELEASE))
+                                }
+                            }.start()
                         }
                         "appInfo" -> {
                             @Suppress("DEPRECATION")
@@ -64,6 +69,39 @@ class MainActivity : FlutterActivity() {
                     result.error("SETTINGS_UNAVAILABLE", "无法打开系统设置", null)
                 }
             }
+    }
+
+    private fun deviceDisplayName(): String {
+        // Vendors can expose a retail name separately from Build.MODEL.
+        for (property in listOf("ro.product.marketname", "ro.vendor.oplus.market.name")) {
+            val name = runCatching {
+                val process = ProcessBuilder("/system/bin/getprop", property).start()
+                try {
+                    // Keep the timeout compatible with Android 7 (API 24).
+                    val deadline = SystemClock.elapsedRealtime() + 200
+                    var exitCode: Int? = null
+                    while (SystemClock.elapsedRealtime() < deadline) {
+                        exitCode = try { process.exitValue() } catch (_: IllegalThreadStateException) { null }
+                        if (exitCode != null) break
+                        Thread.sleep(5)
+                    }
+                    if (exitCode != 0) {
+                        ""
+                    } else {
+                        process.inputStream.bufferedReader().use { it.readText().trim() }
+                    }
+                } finally {
+                    process.inputStream.close()
+                    process.errorStream.close()
+                    process.outputStream.close()
+                    process.destroy()
+                }
+            }.getOrDefault("")
+            if (name.isNotBlank() && !name.equals("unknown", ignoreCase = true)) return name
+        }
+        val maker = Build.MANUFACTURER.trim()
+        val model = Build.MODEL.trim()
+        return if (model.startsWith(maker, ignoreCase = true)) model else "$maker $model".trim()
     }
 
     @Suppress("DEPRECATION")
@@ -352,6 +390,8 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         activityStarted = false
         resumeFiles?.close()
+        douyinLogin?.close()
+        douyinLogin = null
         removeWelcome()
         platformPlugin = null
         super.onDestroy()

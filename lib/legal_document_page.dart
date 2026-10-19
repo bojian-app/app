@@ -37,7 +37,7 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.white,
+      backgroundColor: context.colors.surface,
       showDragHandle: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -70,12 +70,12 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
                       key: ValueKey('legal-directory-${section.id}'),
                       onPressed: () => Navigator.of(context).pop(section.id),
                       style: TextButton.styleFrom(
-                        foregroundColor: ink,
+                        foregroundColor: context.colors.ink,
                         alignment: Alignment.centerLeft,
                         minimumSize: const Size.fromHeight(52),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         overlayColor: Colors.transparent,
-                      ),
+                      ).withoutHover(),
                       child: Text(
                         section.title,
                         style: const TextStyle(fontSize: 14, height: 1.5),
@@ -105,12 +105,12 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
   Widget build(BuildContext context) {
     final current = document;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: context.colors.surface,
       appBar: AppBar(
         title: Text(current.title),
         centerTitle: false,
         titleSpacing: 0,
-        backgroundColor: Colors.white,
+        backgroundColor: context.colors.surface,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -118,10 +118,10 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
               key: const ValueKey('legal-directory'),
               onPressed: showDirectory,
               style: TextButton.styleFrom(
-                foregroundColor: muted,
+                foregroundColor: context.colors.muted,
                 overlayColor: Colors.transparent,
                 minimumSize: const Size(44, 44),
-              ),
+              ).withoutHover(),
               child: const Text('目录'),
             ),
           ),
@@ -145,8 +145,8 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
                       for (final line in current.metadata)
                         Text(
                           line,
-                          style: const TextStyle(
-                            color: muted,
+                          style: TextStyle(
+                            color: context.colors.muted,
                             fontSize: 11.5,
                             height: 1.8,
                           ),
@@ -156,7 +156,9 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
                         key: const ValueKey('legal-important-notice'),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF5F7FC),
+                          color: (context.isDark
+                              ? context.colors.accentSoft
+                              : const Color(0xFFF5F7FC)),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Column(
@@ -165,8 +167,8 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
                             for (final paragraph in current.introduction)
                               Text(
                                 paragraph.text,
-                                style: const TextStyle(
-                                  color: ink,
+                                style: TextStyle(
+                                  color: context.colors.ink,
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w600,
                                   height: 1.85,
@@ -236,7 +238,7 @@ class _LegalSectionView extends StatelessWidget {
             LegalParagraph(:final text, :final emphasized) => Text(
               text,
               style: TextStyle(
-                color: ink,
+                color: context.colors.ink,
                 fontSize: 14,
                 height: 1.85,
                 fontWeight: emphasized ? FontWeight.w600 : FontWeight.w400,
@@ -276,24 +278,24 @@ class _LegalTableView extends StatelessWidget {
       return Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          border: Border.all(color: borderColor),
+          border: Border.all(color: context.colors.border),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: wide ? wideTable() : narrowTable(),
+        child: wide ? wideTable(context) : narrowTable(context),
       );
     },
   );
 
-  Widget wideTable() => Table(
+  Widget wideTable(BuildContext context) => Table(
     defaultVerticalAlignment: TableCellVerticalAlignment.top,
     columnWidths: {0: const FlexColumnWidth(.9)},
-    border: const TableBorder(
-      horizontalInside: BorderSide(color: borderColor),
-      verticalInside: BorderSide(color: borderColor),
+    border: TableBorder(
+      horizontalInside: BorderSide(color: context.colors.border),
+      verticalInside: BorderSide(color: context.colors.border),
     ),
     children: [
       TableRow(
-        decoration: const BoxDecoration(color: canvasColor),
+        decoration: BoxDecoration(color: context.colors.canvas),
         children: [
           for (final header in table.headers)
             Padding(
@@ -327,7 +329,7 @@ class _LegalTableView extends StatelessWidget {
 
   /// On phones each original table row becomes a vertical definition list, so
   /// long provider names and pending disclosures remain readable without zoom.
-  Widget narrowTable() => Column(
+  Widget narrowTable(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       for (var rowIndex = 0; rowIndex < table.rows.length; rowIndex++) ...[
@@ -339,8 +341,8 @@ class _LegalTableView extends StatelessWidget {
             children: [
               Text(
                 table.headers.first,
-                style: const TextStyle(
-                  color: muted,
+                style: TextStyle(
+                  color: context.colors.muted,
                   fontSize: 11.5,
                   height: 1.6,
                 ),
@@ -362,8 +364,8 @@ class _LegalTableView extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   table.headers[columnIndex],
-                  style: const TextStyle(
-                    color: muted,
+                  style: TextStyle(
+                    color: context.colors.muted,
                     fontSize: 11.5,
                     height: 1.6,
                   ),

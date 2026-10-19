@@ -9,6 +9,7 @@ import 'api/bojian_api.dart';
 import 'app_icons.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'confirmation_dialog.dart';
 import 'template_market_store.dart';
 
 class TemplateMarketView extends StatefulWidget {
@@ -46,10 +47,10 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
     builder: (context, _) => Scaffold(
       appBar: AppBar(
         title: const Text('模板市场'),
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w600,
-          color: ink,
+          color: context.colors.ink,
         ),
         centerTitle: false,
       ),
@@ -69,10 +70,16 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
                     : '搜索模板或作者',
                 counterText: '',
                 filled: true,
-                fillColor: const Color(0xFFEDF0F5),
-                prefixIcon: const Padding(
+                fillColor: (context.isDark
+                    ? context.colors.accentSoft
+                    : const Color(0xFFEDF0F5)),
+                prefixIcon: Padding(
                   padding: EdgeInsets.all(13),
-                  child: AppIcon(AppIcons.search, size: 20, color: muted),
+                  child: AppIcon(
+                    AppIcons.search,
+                    size: 20,
+                    color: context.colors.muted,
+                  ),
                 ),
                 suffixIcon: search.text.isEmpty
                     ? null
@@ -82,10 +89,10 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
                           search.clear();
                           market.search('', immediately: true);
                         },
-                        icon: const AppIcon(
+                        icon: AppIcon(
                           AppIcons.clear,
                           size: 18,
-                          color: muted,
+                          color: context.colors.muted,
                         ),
                       ),
                 border: OutlineInputBorder(
@@ -101,32 +108,38 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-            child: Row(
-              children: [
-                for (final filter in TemplateMarketFilter.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(
-                        filter.label,
-                        style: const TextStyle(fontSize: 12),
+            child: SingleChildScrollView(
+              key: const ValueKey('template-market-filters'),
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final filter in TemplateMarketFilter.values)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(
+                          filter.label,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        selected: market.filter == filter,
+                        showCheckmark: false,
+                        selectedColor: (context.isDark
+                            ? context.colors.accentSoft
+                            : const Color(0xFFE4EDFF)),
+                        backgroundColor: context.colors.surface,
+                        side: BorderSide(
+                          color: market.filter == filter
+                              ? const Color(0xFFB6CCFF)
+                              : context.colors.border,
+                        ),
+                        onSelected: (_) {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          market.select(filter);
+                        },
                       ),
-                      selected: market.filter == filter,
-                      showCheckmark: false,
-                      selectedColor: const Color(0xFFE4EDFF),
-                      backgroundColor: Colors.white,
-                      side: BorderSide(
-                        color: market.filter == filter
-                            ? const Color(0xFFB6CCFF)
-                            : borderColor,
-                      ),
-                      onSelected: (_) {
-                        FocusManager.instance.primaryFocus?.unfocus();
-                        market.select(filter);
-                      },
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -150,11 +163,11 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
                             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                             child: Row(
                               children: [
-                                const Expanded(
+                                Expanded(
                                   child: Text(
                                     '购买状态暂时无法同步',
                                     style: TextStyle(
-                                      color: muted,
+                                      color: context.colors.muted,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -239,8 +252,8 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
                               children: [
                                 Text(
                                   failure,
-                                  style: const TextStyle(
-                                    color: muted,
+                                  style: TextStyle(
+                                    color: context.colors.muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -315,7 +328,11 @@ class _MarketStatus extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           else ...[
-            const AppIcon(AppIcons.templateMarket, size: 32, color: muted),
+            AppIcon(
+              AppIcons.templateMarket,
+              size: 32,
+              color: context.colors.muted,
+            ),
             const SizedBox(height: 16),
             Text(
               error == null ? title : '模板加载失败',
@@ -325,7 +342,11 @@ class _MarketStatus extends StatelessWidget {
             Text(
               error ?? subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: muted, fontSize: 12, height: 1.6),
+              style: TextStyle(
+                color: context.colors.muted,
+                fontSize: 12,
+                height: 1.6,
+              ),
             ),
             if (error != null)
               Padding(
@@ -350,11 +371,15 @@ class MarketTemplateArtwork extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const AppIcon(AppIcons.templatePreview, size: 28, color: muted),
+          AppIcon(
+            AppIcons.templatePreview,
+            size: 28,
+            color: context.colors.muted,
+          ),
           const SizedBox(height: 8),
           Text(
             pending ? '预览生成中' : '预览暂不可用',
-            style: const TextStyle(fontSize: 10, color: muted),
+            style: TextStyle(fontSize: 10, color: context.colors.muted),
           ),
         ],
       ),
@@ -390,11 +415,11 @@ class _TemplateCard extends StatelessWidget {
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => Material(
-    color: Colors.white,
+    color: context.colors.surface,
     clipBehavior: Clip.antiAlias,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(14),
-      side: const BorderSide(color: borderColor),
+      side: BorderSide(color: context.colors.border),
     ),
     child: InkWell(
       onTap: onTap,
@@ -406,13 +431,15 @@ class _TemplateCard extends StatelessWidget {
               children: [
                 Positioned.fill(
                   child: ColoredBox(
-                    color: const Color(0xFFF0F3F8),
+                    color: (context.isDark
+                        ? context.colors.accentSoft
+                        : const Color(0xFFF0F3F8)),
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: AspectRatio(
                         aspectRatio: 595.28 / 841.89,
                         child: DecoratedBox(
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: Colors.white,
                             boxShadow: [
                               BoxShadow(
@@ -438,7 +465,9 @@ class _TemplateCard extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5EF),
+                        color: (context.isDark
+                            ? context.colors.accentSoft
+                            : const Color(0xFFE8F5EF)),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Text(
@@ -473,7 +502,7 @@ class _TemplateCard extends StatelessWidget {
                     userDisplayName(template['creator_name']),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 10, color: muted),
+                    style: TextStyle(fontSize: 10, color: context.colors.muted),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -481,10 +510,10 @@ class _TemplateCard extends StatelessWidget {
                   integer(template['price_points']) == 0
                       ? '免费'
                       : '${template['price_points']} 积分',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: blue,
+                    color: context.colors.accent,
                   ),
                 ),
               ],
@@ -581,42 +610,21 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
     }
     final price = integer(design['price_points']);
     if (price > 0) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('购买模板'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${design['name']}'),
-              const SizedBox(height: 16),
-              Text(
-                '本次使用 $price 积分',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '当前余额：${balance ?? 0} 积分',
-                style: const TextStyle(color: muted, fontSize: 12),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: balance != null && balance! >= price
-                  ? () => Navigator.pop(context, true)
-                  : null,
-              child: Text(
-                balance != null && balance! >= price ? '确认购买' : '积分不足',
-              ),
-            ),
+      final confirmed = await showAppConfirmation(
+        context,
+        title: '购买模板',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${design['name']}'),
+            const SizedBox(height: 12),
+            Text('本次使用 $price 积分'),
+            const SizedBox(height: 8),
+            Text('当前余额：${balance ?? 0} 积分'),
           ],
         ),
+        confirmEnabled: balance != null && balance! >= price,
+        confirmLabel: balance != null && balance! >= price ? '确认购买' : '积分不足',
       );
       if (confirmed != true || !mounted || !market.valid) return;
     }
@@ -651,10 +659,10 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
       appBar: AppBar(
         title: const Text('模板详情'),
         centerTitle: false,
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w600,
-          color: ink,
+          color: context.colors.ink,
         ),
         actions: [
           IconButton(
@@ -709,16 +717,19 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
                       const SizedBox(height: 8),
                       Text(
                         '作者 · ${userDisplayName(design['creator_name'])}',
-                        style: const TextStyle(fontSize: 12, color: muted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.colors.muted,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       if ('${design['description'] ?? ''}'.trim().isNotEmpty)
                         Text(
                           '${design['description']}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             height: 1.7,
-                            color: ink,
+                            color: context.colors.ink,
                           ),
                         ),
                       if (acquired)
@@ -737,17 +748,23 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
                           padding: const EdgeInsets.only(top: 16),
                           child: Text(
                             '积分余额 ${balance!}',
-                            style: const TextStyle(color: muted, fontSize: 12),
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       if (!loading &&
                           error == null &&
                           design['compatible'] != true)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(top: 16),
                           child: Text(
                             '模板正在准备，暂时无法获取',
-                            style: TextStyle(color: muted, fontSize: 12),
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       if (loading)
@@ -807,9 +824,9 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
             top: false,
             child: Container(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: borderColor)),
+              decoration: BoxDecoration(
+                color: context.colors.surface,
+                border: Border(top: BorderSide(color: context.colors.border)),
               ),
               child: Row(
                 children: [
@@ -820,10 +837,10 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
                           : integer(design['price_points']) == 0
                           ? '免费'
                           : '${design['price_points']} 积分',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w600,
-                        color: blue,
+                        color: context.colors.accent,
                       ),
                     ),
                   ),

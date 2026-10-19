@@ -42,6 +42,8 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
   double _drag = 0;
   bool _failed = false;
   bool _visible = false;
+  int? _pointer;
+  bool _ownsScroll = false;
   bool get _reduceMotion => MediaQuery.disableAnimationsOf(context);
 
   @override
@@ -125,12 +127,36 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
     }
   }
 
+  bool _accept(ScrollNotification notification) {
+    if (notification.depth != 0 ||
+        axisDirectionToAxis(notification.metrics.axisDirection) !=
+            Axis.vertical ||
+        !TickerMode.valuesOf(context).enabled) {
+      return false;
+    }
+    if (notification is ScrollStartNotification) {
+      // NestedScrollView also notifies other attached tab positions.
+      _ownsScroll = notification.dragDetails != null && _pointer != null;
+    }
+    return _ownsScroll;
+  }
+
+  void _endPointer(PointerEvent event) {
+    if (_pointer == event.pointer) _pointer = null;
+    // Keep ownership through ScrollEndNotification, which follows pointer-up.
+  }
+
   bool _scroll(ScrollNotification notification) {
     if (notification.depth != 0 ||
         axisDirectionToAxis(notification.metrics.axisDirection) !=
             Axis.vertical) {
       return false;
     }
+    if (notification is ScrollEndNotification) {
+      _ownsScroll = false;
+      return false;
+    }
+    if (!_ownsScroll) return false;
     final bottom = notification.metrics.axisDirection == AxisDirection.up;
     if (_status != RefreshIndicatorStatus.drag &&
         _status != RefreshIndicatorStatus.armed) {
@@ -160,52 +186,57 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
   };
 
   @override
-  Widget build(
-    BuildContext context,
-  ) => NotificationListener<ScrollNotification>(
-    onNotification: _scroll,
-    child: RefreshIndicator.noSpinner(
-      onRefresh: _refresh,
-      onStatusChange: _change,
-      semanticsLabel: '刷新内容',
-      child: Stack(
-        fit: StackFit.passthrough,
-        clipBehavior: Clip.hardEdge,
-        children: [
-          Flow(
-            delegate: _RefreshContentFlow(_reveal),
-            children: [RepaintBoundary(child: widget.child)],
-          ),
-          if (_visible)
-            Positioned(
-              top: 8,
-              left: 0,
-              right: 0,
-              child: IgnorePointer(
-                child: Center(
-                  child: RepaintBoundary(
-                    child: FadeTransition(
-                      opacity: _reveal,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, -.3),
-                          end: Offset.zero,
-                        ).animate(_reveal),
-                        child: Semantics(
-                          liveRegion: _status == RefreshIndicatorStatus.done,
-                          label: _label,
-                          child: ExcludeSemantics(
-                            child: CustomPaint(
-                              size: const Size(120, 46),
-                              painter: _PaperFlight(
-                                _flight,
-                                _reveal,
-                                _landing,
-                                flying:
-                                    _status == RefreshIndicatorStatus.refresh,
-                                done: _status == RefreshIndicatorStatus.done,
-                                failed: _failed,
-                                reduceMotion: _reduceMotion,
+  Widget build(BuildContext context) => Listener(
+    behavior: HitTestBehavior.translucent,
+    onPointerDown: (event) => _pointer ??= event.pointer,
+    onPointerUp: _endPointer,
+    onPointerCancel: _endPointer,
+    child: NotificationListener<ScrollNotification>(
+      onNotification: _scroll,
+      child: RefreshIndicator.noSpinner(
+        onRefresh: _refresh,
+        onStatusChange: _change,
+        semanticsLabel: '刷新内容',
+        notificationPredicate: _accept,
+        child: Stack(
+          fit: StackFit.passthrough,
+          clipBehavior: Clip.hardEdge,
+          children: [
+            Flow(
+              delegate: _RefreshContentFlow(_reveal),
+              children: [RepaintBoundary(child: widget.child)],
+            ),
+            if (_visible)
+              Positioned(
+                top: 8,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: Center(
+                    child: RepaintBoundary(
+                      child: FadeTransition(
+                        opacity: _reveal,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, -.3),
+                            end: Offset.zero,
+                          ).animate(_reveal),
+                          child: Semantics(
+                            liveRegion: _status == RefreshIndicatorStatus.done,
+                            label: _label,
+                            child: ExcludeSemantics(
+                              child: CustomPaint(
+                                size: const Size(120, 46),
+                                painter: _PaperFlight(
+                                  _flight,
+                                  _reveal,
+                                  _landing,
+                                  flying:
+                                      _status == RefreshIndicatorStatus.refresh,
+                                  done: _status == RefreshIndicatorStatus.done,
+                                  failed: _failed,
+                                  reduceMotion: _reduceMotion,
+                                ),
                               ),
                             ),
                           ),
@@ -215,8 +246,8 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     ),
   );

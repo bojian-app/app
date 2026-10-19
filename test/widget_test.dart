@@ -2,6 +2,7 @@ import 'package:bojian_mobile/main.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/account_pages.dart';
 import 'package:bojian_mobile/resume_pages.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,7 +27,7 @@ Future<void> launch(
 }
 
 void main() {
-  testWidgets('Profile exposes sign out directly and clears the session', (
+  testWidgets('Profile menu exposes sign out and clears the session', (
     tester,
   ) async {
     final api = FakeGateway();
@@ -35,32 +36,31 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nav-3')));
     await tester.pumpAndSettle();
     expect(find.text('每一点积累，都算数'), findsNothing);
-    expect(find.text('我的文章'), findsOneWidget);
-    expect(find.text('我的收藏'), findsOneWidget);
+    expect(find.text('动态'), findsOneWidget);
+    expect(find.text('收藏'), findsOneWidget);
+    expect(find.text('隐私与设置'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('profile-menu')));
+    await tester.pumpAndSettle();
     expect(find.text('隐私与设置'), findsOneWidget);
     final signOut = find.byKey(const ValueKey('account-sign-out'));
     await tester.ensureVisible(signOut);
+    await tester.pumpAndSettle();
     await tester.tap(signOut);
     await tester.pumpAndSettle();
     expect(store.isAuthenticated, isTrue);
     expect(api.calls, isNot(contains('PostAuthLogout')));
     expect(find.text('确定要退出登录么？'), findsOneWidget);
     expect(find.text('狠心离开'), findsOneWidget);
-    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byType(CupertinoAlertDialog), findsOneWidget);
     expect(find.byType(BottomSheet), findsNothing);
-    expect(tester.getCenter(find.byType(Dialog)).dy, closeTo(422, 1));
-    final confirmButton = tester.widget<FilledButton>(
-      find.byKey(const ValueKey('confirm-sign-out')),
-    );
-    final sheetContext = tester.element(
-      find.byKey(const ValueKey('confirm-sign-out')),
-    );
-    expect(confirmButton.style?.backgroundColor, isNull);
     expect(
-      Theme.of(sheetContext).filledButtonTheme.style!.backgroundColor!
-          .resolve({}),
-      const Color(0xFF2867EE),
+      tester.getCenter(find.byType(CupertinoAlertDialog)).dy,
+      closeTo(422, 1),
     );
+    final confirmButton = tester.widget<CupertinoDialogAction>(
+      find.byKey(const ValueKey('confirm-sign-out')),
+    );
+    expect(confirmButton.isDestructiveAction, isTrue);
     await tester.tap(find.text('我再看看'));
     await tester.pumpAndSettle();
     await tester.tap(signOut);
@@ -69,7 +69,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(store.isAuthenticated, isFalse);
     expect(api.calls, contains('PostAuthLogout'));
-    expect(find.byKey(const ValueKey('auth-phone')), findsOneWidget);
+    expect(find.byKey(const ValueKey('auth-wechat')), findsOneWidget);
+    expect(find.byKey(const ValueKey('auth-phone')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -84,11 +85,13 @@ void main() {
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(844, 360);
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-menu')));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('account-sign-out')),
       150,
       scrollable: find.descendant(
-        of: find.byType(ProfilePage),
+        of: find.byKey(const ValueKey('profile-drawer')),
         matching: find.byType(Scrollable),
       ),
     );
@@ -96,65 +99,59 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Discovery creates a resume directly without creating it early', (
-    tester,
-  ) async {
-    final api = FakeGateway();
-    final store = await testStore(authenticated: true, api: api);
-    await launch(tester, store: store);
-    expect(find.text('创建我的简历'), findsOneWidget);
-    await tester.tap(find.text('创建简历'));
-    await tester.pumpAndSettle();
-    expect(tester.widget<ResumeEditor>(find.byType(ResumeEditor)).draft.id, 0);
-    expect(find.text('简历库'), findsNothing);
-    expect(api.calls, isNot(contains('PostResumes')));
-    expect(store.resumes, isEmpty);
-  });
-
   testWidgets(
-    'Discovery opens the most complete draft and hides completed cards',
+    'Discovery removes the resume card and the resume tab still creates drafts',
     (tester) async {
-      final store = await testStore(authenticated: true);
-      store.resumes.addAll([
-        ResumeDraft(id: 1, title: '较早草稿', progress: .25),
-        ResumeDraft(id: 2, title: '正在填写', progress: .75),
-      ]);
+      final api = FakeGateway();
+      final store = await testStore(authenticated: true, api: api);
       await launch(tester, store: store);
-      expect(find.text('待完善简历'), findsOneWidget);
-      expect(find.text('完善度 75%'), findsOneWidget);
-      await tester.tap(find.text('继续完善'));
+      expect(find.byKey(const ValueKey('discovery-resume-card')), findsNothing);
+      expect(find.text('创建我的简历'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('nav-3')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('添加简历'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('手动添加'));
       await tester.pumpAndSettle();
       expect(
         tester.widget<ResumeEditor>(find.byType(ResumeEditor)).draft.id,
-        2,
+        0,
       );
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      store.resumes.last.progress = 1;
-      store.changed();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('discovery-resume-card')), findsNothing);
+      expect(api.calls, isNot(contains('PostResumes')));
+      expect(store.resumes, isEmpty);
     },
   );
 
-  testWidgets(
-    'Unknown or failed resume loading does not show a creation card',
-    (tester) async {
-      final store = await testStore(authenticated: true);
-      store.resumesLoaded = false;
-      await launch(tester, store: store);
-      expect(find.byKey(const ValueKey('discovery-resume-card')), findsNothing);
-      store.resumesLoaded = true;
-      store.errors['resumes'] = '服务器暂不可用';
-      store.changed();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('discovery-resume-card')), findsNothing);
+  testWidgets('Discovery has no resume card across loading and draft states', (
+    tester,
+  ) async {
+    final store = await testStore(authenticated: true);
+    await launch(tester, store: store);
+    for (final state in ['unknown', 'failed', 'empty', 'draft', 'complete']) {
+      store.resumes.clear();
+      store.resumesLoaded = state != 'unknown';
       store.errors.remove('resumes');
+      if (state == 'failed') store.errors['resumes'] = '服务器暂不可用';
+      if (state == 'draft' || state == 'complete') {
+        store.resumes.add(
+          ResumeDraft(
+            id: 1,
+            title: '我的简历',
+            progress: state == 'draft' ? .75 : 1,
+          ),
+        );
+      }
       store.changed();
       await tester.pumpAndSettle();
-      expect(find.text('创建我的简历'), findsOneWidget);
-    },
-  );
+      expect(find.byKey(const ValueKey('discovery-resume-card')), findsNothing);
+      expect(find.text('创建我的简历'), findsNothing);
+      expect(find.text('待完善简历'), findsNothing);
+      expect(find.text('企业福利'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+  });
 
   testWidgets('Empty account shows real empty states and no sample people', (
     tester,
@@ -162,16 +159,29 @@ void main() {
     await launch(tester);
     expect(find.text('还没有发布的内容'), findsOneWidget);
     expect(find.textContaining('陈一然'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('nav-3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
+    await tester.pumpAndSettle();
+    expect(find.text('这里还没有内容'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('nav-1')));
     await tester.pumpAndSettle();
-    expect(find.text('创建你的第一份简历'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('nav-2')));
+    expect(find.byType(TemplateMarket), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('nav-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('discovery-messages')));
     await tester.pumpAndSettle();
     expect(find.text('暂无系统通知'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('nav-3')));
     await tester.pumpAndSettle();
     expect(find.text('测试账号'), findsOneWidget);
-    expect(find.text('0'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('profile-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('profile-points-card')), findsNothing);
+    expect(find.text('草稿箱'), findsOneWidget);
+    expect(find.text('隐私与设置'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('Failed server requests show retry rather than sample content', (
@@ -193,7 +203,9 @@ void main() {
       tester,
       store: await testStore(authenticated: true, seeded: true),
     );
-    await tester.tap(find.byKey(const ValueKey('nav-1')));
+    await tester.tap(find.byKey(const ValueKey('nav-3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
     await tester.pumpAndSettle();
     final card = find
         .ancestor(of: find.text('产品经理 · 社招简历'), matching: find.byType(InkWell))
@@ -226,14 +238,17 @@ void main() {
     await launch(tester, store: store);
     await tester.tap(find.byKey(const ValueKey('nav-3')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-menu')));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('account-sign-out')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('account-sign-out')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('confirm-sign-out')));
     await tester.pumpAndSettle();
     expect(store.resumes, isEmpty);
     expect(store.stories, isEmpty);
-    expect(find.text('欢迎回到博简'), findsOneWidget);
+    expect(find.byKey(const ValueKey('auth-wechat')), findsOneWidget);
     expect(find.byType(SettingsPage), findsNothing);
   });
 }

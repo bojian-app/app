@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "wechatopensdk-nopay-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/JarvanMo/WechatOpenSDK-NoPay-SPM",
+      "state" : {
+        "revision" : "9017a6e15c1d46d31dbd144404a6dac79abe308c",
+        "version" : "2.0.8"
+      }
+    }
+  ],
+  "version" : 2
+}

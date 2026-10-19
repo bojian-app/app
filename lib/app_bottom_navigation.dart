@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'app_icons.dart';
+import 'navigation_icon.dart';
 import 'design.dart';
 
 /// Four persistent tabs. Company benefits are opened from Discovery.
@@ -9,19 +9,12 @@ class AppBottomNavigation extends StatelessWidget {
     super.key,
     required this.selectedIndex,
     required this.onSelected,
-    this.unreadCount = 0,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelected;
-  final int unreadCount;
 
-  static const _destinations = [
-    (label: '发现', icon: AppIcons.discover),
-    (label: '简历', icon: AppIcons.resume),
-    (label: '消息', icon: AppIcons.messages),
-    (label: '我的', icon: AppIcons.profile),
-  ];
+  static const _destinations = ['发现', '模版市场', '积分', '我的'];
 
   @override
   Widget build(BuildContext context) {
@@ -29,10 +22,10 @@ class AppBottomNavigation extends StatelessWidget {
         ? Duration.zero
         : const Duration(milliseconds: 180);
     return Material(
-      color: Colors.white,
+      color: context.colors.surface,
       child: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: borderColor)),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: context.colors.border)),
         ),
         child: SafeArea(
           top: false,
@@ -59,13 +52,11 @@ class AppBottomNavigation extends StatelessWidget {
   Widget _destination(int index, Duration duration) {
     final destination = _destinations[index];
     final active = selectedIndex == index;
-    final hasBadge = index == 2 && unreadCount > 0;
-    const inactiveColor = Color(0xFF697586);
+    const inactiveColor = Color(0xFF9AA3AF);
     return Semantics(
       selected: active,
       button: true,
-      label: destination.label,
-      value: hasBadge ? '$unreadCount条未读消息' : null,
+      label: destination,
       onTap: () => onSelected(index),
       excludeSemantics: true,
       child: InkWell(
@@ -79,74 +70,50 @@ class AppBottomNavigation extends StatelessWidget {
           duration: duration,
           curve: Curves.easeOutCubic,
           builder: (context, progress, _) {
-            final foreground = Color.lerp(inactiveColor, blue, progress)!;
+            final foreground = Color.lerp(
+              context.isDark ? context.colors.muted : inactiveColor,
+              context.colors.accent,
+              progress,
+            )!;
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        key: ValueKey('nav-icon-surface-$index'),
-                        width: 50,
-                        height: 32,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEAF1FF)
-                              .withValues(alpha: progress),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: AppIcon(
-                          destination.icon,
-                          size: 23,
-                          color: foreground,
-                        ),
+                  SizedBox(
+                    key: ValueKey('nav-icon-surface-$index'),
+                    width: 50,
+                    height: 32,
+                    child: Center(
+                      child: NavigationIcon(
+                        index: index,
+                        progress: progress,
+                        color: foreground,
                       ),
-                      if (hasBadge)
-                        PositionedDirectional(
-                          end: 1,
-                          top: -3,
-                          child: Container(
-                            key: const ValueKey('nav-unread-badge'),
-                            constraints: const BoxConstraints(minWidth: 16),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFCC4939),
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 1.5,
-                              ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              unreadCount > 99 ? '99+' : '$unreadCount',
-                              maxLines: 1,
-                              textScaler: TextScaler.noScaling,
-                              style: const TextStyle(
-                                fontSize: 9,
-                                height: 1.2,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    destination.label,
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontSize: 11,
-                      height: 1.3,
-                      color: foreground,
-                      fontWeight: FontWeight.w600,
+                  SizedBox(
+                    height: MediaQuery.textScalerOf(context).scale(11) * 1.3,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.topCenter,
+                      child: Text(
+                        destination,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.3,
+                          color: Color.lerp(
+                            context.isDark
+                                ? context.colors.muted
+                                : const Color(0xFF697586),
+                            context.colors.accent,
+                            progress,
+                          ),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                 ],

@@ -10,6 +10,7 @@
 // ignore_for_file: deprecated_member_use_from_same_package, library_prefixes
 // ignore_for_file: non_constant_identifier_names, prefer_relative_imports
 
+import 'dart:async' as $async;
 import 'dart:core' as $core;
 
 import 'package:fixnum/fixnum.dart' as $fixnum;
@@ -348,9 +349,11 @@ class SendSMSRequest extends $pb.GeneratedMessage {
 class SMSResponse extends $pb.GeneratedMessage {
   factory SMSResponse({
     $core.int? retryAfterSeconds,
+    $core.String? deliveryStatus,
   }) {
     final result = SMSResponse._();
     if (retryAfterSeconds != null) result.retryAfterSeconds = retryAfterSeconds;
+    if (deliveryStatus != null) result.deliveryStatus = deliveryStatus;
     return result;
   }
 
@@ -368,6 +371,7 @@ class SMSResponse extends $pb.GeneratedMessage {
       package: const $pb.PackageName(_omitMessageNames ? '' : 'bojian.v1'),
       createEmptyInstance: SMSResponse.$_createMessage)
     ..aI(1, _omitFieldNames ? '' : 'retryAfterSeconds')
+    ..aOS(2, _omitFieldNames ? '' : 'deliveryStatus')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -400,6 +404,16 @@ class SMSResponse extends $pb.GeneratedMessage {
   $core.bool hasRetryAfterSeconds() => $_has(0);
   @$pb.TagNumber(1)
   void clearRetryAfterSeconds() => $_clearField(1);
+
+  /// SUBMITTED means accepted; only a successful receipt is DELIVERED.
+  @$pb.TagNumber(2)
+  $core.String get deliveryStatus => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set deliveryStatus($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDeliveryStatus() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDeliveryStatus() => $_clearField(2);
 }
 
 class PhoneLoginRequest extends $pb.GeneratedMessage {
@@ -469,6 +483,93 @@ class PhoneLoginRequest extends $pb.GeneratedMessage {
   $core.bool hasCode() => $_has(1);
   @$pb.TagNumber(2)
   void clearCode() => $_clearField(2);
+}
+
+class ConfirmRegistrationRequest extends $pb.GeneratedMessage {
+  factory ConfirmRegistrationRequest({
+    $core.String? registrationToken,
+    $core.bool? confirmed,
+    $core.Iterable<$core.MapEntry<$core.String, $core.String>>?
+        agreementVersions,
+  }) {
+    final result = ConfirmRegistrationRequest._();
+    if (registrationToken != null) result.registrationToken = registrationToken;
+    if (confirmed != null) result.confirmed = confirmed;
+    if (agreementVersions != null)
+      result.agreementVersions.addEntries(agreementVersions);
+    return result;
+  }
+
+  ConfirmRegistrationRequest._();
+
+  factory ConfirmRegistrationRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ConfirmRegistrationRequest()..mergeFromBuffer(data, registry);
+  factory ConfirmRegistrationRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ConfirmRegistrationRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ConfirmRegistrationRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'bojian.v1'),
+      createEmptyInstance: ConfirmRegistrationRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'registrationToken')
+    ..aOB(2, _omitFieldNames ? '' : 'confirmed')
+    ..m<$core.String, $core.String>(
+        3, _omitFieldNames ? '' : 'agreementVersions',
+        entryClassName: 'ConfirmRegistrationRequest.AgreementVersionsEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OS,
+        packageName: const $pb.PackageName('bojian.v1'))
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ConfirmRegistrationRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ConfirmRegistrationRequest copyWith(
+          void Function(ConfirmRegistrationRequest) updates) =>
+      super.copyWith(
+              (message) => updates(message as ConfirmRegistrationRequest))
+          as ConfirmRegistrationRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use ConfirmRegistrationRequest() / ConfirmRegistrationRequest.new instead')
+  static ConfirmRegistrationRequest create() => ConfirmRegistrationRequest._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      ConfirmRegistrationRequest._();
+  @$core.override
+  ConfirmRegistrationRequest createEmptyInstance() =>
+      ConfirmRegistrationRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ConfirmRegistrationRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ConfirmRegistrationRequest>(
+          ConfirmRegistrationRequest.$_createMessage);
+  static ConfirmRegistrationRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get registrationToken => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set registrationToken($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasRegistrationToken() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearRegistrationToken() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.bool get confirmed => $_getBF(1);
+  @$pb.TagNumber(2)
+  set confirmed($core.bool value) => $_setBool(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasConfirmed() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearConfirmed() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $pb.PbMap<$core.String, $core.String> get agreementVersions => $_getMap(2);
 }
 
 class RefreshTokenRequest extends $pb.GeneratedMessage {
@@ -605,6 +706,9 @@ class LoginResponse extends $pb.GeneratedMessage {
     $core.String? refreshToken,
     $core.String? refreshExpiresAt,
     UserIdentity? user,
+    $core.bool? registrationRequired,
+    $core.String? registrationToken,
+    $core.int? registrationExpiresInSeconds,
   }) {
     final result = LoginResponse._();
     if (accessToken != null) result.accessToken = accessToken;
@@ -613,6 +717,11 @@ class LoginResponse extends $pb.GeneratedMessage {
     if (refreshToken != null) result.refreshToken = refreshToken;
     if (refreshExpiresAt != null) result.refreshExpiresAt = refreshExpiresAt;
     if (user != null) result.user = user;
+    if (registrationRequired != null)
+      result.registrationRequired = registrationRequired;
+    if (registrationToken != null) result.registrationToken = registrationToken;
+    if (registrationExpiresInSeconds != null)
+      result.registrationExpiresInSeconds = registrationExpiresInSeconds;
     return result;
   }
 
@@ -635,6 +744,9 @@ class LoginResponse extends $pb.GeneratedMessage {
     ..aOS(4, _omitFieldNames ? '' : 'refreshExpiresAt')
     ..aOM<UserIdentity>(5, _omitFieldNames ? '' : 'user',
         subBuilder: UserIdentity.$_createMessage)
+    ..aOB(6, _omitFieldNames ? '' : 'registrationRequired')
+    ..aOS(7, _omitFieldNames ? '' : 'registrationToken')
+    ..aI(8, _omitFieldNames ? '' : 'registrationExpiresInSeconds')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -705,6 +817,35 @@ class LoginResponse extends $pb.GeneratedMessage {
   void clearUser() => $_clearField(5);
   @$pb.TagNumber(5)
   UserIdentity ensureUser() => $_ensure(4);
+
+  /// No account or login session exists until registration is confirmed.
+  @$pb.TagNumber(6)
+  $core.bool get registrationRequired => $_getBF(5);
+  @$pb.TagNumber(6)
+  set registrationRequired($core.bool value) => $_setBool(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasRegistrationRequired() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearRegistrationRequired() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.String get registrationToken => $_getSZ(6);
+  @$pb.TagNumber(7)
+  set registrationToken($core.String value) => $_setString(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasRegistrationToken() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearRegistrationToken() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $core.int get registrationExpiresInSeconds => $_getIZ(7);
+  @$pb.TagNumber(8)
+  set registrationExpiresInSeconds($core.int value) =>
+      $_setSignedInt32(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasRegistrationExpiresInSeconds() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearRegistrationExpiresInSeconds() => $_clearField(8);
 }
 
 class TokenResponse extends $pb.GeneratedMessage {
@@ -1009,6 +1150,53 @@ class WeChatQRSession extends $pb.GeneratedMessage {
   $core.bool hasPollAfterSeconds() => $_has(3);
   @$pb.TagNumber(4)
   void clearPollAfterSeconds() => $_clearField(4);
+}
+
+/// Login responses are typed. Credentials are transported only over TLS outside loopback.
+class AuthenticationServiceApi {
+  final $pb.RpcClient _client;
+
+  AuthenticationServiceApi(this._client);
+
+  $async.Future<Captcha> createCaptcha($pb.ClientContext? ctx, Empty request) =>
+      _client.invoke<Captcha>(
+          ctx, 'AuthenticationService', 'CreateCaptcha', request, Captcha());
+  $async.Future<CaptchaVerification> verifyCaptcha(
+          $pb.ClientContext? ctx, VerifyCaptchaRequest request) =>
+      _client.invoke<CaptchaVerification>(ctx, 'AuthenticationService',
+          'VerifyCaptcha', request, CaptchaVerification());
+  $async.Future<SMSResponse> sendSMS(
+          $pb.ClientContext? ctx, SendSMSRequest request) =>
+      _client.invoke<SMSResponse>(
+          ctx, 'AuthenticationService', 'SendSMS', request, SMSResponse());
+  $async.Future<LoginResponse> phoneLogin(
+          $pb.ClientContext? ctx, PhoneLoginRequest request) =>
+      _client.invoke<LoginResponse>(
+          ctx, 'AuthenticationService', 'PhoneLogin', request, LoginResponse());
+  $async.Future<LoginResponse> confirmRegistration(
+          $pb.ClientContext? ctx, ConfirmRegistrationRequest request) =>
+      _client.invoke<LoginResponse>(ctx, 'AuthenticationService',
+          'ConfirmRegistration', request, LoginResponse());
+  $async.Future<TokenResponse> refreshToken(
+          $pb.ClientContext? ctx, RefreshTokenRequest request) =>
+      _client.invoke<TokenResponse>(ctx, 'AuthenticationService',
+          'RefreshToken', request, TokenResponse());
+  $async.Future<WeChatQRSession> createWeChatQR(
+          $pb.ClientContext? ctx, CreateWeChatQRRequest request) =>
+      _client.invoke<WeChatQRSession>(ctx, 'AuthenticationService',
+          'CreateWeChatQR', request, WeChatQRSession());
+  $async.Future<WeChatQRSession> getWeChatQR(
+          $pb.ClientContext? ctx, WeChatQRRequest request) =>
+      _client.invoke<WeChatQRSession>(ctx, 'AuthenticationService',
+          'GetWeChatQR', request, WeChatQRSession());
+  $async.Future<WeChatQRSession> refreshWeChatQR(
+          $pb.ClientContext? ctx, WeChatQRRequest request) =>
+      _client.invoke<WeChatQRSession>(ctx, 'AuthenticationService',
+          'RefreshWeChatQR', request, WeChatQRSession());
+  $async.Future<LoginResponse> exchangeWeChatQR(
+          $pb.ClientContext? ctx, WeChatQRRequest request) =>
+      _client.invoke<LoginResponse>(ctx, 'AuthenticationService',
+          'ExchangeWeChatQR', request, LoginResponse());
 }
 
 const $core.bool _omitFieldNames =

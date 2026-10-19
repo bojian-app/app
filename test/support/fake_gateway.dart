@@ -3,6 +3,8 @@ import 'package:fixnum/fixnum.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/api/generated/auth.pb.dart' as auth;
 import 'package:bojian_mobile/app_store.dart';
+import 'package:bojian_mobile/wechat_login.dart';
+import 'package:bojian_mobile/douyin_login.dart';
 
 class MemoryStorage implements SessionStorage {
   final values = <String, String>{};
@@ -15,6 +17,30 @@ class MemoryStorage implements SessionStorage {
     } else {
       values[key] = value;
     }
+  }
+}
+
+class FakeWeChatAuthorizer implements WeChatAuthorizer {
+  FakeWeChatAuthorizer({this.code = 'wx-test-code'});
+  String? code;
+  int calls = 0;
+
+  @override
+  Future<String?> authorize() async {
+    calls++;
+    return code;
+  }
+}
+
+class FakeDouyinAuthorizer implements DouyinAuthorizer {
+  FakeDouyinAuthorizer({this.code = 'dy-test-code'});
+  String? code;
+  int calls = 0;
+
+  @override
+  Future<String?> authorize() async {
+    calls++;
+    return code;
   }
 }
 
@@ -32,6 +58,7 @@ class FakeGateway implements ApiGateway {
       'bio': '',
       'public_id': 'test-id',
       'profile_visibility': 'PUBLIC',
+      'phone_masked': '138****5678',
     };
     documents['GetWallet'] = {'available_points': 0};
     documents['GetWalletDailyReward'] = {'points': 10, 'claimable': true};
@@ -101,6 +128,12 @@ class FakeGateway implements ApiGateway {
     if (failing == method) throw const ApiFailure('服务器暂不可用');
     if (method == 'PatchMe') {
       documents['GetMe'] = {...documents['GetMe']!, ...body!};
+    }
+    if (method == 'PostMePhone') {
+      final phone = body!['phone'] as String;
+      final masked = '${phone.substring(0, 3)}****${phone.substring(7)}';
+      documents['GetMe'] = {...documents['GetMe']!, 'phone_masked': masked};
+      return ApiDocument({'phone_masked': masked});
     }
     if (method == 'PostArticlesIdComments') {
       final rows =
@@ -184,6 +217,38 @@ class FakeGateway implements ApiGateway {
   }
 
   @override
+  Future<auth.LoginResponse> loginWithWeChat(
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  ) async {
+    calls.add('WeChatLogin');
+    if (failing == 'WeChatLogin') throw const ApiFailure('微信登录失败，请稍后重试');
+    return login('', code, headers);
+  }
+
+  @override
+  Future<auth.LoginResponse> loginWithDouyin(
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  ) async {
+    calls.add('DouyinLogin');
+    if (failing == 'DouyinLogin') throw const ApiFailure('抖音登录失败，请稍后重试');
+    return login('', code, headers);
+  }
+
+  @override
+  Future<auth.LoginResponse> confirmRegistration(
+    String registrationToken,
+    Map<String, String> agreements,
+    Map<String, String> headers,
+  ) async {
+    calls.add('ConfirmRegistration');
+    return login('', '', headers);
+  }
+
+  @override
   Future<auth.TokenResponse> refresh(
     String token,
     Map<String, String> headers,
@@ -200,10 +265,14 @@ Future<AppStore> testStore({
   bool seeded = false,
   bool guidanceHelpSeen = true,
   FakeGateway? api,
+  WeChatAuthorizer? weChatAuthorizer,
+  DouyinAuthorizer? douyinAuthorizer,
 }) async {
   final store = AppStore(
     api: api ?? FakeGateway(seeded: seeded),
     storage: MemoryStorage(),
+    weChatAuthorizer: weChatAuthorizer,
+    douyinAuthorizer: douyinAuthorizer,
   );
   await store.initialize();
   if (authenticated) {

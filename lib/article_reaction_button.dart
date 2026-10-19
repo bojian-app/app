@@ -58,7 +58,7 @@ class _ArticleReactionButtonState extends State<ArticleReactionButton>
   Widget build(BuildContext context) {
     final like = widget.reaction == ArticleReaction.like;
     final tint = like ? const Color(0xFFE66B7F) : const Color(0xFFCA963A);
-    final color = widget.active ? tint : muted;
+    final color = widget.active ? tint : context.colors.muted;
     final name = like ? '点赞' : '收藏';
     final label = widget.active ? '取消$name' : name;
     final iconSize = widget.compact ? 18.0 : 22.0;

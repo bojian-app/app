@@ -101,9 +101,9 @@ class _StartupScreenState extends State<StartupScreen>
             builder: (context, _) {
               final progress = (_timeline.value * 2180 / 2000).clamp(0.0, 1.0);
               return AnnotatedRegion<SystemUiOverlayStyle>(
-                value: SystemUiOverlayStyle.dark,
+                value: appSystemUiStyle(context),
                 child: Material(
-                  color: canvasColor,
+                  color: context.colors.canvas,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -116,6 +116,7 @@ class _StartupScreenState extends State<StartupScreen>
                             painter: StartupScenePainter(
                               progress: progress,
                               textScaler: MediaQuery.textScalerOf(context),
+                              colors: context.colors,
                             ),
                           ),
                         ),
@@ -132,12 +133,14 @@ class _StartupScreenState extends State<StartupScreen>
                               onPressed: _finish,
                               padding: EdgeInsets.zero,
                               minimumSize: const Size(48, 48),
-                              child: const Text(
+                              child: Text(
                                 '跳过',
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w400,
-                                  color: Color(0xFF697586),
+                                  color: (context.isDark
+                                      ? context.colors.muted
+                                      : Color(0xFF697586)),
                                 ),
                               ),
                             ),

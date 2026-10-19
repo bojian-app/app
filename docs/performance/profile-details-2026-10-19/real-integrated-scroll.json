@@ -1,0 +1,30 @@
+{
+  "revision": "final-shared-header-release-2026-10-19-1431",
+  "physical_pixel_ratio": 4,
+  "stages": [
+    {
+      "stage": "slightly-scrolled-start",
+      "avatar_bounds": "[544,429][887,771]",
+      "tab_bounds": "[48,1406][217,1558]",
+      "messages_bounds": "[1232,160][1408,336]"
+    },
+    {
+      "stage": "mid",
+      "avatar_bounds": "[343,268][586,511]",
+      "tab_bounds": "[48,1091][217,1243]",
+      "messages_bounds": "[1232,160][1408,336]"
+    },
+    {
+      "stage": "compact",
+      "avatar_bounds": "[208,160][384,336]",
+      "tab_bounds": "[48,336][217,488]",
+      "messages_bounds": "[1232,160][1408,336]"
+    },
+    {
+      "stage": "returned-to-start",
+      "avatar_bounds": "[544,429][887,771]",
+      "tab_bounds": "[48,1406][217,1558]",
+      "messages_bounds": "[1232,160][1408,336]"
+    }
+  ]
+}

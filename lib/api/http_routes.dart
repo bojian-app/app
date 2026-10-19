@@ -11,6 +11,8 @@ const httpRoutes = <String, (String, String)>{
   'DeleteMeAccount': ('DELETE', '/me/account'),
   'PostMeDataExports': ('POST', '/me/data-exports'),
   'GetMe': ('GET', '/me'),
+  'PostMePhoneSMSCodes': ('POST', '/me/phone/sms-codes'),
+  'PostMePhone': ('POST', '/me/phone'),
   'GetMeRegistrationOrdinal': ('GET', '/me/registration-ordinal'),
   'PatchMe': ('PATCH', '/me'),
   'PostMeAvatarUploads': ('POST', '/me/avatar/uploads'),
@@ -49,10 +51,6 @@ const httpRoutes = <String, (String, String)>{
   'DeleteResumeTrashId': ('DELETE', '/resume-trash/{id}'),
   'PostResumesIdGuidance': ('POST', '/resumes/{id}/guidance'),
   'GetNotificationsIdGuidance': ('GET', '/notifications/{id}/guidance'),
-  'PostNotificationsIdGuidanceSubmissions': (
-    'POST',
-    '/notifications/{id}/guidance/submissions',
-  ),
   'PostNotificationsIdGuidanceResume': (
     'POST',
     '/notifications/{id}/guidance/resume',
@@ -86,10 +84,6 @@ const httpRoutes = <String, (String, String)>{
     'PUT',
     '/articles/{id}/guidance/suggestions',
   ),
-  'PostArticlesIdGuidanceSubmissions': (
-    'POST',
-    '/articles/{id}/guidance/submissions',
-  ),
   'PostResumesIdGuidanceRevisions': (
     'POST',
     '/resumes/{id}/guidance-revisions',
@@ -117,6 +111,8 @@ const httpRoutes = <String, (String, String)>{
     '/resumes/{id}/manual-publication',
   ),
   'GetResumesIdPublicPreview': ('GET', '/resumes/{id}/public-preview'),
+  'PostResumeCreationJobs': ('POST', '/resume-creation-jobs'),
+  'GetResumeCreationJobsId': ('GET', '/resume-creation-jobs/{id}'),
   'PostResumeImports': ('POST', '/resume-imports'),
   'GetResumeImportsId': ('GET', '/resume-imports/{id}'),
   'PostResumeImportsIdRetry': ('POST', '/resume-imports/{id}/retry'),

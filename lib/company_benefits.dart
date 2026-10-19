@@ -10,6 +10,7 @@ import 'app_store.dart';
 import 'company_benefits_art.dart';
 import 'date_wheel_picker.dart';
 import 'design.dart';
+import 'confirmation_dialog.dart';
 import 'playful_refresh.dart';
 
 const benefitLabels = {
@@ -203,7 +204,7 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.white,
+      backgroundColor: context.colors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -239,20 +240,22 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
                       if (!widget.standalone)
                         Row(
                           children: [
-                            const Expanded(
+                            Expanded(
                               child: Text(
                                 '企业福利',
                                 style: TextStyle(
                                   fontSize: 25,
                                   fontWeight: FontWeight.w700,
-                                  color: ink,
+                                  color: context.colors.ink,
                                 ),
                               ),
                             ),
                             TextButton(
                               style: TextButton.styleFrom(
-                                foregroundColor: const Color(0xFF617086),
-                                backgroundColor: Colors.white,
+                                foregroundColor: (context.isDark
+                                    ? context.colors.muted
+                                    : const Color(0xFF617086)),
+                                backgroundColor: context.colors.surface,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 12,
                                   vertical: 8,
@@ -260,7 +263,7 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                              ),
+                              ).withoutHover(),
                               onPressed: () => open(
                                 CompanyBenefitsPage(
                                   store: widget.store,
@@ -276,10 +279,10 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
                         ),
                       if (MediaQuery.sizeOf(context).height > 440) ...[
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           '了解待遇，选择适合自己的工作',
                           style: TextStyle(
-                            color: muted,
+                            color: context.colors.muted,
                             fontSize: 12,
                             height: 1.5,
                           ),
@@ -297,13 +300,13 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
                         },
                         decoration: InputDecoration(
                           hintText: '搜索企业名称',
-                          fillColor: Colors.white,
-                          prefixIcon: const Padding(
+                          fillColor: context.colors.surface,
+                          prefixIcon: Padding(
                             padding: EdgeInsets.all(15),
                             child: AppIcon(
                               AppIcons.search,
                               size: 20,
-                              color: muted,
+                              color: context.colors.muted,
                             ),
                           ),
                           suffixIcon: search.text.isEmpty
@@ -315,10 +318,10 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
                                     dismissKeyboard();
                                     load();
                                   },
-                                  icon: const AppIcon(
+                                  icon: AppIcon(
                                     AppIcons.clear,
                                     size: 18,
-                                    color: muted,
+                                    color: context.colors.muted,
                                   ),
                                 ),
                           border: OutlineInputBorder(
@@ -345,19 +348,21 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
                               key: const ValueKey('benefit-city-filter'),
                               onPressed: filterCity,
                               style: TextButton.styleFrom(
-                                foregroundColor: ink,
+                                foregroundColor: context.colors.ink,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 2,
                                   vertical: 10,
                                 ),
-                              ),
+                              ).withoutHover(),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   AppIcon(
                                     AppIcons.location,
                                     size: 16,
-                                    color: city.text.isEmpty ? muted : blue,
+                                    color: city.text.isEmpty
+                                        ? context.colors.muted
+                                        : context.colors.accent,
                                   ),
                                   const SizedBox(width: 6),
                                   Flexible(
@@ -369,10 +374,10 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  const AppIcon(
+                                  AppIcon(
                                     AppIcons.expand,
                                     size: 12,
-                                    color: muted,
+                                    color: context.colors.muted,
                                   ),
                                 ],
                               ),
@@ -382,7 +387,9 @@ class _CompanyBenefitsPageState extends State<CompanyBenefitsPage> {
                           TextButton(
                             onPressed: () =>
                                 showBenefitCollectionRules(context),
-                            style: TextButton.styleFrom(foregroundColor: muted),
+                            style: TextButton.styleFrom(
+                              foregroundColor: context.colors.muted,
+                            ).withoutHover(),
                             child: const Text(
                               '收录规则',
                               style: TextStyle(fontSize: 11),
@@ -537,7 +544,7 @@ Future<void> showBenefitCollectionRules(BuildContext context) =>
       context: context,
       showDragHandle: true,
       useSafeArea: true,
-      backgroundColor: Colors.white,
+      backgroundColor: context.colors.surface,
       builder: (context) => SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
@@ -545,12 +552,12 @@ Future<void> showBenefitCollectionRules(BuildContext context) =>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 '收录规则',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: ink,
+                  color: context.colors.ink,
                 ),
               ),
               const SizedBox(height: 16),
@@ -559,9 +566,13 @@ Future<void> showBenefitCollectionRules(BuildContext context) =>
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 '请提供企业官网、官方招聘公告等公开来源。每项福利都要有对应依据，并注明适用岗位、地区和日期。',
-                style: TextStyle(color: muted, fontSize: 13, height: 1.8),
+                style: TextStyle(
+                  color: context.colors.muted,
+                  fontSize: 13,
+                  height: 1.8,
+                ),
               ),
               const SizedBox(height: 18),
               const Text(
@@ -569,9 +580,13 @@ Future<void> showBenefitCollectionRules(BuildContext context) =>
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 '不接收劳动合同、工资明细、未公开制度、内网或员工群资料，也不以匿名泄漏链接作为收录依据。平台会另行核验公开来源。',
-                style: TextStyle(color: muted, fontSize: 13, height: 1.8),
+                style: TextStyle(
+                  color: context.colors.muted,
+                  fontSize: 13,
+                  height: 1.8,
+                ),
               ),
               const SizedBox(height: 20),
               SizedBox(
@@ -648,12 +663,16 @@ class _BenefitCitySheetState extends State<_BenefitCitySheet> {
                   selected: controller.text == entry.value,
                   onSelected: (_) =>
                       setState(() => controller.text = entry.value),
-                  selectedColor: const Color(0xFFEAF1FF),
+                  selectedColor: (context.isDark
+                      ? context.colors.accentSoft
+                      : const Color(0xFFEAF1FF)),
                   side: BorderSide.none,
                   showCheckmark: false,
                   labelStyle: TextStyle(
                     fontSize: 12,
-                    color: controller.text == entry.value ? blue : ink,
+                    color: controller.text == entry.value
+                        ? context.colors.accent
+                        : context.colors.ink,
                   ),
                 ),
             ],
@@ -693,10 +712,10 @@ class _BenefitEmptyState extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w600,
-              color: ink,
+              color: context.colors.ink,
             ),
           ),
           const SizedBox(height: 10),
@@ -705,7 +724,11 @@ class _BenefitEmptyState extends StatelessWidget {
             child: Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: muted, fontSize: 12, height: 1.7),
+              style: TextStyle(
+                color: context.colors.muted,
+                fontSize: 12,
+                height: 1.7,
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -713,11 +736,9 @@ class _BenefitEmptyState extends StatelessWidget {
             onPressed: onAction,
             style: FilledButton.styleFrom(
               minimumSize: const Size(160, 44),
-              textStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+              textStyle: Theme.of(context).textTheme.labelLarge
+                  ?.copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+            ).withoutHover(),
             child: Text(action),
           ),
         ],
@@ -755,7 +776,7 @@ class _BenefitCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: Colors.white,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -772,14 +793,16 @@ class _BenefitCard extends StatelessWidget {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF0F4FD),
+                        color: (context.isDark
+                            ? context.colors.accentSoft
+                            : const Color(0xFFF0F4FD)),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: AppIcon(
                           AppIcons.companyBenefits,
                           size: 24,
-                          color: blue,
+                          color: context.colors.accent,
                         ),
                       ),
                     ),
@@ -802,9 +825,9 @@ class _BenefitCard extends StatelessWidget {
                             const SizedBox(height: 6),
                             Text(
                               location,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: muted,
+                                color: context.colors.muted,
                               ),
                             ),
                           ],
@@ -815,7 +838,11 @@ class _BenefitCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       _BenefitTag(benefitStatuses[item['status']] ?? '审核中'),
                     ] else
-                      const AppIcon(AppIcons.forward, size: 16, color: muted),
+                      AppIcon(
+                        AppIcons.forward,
+                        size: 16,
+                        color: context.colors.muted,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -824,9 +851,9 @@ class _BenefitCard extends StatelessWidget {
                     '${benefits.values.first}',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: ink,
+                      color: context.colors.ink,
                       height: 1.6,
                     ),
                   ),
@@ -843,14 +870,18 @@ class _BenefitCard extends StatelessWidget {
                             vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF5F7FB),
+                            color: (context.isDark
+                                ? context.colors.inset
+                                : const Color(0xFFF5F7FB)),
                             borderRadius: BorderRadius.circular(7),
                           ),
                           child: Text(
                             benefitLabels[key] ?? '福利待遇',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
-                              color: Color(0xFF748298),
+                              color: (context.isDark
+                                  ? context.colors.muted
+                                  : Color(0xFF748298)),
                             ),
                           ),
                         ),
@@ -867,13 +898,19 @@ class _BenefitCard extends StatelessWidget {
                         '${content['job_scope'] ?? ''}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11, color: muted),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.colors.muted,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       '${content['valid_as_of'] ?? ''}',
-                      style: const TextStyle(fontSize: 10, color: muted),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: context.colors.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -984,7 +1021,7 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                 Container(
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: context.colors.surface,
                     borderRadius: BorderRadius.circular(22),
                   ),
                   child: Column(
@@ -997,14 +1034,16 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF0F4FD),
+                              color: (context.isDark
+                                  ? context.colors.accentSoft
+                                  : const Color(0xFFF0F4FD)),
                               borderRadius: BorderRadius.circular(15),
                             ),
-                            child: const Center(
+                            child: Center(
                               child: AppIcon(
                                 AppIcons.companyBenefits,
                                 size: 27,
-                                color: blue,
+                                color: context.colors.accent,
                               ),
                             ),
                           ),
@@ -1025,9 +1064,9 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                                   const SizedBox(height: 7),
                                   Text(
                                     location,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
-                                      color: muted,
+                                      color: context.colors.muted,
                                       height: 1.5,
                                     ),
                                   ),
@@ -1049,9 +1088,12 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                       const SizedBox(height: 18),
                       const Divider(height: 1),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         '适用范围',
-                        style: TextStyle(color: muted, fontSize: 11),
+                        style: TextStyle(
+                          color: context.colors.muted,
+                          fontSize: 11,
+                        ),
                       ),
                       const SizedBox(height: 7),
                       Text(
@@ -1061,13 +1103,19 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                       const SizedBox(height: 14),
                       Text(
                         '待遇对应日期：${content['valid_as_of'] ?? ''}',
-                        style: const TextStyle(color: muted, fontSize: 11),
+                        style: TextStyle(
+                          color: context.colors.muted,
+                          fontSize: 11,
+                        ),
                       ),
                       if (!widget.mine) ...[
                         const SizedBox(height: 6),
                         Text(
                           '来源核验日期：${item!['source_reviewed_at'].toString().split('T').first}',
-                          style: const TextStyle(color: muted, fontSize: 11),
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ],
@@ -1083,10 +1131,10 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                       children: [
                         Text(
                           '${entry.value}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             height: 1.8,
-                            color: ink,
+                            color: context.colors.ink,
                           ),
                         ),
                         _BenefitSource(
@@ -1113,9 +1161,12 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             '仅显示文件记录，不用于本次公开收录。',
-                            style: TextStyle(color: muted, fontSize: 12),
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontSize: 12,
+                            ),
                           ),
                           const SizedBox(height: 10),
                           for (final f in (item!['files'] as List? ?? []).map(
@@ -1125,8 +1176,8 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Text(
                                 '${f['purpose'] == 'EMPLOYMENT_PROOF' ? '在职证明' : '福利举证'}：${f['name']}',
-                                style: const TextStyle(
-                                  color: muted,
+                                style: TextStyle(
+                                  color: context.colors.muted,
                                   fontSize: 12,
                                 ),
                               ),
@@ -1152,11 +1203,15 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                     ),
                 ] else ...[
                   const SizedBox(height: 6),
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
                       '不同岗位和地区的待遇可能不同，以企业最新公开信息为准。',
-                      style: TextStyle(color: muted, fontSize: 11, height: 1.7),
+                      style: TextStyle(
+                        color: context.colors.muted,
+                        fontSize: 11,
+                        height: 1.7,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1173,10 +1228,16 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                             ),
                           ),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF64738B),
-                            side: const BorderSide(color: Color(0xFFE1E6EF)),
+                            foregroundColor: (context.isDark
+                                ? context.colors.muted
+                                : const Color(0xFF64738B)),
+                            side: BorderSide(
+                              color: (context.isDark
+                                  ? context.colors.border
+                                  : Color(0xFFE1E6EF)),
+                            ),
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
+                          ).withoutHover(),
                           icon: const AppIcon(AppIcons.add, size: 15),
                           label: const Text(
                             '补充公开信息',
@@ -1196,10 +1257,16 @@ class _BenefitDetailPageState extends State<BenefitDetailPage> {
                             ),
                           ),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF64738B),
-                            side: const BorderSide(color: Color(0xFFE1E6EF)),
+                            foregroundColor: (context.isDark
+                                ? context.colors.muted
+                                : const Color(0xFF64738B)),
+                            side: BorderSide(
+                              color: (context.isDark
+                                  ? context.colors.border
+                                  : Color(0xFFE1E6EF)),
+                            ),
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
+                          ).withoutHover(),
                           icon: const AppIcon(AppIcons.feedback, size: 15),
                           label: const Text(
                             '纠错 / 投诉',
@@ -1226,7 +1293,7 @@ class _BenefitSection extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 14),
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: context.colors.surface,
       borderRadius: BorderRadius.circular(20),
     ),
     child: Column(
@@ -1235,14 +1302,14 @@ class _BenefitSection extends StatelessWidget {
         Row(
           children: [
             if (icon != null) ...[
-              AppIcon(icon!, size: 18, color: blue),
+              AppIcon(icon!, size: 18, color: context.colors.accent),
               const SizedBox(width: 9),
             ],
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: ink,
+                style: TextStyle(
+                  color: context.colors.ink,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1264,16 +1331,21 @@ class _BenefitSource extends StatelessWidget {
   Widget build(BuildContext context) {
     final uri = benefitSourceUri('${source['url'] ?? ''}');
     if (uri == null) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.only(top: 12),
-        child: Text('待补充合法公开来源', style: TextStyle(color: muted, fontSize: 12)),
+        child: Text(
+          '待补充合法公开来源',
+          style: TextStyle(color: context.colors.muted, fontSize: 12),
+        ),
       );
     }
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F8FC),
+        color: (context.isDark
+            ? context.colors.inset
+            : const Color(0xFFF6F8FC)),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1281,8 +1353,10 @@ class _BenefitSource extends StatelessWidget {
         children: [
           Text(
             '发布主体：${source['publisher'] ?? ''}',
-            style: const TextStyle(
-              color: Color(0xFF748298),
+            style: TextStyle(
+              color: (context.isDark
+                  ? context.colors.muted
+                  : Color(0xFF748298)),
               fontSize: 11,
               height: 1.6,
             ),
@@ -1290,13 +1364,18 @@ class _BenefitSource extends StatelessWidget {
           if ('${source['published_on'] ?? ''}'.isNotEmpty)
             Text(
               '来源发布日期：${source['published_on']}',
-              style: const TextStyle(color: muted, fontSize: 11, height: 1.6),
+              style: TextStyle(
+                color: context.colors.muted,
+                fontSize: 11,
+                height: 1.6,
+              ),
             ),
           TextButton(
             style: TextButton.styleFrom(
               padding: EdgeInsets.zero,
-              textStyle: const TextStyle(fontSize: 11),
-            ),
+              textStyle: Theme.of(context).textTheme.labelLarge
+                  ?.copyWith(fontSize: 11),
+            ).withoutHover(),
             onPressed: () => runRequest(context, () async {
               if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
                 throw const ApiFailure('无法打开来源链接');
@@ -1381,18 +1460,12 @@ class _BenefitReportPageState extends State<_BenefitReportPage> {
       if (!mounted || widget.store.epoch != accountEpoch) return;
       final id = response.data['id'];
       if (id == null) throw const ApiFailure('未收到受理编号，请稍后重试');
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('已提交，等待核查'),
-          content: Text('受理编号：$id。平台将核查具体条目及来源，并根据核查情况处理。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('知道了'),
-            ),
-          ],
-        ),
+      await showAppConfirmation(
+        context,
+        title: '已提交，等待核查',
+        content: Text('受理编号：$id。平台将核查具体条目及来源，并根据核查情况处理。'),
+        confirmLabel: '知道了',
+        cancelLabel: null,
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -1414,9 +1487,13 @@ class _BenefitReportPageState extends State<_BenefitReportPage> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            const Text(
+            Text(
               '说明有问题的具体条目、你的权利关系以及可核验的公开线索。请勿在描述中复制商业秘密原文、身份证号、工资明细或他人个人信息。',
-              style: TextStyle(color: muted, fontSize: 13, height: 1.6),
+              style: TextStyle(
+                color: context.colors.muted,
+                fontSize: 13,
+                height: 1.6,
+              ),
             ),
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
@@ -1638,11 +1715,15 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
     counterText: '',
     isDense: true,
     contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
-    fillColor: const Color(0xFFF5F7FB),
-    hintStyle: const TextStyle(color: muted, fontSize: 13),
+    fillColor: (context.isDark
+        ? context.colors.inset
+        : const Color(0xFFF5F7FB)),
+    hintStyle: TextStyle(color: context.colors.muted, fontSize: 13),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Color(0xFFF0F2F6)),
+      borderSide: BorderSide(
+        color: (context.isDark ? context.colors.border : Color(0xFFF0F2F6)),
+      ),
     ),
   );
 
@@ -1752,22 +1833,13 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
           sources[key]!.values.any((value) => value.text.trim().isNotEmpty);
       if (hasContent) {
         dismissKeyboard();
-        final discard = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('移除${benefitLabels[key]}？'),
-            content: const Text('这一项已填写的摘要和公开来源将被清除。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('继续保留'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('移除'),
-              ),
-            ],
-          ),
+        final discard = await showAppConfirmation(
+          context,
+          title: '移除${benefitLabels[key]}？',
+          content: const Text('这一项已填写的摘要和公开来源将被清除。'),
+          cancelLabel: '继续保留',
+          confirmLabel: '移除',
+          destructive: true,
         );
         if (discard != true || !mounted) return;
       }
@@ -1786,7 +1858,7 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
     dismissKeyboard();
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: context.colors.surface,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => SafeArea(
@@ -1844,7 +1916,9 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
             color: blue.withValues(alpha: .07),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Center(child: AppIcon(icon, size: 18, color: blue)),
+          child: Center(
+            child: AppIcon(icon, size: 18, color: context.colors.accent),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1861,7 +1935,11 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
               const SizedBox(height: 5),
               Text(
                 detail,
-                style: const TextStyle(color: muted, fontSize: 13, height: 1.6),
+                style: TextStyle(
+                  color: context.colors.muted,
+                  fontSize: 13,
+                  height: 1.6,
+                ),
               ),
             ],
           ),
@@ -1885,8 +1963,8 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
           alignment: Alignment.center,
           child: Text(
             number,
-            style: const TextStyle(
-              color: blue,
+            style: TextStyle(
+              color: context.colors.accent,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -1907,7 +1985,11 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
               const SizedBox(height: 3),
               Text(
                 subtitle,
-                style: const TextStyle(color: muted, fontSize: 12, height: 1.5),
+                style: TextStyle(
+                  color: context.colors.muted,
+                  fontSize: 12,
+                  height: 1.5,
+                ),
               ),
             ],
           ),
@@ -1921,8 +2003,8 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
     margin: const EdgeInsets.only(top: 14),
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border.all(color: borderColor),
+      color: context.colors.surface,
+      border: Border.all(color: context.colors.border),
       borderRadius: BorderRadius.circular(18),
     ),
     child: Column(
@@ -1943,7 +2025,11 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
               tooltip: '移除${benefitLabels[key]}',
               visualDensity: VisualDensity.compact,
               onPressed: busy ? null : () => toggleBenefit(key),
-              icon: const AppIcon(AppIcons.close, size: 18, color: muted),
+              icon: AppIcon(
+                AppIcons.close,
+                size: 18,
+                color: context.colors.muted,
+              ),
             ),
           ],
         ),
@@ -1962,14 +2048,14 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
         const SizedBox(height: 18),
         const Divider(height: 1),
         const SizedBox(height: 16),
-        const Row(
+        Row(
           children: [
-            AppIcon(AppIcons.external, size: 15, color: blue),
+            AppIcon(AppIcons.external, size: 15, color: context.colors.accent),
             SizedBox(width: 7),
             Text(
               '这项待遇的公开来源',
               style: TextStyle(
-                color: blue,
+                color: context.colors.accent,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -1987,10 +2073,10 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
   );
 
   Widget submissionFooter() => Material(
-    color: Colors.white,
+    color: context.colors.surface,
     child: Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: borderColor)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: context.colors.border)),
       ),
       child: SafeArea(
         top: false,
@@ -2009,9 +2095,13 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
               onChanged: busy
                   ? null
                   : (value) => setState(() => sourceConfirmed = value ?? false),
-              title: const Text(
+              title: Text(
                 '确认仅提交企业公开信息，未包含内部资料或个人信息。',
-                style: TextStyle(fontSize: 12, height: 1.5, color: muted),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: context.colors.muted,
+                ),
               ),
             ),
             if (error != null)
@@ -2083,30 +2173,36 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
                     ),
                   ),
                   const SizedBox(height: 7),
-                  const Text(
+                  Text(
                     '选好待遇类别，附上来源，帮助大家了解企业。',
-                    style: TextStyle(color: muted, fontSize: 12, height: 1.6),
+                    style: TextStyle(
+                      color: context.colors.muted,
+                      fontSize: 12,
+                      height: 1.6,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEEF3FF),
+                      color: (context.isDark
+                          ? context.colors.accentSoft
+                          : const Color(0xFFEEF3FF)),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       children: [
-                        const AppIcon(
+                        AppIcon(
                           AppIcons.privacyPolicy,
                           size: 17,
-                          color: blue,
+                          color: context.colors.accent,
                         ),
                         const SizedBox(width: 9),
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             '仅收录公开信息\n请勿提交企业内部资料',
                             style: TextStyle(
-                              color: ink,
+                              color: context.colors.ink,
                               fontSize: 11,
                               height: 1.5,
                             ),
@@ -2121,12 +2217,12 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
                     ),
                   ),
                   if ((widget.existing?['files'] as List? ?? []).isNotEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.only(top: 10),
                       child: Text(
                         '历史附件不会用于本次公开信息收录。',
                         style: TextStyle(
-                          color: muted,
+                          color: context.colors.muted,
                           fontSize: 11,
                           height: 1.5,
                         ),
@@ -2137,8 +2233,8 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: borderColor),
+                      color: context.colors.surface,
+                      border: Border.all(color: context.colors.border),
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Column(
@@ -2163,10 +2259,10 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
                         const SizedBox(height: 5),
                         Row(
                           children: [
-                            const AppIcon(
+                            AppIcon(
                               AppIcons.date,
                               size: 17,
-                              color: muted,
+                              color: context.colors.muted,
                             ),
                             const SizedBox(width: 9),
                             const Expanded(
@@ -2224,19 +2320,21 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
                           checkmarkColor: blue,
                           labelStyle: TextStyle(
                             color: selectedBenefits.contains(entry.key)
-                                ? blue
-                                : muted,
+                                ? context.colors.accent
+                                : context.colors.muted,
                             fontSize: 12,
                             fontWeight: selectedBenefits.contains(entry.key)
                                 ? FontWeight.w600
                                 : FontWeight.w400,
                           ),
-                          selectedColor: const Color(0xFFEAF0FF),
-                          backgroundColor: Colors.white,
+                          selectedColor: (context.isDark
+                              ? context.colors.accentSoft
+                              : const Color(0xFFEAF0FF)),
+                          backgroundColor: context.colors.surface,
                           side: BorderSide(
                             color: selectedBenefits.contains(entry.key)
                                 ? blue.withValues(alpha: .18)
-                                : borderColor,
+                                : context.colors.border,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -2251,11 +2349,14 @@ class _BenefitSubmissionPageState extends State<BenefitSubmissionPage> {
                     ],
                   ),
                   if (selectedBenefits.isEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.only(top: 20),
                       child: Text(
                         '点击上方类别，开始整理一项福利。',
-                        style: TextStyle(color: muted, fontSize: 12),
+                        style: TextStyle(
+                          color: context.colors.muted,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   for (final key in benefitLabels.keys)

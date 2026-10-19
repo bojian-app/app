@@ -1,0 +1,420 @@
+{
+  "mode": "normal-release-existing-profile-pulled-collapse",
+  "video_width": 464,
+  "video_height": 1024,
+  "motion": [
+    {
+      "t": 0.0,
+      "edge": null
+    },
+    {
+      "t": 0.1,
+      "edge": null
+    },
+    {
+      "t": 0.2,
+      "edge": null
+    },
+    {
+      "t": 0.3,
+      "edge": null
+    },
+    {
+      "t": 0.4,
+      "edge": null
+    },
+    {
+      "t": 0.5,
+      "edge": null
+    },
+    {
+      "t": 0.6,
+      "edge": null
+    },
+    {
+      "t": 0.7,
+      "edge": null
+    },
+    {
+      "t": 0.8,
+      "edge": null
+    },
+    {
+      "t": 0.9,
+      "edge": null
+    },
+    {
+      "t": 0.951578,
+      "edge": null
+    },
+    {
+      "t": 0.966733,
+      "edge": 1021
+    },
+    {
+      "t": 0.984967,
+      "edge": 1017
+    },
+    {
+      "t": 1.009356,
+      "edge": 1013
+    },
+    {
+      "t": 1.026178,
+      "edge": 1013
+    },
+    {
+      "t": 1.0452,
+      "edge": 1004
+    },
+    {
+      "t": 1.051844,
+      "edge": 990
+    },
+    {
+      "t": 1.0668,
+      "edge": 956
+    },
+    {
+      "t": 1.083667,
+      "edge": 897
+    },
+    {
+      "t": 1.100156,
+      "edge": 871
+    },
+    {
+      "t": 1.124544,
+      "edge": 736
+    },
+    {
+      "t": 1.133678,
+      "edge": 671
+    },
+    {
+      "t": 1.149222,
+      "edge": 623
+    },
+    {
+      "t": 1.165989,
+      "edge": 588
+    },
+    {
+      "t": 1.182778,
+      "edge": 562
+    },
+    {
+      "t": 1.199089,
+      "edge": 544
+    },
+    {
+      "t": 1.215789,
+      "edge": 531
+    },
+    {
+      "t": 1.232,
+      "edge": 522
+    },
+    {
+      "t": 1.249144,
+      "edge": 517
+    },
+    {
+      "t": 1.266811,
+      "edge": 513
+    },
+    {
+      "t": 1.281878,
+      "edge": 462
+    },
+    {
+      "t": 1.381878,
+      "edge": 462
+    },
+    {
+      "t": 1.481878,
+      "edge": 462
+    },
+    {
+      "t": 1.581878,
+      "edge": 462
+    },
+    {
+      "t": 1.681878,
+      "edge": 462
+    },
+    {
+      "t": 1.781878,
+      "edge": 462
+    },
+    {
+      "t": 1.881878,
+      "edge": 462
+    },
+    {
+      "t": 1.981878,
+      "edge": 462
+    },
+    {
+      "t": 2.081878,
+      "edge": 462
+    },
+    {
+      "t": 2.181878,
+      "edge": 462
+    },
+    {
+      "t": 2.281878,
+      "edge": 462
+    },
+    {
+      "t": 2.803911,
+      "edge": 462
+    },
+    {
+      "t": 2.903911,
+      "edge": 462
+    },
+    {
+      "t": 3.003911,
+      "edge": 462
+    },
+    {
+      "t": 3.103911,
+      "edge": 462
+    },
+    {
+      "t": 3.203911,
+      "edge": 462
+    },
+    {
+      "t": 3.303911,
+      "edge": 462
+    },
+    {
+      "t": 3.403911,
+      "edge": 462
+    },
+    {
+      "t": 3.503911,
+      "edge": 462
+    },
+    {
+      "t": 3.603911,
+      "edge": 462
+    },
+    {
+      "t": 3.703911,
+      "edge": 462
+    },
+    {
+      "t": 3.803911,
+      "edge": 462
+    }
+  ],
+  "frame_timeline": [
+    {
+      "relative_ms": 125.834,
+      "duration_ms": 3.035,
+      "present_type": "Late Present",
+      "jank_type": "Prediction Error",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 142.654,
+      "duration_ms": 4.123,
+      "present_type": "Late Present",
+      "jank_type": "SurfaceFlinger CPU Deadline Missed",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 162.987,
+      "duration_ms": 5.386,
+      "present_type": "Late Present",
+      "jank_type": "SurfaceFlinger Stuffing",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 179.428,
+      "duration_ms": 12.316,
+      "present_type": "Late Present",
+      "jank_type": "SurfaceFlinger CPU Deadline Missed",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 196.523,
+      "duration_ms": 12.628,
+      "present_type": "Late Present",
+      "jank_type": "Unknown Jank",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 222.376,
+      "duration_ms": 2.924,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 229.021,
+      "duration_ms": 6.267,
+      "present_type": "Late Present",
+      "jank_type": "Display HAL",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 246.201,
+      "duration_ms": 3.133,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 254.161,
+      "duration_ms": 2.403,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 262.165,
+      "duration_ms": 3.349,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 279.028,
+      "duration_ms": 5.468,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 287.153,
+      "duration_ms": 4.476,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 303.69,
+      "duration_ms": 7.615,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 311.93,
+      "duration_ms": 9.156,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 328.577,
+      "duration_ms": 7.979,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 345.354,
+      "duration_ms": 4.017,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 353.412,
+      "duration_ms": 4.188,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 361.584,
+      "duration_ms": 6.38,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 378.433,
+      "duration_ms": 4.869,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 386.458,
+      "duration_ms": 4.289,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 394.739,
+      "duration_ms": 4.116,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 403.01,
+      "duration_ms": 3.561,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 411.444,
+      "duration_ms": 3.109,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 419.75,
+      "duration_ms": 3.223,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 428.183,
+      "duration_ms": 3.987,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 436.488,
+      "duration_ms": 4.155,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 444.777,
+      "duration_ms": 2.64,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 452.913,
+      "duration_ms": 1.575,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    },
+    {
+      "relative_ms": 461.046,
+      "duration_ms": 2.339,
+      "present_type": "On-time Present",
+      "jank_type": "None",
+      "on_time_finish": 1
+    }
+  ]
+}

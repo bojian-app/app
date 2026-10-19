@@ -6,16 +6,30 @@ import 'design.dart';
 import 'profile_avatar.dart';
 import 'resume_guidance_view.dart';
 import 'resume_updated_label.dart';
+import 'story_author_identity.dart';
 import 'user_profile_page.dart';
 
 class GuidanceFeedCard extends StatelessWidget {
-  const GuidanceFeedCard({super.key, required this.story, required this.store});
+  const GuidanceFeedCard({
+    super.key,
+    required this.story,
+    required this.store,
+    this.flat = false,
+    this.compactTypography = false,
+    this.authorName,
+    this.authorAvatarURL,
+    this.authorNavigationEnabled = true,
+  });
   final Story story;
   final AppStore store;
+  final bool flat;
+  final bool compactTypography;
+  final String? authorName, authorAvatarURL;
+  final bool authorNavigationEnabled;
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF428E7B);
+    final accent = context.colors.accent;
     final date = DateTime.tryParse(story.publishedAt);
     final question =
         (story.content['question']?.toString() ??
@@ -23,17 +37,27 @@ class GuidanceFeedCard extends StatelessWidget {
             .trim();
     return Material(
       key: ValueKey('guidance-card-${story.id}'),
-      color: Colors.white,
+      color: context.colors.surface,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0xFFE1EEE8)),
+        borderRadius: BorderRadius.circular(flat ? 0 : 20),
+        side: flat ? BorderSide.none : BorderSide(color: context.colors.border),
       ),
       child: InkWell(
-        onTap: () =>
-            openPage(context, ResumeGuidanceView(store: store, id: story.id)),
+        onTap: () async {
+          final epoch = store.epoch;
+          await openPage(
+            context,
+            ResumeGuidanceView(store: store, id: story.id),
+          );
+          if (context.mounted && store.epoch == epoch) {
+            await store.refreshGuidanceParticipants(story);
+          }
+        },
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: flat
+              ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
+              : const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -42,7 +66,10 @@ class GuidanceFeedCard extends StatelessWidget {
                   InkWell(
                     key: ValueKey('story-author-avatar-${story.id}'),
                     borderRadius: BorderRadius.circular(12),
-                    onTap: story.authorID <= 0 || story.authorID == store.userID
+                    onTap:
+                        !authorNavigationEnabled ||
+                            story.authorID <= 0 ||
+                            story.authorID == store.userID
                         ? null
                         : () => openPage(
                             context,
@@ -52,100 +79,114 @@ class GuidanceFeedCard extends StatelessWidget {
                             ),
                           ),
                     child: Padding(
-                      padding: const EdgeInsets.all(4),
+                      padding: EdgeInsets.all(flat ? 7 : 4),
                       child: ProfileAvatar(
                         seed: story.authorID > 0
                             ? '${story.authorID}'
                             : story.author,
-                        url: story.authorAvatarURL,
-                        size: 26,
+                        url: authorAvatarURL ?? story.authorAvatarURL,
+                        size: flat ? 30 : 26,
                       ),
                     ),
                   ),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
-                      story.author,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    child: StoryAuthorIdentity(
+                      story: story,
+                      store: store,
+                      name: authorName,
+                      flat: flat,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2),
-                    child: AppIcon(AppIcons.resume, color: accent, size: 22),
+              SizedBox(height: flat ? 8 : 14),
+              if (question.isNotEmpty) ...[
+                Text(
+                  question,
+                  key: ValueKey('guidance-question-${story.id}'),
+                  maxLines: flat ? 2 : 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compactTypography ? 14 : (flat ? 16 : 15),
+                    height: 1.45,
+                    fontWeight: FontWeight.w500,
+                    color: context.colors.ink,
                   ),
-                  const SizedBox(width: 10),
+                ),
+                const SizedBox(height: 8),
+              ],
+              Row(
+                children: [
+                  AppIcon(
+                    AppIcons.resume,
+                    color: context.colors.muted,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       story.title,
-                      maxLines: 2,
+                      key: ValueKey('guidance-resume-title-${story.id}'),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        height: 1.45,
-                        fontWeight: FontWeight.w600,
+                      style: TextStyle(
+                        fontSize: compactTypography ? 11 : 12,
+                        height: 1.4,
+                        color: context.colors.muted,
                       ),
                     ),
                   ),
                 ],
               ),
-              if (question.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF4F8F6),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    question,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      height: 1.6,
-                      color: Color(0xFF667F75),
+              SizedBox(height: flat ? 8 : 12),
+              SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    if (date != null)
+                      Text(
+                        resumeUpdatedLabel(date),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: context.colors.muted,
+                        ),
+                      ),
+                    ListenableBuilder(
+                      listenable: store,
+                      builder: (context, _) => Text(
+                        story.guidanceParticipantCount == null
+                            ? '参与人数暂不可用'
+                            : '${story.guidanceParticipantCount} 人参与',
+                        key: ValueKey('guidance-participants-${story.id}'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: context.colors.muted,
+                        ),
+                      ),
                     ),
-                  ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '查看简历并指点',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: accent,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        AppIcon(AppIcons.arrowForward, size: 14, color: accent),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      date == null ? '' : resumeUpdatedLabel(date),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 10, color: muted),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    '查看简历并指点',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: accent,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const AppIcon(AppIcons.arrowForward, size: 14, color: accent),
-                ],
               ),
             ],
           ),

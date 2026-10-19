@@ -60,7 +60,7 @@ Future<DateTime?> showDateWheelPicker(
   return showModalBottomSheet<DateTime>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
+    backgroundColor: context.colors.surface,
     builder: (sheetContext) => Localizations.override(
       context: sheetContext,
       locale: const Locale('zh'),
@@ -112,7 +112,7 @@ Future<DateTime?> showDateWheelPicker(
                                   .copyWith(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w400,
-                                    color: ink,
+                                    color: context.colors.ink,
                                   ),
                         ),
                   ),

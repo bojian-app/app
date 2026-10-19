@@ -1,13 +1,14 @@
 import 'package:flutter/cupertino.dart';
 
 import 'app_store.dart';
+import 'confirmation_dialog.dart';
 
 Future<void> confirmResumeDeletion(
   BuildContext context, {
   required AppStore store,
   required ResumeDraft resume,
-}) => showCupertinoDialog<void>(
-  context: context,
+}) => showAppDialog<void>(
+  context,
   builder: (_) => _DeleteResumeDialog(store: store, resume: resume),
 );
 
@@ -45,8 +46,8 @@ class _DeleteResumeDialogState extends State<_DeleteResumeDialog> {
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: !deleting,
-    child: CupertinoAlertDialog(
-      title: const Text('删除这份简历？'),
+    child: AppConfirmationDialog(
+      title: '删除这份简历？',
       content: Column(
         children: [
           Text('“${widget.resume.title}”将从简历库移除。'),
@@ -59,17 +60,10 @@ class _DeleteResumeDialogState extends State<_DeleteResumeDialog> {
           ],
         ],
       ),
-      actions: [
-        CupertinoDialogAction(
-          onPressed: deleting ? null : () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        CupertinoDialogAction(
-          isDestructiveAction: true,
-          onPressed: deleting ? null : remove,
-          child: Text(deleting ? '删除中…' : '删除'),
-        ),
-      ],
+      confirmLabel: deleting ? '删除中…' : '删除',
+      destructive: true,
+      onConfirm: deleting ? null : remove,
+      onCancel: deleting ? null : () => Navigator.pop(context),
     ),
   );
 }

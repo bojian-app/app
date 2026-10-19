@@ -4,6 +4,55 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Reopening drafts preserves text formatting, empty lines and opaque image/table blocks', () {
+    final content = {
+      'blocks': [
+        {
+          'kind': 'heading2',
+          'spans': [
+            {'text': '小标题', 'bold': true},
+          ],
+          'align': 'center',
+        },
+        {'kind': 'paragraph', 'spans': []},
+        {
+          'kind': 'image',
+          'image': {'url': 'https://example.com/image.png', 'alt': '原图'},
+        },
+        {
+          'kind': 'table',
+          'table': {'rows': []},
+        },
+        {
+          'kind': 'paragraph',
+          'spans': [
+            {'text': '保留桌面格式', 'font_family': 'serif'},
+          ],
+        },
+        {
+          'kind': 'quote',
+          'spans': [
+            {'text': '引用', 'italic': true},
+          ],
+          'indent': 1,
+        },
+        {
+          'kind': 'numbered',
+          'spans': [
+            {'text': '第一条'},
+          ],
+        },
+        {
+          'kind': 'bullet',
+          'spans': [
+            {'text': '重点', 'foregroundColor': '#3366FF'},
+          ],
+        },
+      ],
+    };
+    expect(articleContentFromDelta(articleDeltaFromContent(content)), content);
+  });
+
   test(
     'Formatted text preserves span boundaries and Mac-compatible blocks',
     () {

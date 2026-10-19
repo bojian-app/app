@@ -7,6 +7,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'api/bojian_api.dart';
+import 'api/generated/auth.pb.dart' as auth;
+import 'legal_document.dart';
+import 'wechat_login.dart';
+import 'douyin_login.dart';
 import 'resume_templates.dart';
 import 'realtime_client.dart';
 import 'device_metadata.dart';
@@ -96,6 +100,7 @@ class Story {
     this.authorAvatarURL = '',
     this.publishedAt = '',
     this.hasGuidance = false,
+    this.guidanceParticipantCount,
   });
   final int id;
   final String title, role, category, excerpt;
@@ -111,6 +116,7 @@ class Story {
   bool liked, saved;
   List<ArticleComment> comments;
   int commentCount;
+  int? guidanceParticipantCount;
 }
 
 class ResumeDraft {
@@ -199,11 +205,14 @@ class InboxItem {
     this.actorName = '',
     this.actorAvatarURL = '',
     this.feedbackType = '',
+    this.annotationID = 0,
+    this.reviewReason = '',
   });
   final String type;
-  final int subjectID, actorID;
+  final int subjectID, actorID, annotationID;
   final String subjectType;
   final String actorName, actorAvatarURL, feedbackType;
+  final String reviewReason;
   final String title, body, time;
   final int kind, id;
   bool read;
@@ -240,6 +249,11 @@ Map<String, dynamic> richContent(String text) => {
       .toList(),
 };
 
+int? decodeGuidanceParticipantCount(dynamic value) {
+  final count = int.tryParse('$value');
+  return count == null || count < 0 ? null : count;
+}
+
 Story decodeStory(Map<String, dynamic> v) {
   final author = v['author'] as Map? ?? {};
   final content = v['content'];
@@ -256,6 +270,9 @@ Story decodeStory(Map<String, dynamic> v) {
     role: author['city'] as String? ?? '',
     category: guidance ? '简历求指点' : '经验分享',
     hasGuidance: guidance,
+    guidanceParticipantCount: decodeGuidanceParticipantCount(
+      v['guidance_participant_count'],
+    ),
     excerpt: body,
     paragraphs: body.split('\n'),
     content: content is Map
@@ -323,9 +340,18 @@ ResumeDraft decodeResume(Map<String, dynamic> v) {
 }
 
 class AppStore extends ChangeNotifier {
-  AppStore({ApiGateway? api, SessionStorage? storage, this.realtimeConnector})
-    : api = api ?? BojianApi(),
-      storage = storage ?? SecureSessionStorage();
+  AppStore({
+    ApiGateway? api,
+    SessionStorage? storage,
+    this.realtimeConnector,
+    WeChatAuthorizer? weChatAuthorizer,
+    DouyinAuthorizer? douyinAuthorizer,
+  }) : api = api ?? BojianApi(),
+       storage = storage ?? SecureSessionStorage(),
+       weChatAuthorizer = weChatAuthorizer ?? NativeWeChatAuthorizer(),
+       douyinAuthorizer = douyinAuthorizer ?? NativeDouyinAuthorizer();
+  final WeChatAuthorizer weChatAuthorizer;
+  final DouyinAuthorizer douyinAuthorizer;
   final guidanceReviewDrafts = <String, Set<int>>{};
   final ApiGateway api;
   final SessionStorage storage;
@@ -572,6 +598,12 @@ class AppStore extends ChangeNotifier {
   bool isGuest = false;
   bool get isAuthenticated => session != null;
   String name = '', bio = '', publicID = '', avatarURL = '';
+  DateTime? registeredAt;
+  String ipLocation = '';
+  String phoneMasked = '';
+  bool phoneBindingChecked = false;
+  bool get hasBoundPhone => phoneMasked.isNotEmpty;
+  int _phoneBindingRevision = 0;
   int userID = 0;
   int? points;
   int? rewardPoints;
@@ -665,8 +697,12 @@ class AppStore extends ChangeNotifier {
     Map<String, dynamic>? body,
     Map<String, String> extra = const {},
     bool authenticated = true,
+    int? expectedEpoch,
   }) async {
     await initialize();
+    if (expectedEpoch != null && expectedEpoch != epoch) {
+      throw const ApiFailure('账号已切换，请重试');
+    }
     if (authenticated && !isAuthenticated) throw const ApiFailure('请先登录');
     final version = epoch;
     Future<ApiDocument> send() => api.call(
@@ -704,6 +740,32 @@ class AppStore extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshGuidanceParticipants(Story story) async {
+    final version = epoch;
+    try {
+      final result = await request(
+        'GetArticlesId',
+        path: {'id': '${story.id}'},
+      );
+      if (!alive ||
+          version != epoch ||
+          integer(result.data['id']) != story.id) {
+        return;
+      }
+      final count = decodeGuidanceParticipantCount(
+        result.data['guidance_participant_count'],
+      );
+      if (count == null) return;
+      story.guidanceParticipantCount = count;
+      for (final cached in stories.where((item) => item.id == story.id)) {
+        cached.guidanceParticipantCount = count;
+      }
+      changed();
+    } catch (_) {
+      // A failed refresh keeps the last confirmed total, never a fabricated 0.
+    }
+  }
+
   Future<void> _refresh(int version) async {
     final token = await api.refresh(
       session!['refresh_token'] as String,
@@ -718,13 +780,149 @@ class AppStore extends ChangeNotifier {
     await persist(session, version);
   }
 
-  Future<void> signIn(String phone, String code, {String? nickname}) async {
+  Future<bool> signIn(
+    String phone,
+    String code, {
+    String? nickname,
+    Future<bool> Function()? confirmRegistration,
+  }) async {
     await initialize();
     final version = epoch;
     final response = await api.login(phone, code, headers);
-    if (response.accessToken.isEmpty ||
+    return _resolveSignIn(
+      response,
+      version,
+      nickname: nickname,
+      confirmRegistration: confirmRegistration,
+    );
+  }
+
+  Future<bool> signInWithWeChat({
+    Future<bool> Function()? confirmRegistration,
+  }) async {
+    await initialize();
+    final version = epoch;
+    final code = await weChatAuthorizer.authorize();
+    if (version != epoch || !alive) throw const ApiFailure('登录已取消');
+    if (code == null) return false;
+    final response = await api.loginWithWeChat(
+      code,
+      legalAgreementVersions,
+      headers,
+    );
+    return _resolveSignIn(
+      response,
+      version,
+      confirmRegistration: confirmRegistration,
+    );
+  }
+
+  Future<bool> signInWithDouyin({
+    Future<bool> Function()? confirmRegistration,
+  }) async {
+    await initialize();
+    final version = epoch;
+    final code = await douyinAuthorizer.authorize();
+    if (version != epoch || !alive) throw const ApiFailure('登录已取消');
+    if (code == null) return false;
+    final response = await api.loginWithDouyin(
+      code,
+      legalAgreementVersions,
+      headers,
+    );
+    return _resolveSignIn(
+      response,
+      version,
+      confirmRegistration: confirmRegistration,
+    );
+  }
+
+  Future<auth.SMSResponse> sendPhoneBindingCode(
+    String phone,
+    String captchaToken,
+  ) async {
+    final version = epoch;
+    final result = await request(
+      'PostMePhoneSMSCodes',
+      expectedEpoch: version,
+      body: {
+        'phone': phone,
+        'captcha_token': captchaToken,
+        'purpose': 'BIND_PHONE',
+      },
+    );
+    return auth.SMSResponse(
+      retryAfterSeconds: integer(result.data['retry_after_seconds']),
+      deliveryStatus: result.data['delivery_status'] as String?,
+    );
+  }
+
+  Future<void> bindPhone(String phone, String code) async {
+    if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(phone) ||
+        !RegExp(r'^\d{6}$').hasMatch(code)) {
+      throw const ApiFailure('请输入正确的手机号和六位验证码');
+    }
+    if (pending.contains('bind-phone')) throw const ApiFailure('正在绑定手机号，请稍候');
+    final version = epoch;
+    await perform('bind-phone', () async {
+      final result = await request(
+        'PostMePhone',
+        expectedEpoch: version,
+        body: {'phone': phone, 'code': code},
+      );
+      final masked = result.data['phone_masked'];
+      if (masked is! String ||
+          !RegExp(r'^1[3-9]\d\*{4}\d{4}$').hasMatch(masked)) {
+        throw const ApiFailure('手机号绑定结果暂未确认，请稍后重试');
+      }
+      ++_phoneBindingRevision;
+      phoneMasked = masked;
+      phoneBindingChecked = true;
+      changed();
+    });
+  }
+
+  Future<bool> _resolveSignIn(
+    auth.LoginResponse response,
+    int version, {
+    String? nickname,
+    Future<bool> Function()? confirmRegistration,
+  }) async {
+    if (version != epoch || !alive) throw const ApiFailure('登录已取消');
+    if (response.registrationRequired) {
+      if (response.registrationToken.isEmpty ||
+          response.registrationExpiresInSeconds <= 0 ||
+          response.accessToken.isNotEmpty ||
+          response.refreshToken.isNotEmpty ||
+          response.hasUser()) {
+        throw const ApiFailure('服务器返回的注册信息无效');
+      }
+      if (confirmRegistration == null) {
+        throw const ApiFailure('该账号尚未注册，请确认注册后再登录');
+      }
+      final confirmed = await confirmRegistration();
+      if (version != epoch || !alive) throw const ApiFailure('登录已取消');
+      if (!confirmed) return false;
+      response = await api.confirmRegistration(
+        response.registrationToken,
+        legalAgreementVersions,
+        headers,
+      );
+    }
+    await _finishSignIn(response, version, nickname: nickname);
+    return true;
+  }
+
+  Future<void> _finishSignIn(
+    auth.LoginResponse response,
+    int version, {
+    String? nickname,
+  }) async {
+    if (response.registrationRequired ||
+        response.accessToken.isEmpty ||
         response.refreshToken.isEmpty ||
-        !response.hasUser()) {
+        !response.hasUser() ||
+        response.user.id.toInt() <= 0) {
       throw const ApiFailure('服务器返回的登录信息无效');
     }
     if (version != epoch || !alive) throw const ApiFailure('登录已取消');
@@ -737,6 +935,10 @@ class AppStore extends ChangeNotifier {
     if (version != epoch || !alive) return;
     session = next;
     sessionNotice = null;
+    ipLocation = '';
+    phoneMasked = '';
+    phoneBindingChecked = false;
+    ++_phoneBindingRevision;
     userID = response.user.id.toInt();
     isGuest = false;
     // Profile setup failure must not turn a valid server login into a fake failure.
@@ -778,6 +980,11 @@ class AppStore extends ChangeNotifier {
     bio = '';
     publicID = '';
     avatarURL = '';
+    registeredAt = null;
+    ipLocation = '';
+    phoneMasked = '';
+    phoneBindingChecked = false;
+    ++_phoneBindingRevision;
     guidanceReviewDrafts.clear();
     userID = 0;
     points = null;
@@ -877,6 +1084,8 @@ class AppStore extends ChangeNotifier {
                       'RESUME_GUIDANCE_FEEDBACK' => '简历优化建议',
                       'FRIEND_REQUEST' => '好友申请通知',
                       'ARTICLE_LIKE' => '收到新的赞',
+                      'ARTICLE_APPROVED' => '文章审核通过',
+                      'ARTICLE_REJECTED' => '文章审核未通过',
                       'ARTICLE_COMMENT' => '收到新的评论',
                       'COMMENT_REPLY' => '收到新的回复',
                       _ => '系统通知',
@@ -893,6 +1102,8 @@ class AppStore extends ChangeNotifier {
               ),
               actorAvatarURL: '${(row['actor'] as Map?)?['avatar_url'] ?? ''}',
               feedbackType: '${payload['feedback_type'] ?? ''}',
+              annotationID: integer(payload['annotation_id']),
+              reviewReason: '${payload['review_reason'] ?? ''}',
               subjectType: '${row['subject_type'] ?? ''}',
               read: row['read_at'] != null,
             );
@@ -923,13 +1134,21 @@ class AppStore extends ChangeNotifier {
           }
           cursors[section] = v.nextCursor;
         case 'profile':
+          final phoneRevision = _phoneBindingRevision;
           final v = await request('GetMe');
           if (version != epoch || !alive) return;
           name = v.data['nickname'] as String? ?? '';
           bio = v.data['bio'] as String? ?? '';
           publicID = v.data['public_id'] as String? ?? '';
           avatarURL = v.data['avatar_url'] as String? ?? '';
+          registeredAt = DateTime.tryParse('${v.data['created_at'] ?? ''}');
+          ipLocation = '${v.data['city'] ?? ''}'.trim();
           publicProfile = v.data['profile_visibility'] == 'PUBLIC';
+          if (phoneRevision == _phoneBindingRevision) {
+            phoneMasked = '${v.data['phone_masked'] ?? ''}'.trim();
+            phoneBindingChecked = true;
+          }
+          changed();
           final w = await request('GetWallet');
           if (w.data['available_points'] == null) {
             throw const ApiFailure('积分数据暂不可用，请稍后重试');
@@ -1171,17 +1390,21 @@ class AppStore extends ChangeNotifier {
     await load('messages');
   }
 
-  Future<void> updateProfile(String newName, String newBio) async {
+  Future<void> updateProfile(
+    String newName,
+    String newBio, {
+    bool updateName = true,
+  }) async {
     final version = epoch;
     final v = await request(
       'PatchMe',
-      body: {'nickname': newName, 'bio': newBio},
+      body: {if (updateName) 'nickname': newName, 'bio': newBio},
     );
     if (version != epoch || !alive) return;
     if (v.data.containsKey('avatar_url')) {
       avatarURL = v.data['avatar_url'] as String? ?? '';
     }
-    name = v.data['nickname'] as String? ?? newName;
+    name = v.data['nickname'] as String? ?? (updateName ? newName : name);
     bio = v.data['bio'] as String? ?? newBio;
     changed();
   }
@@ -1210,6 +1433,7 @@ class AppStore extends ChangeNotifier {
       throw const ApiFailure('领取结果暂不可用，请刷新积分后重试');
     }
     rewardClaimed = true;
+    rewardPoints = integer(response.data['points']);
     final wallet = response.data['wallet'];
     if (wallet is Map && wallet['available_points'] is num) {
       points = integer(wallet['available_points']);
@@ -1440,6 +1664,31 @@ class AppStore extends ChangeNotifier {
     if (index >= 0) resumes[index] = decodeResume(result.data);
     changed();
     await load('resumes');
+  }
+
+  Future<void> saveArticleDraft({
+    required int id,
+    required String title,
+    required Map<String, dynamic> content,
+    int? resumeID,
+    required int expectedEpoch,
+  }) async {
+    await request(
+      'PatchArticlesId',
+      path: {'id': '$id'},
+      body: {'title': title, 'content': content, 'resume_id': ?resumeID},
+      expectedEpoch: expectedEpoch,
+    );
+  }
+
+  Future<void> submitArticleDraft(int id, {required int expectedEpoch}) async {
+    await request(
+      'PostArticlesIdPublish',
+      path: {'id': '$id'},
+      body: {'content_policy_confirmed': true, 'public_fields_confirmed': true},
+      expectedEpoch: expectedEpoch,
+    );
+    unawaited(load('feed'));
   }
 
   Future<void> publish(

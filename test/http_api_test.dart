@@ -22,6 +22,190 @@ class StubClient extends MockClient {
 http.Response stubResponse(int status, Map<String, dynamic> body) =>
     http.Response.bytes(utf8.encode(jsonEncode(body)), status);
 void main() {
+  for (final entry in {
+    'PostMePhoneSMSCodes': '/api/v1/me/phone/sms-codes',
+    'PostMePhone': '/api/v1/me/phone',
+  }.entries) {
+    test('${entry.key} uses the authenticated binding route', () async {
+      final client = StubClient(
+        stubResponse(200, {
+          'data': {'phone_masked': '138****8000'},
+        }),
+      );
+      final api = BojianApi(client: client);
+      final body = entry.key == 'PostMePhone'
+          ? {'phone': '13800138000', 'code': '123456'}
+          : {
+              'phone': '13800138000',
+              'captcha_token': 'proof',
+              'purpose': 'BIND_PHONE',
+            };
+      await api.call(
+        entry.key,
+        body: body,
+        headers: {'authorization': 'Bearer current-session'},
+      );
+      expect(client.uri?.path, entry.value);
+      expect(client.verb, 'POST');
+      expect(
+        client.request?.headers['authorization'],
+        'Bearer current-session',
+      );
+      expect(jsonDecode(client.request!.body), body);
+      await api.close();
+    });
+  }
+  for (final channel in ['phone', 'wechat', 'douyin']) {
+    test(
+      '$channel unregistered response preserves a confirmation-only state',
+      () async {
+        final client = StubClient(
+          stubResponse(200, {
+            'data': {
+              'registration_required': true,
+              'registration_token': 'pending-proof',
+              'registration_expires_in_seconds': 300,
+            },
+          }),
+        );
+        final api = BojianApi(client: client);
+        final result = switch (channel) {
+          'phone' => await api.login('13800138000', '123456', {}),
+          'wechat' => await api.loginWithWeChat('code', {
+            'terms': '1.0',
+            'privacy': '1.0',
+          }, {}),
+          _ => await api.loginWithDouyin('code', {
+            'terms': '1.0',
+            'privacy': '1.0',
+          }, {}),
+        };
+        expect(result.registrationRequired, isTrue);
+        expect(result.registrationToken, 'pending-proof');
+        expect(result.accessToken, isEmpty);
+        expect(result.refreshToken, isEmpty);
+        expect(result.hasUser(), isFalse);
+        await api.close();
+      },
+    );
+  }
+  test('Registration confirmation submits explicit consent and only the server proof', () async {
+    final client = StubClient(
+      stubResponse(200, {
+        'data': {
+          'access_token': 'access',
+          'refresh_token': 'refresh',
+          'user': {'id': 23, 'public_id': 'BJ-TEST'},
+        },
+      }),
+    );
+    final api = BojianApi(client: client);
+    final result = await api.confirmRegistration('pending-proof', {
+      'terms': '1.0',
+      'privacy': '1.0',
+    }, {});
+    expect(client.request?.url.path, '/api/v1/auth/registrations/confirm');
+    expect(jsonDecode(client.request!.body), {
+      'registration_token': 'pending-proof',
+      'confirmed': true,
+      'agreement_versions': {'terms': '1.0', 'privacy': '1.0'},
+    });
+    expect(result.user.id.toInt(), 23);
+    await api.close();
+  });
+  test(
+    'WeChat login exchanges only the authorization code and consent versions',
+    () async {
+      final client = StubClient(
+        stubResponse(200, {
+          'data': {
+            'access_token': 'access',
+            'refresh_token': 'refresh',
+            'user': {'id': 23, 'public_id': 'BJ-TEST'},
+          },
+        }),
+      );
+      final api = BojianApi(client: client);
+      final result = await api.loginWithWeChat(
+        'one-time-code',
+        {'terms': '1.0', 'privacy': '1.0'},
+        {'x-device-id': 'test-device'},
+      );
+      expect(result.user.id.toInt(), 23);
+      expect(result.accessToken, 'access');
+      expect(client.request?.url.path, '/api/v1/auth/wechat/mobile/exchange');
+      final body = jsonDecode(client.request!.body) as Map;
+      expect(body, {
+        'code': 'one-time-code',
+        'agreement_versions': {'terms': '1.0', 'privacy': '1.0'},
+      });
+      await api.close();
+    },
+  );
+  test(
+    'Douyin login exchanges only the authorization code and consent versions',
+    () async {
+      final client = StubClient(
+        stubResponse(200, {
+          'data': {
+            'access_token': 'access',
+            'refresh_token': 'refresh',
+            'user': {'id': 23, 'public_id': 'BJ-TEST'},
+          },
+        }),
+      );
+      final api = BojianApi(client: client);
+      final result = await api.loginWithDouyin(
+        'one-time-code',
+        {'terms': '1.0', 'privacy': '1.0'},
+        {'x-device-id': 'test-device'},
+      );
+      expect(result.user.id.toInt(), 23);
+      expect(result.accessToken, 'access');
+      expect(client.request?.url.path, '/api/v1/auth/douyin/mobile/exchange');
+      final body = jsonDecode(client.request!.body) as Map;
+      expect(body, {
+        'code': 'one-time-code',
+        'agreement_versions': {'terms': '1.0', 'privacy': '1.0'},
+      });
+      await api.close();
+    },
+  );
+  for (final status in [null, 'SUBMITTED', 'DELIVERED']) {
+    test('SMS response preserves delivery state $status', () async {
+      final data = <String, dynamic>{'retry_after_seconds': 60};
+      if (status != null) data['delivery_status'] = status;
+      final client = StubClient(stubResponse(202, {'data': data}));
+      final api = BojianApi(client: client);
+      final result = await api.sendSMS('13800138000', 'captcha', {});
+      expect(result.deliveryStatus, status ?? '');
+      expect(result.retryAfterSeconds, 60);
+      await api.close();
+    });
+  }
+  test(
+    'SMS delivery error preserves the server failure without a success result',
+    () async {
+      final api = BojianApi(
+        client: StubClient(
+          stubResponse(503, {
+            'error': {'code': 'SMS_DELIVERY_FAILED', 'message': '短信发送失败，请稍后重试'},
+          }),
+        ),
+      );
+      await expectLater(
+        api.sendSMS('13800138000', 'captcha', {}),
+        throwsA(
+          isA<ApiFailure>().having(
+            (error) => error.code,
+            'code',
+            'SMS_DELIVERY_FAILED',
+          ),
+        ),
+      );
+      await api.close();
+    },
+  );
   test(
     'Business requests preserve /api/v1, revision and auth headers',
     () async {

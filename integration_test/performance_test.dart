@@ -5,24 +5,19 @@ import 'package:integration_test/integration_test.dart';
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  testWidgets('Login input focus and dismissal', (tester) async {
+  testWidgets('WeChat login consent dialog interaction', (tester) async {
     await tester.pumpWidget(const MyApp(nativeStartup: true));
     await tester.pumpAndSettle();
     // Let the native startup layer finish before measuring interaction.
     await Future<void>.delayed(const Duration(seconds: 3));
     await binding.watchPerformance(() async {
       for (var i = 0; i < 5; i++) {
-        final phone = find.byKey(const ValueKey('auth-phone'));
-        await tester.tap(phone);
+        await tester.tap(find.byKey(const ValueKey('auth-wechat')));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('欢迎回到博简'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('auth-code')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('欢迎回到博简'));
+        await tester.tap(find.text('暂不同意'));
         await tester.pumpAndSettle();
       }
-    }, reportKey: 'input');
+    }, reportKey: 'wechat-consent');
     expect(tester.takeException(), isNull);
   });
 }

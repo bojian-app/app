@@ -8,8 +8,13 @@ import 'app_store.dart';
 import 'design.dart';
 
 class ProfilePointsCard extends StatefulWidget {
-  const ProfilePointsCard({super.key, required this.store});
+  const ProfilePointsCard({
+    super.key,
+    required this.store,
+    this.subtle = false,
+  });
   final AppStore store;
+  final bool subtle;
   @override
   State<ProfilePointsCard> createState() => _ProfilePointsCardState();
 }
@@ -56,16 +61,16 @@ class _ProfilePointsCardState extends State<ProfilePointsCard>
     listenable: widget.store,
     builder: (context, _) {
       final store = widget.store;
+      final subtle = widget.subtle;
+      final secondary = subtle ? context.colors.muted : const Color(0xFFDCE6FF);
       final disabled =
           busy ||
           store.pending.contains('reward') ||
           store.rewardClaimed ||
           store.rewardPoints == null;
       final reduced = MediaQuery.disableAnimationsOf(context);
-      const buttonTextStyle = TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w700,
-      );
+      final buttonTextStyle = Theme.of(context).textTheme.labelLarge!
+          .copyWith(fontSize: 12, fontWeight: FontWeight.w700);
       // Reserve the longest label before claiming so all three states keep the
       // same bounds, including when the system text size is increased.
       final buttonLabel = TextPainter(
@@ -86,39 +91,42 @@ class _ProfilePointsCardState extends State<ProfilePointsCard>
           key: const ValueKey('profile-points-card'),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF305EDA), Color(0xFF1842A6)],
-            ),
+            borderRadius: BorderRadius.circular(subtle ? 12 : 20),
+            color: subtle ? context.colors.canvas : null,
+            gradient: subtle
+                ? null
+                : const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF305EDA), Color(0xFF1842A6)],
+                  ),
           ),
           child: Stack(
             children: [
-              const Positioned(
-                right: -35,
-                top: -40,
-                child: IgnorePointer(child: _OrbitDecoration()),
-              ),
+              if (!subtle)
+                const Positioned(
+                  right: -35,
+                  top: -40,
+                  child: IgnorePointer(child: _OrbitDecoration()),
+                ),
               Padding(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.all(subtle ? 16 : 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const AppIcon(
+                        AppIcon(
                           AppIcons.coins,
                           size: 18,
-                          color: Color(0xFFFFD985),
+                          color: subtle
+                              ? context.colors.accent
+                              : const Color(0xFFFFD985),
                         ),
                         const SizedBox(width: 8),
-                        const Text(
+                        Text(
                           '我的积分',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFFDCE6FF),
-                          ),
+                          style: TextStyle(fontSize: 12, color: secondary),
                         ),
                       ],
                     ),
@@ -145,11 +153,13 @@ class _ProfilePointsCardState extends State<ProfilePointsCard>
                                 store.points == null ? '—' : '${value.round()}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 36,
+                                style: TextStyle(
+                                  fontSize: subtle ? 30 : 36,
                                   height: 1.2,
                                   fontWeight: FontWeight.w700,
-                                  color: Colors.white,
+                                  color: subtle
+                                      ? context.colors.ink
+                                      : Colors.white,
                                 ),
                               ),
                             ),
@@ -159,19 +169,23 @@ class _ProfilePointsCardState extends State<ProfilePointsCard>
                         FilledButton(
                           key: const ValueKey('profile-claim-reward'),
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFFFE4A7),
-                            foregroundColor: const Color(0xFF453510),
-                            disabledBackgroundColor: Colors.white.withValues(
-                              alpha: .13,
-                            ),
-                            disabledForegroundColor: const Color(0xFFDCE6FF),
+                            backgroundColor: subtle
+                                ? blue
+                                : const Color(0xFFFFE4A7),
+                            foregroundColor: subtle
+                                ? Colors.white
+                                : const Color(0xFF453510),
+                            disabledBackgroundColor: subtle
+                                ? context.colors.inset
+                                : Colors.white.withValues(alpha: .13),
+                            disabledForegroundColor: secondary,
                             fixedSize: buttonSize,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
                               vertical: 10,
                             ),
                             textStyle: buttonTextStyle,
-                          ),
+                          ).withoutHover(),
                           onPressed: disabled ? null : claim,
                           child: Text(
                             busy
@@ -186,7 +200,9 @@ class _ProfilePointsCardState extends State<ProfilePointsCard>
                     const SizedBox(height: 14),
                     Container(
                       height: 1,
-                      color: Colors.white.withValues(alpha: .14),
+                      color: subtle
+                          ? context.colors.border
+                          : Colors.white.withValues(alpha: .14),
                     ),
                     const SizedBox(height: 12),
                     Semantics(
@@ -205,8 +221,10 @@ class _ProfilePointsCardState extends State<ProfilePointsCard>
                         style: TextStyle(
                           fontSize: 11,
                           color: received != null && received! > 0
-                              ? const Color(0xFFFFE4A7)
-                              : const Color(0xFFDCE6FF),
+                              ? (subtle
+                                    ? context.colors.accent
+                                    : const Color(0xFFFFE4A7))
+                              : secondary,
                         ),
                       ),
                     ),

@@ -7,6 +7,7 @@ import 'design.dart';
 import 'discovery.dart';
 import 'resume_pages.dart';
 import 'account_pages.dart';
+import 'points_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store});
@@ -72,13 +73,14 @@ class AppShellState extends State<AppShell>
 
   Widget page(int index) => switch (index) {
     0 => DiscoveryPage(store: widget.store),
-    1 => ResumeLibrary(store: widget.store),
-    2 => MessagesPage(store: widget.store),
+    1 => TemplateMarket(store: widget.store),
+    2 => PointsPage(store: widget.store),
     _ => ProfilePage(store: widget.store),
   };
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
+      top: false,
       bottom: false,
       child: Center(
         child: ConstrainedBox(
@@ -111,14 +113,7 @@ class AppShellState extends State<AppShell>
     ),
     bottomNavigationBar: MediaQuery.viewInsetsOf(context).bottom > 0
         ? null
-        : ListenableBuilder(
-            listenable: widget.store,
-            builder: (context, _) => AppBottomNavigation(
-              selectedIndex: selected,
-              onSelected: select,
-              unreadCount: widget.store.unread,
-            ),
-          ),
+        : AppBottomNavigation(selectedIndex: selected, onSelected: select),
   );
 }
 
@@ -197,7 +192,21 @@ class _RetainedTabState extends State<_RetainedTab> {
                 child: TickerMode(
                   enabled: widget.active,
                   child: RepaintBoundary(
-                    child: ColoredBox(color: canvasColor, child: content!),
+                    child: ColoredBox(
+                      color: switch (widget.index) {
+                        0 => context.colors.surface,
+                        2 => PointsPage.headerColor(context),
+                        _ => context.colors.canvas,
+                      },
+                      child: SafeArea(
+                        top: widget.index != 3,
+                        bottom: false,
+                        child: ColoredBox(
+                          color: context.colors.canvas,
+                          child: content!,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),

@@ -1,13 +1,13 @@
 import 'package:bojian_mobile/app_bottom_navigation.dart';
-import 'package:bojian_mobile/app_icons.dart';
+import 'package:bojian_mobile/navigation_icon.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _destinations = [
   (index: 0, label: '发现'),
-  (index: 1, label: '简历'),
-  (index: 2, label: '消息'),
+  (index: 1, label: '模版市场'),
+  (index: 2, label: '积分'),
   (index: 3, label: '我的'),
 ];
 
@@ -25,7 +25,6 @@ void _phoneView(WidgetTester tester) {
 Future<void> _showNavigation(
   WidgetTester tester, {
   int selected = 0,
-  int unread = 0,
   double textScale = 1,
   bool reduceMotion = false,
   ValueChanged<int>? onSelected,
@@ -43,7 +42,6 @@ Future<void> _showNavigation(
       body: const SizedBox.expand(),
       bottomNavigationBar: AppBottomNavigation(
         selectedIndex: selected,
-        unreadCount: unread,
         onSelected: onSelected ?? (_) {},
       ),
     ),
@@ -61,7 +59,7 @@ void main() {
       'Four destinations fit one row at 320px and text scale $textScale',
       (tester) async {
         _phoneView(tester);
-        await _showNavigation(tester, textScale: textScale, unread: 128);
+        await _showNavigation(tester, textScale: textScale);
         await tester.pumpAndSettle();
 
         final destinations = _destinationRects(tester);
@@ -130,43 +128,14 @@ void main() {
         await tester.tap(find.byKey(ValueKey('nav-${destination.index}')));
         await tester.pumpAndSettle();
       }
-      tester.semantics.tap(find.semantics.byLabel('消息'));
+      tester.semantics.tap(find.semantics.byLabel('模版市场'));
       await tester.pump();
-      expect(selected, [0, 1, 2, 3, 2]);
+      expect(selected, [0, 1, 2, 3, 1]);
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets(
-    'Unread badges cap visible counts and announce the actual count',
-    (tester) async {
-      _phoneView(tester);
-      for (final unread in [0, 1, 99, 100, 12457]) {
-        await _showNavigation(tester, unread: unread, textScale: 2);
-        await tester.pumpAndSettle();
-        final messageNode = find.semantics.byLabel('消息').evaluate().single;
-        expect(
-          messageNode,
-          isSemantics(value: unread == 0 ? '' : '$unread条未读消息'),
-        );
-        final badge = find.byKey(const ValueKey('nav-unread-badge'));
-        if (unread == 0) {
-          expect(badge, findsNothing);
-        } else {
-          expect(
-            find.descendant(
-              of: badge,
-              matching: find.text(unread > 99 ? '99+' : '$unread'),
-            ),
-            findsOneWidget,
-          );
-        }
-        expect(tester.takeException(), isNull);
-      }
-    },
-  );
-
-  testWidgets('Selection and unread updates leave every destination in place', (
+  testWidgets('Selection changes leave every destination in place', (
     tester,
   ) async {
     _phoneView(tester);
@@ -176,12 +145,7 @@ void main() {
     final bar = tester.getRect(find.byType(AppBottomNavigation));
 
     for (final state in [(2, 1), (3, 99), (1, 12457), (0, 0)]) {
-      await _showNavigation(
-        tester,
-        selected: state.$1,
-        unread: state.$2,
-        textScale: 2,
-      );
+      await _showNavigation(tester, selected: state.$1, textScale: 2);
       expect(_destinationRects(tester), baseline);
       expect(tester.getRect(find.byType(AppBottomNavigation)), bar);
       await tester.pump(const Duration(milliseconds: 80));
@@ -209,18 +173,13 @@ void main() {
         surfaceRects.add(tester.getRect(surface));
         iconRects.add(
           tester.getRect(
-            find.descendant(of: surface, matching: find.byType(AppIcon)),
+            find.descendant(of: surface, matching: find.byType(NavigationIcon)),
           ),
         );
       }
 
       for (final selected in [2, 1, 3, 0, 2]) {
-        await _showNavigation(
-          tester,
-          selected: selected,
-          unread: selected == 2 ? 12457 : 0,
-          textScale: 2,
-        );
+        await _showNavigation(tester, selected: selected, textScale: 2);
         await tester.pump(const Duration(milliseconds: 40));
         expect(_destinationRects(tester), destinationRects);
         for (final destination in _destinations) {
@@ -230,29 +189,17 @@ void main() {
           expect(tester.getRect(surface), surfaceRects[destination.index]);
           expect(
             tester.getRect(
-              find.descendant(of: surface, matching: find.byType(AppIcon)),
+              find.descendant(
+                of: surface,
+                matching: find.byType(NavigationIcon),
+              ),
             ),
             iconRects[destination.index],
           );
-          final decoration =
-              tester
-                      .widget<DecoratedBox>(
-                        find.descendant(
-                          of: surface,
-                          matching: find.byType(DecoratedBox),
-                        ),
-                      )
-                      .decoration
-                  as BoxDecoration;
-          final color = decoration.color!;
-          const tint = Color(0xFFEAF1FF);
-          expect(color.r, tint.r);
-          expect(color.g, tint.g);
-          expect(color.b, tint.b);
-          if (destination.index == selected) {
-            expect(color.a, greaterThan(0));
-            expect(color.a, lessThan(1));
-          }
+          expect(
+            find.descendant(of: surface, matching: find.byType(DecoratedBox)),
+            findsNothing,
+          );
         }
         expect(tester.takeException(), isNull);
       }
@@ -261,21 +208,10 @@ void main() {
         final surface = find.byKey(
           ValueKey('nav-icon-surface-${destination.index}'),
         );
-        final decoration =
-            tester
-                    .widget<DecoratedBox>(
-                      find.descendant(
-                        of: surface,
-                        matching: find.byType(DecoratedBox),
-                      ),
-                    )
-                    .decoration
-                as BoxDecoration;
-        if (destination.index == 2) {
-          expect(decoration.color, const Color(0xFFEAF1FF));
-        } else {
-          expect(decoration.color!.a, 0);
-        }
+        final icon = tester.widget<NavigationIcon>(
+          find.descendant(of: surface, matching: find.byType(NavigationIcon)),
+        );
+        expect(icon.progress, destination.index == 2 ? 1 : 0);
         expect(tester.getRect(surface), surfaceRects[destination.index]);
       }
       expect(tester.binding.hasScheduledFrame, isFalse);

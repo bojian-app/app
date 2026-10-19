@@ -5,11 +5,15 @@ import 'dart:ui' as ui;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import 'app_theme.dart';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/physics.dart';
 
 import 'app_store.dart';
+import 'guidance_help.dart';
 import 'resume_templates.dart';
 import 'resume_native_export.dart';
 import 'resume_additional_fields.dart';
@@ -1260,6 +1264,8 @@ class ResumeDocumentView extends StatefulWidget {
     required this.resume,
     this.store,
     this.onAnnotate,
+    this.onAnnotationSelected,
+    this.onOriginalShown,
     this.reviewHighlights = const [],
     this.reviewChanges = const [],
     this.reviewNotes = const [],
@@ -1268,6 +1274,7 @@ class ResumeDocumentView extends StatefulWidget {
   });
   final void Function(String fieldPath, String selectedText, bool replace)?
   onAnnotate;
+  final VoidCallback? onAnnotationSelected, onOriginalShown;
   final ResumeDraft resume;
   final AppStore? store;
   final List<ResumeReviewHighlight> reviewHighlights;
@@ -1312,6 +1319,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         ],
       );
     });
+    widget.onOriginalShown?.call();
   }
 
   void hideOriginal() {
@@ -1343,6 +1351,21 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
   late final AnimationController inertia;
   Offset flingVelocity = Offset.zero;
   double flingPosition = 0;
+  bool guidanceScrollLocked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    guidanceScrollLocked = GuidanceScrollLock.isLocked(context);
+    if (guidanceScrollLocked) {
+      inertia.stop();
+      scrollHold?.cancel();
+      scrollHold = null;
+      pointers.clear();
+      pinching = panning = false;
+      velocity = null;
+    }
+  }
 
   Future<void> selectAnnotationRegion(ResumeInk run) async {
     if (pinching || panning || run.privacyMasked || widget.onAnnotate == null) {
@@ -1351,6 +1374,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
     final text = run.text.text!.toPlainText().trim();
     if (text.isEmpty) return;
     setState(() => selectedRegion = run);
+    widget.onAnnotationSelected?.call();
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final origin = overlay.localToGlobal(Offset.zero);
     final anchor =
@@ -1389,6 +1413,54 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
 
   Size get viewportSize => (context.findRenderObject() as RenderBox).size;
 
+  /// Resolve paper coordinates before a distant page has been built lazily.
+  /// Record keys distinguish identical quotes and different reviewers.
+  bool focusReview(String key, {double alignment = .18}) {
+    final current = document;
+    if (current == null || !pageScroll.hasClients) return false;
+    (int, Rect)? target;
+    for (var page = 0; page < current.pages.length; page++) {
+      final note = current.pages[page].reviewNotes
+          .where((note) => note.note.key == key)
+          .firstOrNull;
+      if (note != null) {
+        target = (page, note.rect);
+        break;
+      }
+    }
+    if (target == null) {
+      final regions = resumeReviewRegions(
+        current,
+        widget.reviewHighlights,
+        fallbackToField: widget.reviewNotes.isEmpty,
+      );
+      for (var page = 0; page < regions.length; page++) {
+        final region = regions[page]
+            .where((region) => region.highlights.any((mark) => mark.key == key))
+            .firstOrNull;
+        if (region != null) {
+          target = (page, region.rect);
+          break;
+        }
+      }
+    }
+    if (target == null) return false;
+    inertia.stop();
+    if (zoomed) resetZoom();
+    final scale =
+        math.min(680.0, viewportSize.width - 24) / resumePaperSize.width;
+    final position = pageScroll.position;
+    final offset =
+        16 +
+        target.$1 * (resumePaperSize.height * scale + 16) +
+        target.$2.top * scale -
+        position.viewportDimension * alignment;
+    pageScroll.jumpTo(
+      offset.clamp(position.minScrollExtent, position.maxScrollExtent),
+    );
+    return true;
+  }
+
   void setTransform(double scale, Offset translation) {
     final size = viewportSize;
     final x = translation.dx.clamp(size.width * (1 - scale), 0.0);
@@ -1418,6 +1490,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
 
   void pointerDown(PointerDownEvent event) {
     inertia.stop();
+    if (guidanceScrollLocked) return;
     pointers[event.pointer] = event.localPosition;
     if (pointers.length == 1) {
       pointerOrigin = event.localPosition;
@@ -1432,12 +1505,15 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       pinchDistance = math.max(1.0, (points[0] - points[1]).distance);
       pinchFocal = (points[0] + points[1]) / 2;
       pinchTransform = Matrix4.copy(transform.value);
-      if (pageScroll.hasClients) scrollHold = pageScroll.position.hold(() {});
+      if (pageScroll.hasClients) {
+        scrollHold = pageScroll.position.hold(() => scrollHold = null);
+      }
       setState(() {});
     }
   }
 
   void pointerMove(PointerMoveEvent event) {
+    if (guidanceScrollLocked) return;
     final previous = pointers[event.pointer];
     if (previous == null) return;
     pointers[event.pointer] = event.localPosition;
@@ -1897,7 +1973,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       }
     }
     return ColoredBox(
-      color: const Color(0xFFE8EBEF),
+      color: context.isDark ? context.colors.canvas : const Color(0xFFE8EBEF),
       child: Listener(
         key: const ValueKey('resume-gesture-viewport'),
         behavior: HitTestBehavior.opaque,
@@ -1952,11 +2028,16 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                   }
                   return ListView.builder(
                     controller: pageScroll,
-                    physics: zoomed || pinching || originalPointer != null
+                    physics:
+                        guidanceScrollLocked ||
+                            zoomed ||
+                            pinching ||
+                            originalPointer != null
                         ? const NeverScrollableScrollPhysics()
                         : null,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     itemCount: pages.length,
+                    itemExtent: resumePaperSize.height * scale + 16,
                     itemBuilder: (context, index) => Center(
                       child: Padding(
                         padding: const EdgeInsets.only(bottom: 16),
@@ -2031,6 +2112,18 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                                               ? '按住查看原文，松开恢复'
                                               : '查看${reviewRegions[index][markIndex].highlights.where((v) => v.commentCount == 0).map((v) => v.label).toSet().join('与')}',
                                           child: Listener(
+                                            key:
+                                                reviewRegions[index][markIndex]
+                                                    .highlights
+                                                    .any(
+                                                      (mark) =>
+                                                          mark.originalText !=
+                                                          null,
+                                                    )
+                                                ? ValueKey(
+                                                    'guidance-compare-region-$index-$markIndex',
+                                                  )
+                                                : null,
                                             onPointerDown: (event) =>
                                                 showOriginal(
                                                   event,
@@ -2615,15 +2708,21 @@ class _AnnotationBubble extends StatelessWidget {
               child: BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
                 child: DecoratedBox(
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xECFFFFFF),
-                        Color(0xBDF4F5F8),
-                        Color(0xD9EEF0F4),
-                      ],
+                      colors: context.isDark
+                          ? [
+                              context.colors.surface.withValues(alpha: .96),
+                              context.colors.inset.withValues(alpha: .93),
+                              context.colors.surface.withValues(alpha: .96),
+                            ]
+                          : const [
+                              Color(0xECFFFFFF),
+                              Color(0xBDF4F5F8),
+                              Color(0xD9EEF0F4),
+                            ],
                       stops: [0, .48, 1],
                     ),
                   ),
@@ -2640,21 +2739,27 @@ class _AnnotationBubble extends StatelessWidget {
                           Flexible(
                             child: _BubbleAction(
                               label: '查看评论',
-                              onPressed: () => Navigator.pop(context, false),
+                              onPressed: () {
+                                Navigator.pop(context, false);
+                              },
                             ),
                           ),
-                          const SizedBox(
+                          SizedBox(
                             height: 19,
                             child: VerticalDivider(
                               width: 1,
                               thickness: .5,
-                              color: Color(0x303C3C43),
+                              color: context.isDark
+                                  ? context.colors.border
+                                  : const Color(0x303C3C43),
                             ),
                           ),
                           Flexible(
                             child: _BubbleAction(
                               label: '参与改写',
-                              onPressed: () => Navigator.pop(context, true),
+                              onPressed: () {
+                                Navigator.pop(context, true);
+                              },
                             ),
                           ),
                         ],
@@ -2748,12 +2853,12 @@ class _BubbleAction extends StatelessWidget {
     onPressed: onPressed,
     child: Text(
       label,
-      style: const TextStyle(
+      style: TextStyle(
         fontFamily: 'AnnotationUI',
         fontSize: 14,
         fontWeight: FontWeight.w400,
         height: 1.2,
-        color: Color(0xFF202124),
+        color: context.colors.ink,
       ),
     ),
   );

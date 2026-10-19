@@ -1,5 +1,4 @@
 import 'user_display_name.dart';
-import 'guidance_help.dart';
 
 import 'dart:convert';
 import 'dart:math';
@@ -130,7 +129,11 @@ class _ResumeGuidanceShareState extends State<ResumeGuidanceShare> {
   Widget destination(String label, String detail, bool value) => Expanded(
     child: Material(
       key: ValueKey(value ? 'tour-community' : 'tour-friends'),
-      color: community == value ? const Color(0xFFF0F5FF) : Colors.white,
+      color: community == value
+          ? (context.isDark
+                ? context.colors.accentSoft
+                : const Color(0xFFF0F5FF))
+          : context.colors.surface,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -147,7 +150,7 @@ class _ResumeGuidanceShareState extends State<ResumeGuidanceShare> {
             border: Border.all(
               color: community == value
                   ? blue.withValues(alpha: .4)
-                  : borderColor,
+                  : context.colors.border,
             ),
           ),
           child: Column(
@@ -155,7 +158,9 @@ class _ResumeGuidanceShareState extends State<ResumeGuidanceShare> {
             children: [
               AppIcon(
                 value ? AppIcons.discover : AppIcons.guidanceRecipients,
-                color: community == value ? blue : muted,
+                color: community == value
+                    ? context.colors.accent
+                    : context.colors.muted,
                 size: 22,
               ),
               const SizedBox(height: 12),
@@ -164,13 +169,19 @@ class _ResumeGuidanceShareState extends State<ResumeGuidanceShare> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: community == value ? blue : ink,
+                  color: community == value
+                      ? context.colors.accent
+                      : context.colors.ink,
                 ),
               ),
               const SizedBox(height: 5),
               Text(
                 detail,
-                style: const TextStyle(fontSize: 11, color: muted, height: 1.5),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.colors.muted,
+                  height: 1.5,
+                ),
               ),
             ],
           ),
@@ -180,227 +191,204 @@ class _ResumeGuidanceShareState extends State<ResumeGuidanceShare> {
   );
 
   @override
-  Widget build(BuildContext context) => GuidanceWalkthrough(
-    store: widget.store,
-    id: 'share',
-    steps: const [
-      GuidanceStep(
-        'tour-community',
-        '公开向社区请教',
-        '选择这里，简历审核通过后会公开展示。个人信息、照片、学校和公司等字段会自动隐藏；正文中的身份信息请分享前自行检查。',
-      ),
-      GuidanceStep(
-        'tour-friends',
-        '也可以只邀请好友',
-        '选择“指定用户”后，搜索并勾选好友，最多 20 位。再次点击可取消，至少选择一位才能发送。',
-      ),
-      GuidanceStep(
-        'guidance-question',
-        '告诉大家你想改进什么',
-        '在这里写下希望重点指点的问题，最多 1000 字。例如：工作经历是否清楚，还能补充哪些成果？',
-      ),
-      GuidanceStep(
-        'guidance-submit',
-        '确认分享范围后发送',
-        '分享到社区点击“提交到社区”；私下请教点击“发送邀请”。收到反馈后，从系统通知进入审阅。',
-      ),
-    ],
-    child: PopScope(
-      canPop: !sending,
-      child: Scaffold(
-        backgroundColor: canvasColor,
-        appBar: AppBar(title: const Text('请求指点')),
-        body: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Panel(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const AppIcon(AppIcons.resume, color: blue, size: 24),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          widget.resume.title,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => PopScope(
+    canPop: !sending,
+    child: Scaffold(
+      backgroundColor: context.colors.canvas,
+      appBar: AppBar(title: const Text('请求指点')),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Panel(
+                padding: const EdgeInsets.all(16),
+                child: Row(
                   children: [
-                    destination('分享到社区', '审核通过后公开', true),
+                    AppIcon(
+                      AppIcons.resume,
+                      color: context.colors.accent,
+                      size: 24,
+                    ),
                     const SizedBox(width: 12),
-                    destination('指定用户', '向好友私下请教', false),
+                    Expanded(
+                      child: Text(
+                        widget.resume.title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 20),
-                if (!community) ...[
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          '选择好友',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '已选 ${selected.length}/20',
-                        style: const TextStyle(fontSize: 11, color: muted),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  GuidanceWalkthrough(
-                    store: widget.store,
-                    id: 'friends',
-                    steps: const [
-                      GuidanceStep(
-                        'tour-friend-search',
-                        '搜索并选择好友',
-                        '输入昵称或用户 ID 后点击搜索。点击下方好友进行勾选或取消，最多 20 位；列表底部可加载更多。没有好友时需先添加好友。',
-                      ),
-                    ],
-                    child: TextField(
-                      key: const ValueKey('tour-friend-search'),
-                      controller: search,
-                      enabled: !sending && !loading,
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (_) => loadFriends(),
-                      decoration: InputDecoration(
-                        hintText: '搜索好友昵称或用户 ID',
-                        suffixIcon: IconButton(
-                          tooltip: '搜索好友',
-                          onPressed: sending || loading
-                              ? null
-                              : () => loadFriends(),
-                          icon: const AppIcon(AppIcons.search, size: 20),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                key: const ValueKey('guidance-destination'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  destination('分享到社区', '审核通过后公开', true),
+                  const SizedBox(width: 12),
+                  destination('指定用户', '向好友私下请教', false),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (!community) ...[
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '选择好友',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  if (error != null) ...[
-                    Text(error!, style: const TextStyle(color: muted)),
-                    TextButton(
-                      onPressed: () => loadFriends(),
-                      child: const Text('重新加载'),
+                    Text(
+                      '已选 ${selected.length}/20',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: context.colors.muted,
+                      ),
                     ),
                   ],
-                  if (loaded && friends.isEmpty && error == null)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 18),
-                      child: Text(
-                        '没有找到可选择的好友。',
-                        style: TextStyle(fontSize: 12, color: muted),
-                      ),
-                    ),
-                  for (final user in friends)
-                    ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                      leading: ProfileAvatar(
-                        seed: '${user['id']}',
-                        url: user['avatar_url'] as String? ?? '',
-                        size: 36,
-                      ),
-                      title: Text(
-                        userDisplayName(
-                          '${user['remark'] ?? ''}'.trim().isEmpty
-                              ? user['display_name']
-                              : user['remark'],
-                        ),
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      subtitle: Text(
-                        '${user['public_id'] ?? ''}',
-                        style: const TextStyle(fontSize: 10, color: muted),
-                      ),
-                      trailing: AppIcon(
-                        selected.contains(integer(user['id']))
-                            ? AppIcons.confirm
-                            : AppIcons.addCircle,
-                        color: selected.contains(integer(user['id']))
-                            ? blue
-                            : muted,
-                        size: 20,
-                      ),
-                      selected: selected.contains(integer(user['id'])),
-                      onTap: sending
-                          ? null
-                          : () {
-                              final id = integer(user['id']);
-                              if (!selected.contains(id) &&
-                                  selected.length >= 20) {
-                                toast(context, '最多选择 20 位好友');
-                                return;
-                              }
-                              setState(() {
-                                if (!selected.remove(id)) selected.add(id);
-                              });
-                            },
-                    ),
-                  if (loading)
-                    const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  if (cursor != null && !loading)
-                    TextButton(
-                      onPressed: () => loadFriends(more: true),
-                      child: const Text('加载更多好友'),
-                    ),
-                  const SizedBox(height: 20),
-                ],
-                const Text(
-                  '想请教什么？',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 10),
                 TextField(
-                  key: const ValueKey('guidance-question'),
-                  controller: question,
-                  enabled: !sending,
-                  minLines: 3,
-                  maxLines: 6,
-                  maxLength: 1000,
-                  decoration: const InputDecoration(
-                    hintText: '例如：工作经历的重点是否清楚，有哪些可以改进的地方？',
+                  key: const ValueKey('tour-friend-search'),
+                  controller: search,
+                  enabled: !sending && !loading,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => loadFriends(),
+                  decoration: InputDecoration(
+                    hintText: '搜索好友昵称或用户 ID',
+                    suffixIcon: IconButton(
+                      tooltip: '搜索好友',
+                      onPressed: sending || loading
+                          ? null
+                          : () => loadFriends(),
+                      icon: const AppIcon(AppIcons.search, size: 20),
+                    ),
                   ),
                 ),
+                const SizedBox(height: 10),
+                if (error != null) ...[
+                  Text(error!, style: TextStyle(color: context.colors.muted)),
+                  TextButton(
+                    onPressed: () => loadFriends(),
+                    child: const Text('重新加载'),
+                  ),
+                ],
+                if (loaded && friends.isEmpty && error == null)
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Text(
+                      '没有找到可选择的好友。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.colors.muted,
+                      ),
+                    ),
+                  ),
+                for (final user in friends)
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: ProfileAvatar(
+                      seed: '${user['id']}',
+                      url: user['avatar_url'] as String? ?? '',
+                      size: 36,
+                    ),
+                    title: Text(
+                      userDisplayName(
+                        '${user['remark'] ?? ''}'.trim().isEmpty
+                            ? user['display_name']
+                            : user['remark'],
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    subtitle: Text(
+                      '${user['public_id'] ?? ''}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: context.colors.muted,
+                      ),
+                    ),
+                    trailing: AppIcon(
+                      selected.contains(integer(user['id']))
+                          ? AppIcons.confirm
+                          : AppIcons.addCircle,
+                      color: selected.contains(integer(user['id']))
+                          ? context.colors.accent
+                          : context.colors.muted,
+                      size: 20,
+                    ),
+                    selected: selected.contains(integer(user['id'])),
+                    onTap: sending
+                        ? null
+                        : () {
+                            final id = integer(user['id']);
+                            if (!selected.contains(id) &&
+                                selected.length >= 20) {
+                              toast(context, '最多选择 20 位好友');
+                              return;
+                            }
+                            setState(() {
+                              if (!selected.remove(id)) selected.add(id);
+                            });
+                          },
+                  ),
+                if (loading)
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                if (cursor != null && !loading)
+                  TextButton(
+                    onPressed: () => loadFriends(more: true),
+                    child: const Text('加载更多好友'),
+                  ),
+                const SizedBox(height: 20),
               ],
-            ),
+              const Text(
+                '想请教什么？',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                key: const ValueKey('guidance-question'),
+                controller: question,
+                enabled: !sending,
+                minLines: 3,
+                maxLines: 6,
+                maxLength: 1000,
+                decoration: const InputDecoration(
+                  hintText: '例如：工作经历的重点是否清楚，有哪些可以改进的地方？',
+                ),
+              ),
+            ],
           ),
         ),
-        bottomNavigationBar: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-            child: FilledButton(
-              key: const ValueKey('guidance-submit'),
-              onPressed: sending || (!community && selected.isEmpty)
-                  ? null
-                  : submit,
-              child: Text(
-                sending
-                    ? '正在发送…'
-                    : community
-                    ? '提交到社区'
-                    : '发送邀请',
-              ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: FilledButton(
+            key: const ValueKey('guidance-submit'),
+            onPressed: sending || (!community && selected.isEmpty)
+                ? null
+                : submit,
+            child: Text(
+              sending
+                  ? '正在发送…'
+                  : community
+                  ? '提交到社区'
+                  : '发送邀请',
             ),
           ),
         ),

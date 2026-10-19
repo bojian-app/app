@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -15,45 +16,6 @@ import 'resume_guidance_privacy.dart';
 import 'resume_guidance_annotations.dart';
 import 'resume_guidance_review.dart';
 
-const _fieldLabels = {
-  'full_name': '姓名',
-  'phone': '手机号',
-  'email': '邮箱',
-  'birth_date': '出生日期',
-  'gender': '性别',
-  'position': '职位',
-  'city': '城市',
-  'industry': '行业',
-  'salary': '薪资',
-  'preference': '求职意向',
-  'institution': '学校',
-  'degree': '学历',
-  'field_of_study': '专业',
-  'start_date': '开始时间',
-  'end_date': '结束时间',
-  'campus_experience': '校园经历',
-  'thesis_title': '论文题目',
-  'thesis_description': '论文描述',
-  'company': '公司',
-  'current': '在职状态',
-  'description': '内容',
-  'name': '名称',
-  'role': '担任角色',
-  'url': '链接',
-  'achievements': '成果',
-  'issuer': '颁发机构',
-  'date': '日期',
-};
-const _sectionLabels = {
-  'personal_info': '个人信息',
-  'job_expectation': '求职意向',
-  'educations': '教育经历',
-  'work_experiences': '工作经历',
-  'projects': '项目经历',
-  'skills': '专业技能',
-  'certifications': '证书荣誉',
-};
-
 class ResumeGuidanceView extends StatefulWidget {
   const ResumeGuidanceView({
     super.key,
@@ -63,6 +25,7 @@ class ResumeGuidanceView extends StatefulWidget {
     this.initialData,
     this.reviewerKey,
     this.fromNotification = false,
+    this.focusAnnotationID = 0,
   });
   final AppStore store;
   final int id;
@@ -70,22 +33,29 @@ class ResumeGuidanceView extends StatefulWidget {
   final Map<String, dynamic>? initialData;
   final String? reviewerKey;
   final bool fromNotification;
+  final int focusAnnotationID;
   @override
   State<ResumeGuidanceView> createState() => _ResumeGuidanceViewState();
 }
 
 class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
+  final guidance = GuidanceFlowController();
   Map<String, dynamic>? data;
   String? error;
   ResumeDraft? resume;
   List<Map<String, dynamic>> records = [];
+  String? focusedReviewerKey;
+  String? get reviewerKey => focusedReviewerKey ?? widget.reviewerKey;
+  bool focusHandled = false, focusScheduled = false;
+  bool guidanceAfterNotification = false;
+  int? loadedEpoch;
   bool get ownerReview => data?['is_owner'] == true && widget.fromNotification;
-  bool get ownerLanding => ownerReview && widget.reviewerKey == null;
+  bool get ownerLanding => ownerReview && reviewerKey == null;
   bool get ownerDetail => data?['is_owner'] == true && !widget.fromNotification;
   List<Map<String, dynamic>> get reviewerRecords => records
       .where(
         (record) => ownerReview
-            ? guidanceReviewerKey(record) == widget.reviewerKey
+            ? guidanceReviewerKey(record) == reviewerKey
             : !ownerDetail &&
                   integer(record['reviewer_id']) == widget.store.userID,
       )
@@ -93,7 +63,7 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   String? busyRecord, activeRecord;
   bool saving = false;
   String get draftKey =>
-      '${widget.store.userID}:${widget.notification}:${widget.id}:${widget.reviewerKey}';
+      '${widget.store.userID}:${widget.notification}:${widget.id}:$reviewerKey';
   Set<int> get staged =>
       widget.store.guidanceReviewDrafts.putIfAbsent(draftKey, () => <int>{});
   List<Map<String, dynamic>> get visibleRecords => reviewerRecords
@@ -212,6 +182,83 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   }
 
   final documentKey = GlobalKey<ResumeDocumentViewState>();
+
+  void scheduleNotificationFocus() {
+    if (focusHandled ||
+        focusScheduled ||
+        widget.focusAnnotationID <= 0 ||
+        data == null ||
+        resume == null ||
+        loadedEpoch != widget.store.epoch) {
+      return;
+    }
+    focusScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      focusScheduled = false;
+      if (!mounted ||
+          focusHandled ||
+          loadedEpoch != widget.store.epoch ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      final animation = ModalRoute.of(context)?.animation;
+      if (animation != null && animation.status != AnimationStatus.completed) {
+        scheduleNotificationFocus();
+        return;
+      }
+      unawaited(focusNotification());
+    });
+  }
+
+  Future<void> focusNotification() async {
+    final record = records
+        .where(
+          (record) =>
+              record['legacy'] != true &&
+              integer(record['id']) == widget.focusAnnotationID,
+        )
+        .firstOrNull;
+    if (record == null || documentKey.currentState == null) {
+      focusHandled = true;
+      return;
+    }
+    focusHandled = true;
+    final comment = '${record['replacement'] ?? ''}'.isEmpty;
+    final key = comment
+        ? 'comments:${jsonEncode([record['field_path'], record['selected_text'] ?? ''])}'
+        : ownerReview &&
+              (record['status'] == 'ACCEPTED' ||
+                  staged.contains(integer(record['id'])))
+        ? 'accepted:${guidanceRecordKey(record)}'
+        : guidanceRecordKey(record);
+    if (!comment) setState(() => activeRecord = guidanceRecordKey(record));
+    documentKey.currentState!.focusReview(key, alignment: comment ? .05 : .18);
+    if (!comment) return;
+    WidgetsBinding.instance.ensureVisualUpdate();
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted ||
+        loadedEpoch != widget.store.epoch ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    await showRegionComments(
+      context,
+      store: widget.store,
+      id: widget.id,
+      notification: widget.notification,
+      owner: data!['is_owner'] == true,
+      onCommentsLoaded: syncComments,
+      legacyItems: records.where((record) => record['legacy'] == true).toList(),
+      fieldPath: '${record['field_path'] ?? ''}',
+      selected: '${record['selected_text'] ?? ''}',
+      original: guidanceFieldText(
+        data!['snapshot'] as Map? ?? {},
+        '${record['field_path'] ?? ''}',
+      ),
+      focusAnnotationID: widget.focusAnnotationID,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -222,7 +269,14 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
     }
   }
 
+  @override
+  void dispose() {
+    guidance.dispose();
+    super.dispose();
+  }
+
   Future<void> apply(Map<String, dynamic> value) async {
+    final epoch = widget.store.epoch;
     ResumeDraft? fullResume;
     var nextRecords = <Map<String, dynamic>>[];
     final owner = value['is_owner'] == true;
@@ -235,6 +289,7 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
               path: {'id': '${widget.id}'},
             )
           : null;
+      if (!mounted) return;
       nextRecords =
           guidanceRecords(
                 response?.data['items'] as List? ?? [],
@@ -249,8 +304,18 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
               .toList();
     }
     if (owner) {
+      final target = nextRecords
+          .where(
+            (record) =>
+                record['legacy'] != true &&
+                integer(record['id']) == widget.focusAnnotationID,
+          )
+          .firstOrNull;
+      final targetReviewer = target == null
+          ? widget.reviewerKey
+          : guidanceReviewerKey(target);
       final id = integer(value['source_resume_id']);
-      if (id > 0 && (!widget.fromNotification || widget.reviewerKey != null)) {
+      if (id > 0 && (!widget.fromNotification || targetReviewer != null)) {
         final original = await widget.store.request(
           'GetResumesId',
           path: {'id': '$id'},
@@ -260,11 +325,22 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
     } else {
       value = privateGuidancePreview(value);
     }
-    if (!mounted) return;
+    if (!mounted || epoch != widget.store.epoch) return;
     setState(() {
+      loadedEpoch = epoch;
       data = value;
       records = nextRecords;
-      if (widget.reviewerKey != null) {
+      final target = records
+          .where(
+            (record) =>
+                record['legacy'] != true &&
+                integer(record['id']) == widget.focusAnnotationID,
+          )
+          .firstOrNull;
+      focusedReviewerKey = owner && target != null
+          ? guidanceReviewerKey(target)
+          : null;
+      if (reviewerKey != null) {
         staged.retainWhere(
           (id) => reviewerRecords.any(
             (v) => integer(v['id']) == id && v['status'] == 'PENDING',
@@ -302,56 +378,6 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
       await apply(result.data);
     } catch (e) {
       if (mounted) setState(() => error = '$e');
-    }
-  }
-
-  Future<void> feedback() async {
-    final snapshot = data!['snapshot'] as Map? ?? {};
-    final fields = <String, String>{};
-    for (final section in _sectionLabels.entries) {
-      if (section.key == 'personal_info') continue;
-      final value = snapshot[section.key];
-      final entries = value is List
-          ? value
-          : value is Map
-          ? [value]
-          : [];
-      for (var i = 0; i < entries.length; i++) {
-        if (entries[i] is! Map) continue;
-        final entry = entries[i] as Map;
-        final identity =
-            entry['company'] ?? entry['institution'] ?? entry['name'];
-        final group = value is List
-            ? '${section.value} · ${identity == null || '$identity'.isEmpty ? '${i + 1}' : identity}'
-            : section.value;
-        for (final field in entry.keys) {
-          if ('${entry[field] ?? ''}'.contains(resumePrivacyMask) ||
-              !_fieldLabels.containsKey(field) ||
-              '${entry[field] ?? ''}'.isEmpty) {
-            continue;
-          }
-          fields['${section.key}.${value is List ? '$i.' : ''}$field'] =
-              '$group / ${_fieldLabels[field]}';
-        }
-      }
-    }
-    if (fields.isEmpty) {
-      toast(context, '这份简历没有可点评的内容');
-      return;
-    }
-    final sent = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _GuidanceFeedback(
-        store: widget.store,
-        id: widget.id,
-        notification: widget.notification,
-        fields: fields,
-      ),
-    );
-    if (sent == true && mounted) {
-      toast(context, '建议已发送');
-      await load();
     }
   }
 
@@ -436,7 +462,10 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
           ...reviewerRecords.where((v) => staged.contains(integer(v['id']))),
           record,
         ]);
-        setState(() => staged.add(integer(record['id'])));
+        setState(() {
+          staged.add(integer(record['id']));
+          guidanceAfterNotification = true;
+        });
       } catch (e) {
         toast(context, '$e');
       }
@@ -627,359 +656,183 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
     );
   }
 
+  bool get hasOwnRewrites =>
+      otherViewer && resume != null && ownRewritePreview.$2.isNotEmpty;
+
   @override
-  Widget build(BuildContext context) => GuidanceWalkthrough(
-    store: widget.store,
-    id: ownerLanding
-        ? 'participants'
-        : ownerReview
-        ? 'review'
-        : ownerDetail
-        ? 'author-detail'
-        : 'reviewer',
-    ready: data != null,
-    steps: [
-      if (ownerLanding) ...[
-        const GuidanceStep(
-          'guidance-participant-',
-          '选择一位指点者',
-          '点击这里，逐位查看对方的评论和改写建议。列表可下拉刷新。',
-          prefix: true,
-        ),
-      ] else if (ownerDetail) ...[
-        const GuidanceStep(
-          'tour-document',
-          '这是你的简历预览',
-          '上下滑动阅读，双指缩放。要处理大家的建议，请从“消息 → 系统通知”进入指点通知，再选择参与者。',
-        ),
-      ] else if (ownerReview) ...[
-        const GuidanceStep(
-          'tour-document',
-          '对照原文审阅',
-          '上下滑动查看建议。波浪线表示评论，点击评论标记可以回复；改写内容会附在原文附近。',
-        ),
-        const GuidanceStep(
-          'guidance-inline-note-',
-          '比较这条改写',
-          '这里展示对方建议的文字。早期建议如提示手动调整，请到简历编辑页修改。',
-          prefix: true,
-        ),
-        const GuidanceStep(
-          'tour-accept',
-          '先采纳，预览效果',
-          '点击“采纳”可预览替换后的简历；按住替换后的文字查看原文。原文变化或建议重叠时，请核对后手动调整。',
-        ),
-        const GuidanceStep(
-          'tour-reject',
-          '不适合可以不采纳',
-          '点击“不采纳”会直接提交这个决定。评论不用采纳，点击对应评论即可交流。',
-        ),
-        const GuidanceStep(
-          'tour-save',
-          '最后一定要保存',
-          '采纳后点击这里，才会保存为新简历，原简历会保留。没有待保存的采纳内容时按钮不可用。完成后可返回查看其他人的建议。',
-        ),
-      ] else ...[
-        const GuidanceStep(
-          'tour-document',
-          '先看看这份简历',
-          '上下滑动阅读，双指捏合缩放，放大后拖动查看。隐藏的个人信息不能选中或改写。',
-        ),
-        const GuidanceStep(
-          'resume-annotation-region-',
-          '点这段文字开始指点',
-          '点击简历文字区域，会出现“查看评论”和“参与改写”。点击菜单外可取消选中。',
-          prefix: true,
-        ),
-        const GuidanceStep(
-          'resume-annotation-region-',
-          '评论，说说你的看法',
-          '选中后点击“查看评论”，就能讨论这段内容。已有讨论会显示波浪线和评论数量，点击标记也能进入。',
-          prefix: true,
-        ),
-        const GuidanceStep(
-          'resume-annotation-region-',
-          '改写，给出具体写法',
-          '选中后点击“参与改写”。提交后仅你和作者可见，等待作者采纳；按住改写后的文字可对照原文。',
-          prefix: true,
-        ),
-        const GuidanceStep(
-          'tour-feedback',
-          '也可以按项目给建议',
-          '点击这里，选择简历项目后填写建议。这类建议不会直接替换原文。',
-        ),
+  Widget build(BuildContext context) {
+    ModalRoute.isCurrentOf(context);
+    scheduleNotificationFocus();
+    return GuidanceWalkthrough(
+      store: widget.store,
+      controller: guidance,
+      id: ownerReview
+          ? 'review-save'
+          : hasOwnRewrites
+          ? 'rewrite-preview'
+          : 'reviewer',
+      // A notification selects its own destination. A later adoption may
+      // introduce comparison guidance without moving the initial destination.
+      ready:
+          data != null &&
+          (widget.focusAnnotationID <= 0 || guidanceAfterNotification),
+      steps: [
+        if (ownerReview && staged.isNotEmpty)
+          const GuidanceStep(
+            'guidance-compare-region-',
+            '按住改写，就能查看原文',
+            '按住紫色文字对照原文，松开恢复。采纳目前只是预览，确认后点击右上角“保存”生成新简历，原简历会保留。',
+            prefix: true,
+            event: 'review.compared',
+            gesture: GuidanceGesture.hold,
+            optional: true,
+            acknowledgeLabel: '知道了',
+          )
+        else if (hasOwnRewrites)
+          const GuidanceStep(
+            'guidance-compare-region-',
+            '按住改写，就能查看原文',
+            '按住改写后的文字对照原文，松开恢复。改写仅你和作者可见，作者采纳并保存后才会生成新简历。',
+            prefix: true,
+            event: 'reviewer.compared',
+            gesture: GuidanceGesture.hold,
+          )
+        else if (otherViewer && data?['snapshot'] != null)
+          const GuidanceStep(
+            'resume-annotation-region-',
+            '点这段文字开始指点',
+            '点一下简历中的文字，就能查看评论或参与改写。隐藏的信息不能选中。',
+            prefix: true,
+            event: 'reviewer.selected',
+          ),
       ],
-    ],
-    child: Scaffold(
-      appBar: AppBar(
-        title: Text(
-          ownerDetail
-              ? '简历详情'
-              : ownerReview && widget.reviewerKey != null
-              ? '审阅指点'
-              : '简历指点',
-        ),
-        actions: [
-          if (ownerReview && widget.reviewerKey != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: TextButton(
-                key: const ValueKey('tour-save'),
-                onPressed: staged.isEmpty || saving ? null : saveReview,
-                child: saving
-                    ? const SizedBox(
-                        width: 17,
-                        height: 17,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('保存'),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            ownerDetail
+                ? '简历详情'
+                : ownerReview && reviewerKey != null
+                ? '审阅指点'
+                : '简历指点',
+          ),
+          actions: [
+            if (ownerReview && reviewerKey != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: TextButton(
+                  key: const ValueKey('tour-save'),
+                  onPressed: staged.isEmpty || saving ? null : saveReview,
+                  child: saving
+                      ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('保存'),
+                ),
               ),
-            ),
-        ],
-      ),
-      body: data == null
-          ? Center(
-              child: error == null
-                  ? const CircularProgressIndicator(strokeWidth: 2)
-                  : Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(error!),
-                        TextButton(onPressed: load, child: const Text('重新加载')),
-                      ],
-                    ),
-            )
-          : ownerLanding
-          ? GuidanceParticipantList(
-              title: '${data!['title'] ?? '分享的简历'}',
-              records: records,
-              onReview: openReviewer,
-              onRefresh: load,
-            )
-          : Column(
-              children: [
-                if (ownerReview && reviewerRecords.isNotEmpty)
-                  GuidanceReviewHeading(
-                    participant: GuidanceParticipant(
-                      widget.reviewerKey!,
-                      reviewerRecords,
-                    ),
-                  ),
-                if (data!['is_owner'] != true &&
-                    '${data!['question'] ?? ''}'.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '${data!['question']}',
-                        style: const TextStyle(fontSize: 13, height: 1.6),
+          ],
+        ),
+        body: data == null
+            ? Center(
+                child: error == null
+                    ? const CircularProgressIndicator(strokeWidth: 2)
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(error!),
+                          TextButton(
+                            onPressed: load,
+                            child: const Text('重新加载'),
+                          ),
+                        ],
+                      ),
+              )
+            : ownerLanding
+            ? GuidanceParticipantList(
+                title: '${data!['title'] ?? '分享的简历'}',
+                records: records,
+                onReview: openReviewer,
+                onRefresh: load,
+              )
+            : Column(
+                children: [
+                  if (ownerReview && reviewerRecords.isNotEmpty)
+                    GuidanceReviewHeading(
+                      participant: GuidanceParticipant(
+                        reviewerKey!,
+                        reviewerRecords,
                       ),
                     ),
-                  ),
-                Expanded(
-                  key: const ValueKey('tour-document'),
-                  child: data!['snapshot'] == null
-                      ? SingleChildScrollView(
-                          padding: const EdgeInsets.all(20),
-                          child: ArticleRichBody(
-                            content: Map<String, dynamic>.from(
-                              data!['legacy_content'] as Map? ?? {},
-                            ),
-                          ),
-                        )
-                      : ResumeDocumentView(
-                          key: documentKey,
-                          resume: displayResume,
-                          onAnnotate: data!['is_owner'] == true
-                              ? null
-                              : annotate,
-                          reviewNotes: ownerReview
-                              ? inlineNotes(context)
-                              : const [],
-                          reviewNoteBuilder: ownerReview
-                              ? (context, key) {
-                                  final record = reviewerRecords.firstWhere(
-                                    (v) => guidanceRecordKey(v) == key,
-                                  );
-                                  return GuidanceInlineNote(
-                                    key: ValueKey('guidance-inline-note-$key'),
-                                    record: record,
-                                    paperScale: documentScale(context),
-                                    canDecide: ownerReview,
-                                    busy: busyRecord == key,
-                                    disabled: busyRecord != null || saving,
-                                    active: activeRecord == key,
-                                    onDecide: (accept) =>
-                                        decideInline(record, accept),
-                                  );
-                                }
-                              : null,
-                          reviewHighlights: ownerDetail
-                              ? const []
-                              : reviewHighlights,
-                          onReviewTap: ownerDetail ? null : openReviewMarks,
+                  if (data!['is_owner'] != true &&
+                      '${data!['question'] ?? ''}'.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${data!['question']}',
+                          style: const TextStyle(fontSize: 13, height: 1.6),
                         ),
-                ),
-              ],
-            ),
-      bottomNavigationBar: data?['can_review'] == true
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: FilledButton(
-                  key: const ValueKey('tour-feedback'),
-                  onPressed: feedback,
-                  child: const Text('给出建议'),
-                ),
+                      ),
+                    ),
+                  Expanded(
+                    key: const ValueKey('tour-document'),
+                    child: data!['snapshot'] == null
+                        ? SingleChildScrollView(
+                            padding: const EdgeInsets.all(20),
+                            child: ArticleRichBody(
+                              content: Map<String, dynamic>.from(
+                                data!['legacy_content'] as Map? ?? {},
+                              ),
+                            ),
+                          )
+                        : ResumeDocumentView(
+                            key: documentKey,
+                            store: widget.store,
+                            onAnnotationSelected: () =>
+                                guidance.complete('reviewer.selected'),
+                            onOriginalShown: () => guidance.complete(
+                              ownerReview
+                                  ? 'review.compared'
+                                  : 'reviewer.compared',
+                            ),
+                            resume: displayResume,
+                            onAnnotate: data!['is_owner'] == true
+                                ? null
+                                : annotate,
+                            reviewNotes: ownerReview
+                                ? inlineNotes(context)
+                                : const [],
+                            reviewNoteBuilder: ownerReview
+                                ? (context, key) {
+                                    final record = reviewerRecords.firstWhere(
+                                      (v) => guidanceRecordKey(v) == key,
+                                    );
+                                    return GuidanceInlineNote(
+                                      key: ValueKey(
+                                        'guidance-inline-note-$key',
+                                      ),
+                                      record: record,
+                                      paperScale: documentScale(context),
+                                      canDecide: ownerReview,
+                                      busy: busyRecord == key,
+                                      disabled: busyRecord != null || saving,
+                                      active: activeRecord == key,
+                                      onDecide: (accept) =>
+                                          decideInline(record, accept),
+                                    );
+                                  }
+                                : null,
+                            reviewHighlights: ownerDetail
+                                ? const []
+                                : reviewHighlights,
+                            onReviewTap: ownerDetail ? null : openReviewMarks,
+                          ),
+                  ),
+                ],
               ),
-            )
-          : null,
-    ),
-  );
-}
-
-class _GuidanceFeedback extends StatefulWidget {
-  const _GuidanceFeedback({
-    required this.store,
-    required this.id,
-    required this.notification,
-    required this.fields,
-  });
-  final AppStore store;
-  final int id;
-  final bool notification;
-  final Map<String, String> fields;
-  @override
-  State<_GuidanceFeedback> createState() => _GuidanceFeedbackState();
-}
-
-class _GuidanceFeedbackState extends State<_GuidanceFeedback> {
-  final suggestion = TextEditingController();
-  late String field = widget.fields.keys.first;
-  String? lastPayload, key;
-  bool sending = false;
-  @override
-  void dispose() {
-    suggestion.dispose();
-    super.dispose();
-  }
-
-  Future<void> submit() async {
-    if (sending || suggestion.text.trim().isEmpty) return;
-    final body = {
-      'items': [
-        {
-          'field_path': field,
-          'suggestion': suggestion.text.trim(),
-          'replacement': '',
-        },
-      ],
-    };
-    final payload = jsonEncode(body);
-    if (payload != lastPayload) {
-      lastPayload = payload;
-      key =
-          'mobile-feedback-${widget.id}-${DateTime.now().microsecondsSinceEpoch}';
-    }
-    setState(() => sending = true);
-    final sent = await runRequest(
-      context,
-      () => widget.store.request(
-        widget.notification
-            ? 'PostNotificationsIdGuidanceSubmissions'
-            : 'PostArticlesIdGuidanceSubmissions',
-        path: {'id': '${widget.id}'},
-        body: body,
-        extra: {'idempotency-key': key!},
       ),
     );
-    if (!mounted) return;
-    if (sent) {
-      Navigator.pop(context, true);
-    } else {
-      setState(() => sending = false);
-    }
   }
-
-  @override
-  Widget build(BuildContext context) => GuidanceWalkthrough(
-    store: widget.store,
-    id: 'feedback',
-    steps: const [
-      GuidanceStep('tour-feedback-field', '选好建议对应的项目', '展开这里，选择你想点评的简历内容。'),
-      GuidanceStep(
-        'tour-feedback-input',
-        '写下具体建议',
-        '说明哪里可以改进、为什么，以及怎么修改。这里是文字建议，不会直接替换原文。',
-      ),
-      GuidanceStep(
-        'tour-feedback-send',
-        '确认后发送',
-        '点击“发送建议”提交。发送失败时输入会保留，可检查网络后重试。',
-      ),
-    ],
-    child: PopScope(
-      canPop: !sending,
-      child: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            24,
-            20,
-            20 + MediaQuery.viewInsetsOf(context).bottom,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                '给出建议',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                key: const ValueKey('tour-feedback-field'),
-                initialValue: field,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: '针对哪一项'),
-                items: widget.fields.entries
-                    .map(
-                      (e) => DropdownMenuItem(
-                        value: e.key,
-                        child: Text(
-                          e.value,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: sending ? null : (v) => setState(() => field = v!),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                key: const ValueKey('tour-feedback-input'),
-                controller: suggestion,
-                enabled: !sending,
-                minLines: 3,
-                maxLines: 6,
-                maxLength: 10000,
-                decoration: const InputDecoration(hintText: '写下具体的修改建议'),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  key: const ValueKey('tour-feedback-send'),
-                  onPressed: sending ? null : submit,
-                  child: Text(sending ? '正在发送…' : '发送建议'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
 }

@@ -1,3 +1,5 @@
+import 'app_theme.dart';
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -140,7 +142,7 @@ class GuidanceInlineNote extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       textStyle: metrics.action,
-    );
+    ).withoutHover();
     Widget decision(bool accept) => SizedBox(
       width: metrics.buttonWidth(accept ? '采纳' : '不采纳'),
       height: metrics.actionHeight,

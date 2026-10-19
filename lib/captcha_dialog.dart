@@ -7,8 +7,19 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'api/bojian_api.dart';
+import 'api/generated/auth.pb.dart' as auth;
 import 'app_store.dart';
 import 'design.dart';
+
+class SmsRequestOutcome {
+  const SmsRequestOutcome.accepted(auth.SMSResponse value)
+    : response = value,
+      error = null;
+  const SmsRequestOutcome.failed(Object value) : error = value, response = null;
+
+  final auth.SMSResponse? response;
+  final Object? error;
+}
 
 class CaptchaDialog extends StatefulWidget {
   const CaptchaDialog({
@@ -16,10 +27,12 @@ class CaptchaDialog extends StatefulWidget {
     required this.store,
     required this.challenge,
     required this.phone,
+    this.onSendSMS,
   });
   final AppStore store;
   final CaptchaChallenge challenge;
   final String phone;
+  final Future<auth.SMSResponse> Function(String captchaToken)? onSendSMS;
   @override
   State<CaptchaDialog> createState() => _CaptchaDialogState();
 }
@@ -34,11 +47,19 @@ typedef PuzzlePictures = ({
 });
 
 class _CaptchaDialogState extends State<CaptchaDialog> {
+  late final int accountEpoch;
   late CaptchaChallenge challenge = widget.challenge;
   double position = 0;
   bool busy = false;
   String? error;
   late Future<PuzzlePictures> pictures = decode();
+  bool get current => mounted && widget.store.epoch == accountEpoch;
+
+  @override
+  void initState() {
+    super.initState();
+    accountEpoch = widget.store.epoch;
+  }
 
   Future<PuzzlePictures> decode() async {
     final master = UriData.parse(challenge.masterImageDataUrl).contentAsBytes();
@@ -74,27 +95,28 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
   }
 
   Future<void> reload({bool preserveError = false}) async {
+    if (!current) return;
     setState(() {
       busy = true;
       if (!preserveError) error = null;
     });
     try {
       final next = await widget.store.api.createCaptcha(widget.store.headers);
-      if (!mounted) return;
+      if (!current) return;
       setState(() {
         challenge = next;
         position = 0;
         pictures = decode();
       });
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (current) setState(() => error = '$e');
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (current) setState(() => busy = false);
     }
   }
 
   Future<void> verify() async {
-    if (busy || position <= 0) return;
+    if (busy || position <= 0 || !current) return;
     setState(() {
       busy = true;
       error = null;
@@ -105,14 +127,25 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
         position.round(),
         widget.store.headers,
       );
-      final result = await widget.store.api.sendSMS(
-        widget.phone,
-        v.captchaToken,
-        widget.store.headers,
-      );
-      if (mounted) Navigator.pop(context, result.retryAfterSeconds);
+      if (!mounted || widget.store.epoch != accountEpoch) return;
+      try {
+        final result =
+            await (widget.onSendSMS?.call(v.captchaToken) ??
+                widget.store.api.sendSMS(
+                  widget.phone,
+                  v.captchaToken,
+                  widget.store.headers,
+                ));
+        if (mounted && current) {
+          Navigator.pop(context, SmsRequestOutcome.accepted(result));
+        }
+      } catch (e) {
+        if (mounted && current) {
+          Navigator.pop(context, SmsRequestOutcome.failed(e));
+        }
+      }
     } catch (e) {
-      if (!mounted) return;
+      if (!current) return;
       setState(
         () => error = e is ApiFailure && e.code == 'CAPTCHA_INVALID'
             ? '还差一点，请重新拖动拼图'
@@ -121,7 +154,7 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
       // Challenges are consumed once, so a failed attempt needs a fresh puzzle.
       await reload(preserveError: true);
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (current) setState(() => busy = false);
     }
   }
 
@@ -169,9 +202,13 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
     mainAxisSize: MainAxisSize.min,
     children: [
       if (compact) ...[
-        const Text(
+        Text(
           '拖动滑块，将拼图移到缺口处',
-          style: TextStyle(fontSize: 13, height: 1.5, color: muted),
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.5,
+            color: context.colors.muted,
+          ),
         ),
         const SizedBox(height: 12),
       ],
@@ -183,7 +220,9 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 20),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
             activeTrackColor: blue.withValues(alpha: .15),
-            inactiveTrackColor: const Color(0xFFF0F3F8),
+            inactiveTrackColor: (context.isDark
+                ? context.colors.accentSoft
+                : const Color(0xFFF0F3F8)),
             thumbColor: blue,
           ),
           child: Slider(
@@ -197,7 +236,7 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
       ),
       const SizedBox(height: 8),
       if (busy)
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SizedBox(
@@ -206,14 +245,21 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 8),
-            Text('正在验证…', style: TextStyle(fontSize: 12, color: muted)),
+            Text(
+              '正在验证…',
+              style: TextStyle(fontSize: 12, color: context.colors.muted),
+            ),
           ],
         )
       else
-        const Text(
+        Text(
           '对齐后松开滑块，即可获取验证码',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 11, height: 1.5, color: muted),
+          style: TextStyle(
+            fontSize: 11,
+            height: 1.5,
+            color: context.colors.muted,
+          ),
         ),
       if (error != null)
         Padding(
@@ -234,7 +280,7 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
     return PopScope(
       canPop: !busy,
       child: Dialog(
-        backgroundColor: Colors.white,
+        backgroundColor: context.colors.surface,
         surfaceTintColor: Colors.transparent,
         insetPadding: EdgeInsets.symmetric(
           horizontal: 24,
@@ -255,13 +301,13 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             '安全验证',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
-                              color: ink,
+                              color: context.colors.ink,
                             ),
                           ),
                         ),
@@ -311,9 +357,12 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
                         return Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
+                            Text(
                               '拖动滑块，将拼图移到缺口处',
-                              style: TextStyle(fontSize: 13, color: muted),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: context.colors.muted,
+                              ),
                             ),
                             const SizedBox(height: 16),
                             puzzle(p, maxImageHeight),

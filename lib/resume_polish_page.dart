@@ -51,14 +51,16 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
             children: [
               Container(
                 width: double.infinity,
-                color: const Color(0xFFEFF4FF),
+                color: (context.isDark
+                    ? context.colors.accentSoft
+                    : const Color(0xFFEFF4FF)),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
                   vertical: 12,
                 ),
-                child: const Text(
+                child: Text(
                   '仅预览已勾选的修改，保存后才会更新简历。',
-                  style: TextStyle(fontSize: 12, color: blue),
+                  style: TextStyle(fontSize: 12, color: context.colors.accent),
                 ),
               ),
               Expanded(
@@ -107,7 +109,7 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
                 children: [
                   Text(
                     widget.resume.title,
-                    style: const TextStyle(fontSize: 13, color: muted),
+                    style: TextStyle(fontSize: 13, color: context.colors.muted),
                   ),
                   const SizedBox(height: 18),
                   if (model.phase == ResumePolishPhase.setup) ...setup(),
@@ -116,7 +118,11 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
                   if (model.phase == ResumePolishPhase.review) ...review(),
                   if (model.phase == ResumePolishPhase.saved) ...[
                     const SizedBox(height: 36),
-                    const AppIcon(AppIcons.resume, size: 42, color: blue),
+                    AppIcon(
+                      AppIcons.resume,
+                      size: 42,
+                      color: context.colors.accent,
+                    ),
                     const SizedBox(height: 20),
                     const Text(
                       '优化已保存',
@@ -127,10 +133,14 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    const Text(
+                    Text(
                       '所选修改已更新到简历，可返回简历库预览和导出。',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, height: 1.6, color: muted),
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.6,
+                        color: context.colors.muted,
+                      ),
                     ),
                     const SizedBox(height: 28),
                     FilledButton(
@@ -144,7 +154,9 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
                       key: const ValueKey('polish-error'),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFF3EF),
+                        color: (context.isDark
+                            ? context.colors.warningSoft
+                            : const Color(0xFFFFF3EF)),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Text(
@@ -169,9 +181,9 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
               top: false,
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: borderColor)),
+                decoration: BoxDecoration(
+                  color: context.colors.surface,
+                  border: Border(top: BorderSide(color: context.colors.border)),
                 ),
                 child: Row(
                   children: [
@@ -213,9 +225,9 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
       style: TextStyle(fontSize: 25, fontWeight: FontWeight.w600, height: 1.4),
     ),
     const SizedBox(height: 10),
-    const Text(
+    Text(
       '基于已有经历优化措辞。先对比，再由你决定采用哪些修改。',
-      style: TextStyle(fontSize: 14, color: muted, height: 1.7),
+      style: TextStyle(fontSize: 14, color: context.colors.muted, height: 1.7),
     ),
     const SizedBox(height: 28),
     const Text(
@@ -235,14 +247,20 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
                 ? null
                 : (_) => setState(() => direction = title),
             showCheckmark: false,
-            selectedColor: const Color(0xFFE9F0FF),
-            backgroundColor: Colors.white,
+            selectedColor: (context.isDark
+                ? context.colors.accentSoft
+                : const Color(0xFFE9F0FF)),
+            backgroundColor: context.colors.surface,
             side: BorderSide(
               color: direction == title
                   ? blue.withValues(alpha: .3)
-                  : borderColor,
+                  : context.colors.border,
             ),
-            labelStyle: TextStyle(color: direction == title ? blue : ink),
+            labelStyle: TextStyle(
+              color: direction == title
+                  ? context.colors.accent
+                  : context.colors.ink,
+            ),
           ),
       ],
     ),
@@ -259,9 +277,9 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
       minLines: 3,
       maxLines: 6,
       maxLength: 800,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         hintText: '例如：面向产品经理岗位，精简项目描述，突出已有成果。',
-        fillColor: Colors.white,
+        fillColor: context.colors.surface,
       ),
     ),
     const SizedBox(height: 16),
@@ -275,9 +293,9 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
       child: Text(model.busy ? '正在准备…' : '开始优化'),
     ),
     const SizedBox(height: 12),
-    const Text(
+    Text(
       '开始后，将通过现有 AI 服务处理这份简历；请在保存前核对修改内容。',
-      style: TextStyle(fontSize: 12, color: muted, height: 1.6),
+      style: TextStyle(fontSize: 12, color: context.colors.muted, height: 1.6),
     ),
   ];
 
@@ -298,10 +316,10 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
       style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w600),
     ),
     const SizedBox(height: 12),
-    const Text(
+    Text(
       '正在整理已有经历中的表达与重点。\n生成结果不会自动覆盖原简历。',
       textAlign: TextAlign.center,
-      style: TextStyle(fontSize: 14, color: muted, height: 1.8),
+      style: TextStyle(fontSize: 14, color: context.colors.muted, height: 1.8),
     ),
     const SizedBox(height: 28),
     if (!model.busy && model.validSession)
@@ -313,10 +331,10 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
       onPressed: () => Navigator.pop(context),
       child: const Text('稍后查看'),
     ),
-    const Text(
+    Text(
       '再次从这份简历的「AI 简历优化」入口进入，可继续查看本次任务。',
       textAlign: TextAlign.center,
-      style: TextStyle(fontSize: 12, color: muted, height: 1.6),
+      style: TextStyle(fontSize: 12, color: context.colors.muted, height: 1.6),
     ),
   ];
 
@@ -330,7 +348,7 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
       model.changes.isEmpty
           ? '本次没有可采纳的文字修改，原简历保持不变。'
           : '共 ${model.changes.length} 处建议。取消勾选即可保留原文。',
-      style: const TextStyle(fontSize: 14, color: muted, height: 1.6),
+      style: TextStyle(fontSize: 14, color: context.colors.muted, height: 1.6),
     ),
     const SizedBox(height: 22),
     for (final change in model.changes)
@@ -338,7 +356,7 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
         key: ValueKey('polish-change-${change.path}'),
         margin: const EdgeInsets.only(bottom: 16),
         child: Material(
-          color: Colors.white,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(18),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -363,34 +381,42 @@ class _ResumePolishPageState extends State<ResumePolishPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '原文',
-                      style: TextStyle(fontSize: 12, color: muted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.colors.muted,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     SelectableText(
                       change.before,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         height: 1.7,
-                        color: Color(0xFF707987),
+                        color: (context.isDark
+                            ? context.colors.muted
+                            : Color(0xFF707987)),
                       ),
                     ),
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 14),
                       child: Divider(height: 1),
                     ),
-                    const Text(
+                    Text(
                       '优化后',
-                      style: TextStyle(fontSize: 12, color: blue),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.colors.accent,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     SelectableText(
                       change.after,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         height: 1.7,
-                        color: ink,
+                        color: context.colors.ink,
                       ),
                     ),
                   ],

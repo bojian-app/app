@@ -1,15 +1,13 @@
-import 'user_display_name.dart';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-import 'api/bojian_api.dart';
-import 'app_icons.dart';
 import 'app_store.dart';
 import 'design.dart';
 import 'discovery.dart';
-import 'playful_refresh.dart';
-import 'profile_avatar.dart';
-import 'resume_updated_label.dart';
+import 'profile_identity.dart';
+import 'public_profile_controller.dart';
 
 class UserProfilePage extends StatefulWidget {
   const UserProfilePage({super.key, required this.store, required this.userID});
@@ -20,214 +18,210 @@ class UserProfilePage extends StatefulWidget {
   State<UserProfilePage> createState() => _UserProfilePageState();
 }
 
-class _UserProfilePageState extends State<UserProfilePage> {
-  Map<String, dynamic>? profile;
-  List<Map<String, dynamic>> articles = [];
-  bool loading = true;
-  String? profileError, articleError;
-  int? opening;
-  int generation = 0;
+class _UserProfilePageState extends State<UserProfilePage>
+    with SingleTickerProviderStateMixin {
+  late PublicProfileController publicProfile;
+  ProfileIdentityData? get profile => publicProfile.profile;
+  List<Story> get articles => publicProfile.articles;
+  bool get loading => publicProfile.loading;
+  String? get profileError => publicProfile.profileError;
+  String? get articleError => publicProfile.articleError;
+  final scroll = ScrollController();
+  final headerKey = GlobalKey();
+  final nameKey = GlobalKey();
+  final surfaceKey = GlobalKey();
+  final viewportKey = GlobalKey();
+  late final pull = AnimationController(vsync: this);
+  double headerHeight = 400, collapseExtent = 174;
+  double pullDistance = 0;
+  bool measuring = false, openingDetails = false;
+  bool pulling = false, pullFromHeader = false, compact = false;
+  int? headerPointer;
+  PageRoute<void>? detailsRoute;
 
   @override
   void initState() {
     super.initState();
-    load();
+    configureProfile();
+    scroll.addListener(scrolled);
   }
 
-  Future<void> load() async {
-    final request = ++generation;
-    setState(() {
-      loading = true;
-      profileError = null;
-      articleError = null;
-    });
-    try {
-      final result = await widget.store.request(
-        'GetUsersFirstSecond',
-        path: {'first': '${widget.userID}', 'second': 'profile'},
-      );
-      if (!mounted || request != generation) return;
-      if (integer(result.data['id']) != widget.userID) {
-        throw const ApiFailure('该用户主页暂不可见', code: 'USER_NOT_FOUND');
-      }
-      setState(() => profile = result.data);
-    } catch (error) {
-      if (!mounted || request != generation) return;
-      setState(() {
-        if (error is ApiFailure && error.code == 'USER_NOT_FOUND') {
-          profile = null;
-          articles = [];
-          profileError = '该用户主页暂不可见';
-        } else {
-          profileError = '主页加载失败，请稍后重试';
-        }
-        loading = false;
+  void configureProfile() {
+    publicProfile = PublicProfileController(
+      store: widget.store,
+      userID: widget.userID,
+    )..addListener(profileChanged);
+    unawaited(load());
+  }
+
+  @override
+  void didUpdateWidget(UserProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userID != widget.userID || oldWidget.store != widget.store) {
+      publicProfile.dispose();
+      if (scroll.hasClients) scroll.jumpTo(0);
+      configureProfile();
+    }
+  }
+
+  void profileChanged() {
+    if (!mounted) return;
+    if (profile == null && detailsRoute?.isCurrent == true) {
+      final route = detailsRoute;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && route?.isCurrent == true) Navigator.of(context).pop();
       });
+    }
+    setState(() {});
+    measureHeader();
+  }
+
+  Future<void> load() => publicProfile.load();
+
+  void scrolled() {
+    final next = scroll.hasClients && scroll.offset > collapseExtent * .5;
+    if (next != compact && mounted) setState(() => compact = next);
+    measureHeader();
+  }
+
+  void measureHeader() {
+    if (measuring) return;
+    measuring = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      measuring = false;
+      if (!mounted || !scroll.hasClients) return;
+      final header = headerKey.currentContext?.findRenderObject();
+      final name = nameKey.currentContext?.findRenderObject();
+      final viewport = viewportKey.currentContext?.findRenderObject();
+      if (header is RenderBox && header.hasSize) {
+        final height =
+            header.size.height - pull.value * ProfileHeader.pullExtent;
+        if ((height - headerHeight).abs() > .1) {
+          setState(() => headerHeight = height);
+        }
+      }
+      if (name is RenderBox && viewport is RenderBox && name.hasSize) {
+        collapseExtent =
+            name.localToGlobal(Offset.zero, ancestor: viewport).dy +
+            scroll.offset -
+            MediaQuery.paddingOf(context).top;
+      }
+    });
+  }
+
+  void settlePull() {
+    if (!mounted) return;
+    pull.animateBack(
+      0,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  bool onScroll(ScrollNotification notification) {
+    if (notification.depth != 0 || openingDetails) return false;
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      pulling =
+          notification.metrics.pixels <=
+          notification.metrics.minScrollExtent + .5;
+      pullFromHeader = headerPointer != null;
+      pullDistance = 0;
+    } else if (pulling &&
+        notification is OverscrollNotification &&
+        notification.dragDetails != null &&
+        notification.overscroll < 0) {
+      pullDistance = (pullDistance - notification.overscroll).clamp(0, 240);
+      if (pullFromHeader) pull.value = (pullDistance / 120).clamp(0, 1);
+    } else if (pulling &&
+        notification is ScrollUpdateNotification &&
+        notification.metrics.pixels >
+            notification.metrics.minScrollExtent + .5) {
+      pulling = false;
+      settlePull();
+    } else if (notification is ScrollEndNotification && pulling) {
+      pulling = false;
+      final details = pullFromHeader && pullDistance >= 120;
+      final refresh = pullDistance >= 48;
+      pullDistance = 0;
+      if (!details) settlePull();
+      if (refresh && !loading) unawaited(load());
+      if (details) unawaited(showDetails());
+    }
+    return false;
+  }
+
+  Future<void> showDetails() async {
+    if (openingDetails ||
+        profile == null ||
+        ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
-    try {
-      final result = await widget.store.request(
-        'GetUsersFirstSecond',
-        path: {'first': '${widget.userID}', 'second': 'articles'},
-      );
-      if (!mounted || request != generation) return;
-      setState(() => articles = items(result.data));
-    } catch (_) {
-      if (mounted && request == generation) {
-        setState(() => articleError = '文章加载失败，请稍后重试');
-      }
-    } finally {
-      if (mounted && request == generation) setState(() => loading = false);
-    }
-  }
-
-  Future<void> openArticle(Map<String, dynamic> row) async {
-    if (opening != null) return;
-    final id = integer(row['id']);
-    if (id <= 0) return;
-    setState(() => opening = id);
-    try {
-      final result = await widget.store.request(
-        'GetArticlesId',
-        path: {'id': '$id'},
-      );
-      if (!mounted) return;
-      await openPage(
-        context,
-        StoryDetail(story: decodeStory(result.data), store: widget.store),
-      );
-    } catch (_) {
-      if (mounted) toast(context, '文章暂时无法打开，请稍后重试');
-    } finally {
-      if (mounted) setState(() => opening = null);
-    }
-  }
-
-  Widget identity() {
-    final data = profile!;
-    final nickname = '${data['nickname'] ?? ''}'.trim();
-    final publicID = '${data['public_id'] ?? ''}'.trim();
-    final bio = '${data['bio'] ?? ''}'.trim();
-    final city = '${data['city'] ?? ''}'.trim();
-    return Container(
-      key: const ValueKey('public-user-identity'),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            height: 116,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  bottom: 30,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFFE9F0FF),
-                          Color(0xFFF3F6FF),
-                          Color(0xFFEEF7F6),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: -18,
-                  top: -50,
-                  child: Container(
-                    width: 158,
-                    height: 158,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: .55),
-                        width: 22,
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 24,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(29),
-                    ),
-                    child: ProfileAvatar(
-                      seed: '${widget.userID}',
-                      url: '${data['avatar_url'] ?? ''}',
-                      size: 72,
-                    ),
-                  ),
-                ),
-              ],
+    final box = headerKey.currentContext?.findRenderObject();
+    final navigator = Navigator.of(context).context.findRenderObject();
+    if (box is! RenderBox || navigator is! RenderBox) return;
+    openingDetails = true;
+    pull.stop();
+    final identity = profile!;
+    final initialScrollOffset = scroll.offset;
+    final initialPull = pull.value;
+    final origin =
+        box.localToGlobal(Offset.zero, ancestor: navigator) & box.size;
+    final surface = surfaceKey.currentContext?.findRenderObject();
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    final route = PageRouteBuilder<void>(
+      transitionDuration: reduced
+          ? Duration.zero
+          : const Duration(milliseconds: 380),
+      reverseTransitionDuration: reduced
+          ? Duration.zero
+          : const Duration(milliseconds: 320),
+      pageBuilder: (context, animation, secondaryAnimation) =>
+          ProfileDetailsPage(
+            store: widget.store,
+            identity: identity,
+            origin: origin,
+            returnOrigin: Rect.fromLTWH(
+              origin.left,
+              origin.top,
+              origin.width,
+              origin.height - initialPull * ProfileHeader.pullExtent,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  userDisplayName(nickname),
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    height: 1.3,
-                  ),
-                ),
-                if (publicID.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    '用户 ID：$publicID',
-                    style: const TextStyle(fontSize: 11, color: muted),
-                  ),
-                ],
-                if (bio.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    bio,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.65,
-                      color: Color(0xFF606C80),
-                    ),
-                  ),
-                ],
-                if (city.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: canvasColor,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      city,
-                      style: const TextStyle(fontSize: 11, color: muted),
-                    ),
-                  ),
-                ],
-              ],
+            initialPull: initialPull,
+            initialScrollOffset: initialScrollOffset,
+            initialCollapse: Curves.easeInOutCubic.transform(
+              (initialScrollOffset / collapseExtent.clamp(1, double.infinity))
+                  .clamp(0, 1),
             ),
+            initialSurfaceHeight: surface is RenderBox && surface.hasSize
+                ? surface.size.height
+                : 0,
+            expansion: animation,
+            onEdit: (_) async {},
+            onAvatar: (_) async {},
           ),
-        ],
-      ),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+          child,
     );
+    void prepareReturn(AnimationStatus status) {
+      if (status == AnimationStatus.completed && mounted) pull.value = 0;
+    }
+
+    detailsRoute = route;
+    final navigation = Navigator.of(context).push(route);
+    route.animation!.addStatusListener(prepareReturn);
+    prepareReturn(route.animation!.status);
+    try {
+      await navigation;
+      await route.completed;
+    } finally {
+      route.animation!.removeStatusListener(prepareReturn);
+      detailsRoute = null;
+      openingDetails = false;
+      if (mounted && pull.value > 0) settlePull();
+    }
   }
 
   Widget status(String message, {bool retry = false}) => Padding(
@@ -237,7 +231,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
         Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 13, height: 1.6, color: muted),
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.6,
+            color: context.colors.muted,
+          ),
         ),
         if (retry) ...[
           const SizedBox(height: 12),
@@ -250,115 +248,173 @@ class _UserProfilePageState extends State<UserProfilePage> {
     ),
   );
 
-  Widget articleRow(Map<String, dynamic> row) {
-    final date = DateTime.tryParse('${row['published_at'] ?? ''}');
-    return InkWell(
-      key: ValueKey('public-article-${row['id']}'),
-      onTap: opening == null ? () => openArticle(row) : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (date != null) ...[
-                    Text(
-                      resumeUpdatedLabel(date),
-                      style: const TextStyle(fontSize: 10, color: muted),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  Text(
-                    '${row['title'] ?? ''}',
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            if (opening == integer(row['id']))
-              const SizedBox.square(
-                dimension: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              const AppIcon(AppIcons.forward, size: 17, color: muted),
-          ],
-        ),
-      ),
-    );
+  @override
+  void dispose() {
+    publicProfile.dispose();
+    scroll.dispose();
+    pull.dispose();
+    super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('个人主页')),
-    body: SafeArea(
-      top: false,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 640),
-          child: PlayfulRefresh(
-            onRefresh: load,
-            hasError: () => profileError != null || articleError != null,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-              children: [
-                if (profile != null) identity(),
-                if (profileError != null) status(profileError!, retry: true),
-                if (profile == null && loading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 80),
-                    child: Center(
-                      child: SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+  Widget build(BuildContext context) {
+    measureHeader();
+    if (profile == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('个人主页')),
+        body: loading
+            ? const Center(child: CircularProgressIndicator())
+            : Center(child: status(profileError ?? '该用户主页暂不可见', retry: true)),
+      );
+    }
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: compact
+          ? appSystemUiStyle(context)
+          : appSystemUiStyle(context).copyWith(
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+              systemStatusBarContrastEnforced: false,
+            ),
+      child: Scaffold(
+        backgroundColor: context.colors.surface,
+        body: DefaultTabController(
+          length: 1,
+          child: Listener(
+            onPointerUp: (_) => headerPointer = null,
+            onPointerCancel: (_) {
+              headerPointer = null;
+              pulling = false;
+              settlePull();
+            },
+            child: NotificationListener<ScrollNotification>(
+              onNotification: onScroll,
+              child: SizedBox.expand(
+                key: viewportKey,
+                child: CustomScrollView(
+                  key: const ValueKey('public-profile-scroll'),
+                  controller: scroll,
+                  physics: const ClampingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  slivers: [
+                    AnimatedBuilder(
+                      animation: pull,
+                      builder: (context, _) => SliverPersistentHeader(
+                        pinned: true,
+                        delegate: ProfileHeaderSliver(
+                          expandedHeight:
+                              headerHeight +
+                              pull.value * ProfileHeader.pullExtent,
+                          collapsedHeight:
+                              ProfileHeader.toolbarHeight(context) +
+                              MediaQuery.paddingOf(context).top,
+                          collapseExtent: collapseExtent,
+                          headerBuilder: (offset, progress) => Listener(
+                            behavior: HitTestBehavior.translucent,
+                            onPointerDown: (event) =>
+                                headerPointer = event.pointer,
+                            child: ProfileHeader(
+                              key: headerKey,
+                              nameKey: nameKey,
+                              surfaceKey: surfaceKey,
+                              store: widget.store,
+                              identity: profile,
+                              pullProgress: pull.value,
+                              scrollOffset: offset,
+                              collapseProgress: progress,
+                              onMenu: () => Navigator.of(context).maybePop(),
+                              onEdit: () {},
+                              onAvatar: showDetails,
+                              onDetails: showDetails,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                if (profile != null) ...[
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(4, 28, 4, 14),
-                    child: Text(
-                      '公开文章',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Material(
-                    color: Colors.white,
-                    clipBehavior: Clip.antiAlias,
-                    borderRadius: BorderRadius.circular(20),
-                    child: Column(
-                      children: [
-                        for (var i = 0; i < articles.length; i++) ...[
-                          if (i > 0)
-                            const Divider(height: 1, indent: 20, endIndent: 20),
-                          articleRow(articles[i]),
+                    SliverAppBar(
+                      primary: false,
+                      pinned: true,
+                      toolbarHeight: 0,
+                      automaticallyImplyLeading: false,
+                      backgroundColor: context.colors.surface,
+                      elevation: 0,
+                      scrolledUnderElevation: 0,
+                      surfaceTintColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      bottom: const ProfileContentTabs(
+                        tabs: [
+                          Tab(
+                            key: ValueKey('profile-tab-articles'),
+                            text: '动态',
+                            height: 36,
+                          ),
                         ],
-                        if (articleError != null)
-                          status(articleError!, retry: true),
-                        if (articles.isEmpty && articleError == null)
-                          status(loading ? '正在加载文章…' : '暂时没有公开文章'),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
-              ],
+                    if (profileError != null)
+                      SliverToBoxAdapter(
+                        child: status(profileError!, retry: true),
+                      ),
+                    SliverList.builder(
+                      itemCount: articles.length,
+                      itemBuilder: (context, index) => KeyedSubtree(
+                        key: ValueKey('public-article-${articles[index].id}'),
+                        child: ColoredBox(
+                          color: context.colors.canvas,
+                          child: Container(
+                            color: context.colors.surface,
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 600,
+                                ),
+                                child: StoryCard(
+                                  story: articles[index],
+                                  store: widget.store,
+                                  flat: true,
+                                  compactTypography: true,
+                                  authorNavigationEnabled: false,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (articleError != null)
+                      SliverToBoxAdapter(
+                        child: status(articleError!, retry: true),
+                      ),
+                    if (articles.isEmpty && articleError == null)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: status(loading ? '正在加载动态…' : '暂时没有公开动态'),
+                      ),
+                    SliverLayoutBuilder(
+                      builder: (context, constraints) => SliverToBoxAdapter(
+                        // Short or empty feeds still allow the shared header
+                        // to collapse, without adding a whole empty screen.
+                        child: SizedBox(
+                          height:
+                              (constraints.viewportMainAxisExtent -
+                                      ProfileHeader.toolbarHeight(context) -
+                                      MediaQuery.paddingOf(context).top +
+                                      headerHeight +
+                                      pull.value * ProfileHeader.pullExtent -
+                                      constraints.precedingScrollExtent)
+                                  .clamp(28.0, double.infinity),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

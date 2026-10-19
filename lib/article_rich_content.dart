@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import 'design.dart';
@@ -6,6 +8,7 @@ import 'design.dart';
 Map<String, dynamic> articleContentFromDelta(List<dynamic> operations) {
   final blocks = <Map<String, dynamic>>[];
   var spans = <Map<String, dynamic>>[];
+  bool embeddedLine = false;
   void finish(Map attributes) {
     final header = attributes['header'];
     final list = attributes['list'];
@@ -29,11 +32,20 @@ Map<String, dynamic> articleContentFromDelta(List<dynamic> operations) {
   }
 
   for (final operation in operations) {
-    if (operation is! Map || operation['insert'] is! String) continue;
+    if (operation is! Map) continue;
+    final insert = operation['insert'];
+    if (insert is Map && insert['bojian-block'] is String) {
+      if (spans.isNotEmpty) finish({});
+      blocks.add(Map<String, dynamic>.from(jsonDecode(insert['bojian-block'])));
+      embeddedLine = true;
+      continue;
+    }
+    if (insert is! String) continue;
     final attributes = operation['attributes'] as Map? ?? {};
-    final parts = (operation['insert'] as String).split('\n');
+    final parts = insert.split('\n');
     for (var i = 0; i < parts.length; i++) {
       if (parts[i].isNotEmpty) {
+        embeddedLine = false;
         spans.add({
           'text': parts[i],
           for (final key in ['bold', 'italic', 'underline'])
@@ -46,11 +58,92 @@ Map<String, dynamic> articleContentFromDelta(List<dynamic> operations) {
           if (attributes['size'] != null) 'size': attributes['size'],
         });
       }
-      if (i < parts.length - 1) finish(attributes);
+      if (i < parts.length - 1) {
+        if (embeddedLine) {
+          embeddedLine = false;
+        } else {
+          finish(attributes);
+        }
+      }
     }
   }
   if (spans.isNotEmpty) finish({});
   return {'blocks': blocks};
+}
+
+/// Unsupported blocks remain intact as selectable embeds. Reopening a draft
+/// must not discard Mac images, tables or formatting the mobile toolbar lacks.
+List<Map<String, dynamic>> articleDeltaFromContent(
+  Map<String, dynamic> content,
+) {
+  const blockKeys = {'kind', 'spans', 'align', 'indent'};
+  const spanKeys = {
+    'text',
+    'bold',
+    'italic',
+    'underline',
+    'strikethrough',
+    'foregroundColor',
+    'foreground_color',
+    'backgroundColor',
+    'background_color',
+    'size',
+  };
+  const kinds = {
+    'paragraph',
+    'heading1',
+    'heading2',
+    'bullet',
+    'numbered',
+    'quote',
+  };
+  final operations = <Map<String, dynamic>>[];
+  for (final block in (content['blocks'] as List? ?? []).whereType<Map>()) {
+    final spans = (block['spans'] as List? ?? []).whereType<Map>();
+    if (!kinds.contains(block['kind']) ||
+        !block.keys.every(blockKeys.contains) ||
+        !spans.every((span) => span.keys.every(spanKeys.contains))) {
+      operations.add({
+        'insert': {'bojian-block': jsonEncode(block)},
+      });
+      operations.add({'insert': '\n'});
+      continue;
+    }
+    for (final span in spans) {
+      final text = '${span['text'] ?? ''}';
+      if (text.isEmpty) continue;
+      final attributes = {
+        for (final key in ['bold', 'italic', 'underline'])
+          if (span[key] == true) key: true,
+        if (span['strikethrough'] == true) 'strike': true,
+        'color': ?(span['foregroundColor'] ?? span['foreground_color']),
+        'background': ?(span['backgroundColor'] ?? span['background_color']),
+        'size': ?span['size'],
+      };
+      operations.add({
+        'insert': text,
+        if (attributes.isNotEmpty) 'attributes': attributes,
+      });
+    }
+    final attributes = {
+      if (block['kind'] == 'heading1') 'header': 1,
+      if (block['kind'] == 'heading2') 'header': 2,
+      if (block['kind'] == 'bullet') 'list': 'bullet',
+      if (block['kind'] == 'numbered') 'list': 'ordered',
+      if (block['kind'] == 'quote') 'blockquote': true,
+      'align': ?block['align'],
+      'indent': ?block['indent'],
+    };
+    operations.add({
+      'insert': '\n',
+      if (attributes.isNotEmpty) 'attributes': attributes,
+    });
+  }
+  return operations.isEmpty
+      ? [
+          {'insert': '\n'},
+        ]
+      : operations;
 }
 
 class ArticleRichBody extends StatelessWidget {
@@ -71,6 +164,7 @@ class ArticleRichBody extends StatelessWidget {
   }
 
   Text text(
+    BuildContext context,
     List spans, {
     double size = 15,
     bool bold = false,
@@ -111,10 +205,14 @@ class ArticleRichBody extends StatelessWidget {
       ],
     ),
     textAlign: align,
-    style: TextStyle(fontSize: size, height: lineHeight, color: ink),
+    style: TextStyle(
+      fontSize: size,
+      height: lineHeight,
+      color: context.colors.ink,
+    ),
   );
 
-  Widget image(Map block) {
+  Widget image(BuildContext context, Map block) {
     final data = block['image'] is Map ? block['image'] as Map : const {};
     final url = Uri.tryParse('${data['url'] ?? ''}');
     return Column(
@@ -128,7 +226,7 @@ class ArticleRichBody extends StatelessWidget {
             semanticLabel: '${data['alt'] ?? ''}',
             errorBuilder: (_, _, _) => Text(
               '${data['alt'] ?? '图片暂时无法显示'}',
-              style: const TextStyle(color: muted),
+              style: TextStyle(color: context.colors.muted),
             ),
           ),
         if ('${data['caption'] ?? ''}'.isNotEmpty)
@@ -137,14 +235,14 @@ class ArticleRichBody extends StatelessWidget {
             child: Text(
               '${data['caption']}',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: muted),
+              style: TextStyle(fontSize: 12, color: context.colors.muted),
             ),
           ),
       ],
     );
   }
 
-  Widget table(Map block) {
+  Widget table(BuildContext context, Map block) {
     final data = block['table'] is Map ? block['table'] as Map : const {};
     final rows = (data['rows'] as List? ?? []).whereType<Map>().toList();
     final count = rows.fold<int>(
@@ -155,16 +253,19 @@ class ArticleRichBody extends StatelessWidget {
     );
     if (count == 0) return const SizedBox.shrink();
     return Table(
-      border: TableBorder.all(color: borderColor),
+      border: TableBorder.all(color: context.colors.border),
       children: [
         for (var i = 0; i < rows.length; i++)
           TableRow(
-            decoration: i == 0 ? const BoxDecoration(color: canvasColor) : null,
+            decoration: i == 0
+                ? BoxDecoration(color: context.colors.canvas)
+                : null,
             children: [
               for (var j = 0; j < count; j++)
                 Padding(
                   padding: const EdgeInsets.all(10),
                   child: text(
+                    context,
                     j < (rows[i]['cells'] as List).length
                         ? ((rows[i]['cells'] as List)[j] as Map)['spans']
                                   as List? ??
@@ -204,9 +305,9 @@ class ArticleRichBody extends StatelessWidget {
       };
       Widget child;
       if (kind == 'image') {
-        child = image(block);
+        child = image(context, block);
       } else if (kind == 'table') {
-        child = table(block);
+        child = table(context, block);
       } else if (blank) {
         // One explicit empty paragraph is exactly one body-text line.
         child = const Text(
@@ -215,6 +316,7 @@ class ArticleRichBody extends StatelessWidget {
         );
       } else {
         child = text(
+          context,
           spans,
           size: heading1
               ? 22
@@ -233,10 +335,10 @@ class ArticleRichBody extends StatelessWidget {
                 width: 28,
                 child: Text(
                   numbered ? '$number.' : '•',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     height: lineHeight,
-                    color: blue,
+                    color: context.colors.accent,
                   ),
                 ),
               ),
@@ -248,7 +350,7 @@ class ArticleRichBody extends StatelessWidget {
           child = Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: canvasColor,
+              color: context.colors.canvas,
               border: quote
                   ? const Border(left: BorderSide(color: blue, width: 3))
                   : null,

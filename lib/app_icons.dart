@@ -23,6 +23,8 @@ abstract final class AppIcons {
   static const discover = HugeIcons.strokeRoundedCompass;
   static const resume = HugeIcons.strokeRoundedFile02;
   static const messages = HugeIcons.strokeRoundedMessage01;
+  static const inbox = HugeIcons.strokeRoundedMail01;
+  static const copy = HugeIcons.strokeRoundedCopy01;
   static const profile = HugeIcons.strokeRoundedUser;
   static const profileSelected = HugeIcons.strokeRoundedUser;
   static const search = HugeIcons.strokeRoundedSearch01;
@@ -33,6 +35,7 @@ abstract final class AppIcons {
   static const importResume = HugeIcons.strokeRoundedFileUpload;
   static const templates = HugeIcons.strokeRoundedGridView;
   static const portrait = HugeIcons.strokeRoundedUserSquare;
+  static const camera = HugeIcons.strokeRoundedCamera01;
   static const back = HugeIcons.strokeRoundedArrowLeft01;
   static const forward = HugeIcons.strokeRoundedArrowRight01;
   static const arrowForward = HugeIcons.strokeRoundedArrowRight02;

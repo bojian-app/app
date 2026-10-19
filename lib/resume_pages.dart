@@ -10,6 +10,8 @@ import 'package:file_selector/file_selector.dart';
 
 import 'resume_files.dart';
 import 'resume_rename.dart';
+import 'resume_add_sheet.dart';
+import 'resume_assistance_page.dart';
 import 'resume_delete.dart';
 import 'resume_document.dart';
 import 'resume_importer.dart';
@@ -33,124 +35,193 @@ import 'api/bojian_api.dart';
 
 import 'app_store.dart';
 import 'design.dart';
+import 'confirmation_dialog.dart';
 
 class ResumeLibrary extends StatelessWidget {
-  const ResumeLibrary({super.key, required this.store});
+  const ResumeLibrary({super.key, required this.store, this.embedded = false});
   final AppStore store;
+  final bool embedded;
   @override
   Widget build(BuildContext context) => PlayfulRefresh(
     hasError: () => store.errors['resumes'] != null,
     onRefresh: () => store.load('resumes'),
     child: ListView(
+      key: PageStorageKey(embedded ? 'profile-resumes' : 'resume-library'),
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: EdgeInsets.only(top: embedded ? 8 : 0, bottom: 24),
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(24, 18, 24, 16),
-          child: Text(
-            '我的简历',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -.5,
+        if (!embedded) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(24, 18, 24, 16),
+            child: Text(
+              '我的简历',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -.5,
+              ),
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Row(
-            children: [
-              Expanded(
-                child: _actionCard(
-                  label: '创建简历',
-                  icon: AppIcons.add,
-                  onTap: () => _create(context),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _actionCard(
-                  label: '导入简历',
-                  icon: AppIcons.importResume,
-                  onTap: () => _import(context),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-          child: InkWell(
-            onTap: () => openPage(context, TemplateMarket(store: store)),
-            borderRadius: BorderRadius.circular(18),
-            child: const Panel(
-              padding: EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  DecoratedBox(
+        ],
+        if (embedded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: InkWell(
+                key: const ValueKey('profile-add-resume'),
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => _add(context),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Color(0xFFFFF4E5),
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                      color: context.colors.accentSoft,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Padding(
-                      padding: EdgeInsets.all(10),
-                      child: AppIcon(
-                        AppIcons.templateMarket,
-                        color: Color(0xFFD69B4C),
-                        size: 22,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AppIcon(
+                            AppIcons.add,
+                            size: 12,
+                            color: context.colors.accent,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '添加简历',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: context.colors.accent,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '找到适合你的模版',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          '逛逛模板市场，让经历更出彩',
-                          style: TextStyle(fontSize: 11, color: muted),
-                        ),
-                      ],
-                    ),
+                ),
+              ),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _actionCard(
+                    context,
+                    label: '创建简历',
+                    icon: AppIcons.add,
+                    onTap: () => _create(context),
                   ),
-                  AppIcon(AppIcons.forward, color: muted, size: 14),
-                ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _actionCard(
+                    context,
+                    label: '导入简历',
+                    icon: AppIcons.importResume,
+                    onTap: () => _import(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (!embedded) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+            child: InkWell(
+              onTap: () => openPage(context, TemplateMarket(store: store)),
+              borderRadius: BorderRadius.circular(18),
+              child: Panel(
+                padding: EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: (context.isDark
+                            ? context.colors.warningSoft
+                            : Color(0xFFFFF4E5)),
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(10),
+                        child: AppIcon(
+                          AppIcons.templateMarket,
+                          color: Color(0xFFD69B4C),
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '找到适合你的模版',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            '逛逛模板市场，让经历更出彩',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: context.colors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    AppIcon(
+                      AppIcons.forward,
+                      color: context.colors.muted,
+                      size: 14,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-          child: Row(
-            children: [
-              const Text(
-                '简历库',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${store.resumes.length} 份',
-                style: const TextStyle(color: muted, fontSize: 11),
-              ),
-              const Spacer(),
-              const Text('最近更新', style: TextStyle(color: muted, fontSize: 11)),
-            ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Row(
+              children: [
+                const Text(
+                  '简历库',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${store.resumes.length} 份',
+                  style: TextStyle(color: context.colors.muted, fontSize: 11),
+                ),
+                const Spacer(),
+                Text(
+                  '最近更新',
+                  style: TextStyle(color: context.colors.muted, fontSize: 11),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
+        if (embedded) const SizedBox(height: 4),
         DataStatus(
           store: store,
           section: 'resumes',
           empty: store.resumes.isEmpty,
-          title: '创建你的第一份简历',
-          subtitle: '从一份空白简历开始，逐步整理你的经历。',
+          title: embedded ? '这里还没有内容' : '创建你的第一份简历',
+          subtitle: embedded ? '下拉刷新，查看最新内容。' : '从一份空白简历开始，逐步整理你的经历。',
         ),
         for (final resume in store.resumes)
           Padding(
@@ -160,12 +231,13 @@ class ResumeLibrary extends StatelessWidget {
       ],
     ),
   );
-  Widget _actionCard({
+  Widget _actionCard(
+    BuildContext context, {
     required String label,
     required AppIconData icon,
     required VoidCallback onTap,
   }) => Material(
-    color: Colors.white,
+    color: context.colors.surface,
     clipBehavior: Clip.antiAlias,
     borderRadius: BorderRadius.circular(18),
     child: InkWell(
@@ -178,19 +250,23 @@ class ResumeLibrary extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: const Color(0xFFEEF4FF),
+                color: (context.isDark
+                    ? context.colors.accentSoft
+                    : const Color(0xFFEEF4FF)),
                 borderRadius: BorderRadius.circular(11),
               ),
-              child: Center(child: AppIcon(icon, size: 20, color: blue)),
+              child: Center(
+                child: AppIcon(icon, size: 20, color: context.colors.accent),
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: ink,
+                  color: context.colors.ink,
                 ),
               ),
             ),
@@ -205,11 +281,13 @@ class ResumeLibrary extends StatelessWidget {
     final progress = resume.progress.clamp(0.0, 1.0);
     final progressColor = progress == 1 ? const Color(0xFF449581) : blue;
     return Material(
-      color: Colors.white,
+      color: context.colors.surface,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0xFFE8EDF5)),
+        side: BorderSide(
+          color: (context.isDark ? context.colors.border : Color(0xFFE8EDF5)),
+        ),
       ),
       child: InkWell(
         onTap: () =>
@@ -235,8 +313,8 @@ class ResumeLibrary extends StatelessWidget {
                           const SizedBox(height: 0),
                           Text(
                             '${resumeUpdatedLabel(updated)} 更新',
-                            style: const TextStyle(
-                              color: muted,
+                            style: TextStyle(
+                              color: context.colors.muted,
                               fontSize: 10.5,
                             ),
                           ),
@@ -249,9 +327,9 @@ class ResumeLibrary extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     excludeFromSemantics: true,
                     onTap: () {},
-                    child: const AppIcon(
+                    child: AppIcon(
                       AppIcons.forward,
-                      color: ink,
+                      color: context.colors.ink,
                       size: 20,
                     ),
                   ),
@@ -274,11 +352,12 @@ class ResumeLibrary extends StatelessWidget {
                           ),
                         ),
                         style: TextButton.styleFrom(
-                          foregroundColor: muted,
+                          foregroundColor: context.colors.muted,
                           minimumSize: const Size(0, 40),
                           padding: const EdgeInsets.symmetric(horizontal: 0),
-                          textStyle: const TextStyle(fontSize: 11),
-                        ),
+                          textStyle: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(fontSize: 11),
+                        ).withoutHover(),
                         icon: AppIcon(
                           AppIcons.templates,
                           size: 14,
@@ -295,7 +374,7 @@ class ResumeLibrary extends StatelessWidget {
                 children: [
                   Text(
                     '完善度 ${(progress * 100).round()}%',
-                    style: const TextStyle(fontSize: 10, color: muted),
+                    style: TextStyle(fontSize: 10, color: context.colors.muted),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -305,22 +384,29 @@ class ResumeLibrary extends StatelessWidget {
                         value: progress,
                         minHeight: 3,
                         color: progressColor,
-                        backgroundColor: const Color(0xFFEDF1F7),
+                        backgroundColor: (context.isDark
+                            ? context.colors.accentSoft
+                            : const Color(0xFFEDF1F7)),
                       ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
-              const Divider(height: 1, color: Color(0xFFEDF1F7)),
+              Divider(
+                height: 1,
+                color: (context.isDark
+                    ? context.colors.border
+                    : Color(0xFFEDF1F7)),
+              ),
               const SizedBox(height: 2),
               Row(
                 children: [
                   Expanded(
                     child: MenuAnchor(
                       style: MenuStyle(
-                        backgroundColor: const WidgetStatePropertyAll(
-                          Colors.white,
+                        backgroundColor: WidgetStatePropertyAll(
+                          context.colors.surface,
                         ),
                         surfaceTintColor: const WidgetStatePropertyAll(
                           Colors.transparent,
@@ -338,10 +424,10 @@ class ResumeLibrary extends StatelessWidget {
                       menuChildren: [
                         MenuItemButton(
                           key: ValueKey('resume-guidance-${resume.id}'),
-                          leadingIcon: const AppIcon(
+                          leadingIcon: AppIcon(
                             AppIcons.guidanceRecipients,
                             size: 17,
-                            color: blue,
+                            color: context.colors.accent,
                           ),
                           onPressed: () => openPage(
                             context,
@@ -351,10 +437,10 @@ class ResumeLibrary extends StatelessWidget {
                         ),
                         MenuItemButton(
                           key: ValueKey('resume-ai-optimize-${resume.id}'),
-                          leadingIcon: const AppIcon(
+                          leadingIcon: AppIcon(
                             AppIcons.skills,
                             size: 17,
-                            color: blue,
+                            color: context.colors.accent,
                           ),
                           onPressed: () => openPage(
                             context,
@@ -364,6 +450,7 @@ class ResumeLibrary extends StatelessWidget {
                         ),
                       ],
                       builder: (context, controller, _) => _resumeAction(
+                        context,
                         '简历优化',
                         () => controller.isOpen
                             ? controller.close()
@@ -377,10 +464,13 @@ class ResumeLibrary extends StatelessWidget {
                   Container(
                     width: 1,
                     height: 18,
-                    color: const Color(0xFFE8EDF5),
+                    color: (context.isDark
+                        ? context.colors.accentSoft
+                        : const Color(0xFFE8EDF5)),
                   ),
                   Expanded(
                     child: _resumeAction(
+                      context,
                       '删除',
                       () => confirmResumeDeletion(
                         context,
@@ -388,7 +478,7 @@ class ResumeLibrary extends StatelessWidget {
                         resume: resume,
                       ),
                       icon: AppIcons.delete,
-                      color: muted,
+                      color: context.colors.muted,
                       key: ValueKey('resume-delete-${resume.id}'),
                     ),
                   ),
@@ -402,11 +492,12 @@ class ResumeLibrary extends StatelessWidget {
   }
 
   Widget _resumeAction(
+    BuildContext context,
     String label,
     VoidCallback onTap, {
     Key? key,
     required AppIconData icon,
-    Color color = blue,
+    Color? color,
     bool dropdown = false,
   }) => TextButton(
     key: key,
@@ -414,23 +505,55 @@ class ResumeLibrary extends StatelessWidget {
     style: TextButton.styleFrom(
       minimumSize: const Size(0, 44),
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      foregroundColor: color,
+      foregroundColor: color ?? context.colors.accent,
       overlayColor: Colors.transparent,
-      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-    ),
+      textStyle: Theme.of(context).textTheme.labelLarge
+          ?.copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+    ).withoutHover(),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        AppIcon(icon, size: 17, color: color),
+        AppIcon(icon, size: 17, color: color ?? context.colors.accent),
         const SizedBox(width: 6),
         Flexible(child: Text(label, textAlign: TextAlign.center)),
         if (dropdown) ...[
           const SizedBox(width: 3),
-          Icon(Icons.keyboard_arrow_down_rounded, size: 17, color: color),
+          Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 17,
+            color: color ?? context.colors.accent,
+          ),
         ],
       ],
     ),
   );
+
+  Future<void> _add(BuildContext context) async {
+    final epoch = store.epoch;
+    final source = await showResumeAddSheet(context);
+    if (!context.mounted ||
+        source == null ||
+        !store.isAuthenticated ||
+        epoch != store.epoch) {
+      return;
+    }
+    switch (source) {
+      case ResumeAddSource.assistance:
+        openPage(context, ResumeAssistancePage(store: store));
+      case ResumeAddSource.manual:
+        _create(context);
+      case ResumeAddSource.wechat:
+        openPage(
+          context,
+          ImportResume(store: store, initialSource: ResumeImportSource.wechat),
+        );
+      case ResumeAddSource.local:
+        openPage(
+          context,
+          ImportResume(store: store, initialSource: ResumeImportSource.local),
+        );
+    }
+  }
 
   void _create(BuildContext context) {
     if (!store.isAuthenticated) {
@@ -564,12 +687,14 @@ class _ResumeEditorState extends State<ResumeEditor> {
                         ),
                       ),
                     )
-                  : const ColoredBox(
-                      color: Color(0xFFF0F3F9),
+                  : ColoredBox(
+                      color: (context.isDark
+                          ? context.colors.accentSoft
+                          : Color(0xFFF0F3F9)),
                       child: Center(
                         child: AppIcon(
                           AppIcons.portrait,
-                          color: muted,
+                          color: context.colors.muted,
                           size: 30,
                         ),
                       ),
@@ -586,14 +711,17 @@ class _ResumeEditorState extends State<ResumeEditor> {
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 5),
-                const Text(
+                Text(
                   '最大 5 MB',
-                  style: TextStyle(color: muted, fontSize: 10),
+                  style: TextStyle(color: context.colors.muted, fontSize: 10),
                 ),
                 if (selectedPhoto != null || photoRemoved)
-                  const Text(
+                  Text(
                     '保存后生效',
-                    style: TextStyle(color: blue, fontSize: 10),
+                    style: TextStyle(
+                      color: context.colors.accent,
+                      fontSize: 10,
+                    ),
                   ),
                 Wrap(
                   spacing: 20,
@@ -812,10 +940,14 @@ class _ResumeEditorState extends State<ResumeEditor> {
                       selected: activeSection == i,
                       showCheckmark: false,
                       side: BorderSide.none,
-                      backgroundColor: Colors.white,
-                      selectedColor: const Color(0xFFE7EFFF),
+                      backgroundColor: context.colors.surface,
+                      selectedColor: (context.isDark
+                          ? context.colors.accentSoft
+                          : const Color(0xFFE7EFFF)),
                       labelStyle: TextStyle(
-                        color: activeSection == i ? blue : muted,
+                        color: activeSection == i
+                            ? context.colors.accent
+                            : context.colors.muted,
                       ),
                       onSelected: (_) => _jump(i),
                     ),
@@ -933,24 +1065,34 @@ class _ResumeEditorState extends State<ResumeEditor> {
         DropdownButtonFormField<String>(
           initialValue: value,
           isExpanded: true,
-          icon: const AppIcon(AppIcons.expand, size: 18, color: muted),
+          icon: AppIcon(AppIcons.expand, size: 18, color: context.colors.muted),
           decoration: InputDecoration(
             filled: true,
-            fillColor: const Color(0xFFF8F9FC),
+            fillColor: (context.isDark
+                ? context.colors.inset
+                : const Color(0xFFF8F9FC)),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE9EDF3)),
+              borderSide: BorderSide(
+                color: (context.isDark
+                    ? context.colors.border
+                    : Color(0xFFE9EDF3)),
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE9EDF3)),
+              borderSide: BorderSide(
+                color: (context.isDark
+                    ? context.colors.border
+                    : Color(0xFFE9EDF3)),
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 13,
             ),
           ),
-          style: const TextStyle(fontSize: 14, color: ink),
+          style: TextStyle(fontSize: 14, color: context.colors.ink),
           items: [
             for (final option in options.entries)
               DropdownMenuItem(value: option.key, child: Text(option.value)),
@@ -1021,7 +1163,11 @@ class _ResumeEditorState extends State<ResumeEditor> {
           margin: const EdgeInsets.only(bottom: 18),
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFE9EDF3)),
+            border: Border.all(
+              color: (context.isDark
+                  ? context.colors.border
+                  : const Color(0xFFE9EDF3)),
+            ),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
@@ -1057,10 +1203,10 @@ class _ResumeEditorState extends State<ResumeEditor> {
                     onPressed: saving
                         ? null
                         : () => _removeAdditional(key, list[index], title),
-                    icon: const AppIcon(
+                    icon: AppIcon(
                       AppIcons.delete,
                       size: 18,
-                      color: muted,
+                      color: context.colors.muted,
                     ),
                   ),
                 ],
@@ -1108,22 +1254,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
     ResumeEntryFields entry,
     String title,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除这项$title？'),
-        content: const Text('保存简历后生效。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmation(
+      context,
+      title: '删除这项$title？',
+      content: const Text('保存简历后生效。'),
+      confirmLabel: '删除',
+      destructive: true,
     );
     if (!mounted || confirmed != true) return;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -1150,16 +1286,20 @@ class _ResumeEditorState extends State<ResumeEditor> {
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.fromLTRB(18, 20, 18, 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFF0F2F5)),
+          border: Border.all(
+            color: (context.isDark
+                ? context.colors.border
+                : const Color(0xFFF0F2F5)),
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                AppIcon(icon, size: 20, color: blue),
+                AppIcon(icon, size: 20, color: context.colors.accent),
                 const SizedBox(width: 10),
                 Text(
                   sectionNames[index],
@@ -1200,9 +1340,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: ink,
+                color: context.colors.ink,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1227,13 +1367,13 @@ class _ResumeEditorState extends State<ResumeEditor> {
                   : ValueListenableBuilder<TextEditingValue>(
                       valueListenable: fieldController!,
                       builder: (_, value, _) => value.text.isEmpty
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 48,
                               child: Center(
                                 child: AppIcon(
                                   AppIcons.date,
                                   size: 18,
-                                  color: muted,
+                                  color: context.colors.muted,
                                 ),
                               ),
                             )
@@ -1245,27 +1385,37 @@ class _ResumeEditorState extends State<ResumeEditor> {
                                       dismissKeyboard();
                                       fieldController.clear();
                                     },
-                              icon: const AppIcon(
+                              icon: AppIcon(
                                 AppIcons.clear,
                                 size: 18,
-                                color: muted,
+                                color: context.colors.muted,
                               ),
                             ),
                     ),
-              hintStyle: const TextStyle(color: muted, fontSize: 12),
+              hintStyle: TextStyle(color: context.colors.muted, fontSize: 12),
               filled: true,
-              fillColor: const Color(0xFFF8F9FC),
+              fillColor: (context.isDark
+                  ? context.colors.inset
+                  : const Color(0xFFF8F9FC)),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 13,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFFE9EDF3)),
+                borderSide: BorderSide(
+                  color: (context.isDark
+                      ? context.colors.border
+                      : Color(0xFFE9EDF3)),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFFE9EDF3)),
+                borderSide: BorderSide(
+                  color: (context.isDark
+                      ? context.colors.border
+                      : Color(0xFFE9EDF3)),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -1317,22 +1467,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
   }
 
   Future<void> _removeWork(WorkExperienceFields entry) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除这段工作经历？'),
-        content: const Text('保存简历后生效。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmation(
+      context,
+      title: '删除这段工作经历？',
+      content: const Text('保存简历后生效。'),
+      confirmLabel: '删除',
+      destructive: true,
     );
     if (!mounted || confirmed != true) return;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -1362,7 +1502,11 @@ class _ResumeEditorState extends State<ResumeEditor> {
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE9EDF3)),
+        border: Border.all(
+          color: (context.isDark
+              ? context.colors.border
+              : const Color(0xFFE9EDF3)),
+        ),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -1396,7 +1540,11 @@ class _ResumeEditorState extends State<ResumeEditor> {
               IconButton(
                 tooltip: '删除经历',
                 onPressed: saving ? null : () => _removeWork(entry),
-                icon: const AppIcon(AppIcons.delete, size: 18, color: muted),
+                icon: AppIcon(
+                  AppIcons.delete,
+                  size: 18,
+                  color: context.colors.muted,
+                ),
               ),
             ],
           ),
@@ -1450,22 +1598,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
   }
 
   Future<void> _removeEducation(EducationFields entry) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除这段教育经历？'),
-        content: const Text('保存简历后生效。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmation(
+      context,
+      title: '删除这段教育经历？',
+      content: const Text('保存简历后生效。'),
+      confirmLabel: '删除',
+      destructive: true,
     );
     if (!mounted || confirmed != true) return;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -1495,7 +1633,11 @@ class _ResumeEditorState extends State<ResumeEditor> {
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE9EDF3)),
+        border: Border.all(
+          color: (context.isDark
+              ? context.colors.border
+              : const Color(0xFFE9EDF3)),
+        ),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -1529,7 +1671,11 @@ class _ResumeEditorState extends State<ResumeEditor> {
               IconButton(
                 tooltip: '删除经历',
                 onPressed: saving ? null : () => _removeEducation(entry),
-                icon: const AppIcon(AppIcons.delete, size: 18, color: muted),
+                icon: AppIcon(
+                  AppIcons.delete,
+                  size: 18,
+                  color: context.colors.muted,
+                ),
               ),
             ],
           ),
@@ -1680,12 +1826,13 @@ class _ResumePreviewState extends State<ResumePreview> {
   );
   PreferredSizeWidget _toolbar(BuildContext context, {ResumeDraft? resume}) {
     final actionStyle = TextButton.styleFrom(
-      foregroundColor: ink,
+      foregroundColor: context.colors.ink,
       minimumSize: const Size(0, 40),
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+      textStyle: Theme.of(context).textTheme.labelLarge
+          ?.copyWith(fontSize: 13, fontWeight: FontWeight.w500),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    );
+    ).withoutHover();
     return AppBar(
       leading: IconButton(
         icon: const AppIcon(AppIcons.back, size: 22),
@@ -1697,17 +1844,17 @@ class _ResumePreviewState extends State<ResumePreview> {
       titleSpacing: 0,
       toolbarHeight: 56,
       leadingWidth: 56,
-      backgroundColor: Colors.white,
+      backgroundColor: context.colors.surface,
       surfaceTintColor: Colors.transparent,
-      foregroundColor: ink,
-      titleTextStyle: const TextStyle(
+      foregroundColor: context.colors.ink,
+      titleTextStyle: TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w600,
-        color: ink,
+        color: context.colors.ink,
       ),
-      bottom: const PreferredSize(
+      bottom: PreferredSize(
         preferredSize: Size.fromHeight(1),
-        child: Divider(height: 1, thickness: 1, color: borderColor),
+        child: Divider(height: 1, thickness: 1, color: context.colors.border),
       ),
       actions: resume == null
           ? null
@@ -1904,9 +2051,9 @@ class _MarketResumeChooserState extends State<_MarketResumeChooser> {
                             ),
                             subtitle: Text(
                               resume.templateTitle,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: muted,
+                                color: context.colors.muted,
                               ),
                             ),
                             trailing: busy
@@ -1916,12 +2063,15 @@ class _MarketResumeChooserState extends State<_MarketResumeChooser> {
                           ),
                       if (!widget.store.errors.containsKey('resumes') &&
                           widget.store.resumes.isEmpty)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.all(24),
                           child: Text(
                             '你还没有简历，可以用这套模板创建一份。',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: muted, fontSize: 12),
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                     ],
@@ -1957,17 +2107,21 @@ class _MarketResumeChooserState extends State<_MarketResumeChooser> {
   );
 }
 
+enum ResumeImportSource { wechat, local }
+
 class ImportResume extends StatefulWidget {
   const ImportResume({
     super.key,
     required this.store,
     this.initialFile,
+    this.initialSource,
     this.pickFile,
     this.importer,
     this.onSaved,
   });
   final AppStore store;
   final XFile? initialFile;
+  final ResumeImportSource? initialSource;
   final Future<XFile?> Function()? pickFile;
   final ResumeImporter? importer;
   final VoidCallback? onSaved;
@@ -1993,6 +2147,17 @@ class _ImportResumeState extends State<ImportResume> {
     if (selected != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && operation == 0) upload();
+      });
+    }
+    if (selected == null && widget.initialSource != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || operation != 0) return;
+        switch (widget.initialSource!) {
+          case ResumeImportSource.wechat:
+            fromWeChat();
+          case ResumeImportSource.local:
+            chooseLocal();
+        }
       });
     }
   }
@@ -2109,7 +2274,11 @@ class _ImportResumeState extends State<ImportResume> {
               Platform.isAndroid
                   ? '在微信打开简历文件 → 点击右上角“…” → 用其他应用打开 → 选择“博简”。返回后会自动上传并解析，无需再次选择文件。'
                   : '先将微信中的简历保存到“文件”，再选择已保存的文件上传。',
-              style: const TextStyle(fontSize: 14, height: 1.7, color: muted),
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.7,
+                color: context.colors.muted,
+              ),
             ),
             const SizedBox(height: 22),
             if (Platform.isAndroid) ...[
@@ -2160,10 +2329,14 @@ class _ImportResumeState extends State<ImportResume> {
           padding: const EdgeInsets.only(top: 5),
           child: Text(
             subtitle,
-            style: const TextStyle(fontSize: 12, color: muted),
+            style: TextStyle(fontSize: 12, color: context.colors.muted),
           ),
         ),
-        trailing: const AppIcon(AppIcons.forward, size: 16, color: muted),
+        trailing: AppIcon(
+          AppIcons.forward,
+          size: 16,
+          color: context.colors.muted,
+        ),
         onTap: busy || picking ? null : onTap,
       ),
     ),
@@ -2180,9 +2353,13 @@ class _ImportResumeState extends State<ImportResume> {
           style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 10),
-        const Text(
+        Text(
           '支持 PDF、DOC、DOCX，文件不超过 20 MB。',
-          style: TextStyle(fontSize: 13, color: muted, height: 1.7),
+          style: TextStyle(
+            fontSize: 13,
+            color: context.colors.muted,
+            height: 1.7,
+          ),
         ),
         const SizedBox(height: 24),
         if (!busy)
@@ -2211,7 +2388,11 @@ class _ImportResumeState extends State<ImportResume> {
           Panel(
             child: Row(
               children: [
-                const AppIcon(AppIcons.attachment, color: blue, size: 30),
+                AppIcon(
+                  AppIcons.attachment,
+                  color: context.colors.accent,
+                  size: 30,
+                ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -2233,7 +2414,10 @@ class _ImportResumeState extends State<ImportResume> {
                           snapshot.hasData
                               ? '${(snapshot.data! / 1024 / 1024).toStringAsFixed(2)} MB'
                               : '已选择文件',
-                          style: const TextStyle(fontSize: 12, color: muted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.colors.muted,
+                          ),
                         ),
                       ),
                     ],
@@ -2271,7 +2455,9 @@ class _ImportResumeState extends State<ImportResume> {
                                 ? Icons.pending
                                 : Icons.radio_button_unchecked,
                             size: 18,
-                            color: step.index <= phase.index ? blue : muted,
+                            color: step.index <= phase.index
+                                ? context.colors.accent
+                                : context.colors.muted,
                           ),
                           const SizedBox(width: 8),
                           Text(switch (step) {
@@ -2284,9 +2470,9 @@ class _ImportResumeState extends State<ImportResume> {
                       ),
                     ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     '解析时间取决于文件大小和内容复杂度，请稍候。',
-                    style: TextStyle(fontSize: 12, color: muted),
+                    style: TextStyle(fontSize: 12, color: context.colors.muted),
                   ),
                 ],
               ),
@@ -2299,7 +2485,10 @@ class _ImportResumeState extends State<ImportResume> {
             padding: const EdgeInsets.only(top: 16),
             child: Text(
               error!,
-              style: const TextStyle(fontSize: 13, color: Color(0xFFC74D4D)),
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.error,
+              ),
             ),
           ),
       ],

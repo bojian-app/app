@@ -1,4 +1,5 @@
-import 'guidance_help.dart';
+import 'dart:async';
+
 import 'user_display_name.dart';
 
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ Future<void> showRegionComments(
   required String original,
   List<Map<String, dynamic>> legacyItems = const [],
   ValueChanged<List<Map<String, dynamic>>>? onCommentsLoaded,
+  int focusAnnotationID = 0,
 }) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
@@ -43,6 +45,7 @@ Future<void> showRegionComments(
     original: original,
     legacyItems: legacyItems,
     onCommentsLoaded: onCommentsLoaded,
+    focusAnnotationID: focusAnnotationID,
   ),
 );
 
@@ -57,12 +60,14 @@ class _RegionComments extends StatefulWidget {
     required this.original,
     this.legacyItems = const [],
     this.onCommentsLoaded,
+    this.focusAnnotationID = 0,
   });
   final List<Map<String, dynamic>> legacyItems;
   final ValueChanged<List<Map<String, dynamic>>>? onCommentsLoaded;
   final AppStore store;
   final int id;
   final bool notification, owner;
+  final int focusAnnotationID;
   final String fieldPath, selected, original;
   @override
   State<_RegionComments> createState() => _RegionCommentsState();
@@ -83,6 +88,10 @@ class _RegionCommentsState extends State<_RegionComments>
   final focus = FocusNode();
   final sheet = DraggableScrollableController();
   final expandedThreads = <String>{};
+  final focusedComment = GlobalKey();
+  bool focusHandled = false;
+  bool highlightFocus = true;
+  Timer? highlightTimer;
   late final keyboardMotion = AnimationController.unbounded(vsync: this)
     ..addListener(updateKeyboardLayout);
   double targetKeyboardInset = 0, animatedKeyboardInset = 0;
@@ -103,6 +112,7 @@ class _RegionCommentsState extends State<_RegionComments>
 
   @override
   void dispose() {
+    highlightTimer?.cancel();
     input.dispose();
     keyboardMotion.dispose();
     focus.dispose();
@@ -216,7 +226,12 @@ class _RegionCommentsState extends State<_RegionComments>
                 .reversed
                 .toList();
         error = null;
+        final targetThread = threads.where(hasFocusTarget).firstOrNull;
+        if (targetThread != null && !isFocusTarget(targetThread.comment)) {
+          expandedThreads.add(_commentKey(targetThread.comment));
+        }
       });
+      scheduleCommentFocus();
       widget.onCommentsLoaded?.call(
         (result.data['items'] as List? ?? [])
             .whereType<Map>()
@@ -227,6 +242,73 @@ class _RegionCommentsState extends State<_RegionComments>
     } catch (e) {
       if (mounted) setState(() => error = '$e');
     }
+  }
+
+  bool isFocusTarget(Map item) =>
+      widget.focusAnnotationID > 0 &&
+      item['legacy'] != true &&
+      integer(item['id']) == widget.focusAnnotationID;
+
+  bool hasFocusTarget(_CommentThread thread) =>
+      isFocusTarget(thread.comment) || thread.replies.any(isFocusTarget);
+
+  void scheduleCommentFocus() {
+    if (focusHandled || widget.focusAnnotationID <= 0) return;
+    focusHandled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final target = focusedComment.currentContext;
+      if (!mounted ||
+          target == null ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      final box = target.findRenderObject();
+      final viewport = Scrollable.maybeOf(target)?.position.viewportDimension;
+      await Scrollable.ensureVisible(
+        target,
+        alignment:
+            box is RenderBox && viewport != null && box.size.height > viewport
+            ? 0
+            : .15,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 280),
+      );
+      if (!mounted) return;
+      highlightTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() => highlightFocus = false);
+      });
+    });
+  }
+
+  Widget commentsSliver(List<_CommentThread> groups) {
+    final index = groups.indexWhere(hasFocusTarget);
+    if (index < 0) {
+      return SliverList.builder(
+        itemCount: groups.length,
+        itemBuilder: (_, index) => threadRow(groups[index]),
+      );
+    }
+    // Keep the target thread mounted even when earlier threads are offscreen.
+    // The surrounding lists retain their order and their lazy construction.
+    return SliverMainAxisGroup(
+      slivers: [
+        if (index > 0)
+          SliverList.builder(
+            itemCount: index,
+            itemBuilder: (_, before) => threadRow(groups[before]),
+          ),
+        SliverToBoxAdapter(
+          key: const ValueKey('notification-comment-thread'),
+          child: threadRow(groups[index]),
+        ),
+        if (index + 1 < groups.length)
+          SliverList.builder(
+            itemCount: groups.length - index - 1,
+            itemBuilder: (_, after) => threadRow(groups[index + 1 + after]),
+          ),
+      ],
+    );
   }
 
   Future<void> send() async {
@@ -300,7 +382,7 @@ class _RegionCommentsState extends State<_RegionComments>
     final date = DateTime.tryParse(
       '${item['created_at'] ?? item['updated_at'] ?? ''}',
     );
-    return Padding(
+    final row = Padding(
       key: ValueKey(
         'region-${nested ? 'reply' : 'comment'}-${_commentKey(item)}',
       ),
@@ -328,14 +410,16 @@ class _RegionCommentsState extends State<_RegionComments>
                           children: [
                             TextSpan(text: _commentAuthor(item)),
                             if (nested && parent != null) ...[
-                              const WidgetSpan(
+                              WidgetSpan(
                                 alignment: PlaceholderAlignment.middle,
                                 child: Padding(
                                   padding: EdgeInsets.symmetric(horizontal: 3),
                                   child: Icon(
                                     Icons.chevron_right_rounded,
                                     size: 12,
-                                    color: Color(0xFFB4B6BA),
+                                    color: (context.isDark
+                                        ? context.colors.muted
+                                        : Color(0xFFB4B6BA)),
                                   ),
                                 ),
                               ),
@@ -345,8 +429,10 @@ class _RegionCommentsState extends State<_RegionComments>
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF93969C),
+                        style: TextStyle(
+                          color: (context.isDark
+                              ? context.colors.muted
+                              : Color(0xFF93969C)),
                           fontSize: 12,
                           height: 1.25,
                         ),
@@ -360,14 +446,18 @@ class _RegionCommentsState extends State<_RegionComments>
                           vertical: 1,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF1F2F4),
+                          color: (context.isDark
+                              ? context.colors.inset
+                              : const Color(0xFFF1F2F4)),
                           borderRadius: BorderRadius.circular(3),
                         ),
                         child: Text(
                           widget.owner ? '作者' : '我',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 9,
-                            color: Color(0xFF8F939A),
+                            color: (context.isDark
+                                ? context.colors.muted
+                                : Color(0xFF8F939A)),
                           ),
                         ),
                       ),
@@ -382,8 +472,10 @@ class _RegionCommentsState extends State<_RegionComments>
                       : () => selectReply(item),
                   child: Text(
                     '${item['suggestion'] ?? ''}',
-                    style: const TextStyle(
-                      color: Color(0xFF24262B),
+                    style: TextStyle(
+                      color: (context.isDark
+                          ? context.colors.ink
+                          : Color(0xFF24262B)),
                       fontSize: 14,
                       height: 1.45,
                     ),
@@ -397,16 +489,20 @@ class _RegionCommentsState extends State<_RegionComments>
                     if (date != null)
                       Text(
                         resumeUpdatedLabel(date),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10.5,
-                          color: Color(0xFFB0B3B9),
+                          color: (context.isDark
+                              ? context.colors.muted
+                              : Color(0xFFB0B3B9)),
                         ),
                       ),
                     if (item['legacy'] != true)
                       TextButton(
                         onPressed: sending ? null : () => selectReply(item),
                         style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF878B93),
+                          foregroundColor: (context.isDark
+                              ? context.colors.muted
+                              : const Color(0xFF878B93)),
                           overlayColor: Colors.transparent,
                           minimumSize: const Size(30, 26),
                           padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -419,7 +515,7 @@ class _RegionCommentsState extends State<_RegionComments>
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
                           ),
-                        ),
+                        ).withoutHover(),
                         child: const Text('回复'),
                       ),
                   ],
@@ -428,6 +524,24 @@ class _RegionCommentsState extends State<_RegionComments>
             ),
           ),
         ],
+      ),
+    );
+    if (!isFocusTarget(item)) return row;
+    return KeyedSubtree(
+      key: focusedComment,
+      child: AnimatedContainer(
+        key: ValueKey('notification-comment-${widget.focusAnnotationID}'),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          color: highlightFocus
+              ? context.colors.accentSoft
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Padding(padding: const EdgeInsets.all(8), child: row),
       ),
     );
   }
@@ -466,7 +580,9 @@ class _RegionCommentsState extends State<_RegionComments>
                           : expandedThreads.add(key),
                     ),
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF7F8897),
+                      foregroundColor: (context.isDark
+                          ? context.colors.muted
+                          : const Color(0xFF7F8897)),
                       overlayColor: Colors.transparent,
                       padding: EdgeInsets.zero,
                       minimumSize: const Size(0, 32),
@@ -479,14 +595,16 @@ class _RegionCommentsState extends State<_RegionComments>
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
-                    ),
+                    ).withoutHover(),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
                           width: 18,
                           height: 1,
-                          color: const Color(0xFFD7DADE),
+                          color: (context.isDark
+                              ? context.colors.accentSoft
+                              : const Color(0xFFD7DADE)),
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -511,9 +629,14 @@ class _RegionCommentsState extends State<_RegionComments>
   }
 
   Widget composer(double availableHeight) => DecoratedBox(
-    decoration: const BoxDecoration(
-      color: Colors.white,
-      border: Border(top: BorderSide(color: Color(0xFFF0F1F3), width: .5)),
+    decoration: BoxDecoration(
+      color: context.colors.surface,
+      border: Border(
+        top: BorderSide(
+          color: (context.isDark ? context.colors.border : Color(0xFFF0F1F3)),
+          width: .5,
+        ),
+      ),
     ),
     child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
@@ -531,9 +654,11 @@ class _RegionCommentsState extends State<_RegionComments>
                       '回复 ${_commentAuthor(reply)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF92969E),
+                        color: (context.isDark
+                            ? context.colors.muted
+                            : Color(0xFF92969E)),
                       ),
                     ),
                   ),
@@ -550,7 +675,9 @@ class _RegionCommentsState extends State<_RegionComments>
                             }
                           },
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF92969E),
+                      foregroundColor: (context.isDark
+                          ? context.colors.muted
+                          : const Color(0xFF92969E)),
                       overlayColor: Colors.transparent,
                       padding: EdgeInsets.zero,
                       minimumSize: const Size(56, 24),
@@ -562,7 +689,7 @@ class _RegionCommentsState extends State<_RegionComments>
                             ?.fontFamily,
                         fontSize: 11,
                       ),
-                    ),
+                    ).withoutHover(),
                     child: const Text('取消回复'),
                   ),
                 ],
@@ -575,7 +702,10 @@ class _RegionCommentsState extends State<_RegionComments>
                 sendError!,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: Color(0xFFC56B71)),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.error,
+                ),
               ),
             ),
           if (widget.owner && reply == null)
@@ -585,12 +715,19 @@ class _RegionCommentsState extends State<_RegionComments>
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: const Color(0xFFF4F5F7),
+                color: (context.isDark
+                    ? context.colors.inset
+                    : const Color(0xFFF4F5F7)),
                 borderRadius: BorderRadius.circular(22),
               ),
-              child: const Text(
+              child: Text(
                 '点击评论进行回复',
-                style: TextStyle(fontSize: 13, color: Color(0xFFA7ABB3)),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: (context.isDark
+                      ? context.colors.muted
+                      : Color(0xFFA7ABB3)),
+                ),
               ),
             ),
           if (!widget.owner || reply != null)
@@ -606,23 +743,29 @@ class _RegionCommentsState extends State<_RegionComments>
                     minLines: 1,
                     maxLines: availableHeight < 280 ? 1 : 3,
                     maxLength: 10000,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       height: 1.4,
-                      color: Color(0xFF24262B),
+                      color: (context.isDark
+                          ? context.colors.ink
+                          : Color(0xFF24262B)),
                     ),
                     scrollPadding: const EdgeInsets.only(bottom: 20),
                     decoration: InputDecoration(
                       hintText: reply == null
                           ? '写下评论…'
                           : '回复 ${_commentAuthor(reply)}…',
-                      hintStyle: const TextStyle(
+                      hintStyle: TextStyle(
                         fontSize: 13,
-                        color: Color(0xFFA7ABB3),
+                        color: (context.isDark
+                            ? context.colors.muted
+                            : Color(0xFFA7ABB3)),
                       ),
                       counterText: '',
                       filled: true,
-                      fillColor: const Color(0xFFF4F5F7),
+                      fillColor: (context.isDark
+                          ? context.colors.inset
+                          : const Color(0xFFF4F5F7)),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -653,8 +796,12 @@ class _RegionCommentsState extends State<_RegionComments>
                         : send,
                     style: FilledButton.styleFrom(
                       backgroundColor: blue,
-                      disabledBackgroundColor: const Color(0xFFF0F1F4),
-                      disabledForegroundColor: const Color(0xFFB3B7BE),
+                      disabledBackgroundColor: (context.isDark
+                          ? context.colors.inset
+                          : const Color(0xFFF0F1F4)),
+                      disabledForegroundColor: (context.isDark
+                          ? context.colors.muted
+                          : const Color(0xFFB3B7BE)),
                       minimumSize: const Size(52, 42),
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -669,7 +816,7 @@ class _RegionCommentsState extends State<_RegionComments>
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
-                    ),
+                    ).withoutHover(),
                     child: Text(sending ? '发送中' : '发送'),
                   ),
                 ),
@@ -683,198 +830,176 @@ class _RegionCommentsState extends State<_RegionComments>
   @override
   Widget build(BuildContext context) {
     final groups = threads;
-    return GuidanceWalkthrough(
-      store: widget.store,
-      id: widget.owner ? 'owner-comments' : 'comments',
-      ready: items != null && error == null,
-      steps: [
-        GuidanceStep(
-          'region-comments-list',
-          '围绕这段内容讨论',
-          widget.owner
-              ? '点击一条评论或“回复”开始回复。展开回复可查看完整讨论，再次点击可以收起。'
-              : '这里展示当前选区的讨论。点击评论或“回复”可回复对方，展开回复可查看完整讨论。',
-        ),
-        GuidanceStep(
-          'tour-comment-composer',
-          widget.owner ? '选择评论后再回复' : '写评论，也能回复',
-          widget.owner
-              ? '先点击上方评论，再在这里输入并发送。点击“取消回复”可退出回复状态。'
-              : '输入看法后点击“发送”。回复时这里会显示回复对象，点击“取消回复”可改为发表新评论。区域评论对可访问这份分享的用户可见。',
-        ),
-        const GuidanceStep(
-          'tour-comment-close',
-          '关闭后继续指点',
-          '点击这里返回简历。已输入的内容请先发送；发送失败可保留输入重试。',
-        ),
-      ],
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          sheetHeight = constraints.maxHeight;
-          minimumContentHeight = MediaQuery.textScalerOf(context).scale(200);
-          return DraggableScrollableSheet(
-            controller: sheet,
-            expand: false,
-            initialChildSize: .70,
-            minChildSize: .45,
-            maxChildSize: .94,
-            snap: true,
-            snapSizes: const [.70],
-            builder: (context, scroll) => Material(
-              key: const ValueKey('region-comments-panel'),
-              color: Colors.white,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(18),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: SafeArea(
-                top: false,
-                maintainBottomViewPadding: true,
-                child: Padding(
-                  key: const ValueKey('region-comments-keyboard-padding'),
-                  padding: EdgeInsets.only(
-                    bottom:
-                        (animatedKeyboardInset -
-                                MediaQuery.viewPaddingOf(context).bottom)
-                            .clamp(0.0, double.infinity),
-                  ),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 9, bottom: 3),
-                          child: Container(
-                            width: 28,
-                            height: 3,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE0E2E5),
-                              borderRadius: BorderRadius.circular(2),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        sheetHeight = constraints.maxHeight;
+        minimumContentHeight = MediaQuery.textScalerOf(context).scale(200);
+        return DraggableScrollableSheet(
+          controller: sheet,
+          expand: false,
+          initialChildSize: .70,
+          minChildSize: .45,
+          maxChildSize: .94,
+          snap: true,
+          snapSizes: const [.70],
+          builder: (context, scroll) => Material(
+            key: const ValueKey('region-comments-panel'),
+            color: context.colors.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            clipBehavior: Clip.antiAlias,
+            child: SafeArea(
+              top: false,
+              maintainBottomViewPadding: true,
+              child: Padding(
+                key: const ValueKey('region-comments-keyboard-padding'),
+                padding: EdgeInsets.only(
+                  bottom:
+                      (animatedKeyboardInset -
+                              MediaQuery.viewPaddingOf(context).bottom)
+                          .clamp(0.0, double.infinity),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 9, bottom: 3),
+                        child: Container(
+                          width: 28,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: (context.isDark
+                                ? context.colors.inset
+                                : const Color(0xFFE0E2E5)),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 56,
+                              ),
+                              child: Text(
+                                '评论${items == null ? '' : '（${items!.length}）'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: (context.isDark
+                                      ? context.colors.ink
+                                      : Color(0xFF24262B)),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 44,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 56,
-                                ),
-                                child: Text(
-                                  '评论${items == null ? '' : '（${items!.length}）'}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Color(0xFF24262B),
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                            Positioned(
+                              right: 6,
+                              child: IconButton(
+                                key: const ValueKey('tour-comment-close'),
+                                tooltip: '关闭评论',
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                },
+                                style: IconButton.styleFrom(
+                                  overlayColor: Colors.transparent,
+                                ).withoutHover(),
+                                icon: Icon(
+                                  Icons.close,
+                                  size: 21,
+                                  color: (context.isDark
+                                      ? context.colors.ink
+                                      : Color(0xFF34363C)),
                                 ),
                               ),
-                              Positioned(
-                                right: 6,
-                                child: IconButton(
-                                  key: const ValueKey('tour-comment-close'),
-                                  tooltip: '关闭评论',
-                                  onPressed: () => Navigator.pop(context),
-                                  style: IconButton.styleFrom(
-                                    overlayColor: Colors.transparent,
-                                  ),
-                                  icon: const Icon(
-                                    Icons.close,
-                                    size: 21,
-                                    color: Color(0xFF34363C),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        Expanded(
-                          child: CustomScrollView(
-                            key: const ValueKey('region-comments-list'),
-                            controller: scroll,
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            slivers: [
-                              if (error != null ||
-                                  items == null ||
-                                  groups.isEmpty)
-                                SliverFillRemaining(
-                                  hasScrollBody: false,
-                                  child: error != null
-                                      ? Center(
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(24),
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  error!,
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color: muted,
-                                                  ),
+                      ),
+                      Expanded(
+                        child: CustomScrollView(
+                          key: const ValueKey('region-comments-list'),
+                          controller: scroll,
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          slivers: [
+                            if (error != null ||
+                                items == null ||
+                                groups.isEmpty)
+                              SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: error != null
+                                    ? Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(24),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                error!,
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: context.colors.muted,
                                                 ),
-                                                TextButton(
-                                                  onPressed: load,
-                                                  child: const Text('重新加载'),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        )
-                                      : items == null
-                                      ? const Center(
-                                          child: SizedBox(
-                                            width: 22,
-                                            height: 22,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          ),
-                                        )
-                                      : const Center(
-                                          child: Text(
-                                            '还没有评论，聊聊你的看法',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: Color(0xFFA3A7AF),
-                                            ),
+                                              ),
+                                              TextButton(
+                                                onPressed: load,
+                                                child: const Text('重新加载'),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                )
-                              else
-                                SliverPadding(
-                                  padding: const EdgeInsets.only(
-                                    top: 2,
-                                    bottom: 14,
-                                  ),
-                                  sliver: SliverList.builder(
-                                    itemCount: groups.length,
-                                    itemBuilder: (_, index) =>
-                                        threadRow(groups[index]),
-                                  ),
+                                      )
+                                    : items == null
+                                    ? const Center(
+                                        child: SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          '还没有评论，聊聊你的看法',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: (context.isDark
+                                                ? context.colors.muted
+                                                : Color(0xFFA3A7AF)),
+                                          ),
+                                        ),
+                                      ),
+                              )
+                            else
+                              SliverPadding(
+                                padding: const EdgeInsets.only(
+                                  top: 2,
+                                  bottom: 14,
                                 ),
-                            ],
-                          ),
+                                sliver: commentsSliver(groups),
+                              ),
+                          ],
                         ),
-                        KeyedSubtree(
-                          key: const ValueKey('tour-comment-composer'),
-                          child: composer(constraints.maxHeight),
-                        ),
-                      ],
-                    ),
+                      ),
+                      KeyedSubtree(
+                        key: const ValueKey('tour-comment-composer'),
+                        child: composer(constraints.maxHeight),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

@@ -107,7 +107,7 @@ class GuidanceParticipantList extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 13, color: muted),
+                    style: TextStyle(fontSize: 13, color: context.colors.muted),
                   ),
                   const SizedBox(height: 20),
                   Row(
@@ -122,7 +122,10 @@ class GuidanceParticipantList extends StatelessWidget {
                       const SizedBox(width: 10),
                       Text(
                         '${people.length} 位',
-                        style: const TextStyle(fontSize: 13, color: muted),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: context.colors.muted,
+                        ),
                       ),
                     ],
                   ),
@@ -135,16 +138,23 @@ class GuidanceParticipantList extends StatelessWidget {
                         vertical: 48,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: context.colors.surface,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Column(
+                      child: Column(
                         children: [
-                          AppIcon(AppIcons.feedback, size: 30, color: muted),
+                          AppIcon(
+                            AppIcons.feedback,
+                            size: 30,
+                            color: context.colors.muted,
+                          ),
                           SizedBox(height: 16),
                           Text(
                             '暂时还没有人参与指点',
-                            style: TextStyle(fontSize: 14, color: muted),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: context.colors.muted,
+                            ),
                           ),
                         ],
                       ),
@@ -153,7 +163,7 @@ class GuidanceParticipantList extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),
                       child: Material(
-                        color: Colors.white,
+                        color: context.colors.surface,
                         borderRadius: BorderRadius.circular(20),
                         child: InkWell(
                           key: ValueKey('guidance-participant-${person.key}'),
@@ -193,19 +203,19 @@ class GuidanceParticipantList extends StatelessWidget {
                                               if (person.replacements > 0)
                                                 '${person.replacements} 条修改建议',
                                             ].join(' · '),
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 12,
-                                              color: muted,
+                                              color: context.colors.muted,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
                                     const SizedBox(width: 12),
-                                    const AppIcon(
+                                    AppIcon(
                                       AppIcons.forward,
                                       size: 19,
-                                      color: muted,
+                                      color: context.colors.muted,
                                     ),
                                   ],
                                 ),
@@ -217,9 +227,9 @@ class GuidanceParticipantList extends StatelessWidget {
                                         person.updated == null
                                             ? '查看提交记录'
                                             : '最近提交：${resumeUpdatedLabel(person.updated!)}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 11,
-                                          color: muted,
+                                          color: context.colors.muted,
                                         ),
                                       ),
                                     ),
@@ -237,18 +247,18 @@ class GuidanceParticipantList extends StatelessWidget {
                                         ),
                                         child: Text(
                                           '${person.pending} 条待处理',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 11,
-                                            color: blue,
+                                            color: context.colors.accent,
                                           ),
                                         ),
                                       )
                                     else
-                                      const Text(
+                                      Text(
                                         '审阅记录',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: blue,
+                                          color: context.colors.accent,
                                         ),
                                       ),
                                   ],
@@ -317,7 +327,7 @@ class _ReviewLegend extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 5),
-      Text(label, style: const TextStyle(fontSize: 10, color: muted)),
+      Text(label, style: TextStyle(fontSize: 10, color: context.colors.muted)),
     ],
   );
 }

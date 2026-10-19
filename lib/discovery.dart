@@ -6,8 +6,10 @@ import 'article_rich_content.dart';
 import 'article_reaction_button.dart';
 import 'resume_guidance_view.dart';
 import 'guidance_feed_card.dart';
+import 'story_composer.dart';
 export 'story_composer.dart';
 import 'profile_avatar.dart';
+import 'profile_identity.dart';
 import 'article_comment_tile.dart';
 import 'app_icons.dart';
 
@@ -17,9 +19,10 @@ import 'app_store.dart';
 import 'company_benefits.dart';
 import 'design.dart';
 import 'discovery_art.dart';
-import 'resume_pages.dart';
+import 'messages_button.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
+import 'story_author_identity.dart';
 import 'user_profile_page.dart';
 
 class DiscoveryPage extends StatefulWidget {
@@ -34,12 +37,28 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
   final search = TextEditingController();
   final searchFocus = FocusNode();
   String query = '';
+  bool openingComposer = false;
   final _seenArticles = <String, Set<int>>{};
   @override
   void dispose() {
     search.dispose();
     searchFocus.dispose();
     super.dispose();
+  }
+
+  Future<void> write() async {
+    if (openingComposer ||
+        !widget.store.isAuthenticated ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        !TickerMode.valuesOf(context).enabled) {
+      return;
+    }
+    setState(() => openingComposer = true);
+    try {
+      await openPage(context, StoryComposer(store: widget.store));
+    } finally {
+      if (mounted) setState(() => openingComposer = false);
+    }
   }
 
   Widget feed(String category) {
@@ -62,384 +81,309 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
         .map((story) => story.id)
         .toSet();
     known.addAll(stories.map((story) => story.id));
-    return PlayfulRefresh(
-      hasError: () =>
-          widget.store.errors['feed'] != null ||
-          widget.store.errors['resumes'] != null,
-      onRefresh: () async {
-        await Future.wait([
-          widget.store.load('feed'),
-          widget.store.load('resumes'),
-        ]);
-      },
-      child: ListView(
-        key: PageStorageKey('discovery-feed-$category'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.only(top: 8, bottom: 24),
-        children: [
-          if (stories.isEmpty)
-            DataStatus(
-              store: widget.store,
-              section: 'feed',
-              empty: stories.isEmpty,
-              title: query.isEmpty ? '还没有发布的内容' : '没有找到相关内容',
-              subtitle: query.isEmpty ? '' : '试试其他关键词。',
-              illustration: DiscoveryArt(
-                scene: query.isEmpty
-                    ? DiscoveryScene.community
-                    : DiscoveryScene.search,
-              ),
-            ),
-          for (final story in stories)
-            _FeedArticleEntrance(
-              key: ValueKey('discovery-story-${story.id}'),
-              animate: added.contains(story.id),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+    return LayoutBuilder(
+      builder: (context, constraints) => PlayfulRefresh(
+        hasError: () => widget.store.errors['feed'] != null,
+        onRefresh: () => widget.store.load('feed'),
+        child: ListView(
+          key: PageStorageKey('discovery-feed-$category'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.only(bottom: 24),
+          children: [
+            if (stories.isEmpty)
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - 24).clamp(
+                    0.0,
+                    double.infinity,
+                  ),
+                ),
                 child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 640),
-                    child: StoryCard(story: story, store: widget.store),
+                  child: DataStatus(
+                    store: widget.store,
+                    section: 'feed',
+                    empty: stories.isEmpty,
+                    title: query.isEmpty ? '还没有发布的内容' : '没有找到相关内容',
+                    subtitle: query.isEmpty ? '' : '试试其他关键词。',
+                    illustration: DiscoveryArt(
+                      scene: query.isEmpty
+                          ? DiscoveryScene.community
+                          : DiscoveryScene.search,
+                    ),
                   ),
                 ),
               ),
-            ),
-          if (stories.isNotEmpty && widget.store.errors['feed'] != null)
-            DataStatus(store: widget.store, section: 'feed', empty: false),
-          MoreButton(store: widget.store, section: 'feed'),
-        ],
+            for (final story in stories)
+              _FeedArticleEntrance(
+                key: ValueKey('discovery-story-${story.id}'),
+                animate: added.contains(story.id),
+                child: ColoredBox(
+                  color: context.colors.canvas,
+                  child: Container(
+                    color: context.colors.surface,
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 600),
+                        child: StoryCard(
+                          story: story,
+                          store: widget.store,
+                          flat: true,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (stories.isNotEmpty && widget.store.errors['feed'] != null)
+              DataStatus(store: widget.store, section: 'feed', empty: false),
+            MoreButton(store: widget.store, section: 'feed'),
+          ],
+        ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 390;
-    final store = widget.store;
-    final resume = store.resumes.isEmpty
-        ? null
-        : store.resumes.reduce(
-            (best, next) => next.progress > best.progress ? next : best,
-          );
-    final showResumeCard =
-        store.isAuthenticated &&
-        store.resumesLoaded &&
-        store.errors['resumes'] == null &&
-        (resume == null || resume.progress < 1);
-    return DefaultTabController(
-      length: categories.length,
-      child: NestedScrollView(
-        headerSliverBuilder: (context, innerScrolled) => [
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+  Widget searchBar(BuildContext context) {
+    final height = (MediaQuery.textScalerOf(context).scale(13) * 1.2 + 8)
+        .clamp(32.0, double.infinity)
+        .toDouble();
+    final rowHeight = (height + 8).clamp(44.0, double.infinity).toDouble();
+    final buttonStyle =
+        (IconButtonTheme.of(context).style ?? const ButtonStyle()).copyWith(
+          minimumSize: const WidgetStatePropertyAll(Size.square(44)),
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: SizedBox(
+        key: const ValueKey('discovery-search-row'),
+        height: rowHeight,
+        child: Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: SizedBox(
+                  height: height,
                   child: TextField(
                     key: const ValueKey('discovery-search'),
                     controller: search,
                     focusNode: searchFocus,
                     textInputAction: TextInputAction.search,
                     textAlignVertical: TextAlignVertical.center,
-                    style: const TextStyle(fontSize: 16, color: ink),
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.2,
+                      color: context.colors.ink,
+                    ),
                     onChanged: (value) => setState(() => query = value.trim()),
                     onSubmitted: (_) => searchFocus.unfocus(),
                     decoration: InputDecoration(
                       hintText: '搜索',
-                      hintStyle: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF969BA4),
-                        fontWeight: FontWeight.w400,
+                      hintStyle: TextStyle(
+                        color: context.colors.muted,
+                        fontSize: 13,
+                        height: 1.2,
                       ),
                       filled: true,
-                      fillColor: const Color(0xFFF3F4F5),
+                      fillColor: context.colors.inset,
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 14,
+                        horizontal: 12,
                       ),
-                      prefixIcon: const Padding(
-                        padding: EdgeInsets.all(13),
+                      prefixIconConstraints: BoxConstraints.tightFor(
+                        width: 36,
+                        height: height,
+                      ),
+                      prefixIcon: Center(
                         child: AppIcon(
                           AppIcons.search,
-                          size: 20,
-                          color: Color(0xFF969BA4),
+                          size: 16,
+                          color: context.colors.muted,
                         ),
+                      ),
+                      suffixIconConstraints: BoxConstraints.tightFor(
+                        width: 32,
+                        height: height,
                       ),
                       suffixIcon: search.text.isEmpty
                           ? null
                           : IconButton(
                               tooltip: '清空搜索',
+                              padding: EdgeInsets.zero,
                               onPressed: () {
                                 search.clear();
                                 setState(() => query = '');
                                 searchFocus.requestFocus();
                               },
-                              icon: const AppIcon(
+                              icon: AppIcon(
                                 AppIcons.clear,
-                                size: 18,
-                                color: muted,
+                                size: 16,
+                                color: context.colors.muted,
                               ),
                             ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
                       ),
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-                  child: Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      key: const ValueKey('discovery-company-benefits'),
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => openPage(
-                        context,
-                        CompanyBenefitsPage(store: store, standalone: true),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEAF1FF),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Center(
-                                child: AppIcon(
-                                  AppIcons.companyBenefits,
-                                  size: 21,
-                                  color: blue,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '企业福利',
-                                    style: TextStyle(
-                                      color: ink,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  SizedBox(height: 3),
-                                  Text(
-                                    '了解待遇，选择适合自己的工作',
-                                    style: TextStyle(
-                                      color: muted,
-                                      fontSize: 11,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const AppIcon(
-                              AppIcons.forward,
-                              size: 16,
-                              color: muted,
-                            ),
-                          ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 88,
+              height: 44,
+              child: IconButtonTheme(
+                data: IconButtonThemeData(style: buttonStyle),
+                child: Row(
+                  children: [
+                    Semantics(
+                      label: '发布动态',
+                      button: true,
+                      excludeSemantics: true,
+                      onTap: openingComposer || !widget.store.isAuthenticated
+                          ? null
+                          : write,
+                      child: IconButton(
+                        key: const ValueKey('discovery-create'),
+                        tooltip: '发布动态',
+                        onPressed:
+                            openingComposer || !widget.store.isAuthenticated
+                            ? null
+                            : write,
+                        icon: AppIcon(
+                          AppIcons.send,
+                          size: 20,
+                          color: context.colors.ink,
                         ),
                       ),
                     ),
+                    SizedBox.square(
+                      dimension: 44,
+                      child: MessagesButton(
+                        key: const ValueKey('discovery-messages'),
+                        store: widget.store,
+                        iconSize: 20,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget entries(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+    child: Column(
+      children: [
+        InkWell(
+          key: const ValueKey('discovery-company-benefits'),
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => openPage(
+            context,
+            CompanyBenefitsPage(store: widget.store, standalone: true),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                AppIcon(
+                  AppIcons.companyBenefits,
+                  size: 26,
+                  color: context.colors.accent,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '企业福利',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: context.colors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '了解待遇，选择适合自己的工作',
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.4,
+                          color: context.colors.muted,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (showResumeCard && query.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: InkWell(
-                      key: const ValueKey('discovery-resume-card'),
-                      onTap: () => openPage(
-                        context,
-                        ResumeEditor(
-                          store: store,
-                          draft: resume ?? store.createResume(),
-                        ),
-                      ),
-                      borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        clipBehavior: Clip.antiAlias,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(22),
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFEAF1FF), Color(0xFFF0F5FF)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                        ),
-                        child: Stack(
-                          children: [
-                            Positioned(
-                              right: -25,
-                              top: -40,
-                              child: Container(
-                                width: 180,
-                                height: 180,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: blue.withValues(alpha: .045),
-                                    width: 28,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.all(22),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Row(
-                                          children: [
-                                            AppIcon(
-                                              AppIcons.resume,
-                                              size: 12,
-                                              color: blue,
-                                            ),
-                                            SizedBox(width: 5),
-                                            Text(
-                                              '简历管理',
-                                              style: TextStyle(
-                                                color: blue,
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                letterSpacing: 1,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 11),
-                                        Text(
-                                          resume == null ? '创建我的简历' : '待完善简历',
-                                          style: TextStyle(
-                                            fontSize: compact ? 18 : 22,
-                                            height: 1.35,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF214478),
-                                          ),
-                                        ),
-                                        if (resume != null) ...[
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            '完善度 ${(resume.progress * 100).round()}%',
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: muted,
-                                            ),
-                                          ),
-                                        ],
-                                        const SizedBox(height: 16),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 13,
-                                            vertical: 8,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.circular(
-                                              9,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                resume == null
-                                                    ? '创建简历'
-                                                    : '继续完善',
-                                                style: const TextStyle(
-                                                  color: blue,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 9),
-                                              const AppIcon(
-                                                AppIcons.arrowForward,
-                                                size: 13,
-                                                color: blue,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                const SizedBox(width: 8),
+                AppIcon(
+                  AppIcons.forward,
+                  size: 16,
+                  color: context.colors.muted,
+                ),
               ],
             ),
           ),
-          SliverAppBar(
-            primary: false,
-            pinned: true,
-            toolbarHeight: 0,
-            automaticallyImplyLeading: false,
-            backgroundColor: canvasColor,
-            scrolledUnderElevation: 0,
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(65),
-              child: TabBar(
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 10),
-                dividerColor: Colors.transparent,
-                indicatorColor: blue,
-                indicatorWeight: 3,
-                indicatorSize: TabBarIndicatorSize.label,
-                labelColor: ink,
-                unselectedLabelColor: muted,
-                labelStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                ),
-                tabs: [for (final category in categories) Tab(text: category)],
+        ),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: context.colors.surface,
+      child: DefaultTabController(
+        length: categories.length,
+        child: NestedScrollView(
+          headerSliverBuilder: (context, innerScrolled) => [
+            SliverToBoxAdapter(child: searchBar(context)),
+            SliverAppBar(
+              primary: false,
+              pinned: true,
+              toolbarHeight: 0,
+              automaticallyImplyLeading: false,
+              backgroundColor: context.colors.surface,
+              scrolledUnderElevation: 0,
+              bottom: ProfileContentTabs(
+                tabBarKey: const ValueKey('discovery-tabs'),
+                tabs: [
+                  for (final category in categories)
+                    Tab(text: category, height: 36),
+                ],
               ),
             ),
+            SliverToBoxAdapter(child: entries(context)),
+            SliverToBoxAdapter(
+              child: ColoredBox(
+                color: context.colors.canvas,
+                child: const SizedBox(height: 8),
+              ),
+            ),
+          ],
+          body: TabBarView(
+            children: [for (final category in categories) feed(category)],
           ),
-        ],
-        body: TabBarView(
-          children: [for (final category in categories) feed(category)],
         ),
       ),
     );
@@ -500,14 +444,35 @@ class _FeedArticleEntranceState extends State<_FeedArticleEntrance>
 }
 
 class StoryCard extends StatelessWidget {
-  const StoryCard({super.key, required this.story, required this.store});
+  const StoryCard({
+    super.key,
+    required this.story,
+    required this.store,
+    this.flat = false,
+    this.compactTypography = false,
+    this.authorName,
+    this.authorAvatarURL,
+    this.authorNavigationEnabled = true,
+  });
   final Story story;
   final AppStore store;
+  final bool flat;
+  final bool compactTypography;
+  final String? authorName, authorAvatarURL;
+  final bool authorNavigationEnabled;
   @override
   Widget build(BuildContext context) => story.hasGuidance
-      ? GuidanceFeedCard(story: story, store: store)
-      : Panel(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ? GuidanceFeedCard(
+          story: story,
+          store: store,
+          flat: flat,
+          compactTypography: compactTypography,
+          authorName: authorName,
+          authorAvatarURL: authorAvatarURL,
+          authorNavigationEnabled: authorNavigationEnabled,
+        )
+      : _StorySurface(
+          flat: flat,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -515,13 +480,17 @@ class StoryCard extends StatelessWidget {
                 children: [
                   Semantics(
                     button:
-                        story.authorID > 0 && story.authorID != store.userID,
-                    label: '${story.author}的头像',
+                        authorNavigationEnabled &&
+                        story.authorID > 0 &&
+                        story.authorID != store.userID,
+                    label: '${authorName ?? story.author}的头像',
                     child: InkWell(
                       key: ValueKey('story-author-avatar-${story.id}'),
                       borderRadius: BorderRadius.circular(13),
                       onTap:
-                          story.authorID <= 0 || story.authorID == store.userID
+                          !authorNavigationEnabled ||
+                              story.authorID <= 0 ||
+                              story.authorID == store.userID
                           ? null
                           : () => openPage(
                               context,
@@ -531,12 +500,12 @@ class StoryCard extends StatelessWidget {
                               ),
                             ),
                       child: Padding(
-                        padding: const EdgeInsets.all(4),
+                        padding: EdgeInsets.all(flat ? 7 : 4),
                         child: ProfileAvatar(
                           seed: story.authorID > 0
                               ? '${story.authorID}'
                               : story.author,
-                          url: story.authorAvatarURL,
+                          url: authorAvatarURL ?? story.authorAvatarURL,
                           size: 30,
                         ),
                       ),
@@ -544,31 +513,16 @@ class StoryCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          story.author,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          story.role,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 9.5, color: muted),
-                        ),
-                      ],
+                    child: StoryAuthorIdentity(
+                      story: story,
+                      store: store,
+                      name: authorName,
+                      flat: flat,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: flat ? 8 : 12),
               InkWell(
                 onTap: () =>
                     openPage(context, StoryDetail(story: story, store: store)),
@@ -579,20 +533,20 @@ class StoryCard extends StatelessWidget {
                       story.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
+                      style: TextStyle(
+                        fontSize: compactTypography ? 14 : 16,
                         fontWeight: FontWeight.w600,
                         height: 1.4,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: flat ? 4 : 6),
                     Text(
                       story.excerpt,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: Color(0xFF7A8597),
+                      style: TextStyle(
+                        fontSize: compactTypography ? 12 : (flat ? 13 : 11.5),
+                        color: flat ? context.colors.ink : context.colors.muted,
                         height: 1.5,
                       ),
                     ),
@@ -605,10 +559,12 @@ class StoryCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(13),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF5F8F7),
+                          color: (context.isDark
+                              ? context.colors.successSoft
+                              : const Color(0xFFF5F8F7)),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Row(
+                        child: Row(
                           children: [
                             AppIcon(
                               AppIcons.resume,
@@ -632,13 +588,17 @@ class StoryCard extends StatelessWidget {
                                     '希望得到具体的修改建议',
                                     style: TextStyle(
                                       fontSize: 10,
-                                      color: muted,
+                                      color: context.colors.muted,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            AppIcon(AppIcons.external, size: 14, color: muted),
+                            AppIcon(
+                              AppIcons.external,
+                              size: 14,
+                              color: context.colors.muted,
+                            ),
                           ],
                         ),
                       ),
@@ -654,7 +614,10 @@ class StoryCard extends StatelessWidget {
                       story.publishedAt.split('T').first,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 10, color: muted),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: context.colors.muted,
+                      ),
                     ),
                   ),
                   ArticleReactionButton(
@@ -667,7 +630,7 @@ class StoryCard extends StatelessWidget {
                         ? null
                         : () => runRequest(context, () => store.like(story)),
                   ),
-                  const SizedBox(width: 16),
+                  SizedBox(width: flat ? 12 : 16),
                   _Reaction(
                     icon: AppIcons.comment,
                     label: '${story.commentCount}',
@@ -676,7 +639,7 @@ class StoryCard extends StatelessWidget {
                       StoryDetail(story: story, store: store),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  SizedBox(width: flat ? 12 : 16),
                   ArticleReactionButton(
                     key: ValueKey('story-bookmark-${story.id}'),
                     reaction: ArticleReaction.bookmark,
@@ -691,6 +654,25 @@ class StoryCard extends StatelessWidget {
               ),
             ],
           ),
+        );
+}
+
+class _StorySurface extends StatelessWidget {
+  const _StorySurface({required this.flat, required this.child});
+  final bool flat;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => flat
+      ? Material(
+          color: context.colors.surface,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: child,
+          ),
+        )
+      : Panel(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: child,
         );
 }
 
@@ -711,10 +693,13 @@ class _Reaction extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AppIcon(icon, size: 17, color: muted),
+          AppIcon(icon, size: 17, color: context.colors.muted),
           if (label.isNotEmpty) ...[
             const SizedBox(width: 5),
-            Text(label, style: TextStyle(fontSize: 10, color: muted)),
+            Text(
+              label,
+              style: TextStyle(fontSize: 10, color: context.colors.muted),
+            ),
           ],
         ],
       ),
@@ -729,7 +714,9 @@ class _StoryCover extends StatelessWidget {
     height: 122,
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
-      color: const Color(0xFFEDF2FA),
+      color: (context.isDark
+          ? context.colors.accentSoft
+          : const Color(0xFFEDF2FA)),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Stack(
@@ -764,13 +751,15 @@ class _StoryCover extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 '少一点堆砌\n多一点重点',
                 style: TextStyle(
                   fontSize: 18,
                   height: 1.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF35547F),
+                  color: (context.isDark
+                      ? context.colors.ink
+                      : Color(0xFF35547F)),
                 ),
               ),
             ],
@@ -942,7 +931,9 @@ class _StoryDetailState extends State<StoryDetail> {
                 }
               },
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF7F8897),
+                foregroundColor: (context.isDark
+                    ? context.colors.muted
+                    : const Color(0xFF7F8897)),
                 overlayColor: Colors.transparent,
                 padding: EdgeInsets.zero,
                 minimumSize: const Size(0, 32),
@@ -955,14 +946,16 @@ class _StoryDetailState extends State<StoryDetail> {
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
-              ),
+              ).withoutHover(),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     width: 18,
                     height: 1,
-                    color: const Color(0xFFD7DADE),
+                    color: (context.isDark
+                        ? context.colors.accentSoft
+                        : const Color(0xFFD7DADE)),
                   ),
                   const SizedBox(width: 8),
                   Text(expanded ? '收起回复' : '展开 ${root.replyCount} 条回复'),
@@ -1056,9 +1049,9 @@ class _StoryDetailState extends State<StoryDetail> {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.store,
     builder: (context, _) => Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: context.colors.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: context.colors.surface,
         actions: [const DismissKeyboardButton()],
       ),
       body: ListView(
@@ -1096,7 +1089,10 @@ class _StoryDetailState extends State<StoryDetail> {
                     ),
                     Text(
                       widget.story.role,
-                      style: const TextStyle(fontSize: 11, color: muted),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: context.colors.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -1104,7 +1100,7 @@ class _StoryDetailState extends State<StoryDetail> {
               const SizedBox(width: 10),
               Text(
                 widget.story.publishedAt.split('T').first,
-                style: TextStyle(color: muted, fontSize: 11),
+                style: TextStyle(color: context.colors.muted, fontSize: 11),
               ),
             ],
           ),
@@ -1178,7 +1174,7 @@ class _StoryDetailState extends State<StoryDetail> {
           if (commentError != null) ...[
             Text(
               commentError!,
-              style: const TextStyle(color: muted, fontSize: 12),
+              style: TextStyle(color: context.colors.muted, fontSize: 12),
             ),
             TextButton(onPressed: loadComments, child: const Text('重新加载评论')),
           ],
@@ -1187,9 +1183,9 @@ class _StoryDetailState extends State<StoryDetail> {
           if (widget.story.comments.isEmpty &&
               commentError == null &&
               !commentsLoading)
-            const Text(
+            Text(
               '还没有评论，聊聊你的看法',
-              style: TextStyle(color: muted, fontSize: 13),
+              style: TextStyle(color: context.colors.muted, fontSize: 13),
             ),
           for (
             var index = 0;
@@ -1207,10 +1203,15 @@ class _StoryDetailState extends State<StoryDetail> {
           bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: context.colors.surface,
             border: Border(
-              top: BorderSide(color: Color(0xFFF0F1F3), width: .5),
+              top: BorderSide(
+                color: (context.isDark
+                    ? context.colors.border
+                    : Color(0xFFF0F1F3)),
+                width: .5,
+              ),
             ),
           ),
           child: SafeArea(
@@ -1231,9 +1232,11 @@ class _StoryDetailState extends State<StoryDetail> {
                               '回复 ${replyTarget!.author}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Color(0xFF92969E),
+                                color: (context.isDark
+                                    ? context.colors.muted
+                                    : Color(0xFF92969E)),
                               ),
                             ),
                           ),
@@ -1250,7 +1253,9 @@ class _StoryDetailState extends State<StoryDetail> {
                                       commentSendError = null;
                                     }),
                               style: TextButton.styleFrom(
-                                foregroundColor: const Color(0xFF92969E),
+                                foregroundColor: (context.isDark
+                                    ? context.colors.muted
+                                    : const Color(0xFF92969E)),
                                 overlayColor: Colors.transparent,
                                 padding: EdgeInsets.zero,
                                 minimumSize: const Size(56, 24),
@@ -1262,7 +1267,7 @@ class _StoryDetailState extends State<StoryDetail> {
                                       .bodyMedium
                                       ?.fontFamily,
                                 ),
-                              ),
+                              ).withoutHover(),
                               child: const Text('取消回复'),
                             ),
                           ),
@@ -1274,9 +1279,9 @@ class _StoryDetailState extends State<StoryDetail> {
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Text(
                         commentSendError!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
-                          color: Color(0xFFC56B71),
+                          color: Theme.of(context).colorScheme.error,
                         ),
                       ),
                     ),
@@ -1298,21 +1303,27 @@ class _StoryDetailState extends State<StoryDetail> {
                                   280
                               ? 1
                               : 3,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             height: 1.4,
-                            color: Color(0xFF24262B),
+                            color: (context.isDark
+                                ? context.colors.ink
+                                : Color(0xFF24262B)),
                           ),
                           decoration: InputDecoration(
                             hintText: replyTarget == null
                                 ? '写下评论…'
                                 : '回复 ${replyTarget!.author}…',
-                            hintStyle: const TextStyle(
+                            hintStyle: TextStyle(
                               fontSize: 13,
-                              color: Color(0xFFA7ABB3),
+                              color: (context.isDark
+                                  ? context.colors.muted
+                                  : Color(0xFFA7ABB3)),
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFF4F5F7),
+                            fillColor: (context.isDark
+                                ? context.colors.inset
+                                : const Color(0xFFF4F5F7)),
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
@@ -1351,12 +1362,12 @@ class _StoryDetailState extends State<StoryDetail> {
                                   : _send,
                               style: FilledButton.styleFrom(
                                 backgroundColor: blue,
-                                disabledBackgroundColor: const Color(
-                                  0xFFF0F1F4,
-                                ),
-                                disabledForegroundColor: const Color(
-                                  0xFFB3B7BE,
-                                ),
+                                disabledBackgroundColor: (context.isDark
+                                    ? context.colors.inset
+                                    : const Color(0xFFF0F1F4)),
+                                disabledForegroundColor: (context.isDark
+                                    ? context.colors.muted
+                                    : const Color(0xFFB3B7BE)),
                                 minimumSize: const Size(52, 42),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 12,
@@ -1373,7 +1384,7 @@ class _StoryDetailState extends State<StoryDetail> {
                                       .bodyMedium
                                       ?.fontFamily,
                                 ),
-                              ),
+                              ).withoutHover(),
                               child: Text(sending ? '发送中' : '发送'),
                             ),
                           );

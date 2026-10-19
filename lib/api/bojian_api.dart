@@ -84,6 +84,21 @@ abstract class ApiGateway {
     String code,
     Map<String, String> headers,
   );
+  Future<auth.LoginResponse> loginWithWeChat(
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  );
+  Future<auth.LoginResponse> confirmRegistration(
+    String registrationToken,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  );
+  Future<auth.LoginResponse> loginWithDouyin(
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  );
   Future<auth.TokenResponse> refresh(String token, Map<String, String> headers);
   Future<void> close();
 }
@@ -275,6 +290,7 @@ class BojianApi implements ApiGateway {
     )).data;
     return auth.SMSResponse(
       retryAfterSeconds: v['retry_after_seconds'] as int?,
+      deliveryStatus: v['delivery_status'] as String?,
     );
   }
 
@@ -290,16 +306,56 @@ class BojianApi implements ApiGateway {
       body: {'phone': phone, 'code': code},
       headers: headers,
     )).data;
-    final user = v['user'] as Map? ?? {};
-    return auth.LoginResponse(
-      accessToken: v['access_token'] as String?,
-      refreshToken: v['refresh_token'] as String?,
-      user: auth.UserIdentity(
-        id: Int64.parseInt('${user['id'] ?? 0}'),
-        publicId: user['public_id'] as String?,
-      ),
-    );
+    return _loginResponse(v);
   }
+
+  @override
+  Future<auth.LoginResponse> loginWithWeChat(
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  ) async {
+    final v = (await send(
+      'POST',
+      '/auth/wechat/mobile/exchange',
+      body: {'code': code, 'agreement_versions': agreementVersions},
+      headers: headers,
+    )).data;
+    return _loginResponse(v);
+  }
+
+  @override
+  Future<auth.LoginResponse> loginWithDouyin(
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  ) async {
+    final v = (await send(
+      'POST',
+      '/auth/douyin/mobile/exchange',
+      body: {'code': code, 'agreement_versions': agreementVersions},
+      headers: headers,
+    )).data;
+    return _loginResponse(v);
+  }
+
+  @override
+  Future<auth.LoginResponse> confirmRegistration(
+    String registrationToken,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  ) async => _loginResponse(
+    (await send(
+      'POST',
+      '/auth/registrations/confirm',
+      body: {
+        'registration_token': registrationToken,
+        'confirmed': true,
+        'agreement_versions': agreementVersions,
+      },
+      headers: headers,
+    )).data,
+  );
 
   @override
   Future<auth.TokenResponse> refresh(
@@ -320,6 +376,24 @@ class BojianApi implements ApiGateway {
 
   @override
   Future<void> close() async => client.close();
+}
+
+auth.LoginResponse _loginResponse(Map<String, dynamic> value) {
+  final user = value['user'] as Map?;
+  return auth.LoginResponse(
+    accessToken: value['access_token'] as String?,
+    refreshToken: value['refresh_token'] as String?,
+    user: user == null
+        ? null
+        : auth.UserIdentity(
+            id: Int64.parseInt('${user['id'] ?? 0}'),
+            publicId: user['public_id'] as String?,
+          ),
+    registrationRequired: value['registration_required'] as bool?,
+    registrationToken: value['registration_token'] as String?,
+    registrationExpiresInSeconds:
+        value['registration_expires_in_seconds'] as int?,
+  );
 }
 
 String newDeviceID() => List.generate(

@@ -2,7 +2,9 @@ import 'dart:ui' as ui;
 
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/design.dart';
+import 'package:bojian_mobile/device_metadata.dart';
 import 'package:bojian_mobile/settings_page.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -79,7 +81,7 @@ void main() {
       expect(decodes, 1);
       expect(find.text('16.0 KB'), findsOneWidget);
       await tapText(tester, '图片缓存');
-      await tester.tap(find.widgetWithText(TextButton, '清理'));
+      await tester.tap(find.widgetWithText(CupertinoDialogAction, '清理'));
       await tester.pumpAndSettle();
       expect(cache.containsKey('same-image'), isFalse);
       expect(find.text('0 B'), findsOneWidget);
@@ -111,8 +113,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.widgetWithText(TextButton, '退出登录'),
+          of: find.byType(CupertinoAlertDialog),
+          matching: find.widgetWithText(CupertinoDialogAction, '退出登录'),
         ),
       );
       await tester.pumpAndSettle();
@@ -128,42 +130,55 @@ void main() {
     expect(store.isAuthenticated, true);
   });
 
-  testWidgets('Security lists hardware model and full OS version per device', (
-    tester,
-  ) async {
-    final api = SettingsGateway();
-    api.documents['GetMeSessions'] = {
-      'items': [
-        {
-          'id': 1,
-          'platform': 'ANDROID',
-          'device_model': 'OPPO PJD110',
-          'os_version': '15',
-          'is_current': true,
-        },
-        {
-          'id': 2,
-          'platform': 'IOS',
-          'device_model': 'Apple iPhone (iPhone17,1)',
-          'os_version': '18.2',
-          'is_current': false,
-        },
-      ],
-    };
-    final store = await testStore(authenticated: true, api: api);
-    addTearDown(store.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: appTheme,
-        home: SettingsPage(store: store),
-      ),
+  for (final localModel in ['', '一加 12']) {
+    testWidgets(
+      'Security uses current device name with session fallback ($localModel)',
+      (tester) async {
+        final api = SettingsGateway();
+        api.documents['GetMeSessions'] = {
+          'items': [
+            {
+              'id': 1,
+              'platform': 'ANDROID',
+              'device_model': 'OPPO PJD110',
+              'os_version': '15',
+              'is_current': true,
+            },
+            {
+              'id': 2,
+              'platform': 'IOS',
+              'device_model': 'Apple iPhone (iPhone17,1)',
+              'os_version': '18.2',
+              'is_current': false,
+            },
+          ],
+        };
+        final store = await testStore(authenticated: true, api: api);
+        store.deviceMetadata = DeviceMetadata(
+          model: localModel,
+          osVersion: '15',
+        );
+        addTearDown(store.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: appTheme,
+            home: SettingsPage(store: store),
+          ),
+        );
+        await tapText(tester, '账号安全');
+        expect(
+          find.text(localModel.isEmpty ? 'OPPO PJD110' : localModel),
+          findsOneWidget,
+        );
+        if (localModel.isNotEmpty) {
+          expect(find.text('OPPO PJD110'), findsNothing);
+        }
+        expect(find.text('系统：Android 15'), findsOneWidget);
+        expect(find.text('Apple iPhone (iPhone17,1)'), findsOneWidget);
+        expect(find.text('系统：iOS 18.2'), findsOneWidget);
+      },
     );
-    await tapText(tester, '账号安全');
-    expect(find.text('OPPO PJD110'), findsOneWidget);
-    expect(find.text('系统：Android 15'), findsOneWidget);
-    expect(find.text('Apple iPhone (iPhone17,1)'), findsOneWidget);
-    expect(find.text('系统：iOS 18.2'), findsOneWidget);
-  });
+  }
 
   testWidgets('Account appeal uses own account and preserves failed content', (
     tester,
@@ -285,15 +300,19 @@ void main() {
       await tapText(tester, '账号注销');
       expect(
         tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '申请注销'))
+            .widget<CupertinoDialogAction>(
+              find.widgetWithText(CupertinoDialogAction, '申请注销'),
+            )
             .onPressed,
         isNull,
       );
-      await tester.enterText(find.byType(TextField), '我已确认并主动注销此账号');
+      await tester.enterText(find.byType(CupertinoTextField), '我已确认并主动注销此账号');
       await tester.pump();
       expect(
         tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '申请注销'))
+            .widget<CupertinoDialogAction>(
+              find.widgetWithText(CupertinoDialogAction, '申请注销'),
+            )
             .onPressed,
         isNotNull,
       );

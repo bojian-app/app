@@ -150,6 +150,34 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
   Completer<Uint8List>? captured;
   Completer<ResumeExportLayout>? nativeLayout;
   Directory? documentDirectory;
+  Color background = AppColors.light.canvas;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    background = context.colors.canvas;
+    final web = controller;
+    if (web != null) unawaited(updateBackground(web));
+  }
+
+  // Change only the page surround; template paper and exported pixels keep
+  // their authored colors and the current document/scroll position stays put.
+  Future<void> updateBackground(WebViewController web) async {
+    final color = background;
+    try {
+      await web.setBackgroundColor(color);
+      if (!mounted || background != color) return;
+      final hex = color.toARGB32().toRadixString(16).substring(2);
+      await web.runJavaScript('''
+        for (const node of [document.documentElement, document.body]) {
+          node?.style.setProperty('background-color', '#$hex', 'important');
+        }
+      ''');
+    } on PlatformException {
+      // Navigation can replace the DOM mid-update; apply again when it finishes.
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -265,7 +293,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       final htmlFile = File('${directory.path}/document.html');
       final web = WebViewController();
       await web.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await web.setBackgroundColor(canvasColor);
+      await web.setBackgroundColor(background);
       await web.addJavaScriptChannel(
         'BojianPages',
         onMessageReceived: (message) {
@@ -318,6 +346,9 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       );
       await web.setNavigationDelegate(
         NavigationDelegate(
+          onPageFinished: (_) {
+            if (mounted && controller == web) unawaited(updateBackground(web));
+          },
           onNavigationRequest: (request) =>
               request.url == Uri.file(htmlFile.path).toString() ||
                   request.url == 'about:blank' ||
@@ -425,7 +456,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
         const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       if (error != null)
         ColoredBox(
-          color: canvasColor,
+          color: context.colors.canvas,
           child: Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -435,7 +466,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
                   Text(
                     error!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: muted),
+                    style: TextStyle(color: context.colors.muted),
                   ),
                   TextButton(onPressed: load, child: const Text('重新加载')),
                 ],

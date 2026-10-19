@@ -9,9 +9,11 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_icons.dart';
-import 'account_deletion_sheet.dart';
+import 'account_deletion_dialog.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
+import 'confirmation_dialog.dart';
+import 'phone_binding_dialog.dart';
 import 'design.dart';
 import 'legal_document.dart';
 import 'legal_document_page.dart';
@@ -96,22 +98,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _clearImages() async {
-    final clear = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('清理图片缓存？'),
-        content: const Text('清理临时图片后，再次查看时会重新加载。已保存的简历和文件不受影响。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('清理'),
-          ),
-        ],
-      ),
+    final clear = await showAppConfirmation(
+      context,
+      title: '清理图片缓存？',
+      content: const Text('清理临时图片后，再次查看时会重新加载。已保存的简历和文件不受影响。'),
+      confirmLabel: '清理',
     );
     if (!mounted || clear != true) return;
     PaintingBinding.instance.imageCache
@@ -166,9 +157,9 @@ class _SettingsPageState extends State<SettingsPage> {
                               const SizedBox(height: 4),
                               Text(
                                 '用户 ID：${store.publicID.isEmpty ? store.userID : store.publicID}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: muted,
+                                  color: context.colors.muted,
                                 ),
                               ),
                             ],
@@ -290,8 +281,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                 const SizedBox(height: 8),
                                 Text(
                                   '版本 $version',
-                                  style: const TextStyle(
-                                    color: muted,
+                                  style: TextStyle(
+                                    color: context.colors.muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -336,15 +327,15 @@ class _SettingsGroup extends StatelessWidget {
           padding: const EdgeInsets.only(left: 2, bottom: 10),
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: muted,
+              color: context.colors.muted,
             ),
           ),
         ),
         Material(
-          color: Colors.white,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(18),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -374,10 +365,10 @@ class _SettingsRow extends StatelessWidget {
     this.value,
     this.onTap,
     this.trailing,
-    this.titleColor = ink,
+    this.titleColor,
   });
   final AppIconData? icon;
-  final Color titleColor;
+  final Color? titleColor;
   final String title;
   final String? subtitle, value;
   final VoidCallback? onTap;
@@ -390,7 +381,7 @@ class _SettingsRow extends StatelessWidget {
       child: Row(
         children: [
           if (icon != null) ...[
-            AppIcon(icon!, size: 20, color: ink),
+            AppIcon(icon!, size: 20, color: context.colors.ink),
             const SizedBox(width: 14),
           ],
           Expanded(
@@ -400,7 +391,7 @@ class _SettingsRow extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    color: titleColor,
+                    color: titleColor ?? context.colors.ink,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
@@ -409,9 +400,9 @@ class _SettingsRow extends StatelessWidget {
                   const SizedBox(height: 5),
                   Text(
                     subtitle!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
-                      color: muted,
+                      color: context.colors.muted,
                       height: 1.4,
                     ),
                   ),
@@ -421,13 +412,16 @@ class _SettingsRow extends StatelessWidget {
           ),
           if (value != null) ...[
             const SizedBox(width: 8),
-            Text(value!, style: const TextStyle(fontSize: 12, color: muted)),
+            Text(
+              value!,
+              style: TextStyle(fontSize: 12, color: context.colors.muted),
+            ),
           ],
           if (trailing != null)
             trailing!
           else if (onTap != null) ...[
             const SizedBox(width: 8),
-            const AppIcon(AppIcons.forward, size: 16, color: muted),
+            AppIcon(AppIcons.forward, size: 16, color: context.colors.muted),
           ],
         ],
       ),
@@ -504,9 +498,13 @@ class _FeedbackPageState extends State<_FeedbackPage> {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             if (widget.appeal)
-              const Text(
+              Text(
                 '请描述账号遇到的问题，并留下可联系的方式，便于核实和处理。',
-                style: TextStyle(fontSize: 13, color: muted, height: 1.6),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: context.colors.muted,
+                  height: 1.6,
+                ),
               )
             else
               Wrap(
@@ -534,7 +532,7 @@ class _FeedbackPageState extends State<_FeedbackPage> {
               maxLength: widget.appeal ? 300 : 600,
               decoration: InputDecoration(
                 hintText: widget.appeal ? '问题描述与联系方式…' : '描述你遇到的问题或建议…',
-                fillColor: Colors.white,
+                fillColor: context.colors.surface,
               ),
               style: const TextStyle(fontSize: 14, height: 1.7),
             ),
@@ -564,6 +562,11 @@ class _SecurityPage extends StatefulWidget {
 }
 
 class _SecurityPageState extends State<_SecurityPage> {
+  Future<void> bindPhone() async {
+    await showPhoneBindingDialog(context, store: widget.store);
+    if (mounted) setState(() {});
+  }
+
   List<Map<String, dynamic>> sessions = [];
   final revoking = <int>{};
   String? error;
@@ -594,7 +597,7 @@ class _SecurityPageState extends State<_SecurityPage> {
   }
 
   Future<void> deleteAccount() async {
-    final confirmed = await showAccountDeletionSheet(context);
+    final confirmed = await showAccountDeletionDialog(context);
     if (!mounted || confirmed != true) return;
     setState(() => deleting = true);
     final done = await runRequest(context, () async {
@@ -614,22 +617,12 @@ class _SecurityPageState extends State<_SecurityPage> {
     final id = integer(session['id']);
     if (revoking.contains(id)) return;
     final current = session['is_current'] == true;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('退出该设备？'),
-        content: Text(current ? '当前设备将退出登录。' : '该设备需要重新登录后才能继续使用博简。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('退出登录'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmation(
+      context,
+      title: '退出该设备？',
+      content: Text(current ? '当前设备将退出登录。' : '该设备需要重新登录后才能继续使用博简。'),
+      confirmLabel: '退出登录',
+      destructive: true,
     );
     if (!mounted || confirmed != true) return;
     setState(() => revoking.add(id));
@@ -668,11 +661,10 @@ class _SecurityPageState extends State<_SecurityPage> {
     final desktop = ['MACOS', 'WINDOWS'].contains(session['platform']);
     final reportedModel =
         '${session['device_model'] ?? session['device_name'] ?? ''}'.trim();
-    final title = reportedModel.isNotEmpty
-        ? reportedModel
-        : current
-        ? widget.store.deviceMetadata.model
-        : '';
+    final currentModel = widget.store.deviceMetadata.model.trim();
+    final title = current && currentModel.isNotEmpty
+        ? currentModel
+        : reportedModel;
     final reportedOS = '${session['os_version'] ?? ''}'.trim();
     final osVersion = reportedOS.isNotEmpty
         ? reportedOS
@@ -690,7 +682,7 @@ class _SecurityPageState extends State<_SecurityPage> {
             child: AppIcon(
               desktop ? AppIcons.computer : AppIcons.phone,
               size: 21,
-              color: ink,
+              color: context.colors.ink,
             ),
           ),
           const SizedBox(width: 12),
@@ -722,9 +714,12 @@ class _SecurityPageState extends State<_SecurityPage> {
                           color: blue.withValues(alpha: .08),
                           borderRadius: BorderRadius.circular(5),
                         ),
-                        child: const Text(
+                        child: Text(
                           '当前设备',
-                          style: TextStyle(fontSize: 10, color: blue),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: context.colors.accent,
+                          ),
                         ),
                       ),
                   ],
@@ -732,12 +727,12 @@ class _SecurityPageState extends State<_SecurityPage> {
                 const SizedBox(height: 7),
                 Text(
                   '系统：${platformName(session['platform'])}${osVersion.isEmpty ? '' : ' $osVersion'}',
-                  style: const TextStyle(fontSize: 11, color: muted),
+                  style: TextStyle(fontSize: 11, color: context.colors.muted),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '登录时间：${loginTime(session['logged_in_at'])}',
-                  style: const TextStyle(fontSize: 11, color: muted),
+                  style: TextStyle(fontSize: 11, color: context.colors.muted),
                 ),
               ],
             ),
@@ -782,7 +777,10 @@ class _SecurityPageState extends State<_SecurityPage> {
                       children: [
                         Text(
                           error!,
-                          style: const TextStyle(fontSize: 12, color: muted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.colors.muted,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         TextButton(onPressed: load, child: const Text('重新加载')),
@@ -790,11 +788,14 @@ class _SecurityPageState extends State<_SecurityPage> {
                     ),
                   )
                 else if (sessions.isEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.all(20),
                     child: Text(
                       '暂无登录设备',
-                      style: TextStyle(fontSize: 13, color: muted),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: context.colors.muted,
+                      ),
                     ),
                   )
                 else
@@ -805,6 +806,20 @@ class _SecurityPageState extends State<_SecurityPage> {
               '账号管理',
               dividerInset: 16,
               children: [
+                ListenableBuilder(
+                  listenable: widget.store,
+                  builder: (_, _) => _SettingsRow(
+                    key: const ValueKey('security-phone-binding'),
+                    title: '手机号',
+                    value: widget.store.hasBoundPhone
+                        ? widget.store.phoneMasked
+                        : widget.store.phoneBindingChecked
+                        ? '未绑定'
+                        : '待获取',
+                    subtitle: '用于账号联系与安全验证',
+                    onTap: widget.store.hasBoundPhone ? null : bindPhone,
+                  ),
+                ),
                 _SettingsRow(
                   title: '账号申诉',
                   subtitle: '账号使用遇到问题，提交申诉协助处理',
@@ -815,7 +830,7 @@ class _SecurityPageState extends State<_SecurityPage> {
                 ),
                 _SettingsRow(
                   title: deleting ? '正在申请注销…' : '账号注销',
-                  titleColor: const Color(0xFFB75B5B),
+                  titleColor: Theme.of(context).colorScheme.error,
                   subtitle: '注销后账号及相关数据将被删除，请先保存需要的内容',
                   onTap: deleting ? null : deleteAccount,
                 ),

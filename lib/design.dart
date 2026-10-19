@@ -4,82 +4,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'app_store.dart';
+import 'app_theme.dart';
+
+export 'app_theme.dart';
 
 const blue = Color(0xFF2867EE);
 const ink = Color(0xFF202C41);
 const muted = Color(0xFF8A94A5);
 const canvasColor = Color(0xFFF7F8FA);
 const borderColor = Color(0xFFEEF0F4);
-
-final appTheme = ThemeData(
-  useMaterial3: true,
-  iconTheme: const IconThemeData(size: 24),
-  actionIconTheme: ActionIconThemeData(
-    backButtonIconBuilder: (_) => const AppIcon(AppIcons.back, size: 22),
-    closeButtonIconBuilder: (_) => const AppIcon(AppIcons.close),
-    drawerButtonIconBuilder: (_) => const AppIcon(AppIcons.menu),
-    endDrawerButtonIconBuilder: (_) => const AppIcon(AppIcons.menu),
-  ),
-  colorScheme: ColorScheme.fromSeed(seedColor: blue, surface: Colors.white),
-  scaffoldBackgroundColor: canvasColor,
-  textTheme: ThemeData.light().textTheme.apply(
-    bodyColor: ink,
-    displayColor: ink,
-  ),
-  appBarTheme: const AppBarTheme(
-    backgroundColor: canvasColor,
-    foregroundColor: ink,
-    elevation: 0,
-    scrolledUnderElevation: 0,
-    centerTitle: true,
-    titleTextStyle: TextStyle(
-      color: ink,
-      fontSize: 17,
-      fontWeight: FontWeight.w700,
-    ),
-  ),
-  filledButtonTheme: FilledButtonThemeData(
-    style: FilledButton.styleFrom(
-      backgroundColor: blue,
-      foregroundColor: Colors.white,
-      minimumSize: const Size(0, 48),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-    ),
-  ),
-  textButtonTheme: TextButtonThemeData(
-    style: TextButton.styleFrom(
-      foregroundColor: blue,
-      minimumSize: const Size(0, 32),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-    ),
-  ),
-  inputDecorationTheme: InputDecorationTheme(
-    filled: true,
-    fillColor: canvasColor,
-    hintStyle: const TextStyle(color: muted, fontSize: 14),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide.none,
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide.none,
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: blue),
-    ),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-  ),
-  dividerTheme: const DividerThemeData(color: borderColor, thickness: 1),
-  snackBarTheme: SnackBarThemeData(
-    behavior: SnackBarBehavior.floating,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-  ),
-);
 
 void toast(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
@@ -137,7 +70,11 @@ class DataStatus extends StatelessWidget {
               Text(
                 !store.isAuthenticated ? '登录后即可查看' : error!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, height: 1.6, color: muted),
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.6,
+                  color: context.colors.muted,
+                ),
               ),
               const SizedBox(height: 12),
               TextButton(
@@ -200,37 +137,37 @@ class Panel extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(20),
-    this.color = Colors.white,
+    this.color,
   });
   final Widget child;
   final EdgeInsetsGeometry padding;
-  final Color color;
+  final Color? color;
   @override
   Widget build(BuildContext context) => Material(
-    color: color,
+    color: color ?? context.colors.surface,
     borderRadius: BorderRadius.circular(20),
     child: Padding(padding: padding, child: child),
   );
 }
 
 class Avatar extends StatelessWidget {
-  const Avatar(this.name, {super.key, this.size = 36, this.color = blue});
+  const Avatar(this.name, {super.key, this.size = 36, this.color});
   final String name;
   final double size;
-  final Color color;
+  final Color? color;
   @override
   Widget build(BuildContext context) => Container(
     width: size,
     height: size,
     decoration: BoxDecoration(
-      color: color.withValues(alpha: .09),
+      color: (color ?? context.colors.accent).withValues(alpha: .09),
       borderRadius: BorderRadius.circular(size * .36),
     ),
     alignment: Alignment.center,
     child: Text(
       name.isEmpty ? '简' : name.substring(0, 1),
       style: TextStyle(
-        color: color,
+        color: color ?? context.colors.accent,
         fontSize: size * .42,
         fontWeight: FontWeight.w700,
       ),
@@ -239,19 +176,23 @@ class Avatar extends StatelessWidget {
 }
 
 class Tag extends StatelessWidget {
-  const Tag(this.text, {super.key, this.color = blue});
+  const Tag(this.text, {super.key, this.color});
   final String text;
-  final Color color;
+  final Color? color;
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
     decoration: BoxDecoration(
-      color: color.withValues(alpha: .07),
+      color: (color ?? context.colors.accent).withValues(alpha: .07),
       borderRadius: BorderRadius.circular(6),
     ),
     child: Text(
       text,
-      style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700),
+      style: TextStyle(
+        color: color ?? context.colors.accent,
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+      ),
     ),
   );
 }
@@ -281,7 +222,7 @@ class PageHeading extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: muted, fontSize: 12),
+                  style: TextStyle(color: context.colors.muted, fontSize: 12),
                 ),
               ],
             ],
@@ -385,7 +326,7 @@ class EmptyState extends StatelessWidget {
           Text(
             detail,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: muted, fontSize: 13),
+            style: TextStyle(color: context.colors.muted, fontSize: 13),
           ),
         ],
       ],

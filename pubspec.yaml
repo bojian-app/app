@@ -28,6 +28,7 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  flutter_svg: ^2.3.0
   flutter:
     sdk: flutter
 
@@ -49,6 +50,7 @@ dependencies:
   vector_math: ^2.4.0
   webview_flutter: ^4.14.1
   flutter_quill: ^11.6.0
+  fluwx_no_pay: ^6.0.6
 
 dev_dependencies:
   integration_test:
@@ -75,7 +77,13 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/app_icon.png
+    - assets/login/reading.svg
+    - assets/login/OPEN-DOODLES-LICENSE.txt
+    - assets/login/wechat.jpg
+    - assets/login/douyin.jpg
     - assets/templates/
+    - assets/points/
+    - assets/points/tasks/
     - assets/fonts/OFL.txt
     - assets/fonts/ChillRound-OFL.txt
   fonts:

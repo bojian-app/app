@@ -5,6 +5,7 @@ import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/discovery.dart';
 import 'package:bojian_mobile/resume_pages.dart';
+import 'package:bojian_mobile/points_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,9 +15,12 @@ Future<AppStore> _showShell(
   WidgetTester tester, {
   bool reduceMotion = false,
   ValueNotifier<bool>? motionPreference,
+  double textScale = 1,
+  bool dark = false,
+  Size size = const Size(360, 720),
 }) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = const Size(360, 720);
+  tester.view.physicalSize = size;
   tester.view.padding = const FakeViewPadding(bottom: 24);
   tester.view.viewPadding = const FakeViewPadding(bottom: 24);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -27,10 +31,13 @@ Future<AppStore> _showShell(
   addTearDown(store.dispose);
   await tester.pumpWidget(
     MaterialApp(
-      theme: appTheme,
+      theme: dark ? appDarkTheme : appTheme,
       builder: (context, child) {
         Widget applyPreference(bool reduced) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(disableAnimations: reduced),
+          data: MediaQuery.of(context).copyWith(
+            disableAnimations: reduced,
+            textScaler: TextScaler.linear(textScale),
+          ),
           child: child!,
         );
         return motionPreference == null
@@ -49,8 +56,8 @@ Future<AppStore> _showShell(
 
 int _pageIndex(Type pageType) => {
   DiscoveryPage: 0,
-  ResumeLibrary: 1,
-  MessagesPage: 2,
+  PointsPage: 2,
+  TemplateMarket: 1,
   ProfilePage: 3,
 }[pageType]!;
 
@@ -70,6 +77,117 @@ Offset _pageOffset(WidgetTester tester, Type pageType) {
 
 void main() {
   testWidgets(
+    'The market filters and keyboard fit a small dark screen with 2x text',
+    (tester) async {
+      await _showShell(
+        tester,
+        size: const Size(320, 640),
+        textScale: 2,
+        dark: true,
+      );
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.pumpAndSettle();
+      final own = find.widgetWithText(ChoiceChip, '我的模板');
+      await tester.ensureVisible(own);
+      await tester.pumpAndSettle();
+      await tester.tap(own);
+      await tester.pumpAndSettle();
+      expect(find.text('暂无已获取模板'), findsOneWidget);
+      addTearDown(tester.view.resetViewInsets);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBottomNavigation), findsNothing);
+      expect(find.byType(TextField).hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'The second destination opens the existing template market and retains search',
+    (tester) async {
+      await _showShell(tester);
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.pumpAndSettle();
+      expect(find.byType(TemplateMarket), findsOneWidget);
+      expect(find.byType(MessagesPage), findsNothing);
+      expect(find.byKey(const ValueKey('nav-unread-badge')), findsNothing);
+      final page = tester.element(find.byType(TemplateMarket));
+      final field = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.hintText == '搜索模板或作者',
+      );
+      await tester.enterText(field, '工程');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('nav-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.pumpAndSettle();
+      expect(tester.element(find.byType(TemplateMarket)), same(page));
+      expect(tester.widget<TextField>(field).controller!.text, '工程');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Top message entries return to discovery and the collapsed profile without changing tabs',
+    (tester) async {
+      await _showShell(tester);
+      final search = find.byKey(const ValueKey('discovery-search'));
+      await tester.enterText(search, '保留的搜索');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('discovery-messages')));
+      await tester.pumpAndSettle();
+      expect(find.byType(MessagesPage), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(search).controller!.text, '保留的搜索');
+      expect(
+        tester
+            .widget<AppBottomNavigation>(find.byType(AppBottomNavigation))
+            .selectedIndex,
+        0,
+      );
+      tester.view.physicalSize = const Size(360, 640);
+      await tester.tap(find.byKey(const ValueKey('nav-3')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profile-messages')));
+      await tester.pumpAndSettle();
+      expect(find.byType(MessagesPage), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      final list = find.byKey(const ValueKey('profile-scroll'));
+      final scrolling = tester
+          .state<NestedScrollViewState>(list)
+          .outerController
+          .position;
+      final name = find.byKey(const ValueKey('profile-identity-name'));
+      final target =
+          tester.getTopLeft(name).dy - tester.getTopLeft(list).dy + 1;
+      scrolling.jumpTo(target);
+      await tester.pumpAndSettle();
+      final entry = find.byKey(const ValueKey('profile-messages'));
+      expect(entry.hitTestable(), findsOneWidget);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      expect(find.byType(MessagesPage), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(scrolling.pixels, closeTo(target, .001));
+      expect(entry.hitTestable(), findsOneWidget);
+      expect(
+        tester
+            .widget<AppBottomNavigation>(find.byType(AppBottomNavigation))
+            .selectedIndex,
+        3,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'Switching fades and gently moves the incoming page while isolating the outgoing page',
     (tester) async {
       await _showShell(tester);
@@ -78,16 +196,16 @@ void main() {
         findsOneWidget,
       );
       expect(find.semantics.byLabel(RegExp('企业福利')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
 
-      final startOpacity = _pageFade(tester, ResumeLibrary).opacity.value;
-      final startPosition = tester.getTopLeft(find.byType(ResumeLibrary));
+      final startOpacity = _pageFade(tester, PointsPage).opacity.value;
+      final startPosition = tester.getTopLeft(find.byType(PointsPage));
       expect(startOpacity, lessThan(1));
-      expect(_pageOffset(tester, ResumeLibrary), isNot(Offset.zero));
+      expect(_pageOffset(tester, PointsPage), isNot(Offset.zero));
       expect(find.byType(DiscoveryPage), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 80));
-      final middleOpacity = _pageFade(tester, ResumeLibrary).opacity.value;
+      final middleOpacity = _pageFade(tester, PointsPage).opacity.value;
       expect(middleOpacity, greaterThan(startOpacity));
       expect(middleOpacity, lessThan(1));
       expect(
@@ -95,22 +213,22 @@ void main() {
         findsNothing,
       );
       expect(find.semantics.byLabel(RegExp('企业福利')), findsNothing);
-      expect(find.text('创建简历').hitTestable(), findsOneWidget);
-      expect(find.semantics.byLabel('创建简历'), findsOneWidget);
+      expect(find.text('我的积分').hitTestable(), findsOneWidget);
+      expect(find.semantics.byLabel(RegExp('可用积分')), findsOneWidget);
       expect(
         TickerMode.valuesOf(tester.element(find.byType(DiscoveryPage))).enabled,
         isFalse,
       );
       expect(
-        TickerMode.valuesOf(tester.element(find.byType(ResumeLibrary))).enabled,
+        TickerMode.valuesOf(tester.element(find.byType(PointsPage))).enabled,
         isTrue,
       );
 
       await tester.pumpAndSettle();
 
-      expect(_pageFade(tester, ResumeLibrary).opacity.value, 1);
-      expect(_pageOffset(tester, ResumeLibrary), Offset.zero);
-      final endPosition = tester.getTopLeft(find.byType(ResumeLibrary));
+      expect(_pageFade(tester, PointsPage).opacity.value, 1);
+      expect(_pageOffset(tester, PointsPage), Offset.zero);
+      final endPosition = tester.getTopLeft(find.byType(PointsPage));
       expect((startPosition - endPosition).distance, greaterThan(0));
       expect((startPosition - endPosition).distance, lessThanOrEqualTo(8));
       expect(find.byType(DiscoveryPage), findsNothing);
@@ -139,17 +257,17 @@ void main() {
       expect(find.byType(ProfilePage), findsOneWidget);
       expect(_pageFade(tester, ProfilePage).opacity.value, 1);
       expect(_pageOffset(tester, ProfilePage), Offset.zero);
-      for (final pageType in [DiscoveryPage, ResumeLibrary, MessagesPage]) {
+      for (final pageType in [DiscoveryPage, PointsPage, TemplateMarket]) {
         expect(find.byType(pageType), findsNothing);
         final retained = find.byType(pageType, skipOffstage: false);
         expect(retained, findsOneWidget);
         expect(TickerMode.valuesOf(tester.element(retained)).enabled, isFalse);
       }
       expect(
-        find.text('创建简历', skipOffstage: false).hitTestable(),
+        find.text('我的积分', skipOffstage: false).hitTestable(),
         findsNothing,
       );
-      expect(find.semantics.byLabel('创建简历'), findsNothing);
+      expect(find.semantics.byLabel(RegExp('可用积分')), findsNothing);
       expect(find.semantics.byLabel(RegExp('企业福利')), findsNothing);
       expect(
         TickerMode.valuesOf(tester.element(find.byType(ProfilePage))).enabled,
@@ -163,32 +281,32 @@ void main() {
     'Repeated selection and store updates do not restart a transition',
     (tester) async {
       final store = await _showShell(tester);
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
-      final page = tester.element(find.byType(ResumeLibrary));
-      final opacity = _pageFade(tester, ResumeLibrary).opacity.value;
+      final page = tester.element(find.byType(PointsPage));
+      final opacity = _pageFade(tester, PointsPage).opacity.value;
       expect(opacity, allOf(greaterThan(0), lessThan(1)));
 
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
       expect(
-        _pageFade(tester, ResumeLibrary).opacity.value,
+        _pageFade(tester, PointsPage).opacity.value,
         greaterThanOrEqualTo(opacity),
       );
       await store.load('profile');
       await tester.pump();
       expect(
-        _pageFade(tester, ResumeLibrary).opacity.value,
+        _pageFade(tester, PointsPage).opacity.value,
         greaterThanOrEqualTo(opacity),
       );
-      expect(tester.element(find.byType(ResumeLibrary)), same(page));
+      expect(tester.element(find.byType(PointsPage)), same(page));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
-      expect(_pageFade(tester, ResumeLibrary).opacity.value, 1);
-      expect(_pageOffset(tester, ResumeLibrary), Offset.zero);
-      expect(tester.element(find.byType(ResumeLibrary)), same(page));
+      expect(_pageFade(tester, PointsPage).opacity.value, 1);
+      expect(_pageOffset(tester, PointsPage), Offset.zero);
+      expect(tester.element(find.byType(PointsPage)), same(page));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
@@ -212,7 +330,7 @@ void main() {
       await tester.pumpAndSettle();
       final offset = nested.outerController.position.pixels;
 
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pumpAndSettle();
       await store.load('profile');
       await tester.pumpAndSettle();
@@ -224,9 +342,12 @@ void main() {
         tester.state<NestedScrollViewState>(find.byType(NestedScrollView)),
         same(nested),
       );
-      expect(tester.widget<TextField>(search).controller, same(controller));
       expect(controller.text, '发现搜索草稿');
       expect(nested.outerController.position.pixels, closeTo(offset, 0.001));
+      nested.outerController.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(search).controller, same(controller));
+      expect(controller.text, '发现搜索草稿');
       expect(tester.takeException(), isNull);
     },
   );
@@ -235,16 +356,16 @@ void main() {
     tester,
   ) async {
     await _showShell(tester, reduceMotion: true);
-    await tester.tap(find.byKey(const ValueKey('nav-1')));
+    await tester.tap(find.byKey(const ValueKey('nav-2')));
     await tester.pump();
 
-    expect(_pageFade(tester, ResumeLibrary).opacity.value, 1);
-    expect(_pageOffset(tester, ResumeLibrary), Offset.zero);
+    expect(_pageFade(tester, PointsPage).opacity.value, 1);
+    expect(_pageOffset(tester, PointsPage), Offset.zero);
     expect(find.byType(DiscoveryPage), findsNothing);
-    expect(find.byType(ResumeLibrary), findsOneWidget);
+    expect(find.byType(PointsPage), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 80));
-    expect(_pageFade(tester, ResumeLibrary).opacity.value, 1);
-    expect(_pageOffset(tester, ResumeLibrary), Offset.zero);
+    expect(_pageFade(tester, PointsPage).opacity.value, 1);
+    expect(_pageOffset(tester, PointsPage), Offset.zero);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
@@ -255,20 +376,20 @@ void main() {
       final motionPreference = ValueNotifier(false);
       addTearDown(motionPreference.dispose);
       await _showShell(tester, motionPreference: motionPreference);
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
       expect(
-        _pageFade(tester, ResumeLibrary).opacity.value,
+        _pageFade(tester, PointsPage).opacity.value,
         allOf(greaterThan(0), lessThan(1)),
       );
 
       motionPreference.value = true;
       await tester.pump();
-      expect(_pageFade(tester, ResumeLibrary).opacity.value, 1);
-      expect(_pageOffset(tester, ResumeLibrary), Offset.zero);
+      expect(_pageFade(tester, PointsPage).opacity.value, 1);
+      expect(_pageOffset(tester, PointsPage), Offset.zero);
       expect(find.byType(DiscoveryPage), findsNothing);
-      expect(find.byType(ResumeLibrary), findsOneWidget);
+      expect(find.byType(PointsPage), findsOneWidget);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
@@ -325,7 +446,7 @@ void main() {
       expect(tester.widget<TextField>(search).controller, same(controller));
       expect(controller.text, '发现搜索草稿');
 
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('nav-0')));
       await tester.pumpAndSettle();

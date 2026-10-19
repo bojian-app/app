@@ -242,52 +242,6 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-  testWidgets('Recipient sends a suggestion against a visible resume field', (
-    tester,
-  ) async {
-    final api = GuidanceGateway();
-    final data = <String, dynamic>{
-      'title': '简历',
-      'snapshot': {
-        'work_experiences': [
-          {'description': '开发网站'},
-        ],
-      },
-      'can_review': true,
-      'suggestions': [],
-    };
-    api.documents['PostNotificationsIdGuidanceSubmissions'] = {'count': 1};
-    api.documents['GetNotificationsIdGuidance'] = {
-      ...data,
-      'can_review': false,
-      'completed': true,
-    };
-    final store = await testStore(authenticated: true, api: api);
-    addTearDown(store.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: appTheme,
-        home: ResumeGuidanceView(
-          store: store,
-          id: 11,
-          notification: true,
-          initialData: data,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('给出建议'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '可以补充项目成果和数据');
-    await tester.ensureVisible(find.text('发送建议'));
-    await tester.tap(find.text('发送建议'));
-    await tester.pumpAndSettle();
-    expect(api.calls, contains('PostNotificationsIdGuidanceSubmissions'));
-    expect(api.guidancePath, {'id': '11'});
-    expect(find.text('给出建议'), findsNothing);
-    expect(find.text('建议已发送'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
   testWidgets('Card exposes guidance independently from preview', (
     tester,
   ) async {

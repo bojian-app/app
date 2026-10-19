@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'app_shell.dart';
 import 'auth_page.dart';
 import 'app_store.dart';
+import 'confirmation_dialog.dart';
+import 'phone_binding_dialog.dart';
 import 'design.dart';
 import 'startup_screen.dart';
 import 'resume_files.dart';
@@ -36,6 +38,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final files = ResumeFiles.instance;
   bool openingImport = false;
   bool entryAllowed = false;
+  int? phoneBindingPromptEpoch;
+  bool showingPhoneBinding = false;
 
   @override
   void initState() {
@@ -46,39 +50,76 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     files.incoming.addListener(sharedFileChanged);
     files.error.addListener(sharedFileError);
     unawaited(files.start());
-    unawaited(store.initialize());
+    unawaited(
+      store.initialize().then((_) {
+        if (mounted) maybeShowPhoneBinding();
+      }),
+    );
   }
 
   void sessionChanged() {
     final allowed = store.isAuthenticated || store.isGuest;
-    if (entryAllowed == allowed) return;
-    navigatorKey.currentState?.popUntil((route) => route.isFirst);
-    setState(() => entryAllowed = allowed);
+    final entryChanged = entryAllowed != allowed;
+    if (entryChanged) {
+      navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      setState(() => entryAllowed = allowed);
+    }
     final notice = store.sessionNotice;
-    if (!allowed && notice != null) {
+    if (entryChanged && !allowed && notice != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final context = navigatorKey.currentContext;
         if (!mounted || context == null || store.isAuthenticated) return;
-        showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(notice['title']!),
-            content: Text(notice['message']!),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('知道了'),
-              ),
-            ],
-          ),
+        showAppConfirmation(
+          context,
+          title: notice['title']!,
+          content: Text(notice['message']!),
+          confirmLabel: '知道了',
+          cancelLabel: null,
         );
       });
     }
-    if (store.isAuthenticated) sharedFileChanged();
+    if (store.isAuthenticated) {
+      maybeShowPhoneBinding();
+      sharedFileChanged();
+    }
+  }
+
+  void maybeShowPhoneBinding() {
+    if (!store.isAuthenticated ||
+        !store.phoneBindingChecked ||
+        store.hasBoundPhone ||
+        phoneBindingPromptEpoch == store.epoch ||
+        showingPhoneBinding) {
+      return;
+    }
+    final version = store.epoch;
+    phoneBindingPromptEpoch = version;
+    showingPhoneBinding = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final context = navigatorKey.currentContext;
+      try {
+        if (!mounted ||
+            context == null ||
+            !store.isAuthenticated ||
+            store.epoch != version ||
+            store.hasBoundPhone) {
+          return;
+        }
+        await showPhoneBindingDialog(context, store: store);
+      } finally {
+        showingPhoneBinding = false;
+        if (mounted) {
+          maybeShowPhoneBinding();
+          sharedFileChanged();
+        }
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   void sharedFileChanged() {
     if (!store.isAuthenticated ||
+        showingPhoneBinding ||
         files.activeImports > 0 ||
         files.incoming.value == null ||
         openingImport) {
@@ -98,8 +139,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             store: store,
             initialFile: file,
             onSaved: () {
-              shellKey.currentState?.select(1);
+              shellKey.currentState?.select(3);
               navigator.popUntil((route) => route.isFirst);
+              navigator.push(
+                MaterialPageRoute<void>(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('我的简历')),
+                    body: SafeArea(
+                      child: ResumeLibrary(store: store, embedded: true),
+                    ),
+                  ),
+                ),
+              );
             },
           ),
         ),
@@ -178,17 +229,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       scaffoldMessengerKey: messengerKey,
       debugShowCheckedModeBanner: false,
       theme: appTheme,
+      darkTheme: appDarkTheme,
+      themeMode: ThemeMode.system,
       scrollBehavior: const MaterialScrollBehavior().copyWith(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       ),
       builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-        value: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.dark,
-          statusBarBrightness: Brightness.light,
-          systemNavigationBarColor: canvasColor,
-          systemNavigationBarIconBrightness: Brightness.dark,
-        ),
+        value: appSystemUiStyle(context),
         child: Actions(
           actions: {
             EditableTextTapOutsideIntent:
@@ -199,7 +246,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   },
                 ),
           },
-          child: child!,
+          child: TooltipVisibility(visible: false, child: child!),
         ),
       ),
       home: widget.nativeStartup ? home : StartupScreen(child: home),

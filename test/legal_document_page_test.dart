@@ -115,7 +115,7 @@ void main() {
     expect(privacy.plainText, contains('fengzijian@kelantech.cn'));
     expect(
       privacy.sections.first.blocks.whereType<LegalSubheading>(),
-      hasLength(13),
+      hasLength(14),
     );
   });
 
@@ -134,16 +134,18 @@ void main() {
         '系统文件选择器',
         '系统分享面板',
         '剪贴板写入',
-        '微信可见性查询（Android）',
+        '微信与抖音可见性查询（Android）',
         '通知与权限设置跳转',
       ]);
       expect(tables.first.plainText, contains('不自动读取剪贴板'));
       expect(tables.first.plainText, contains('不获取完整已安装应用列表'));
       expect(tables.last.headers, ['第三方', '数据与用途', '备注']);
-      expect(tables.last.rows, hasLength(3));
+      expect(tables.last.rows, hasLength(5));
       expect(tables.last.rows.map((row) => row.first), [
         '七牛对象存储',
         '短信服务提供方【腾讯云/配置网关，待确认】',
+        '微信开放平台 SDK（腾讯，Fluwx 接入）',
+        '抖音开放平台 SDK',
         '外部AI文件解析及模型服务【主体待补充】',
       ]);
       expect(tables.last.plainText, contains('存储地域待补充'));
@@ -303,73 +305,56 @@ void main() {
     expect(launches, isEmpty);
   });
 
-  testWidgets(
-    'Auth legal links stay native and preserve input and explicit consent',
-    (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final api = FakeGateway();
-      final store = await testStore(api: api);
-      addTearDown(store.dispose);
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: appTheme,
-          home: AuthPage(store: store),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('auth-phone')),
-        '13812345678',
-      );
-      await tester.enterText(find.byKey(const ValueKey('auth-code')), '123456');
-      final before = List<String>.of(api.calls);
+  testWidgets('Auth legal links stay native and preserve explicit consent', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = FakeGateway();
+    final store = await testStore(
+      api: api,
+      weChatAuthorizer: FakeWeChatAuthorizer(),
+    );
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: AuthPage(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final before = List<String>.of(api.calls);
 
-      for (final entry in [
-        ('auth-user-agreement', LegalDocumentKind.userAgreement, false),
-        ('auth-privacy-policy', LegalDocumentKind.privacyPolicy, true),
-      ]) {
-        if (entry.$3) {
-          await _tapKey(tester, 'auth-consent');
-        }
-        await _tapKey(tester, entry.$1);
-        expect(find.byType(LegalDocumentPage), findsOneWidget);
-        expect(
-          tester.widget<LegalDocumentPage>(find.byType(LegalDocumentPage)).kind,
-          entry.$2,
-        );
-        expect(api.calls, before);
-        expect(launches, isEmpty);
-        _expectNoAuthRequests(api);
-
-        await tester.pageBack();
-        await tester.pumpAndSettle();
-        expect(find.byType(LegalDocumentPage), findsNothing);
-        expect(
-          tester
-              .widget<TextField>(find.byKey(const ValueKey('auth-phone')))
-              .controller!
-              .text,
-          '13812345678',
-        );
-        expect(
-          tester
-              .widget<TextField>(find.byKey(const ValueKey('auth-code')))
-              .controller!
-              .text,
-          '123456',
-        );
-        expect(
-          tester
-              .widget<Checkbox>(find.byKey(const ValueKey('auth-consent')))
-              .value,
-          entry.$3,
-        );
+    for (final entry in [
+      ('auth-user-agreement', LegalDocumentKind.userAgreement, false),
+      ('auth-privacy-policy', LegalDocumentKind.privacyPolicy, true),
+    ]) {
+      if (entry.$3) {
+        await _tapKey(tester, 'auth-consent');
       }
-    },
-  );
+      await _tapKey(tester, entry.$1);
+      expect(find.byType(LegalDocumentPage), findsOneWidget);
+      expect(
+        tester.widget<LegalDocumentPage>(find.byType(LegalDocumentPage)).kind,
+        entry.$2,
+      );
+      expect(api.calls, before);
+      expect(launches, isEmpty);
+      _expectNoAuthRequests(api);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(LegalDocumentPage), findsNothing);
+      expect(
+        tester
+            .widget<Checkbox>(find.byKey(const ValueKey('auth-consent')))
+            .value,
+        entry.$3,
+      );
+    }
+  });
 
   testWidgets(
     'Reading legal links inside consent dialog does not accept or send requests',
@@ -379,7 +364,10 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final api = FakeGateway();
-      final store = await testStore(api: api);
+      final store = await testStore(
+        api: api,
+        weChatAuthorizer: FakeWeChatAuthorizer(),
+      );
       addTearDown(store.dispose);
       await tester.pumpWidget(
         MaterialApp(
@@ -388,12 +376,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('auth-phone')),
-        '13812345678',
-      );
-      await tester.enterText(find.byKey(const ValueKey('auth-code')), '654321');
-      await _tapKey(tester, 'auth-request-code');
+      await _tapKey(tester, 'auth-wechat');
       expect(find.byType(AgreementDialog), findsOneWidget);
       final before = List<String>.of(api.calls);
 
@@ -436,29 +419,18 @@ void main() {
             .value,
         isFalse,
       );
-      expect(
-        tester
-            .widget<TextField>(find.byKey(const ValueKey('auth-phone')))
-            .controller!
-            .text,
-        '13812345678',
-      );
-      expect(
-        tester
-            .widget<TextField>(find.byKey(const ValueKey('auth-code')))
-            .controller!
-            .text,
-        '654321',
-      );
       expect(api.calls, before);
     },
   );
 
   testWidgets(
-    'Explicit consent still continues security verification after legal reading',
+    'Explicit consent continues WeChat authorization after legal reading',
     (tester) async {
       final api = FakeGateway();
-      final store = await testStore(api: api);
+      final store = await testStore(
+        api: api,
+        weChatAuthorizer: FakeWeChatAuthorizer(),
+      );
       addTearDown(store.dispose);
       await tester.pumpWidget(
         MaterialApp(
@@ -467,11 +439,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('auth-phone')),
-        '13812345678',
-      );
-      await _tapKey(tester, 'auth-request-code');
+      await _tapKey(tester, 'auth-wechat');
       await tester.tapOnText(
         find.textRange.ofSubstring(
           '《隐私政策》',
@@ -484,12 +452,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('auth-agree-continue')));
       await tester.pump(const Duration(milliseconds: 350));
-      expect(find.text('安全验证'), findsOneWidget);
-      expect(api.calls.where((call) => call == 'CreateCaptcha'), hasLength(1));
+      expect(api.calls.where((call) => call == 'WeChatLogin'), hasLength(1));
+      expect(api.calls, isNot(contains('CreateCaptcha')));
       expect(api.calls, isNot(contains('SendSMS')));
       expect(launches, isEmpty);
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
       expect(
         tester
             .widget<Checkbox>(find.byKey(const ValueKey('auth-consent')))

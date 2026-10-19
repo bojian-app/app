@@ -6,10 +6,15 @@ import 'design.dart';
 
 /// One light composition. Only the dolphin, fins, and paper marks move.
 class StartupScenePainter extends CustomPainter {
-  const StartupScenePainter({required this.progress, required this.textScaler});
+  const StartupScenePainter({
+    required this.progress,
+    required this.textScaler,
+    this.colors = AppColors.light,
+  });
 
   final double progress;
   final TextScaler textScaler;
+  final AppColors colors;
 
   double _phase(double start, double end) =>
       ((progress - start) / (end - start)).clamp(0.0, 1.0);
@@ -27,26 +32,26 @@ class StartupScenePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    canvas.drawColor(canvasColor, BlendMode.src);
+    canvas.drawColor(colors.canvas, BlendMode.src);
     final unit = math.min(size.width / 360, size.height / 440);
     final artScale = .82 * unit;
     final title = TextPainter(
-      text: const TextSpan(
+      text: TextSpan(
         text: '博简',
         style: TextStyle(
           fontSize: 30,
           height: 1.25,
           fontWeight: FontWeight.w700,
-          color: ink,
+          color: colors.ink,
         ),
       ),
       textScaler: textScaler,
       textDirection: TextDirection.ltr,
     )..layout();
     final caption = TextPainter(
-      text: const TextSpan(
+      text: TextSpan(
         text: '把繁杂，变简单。',
-        style: TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF697586)),
+        style: TextStyle(fontSize: 13, height: 1.5, color: colors.muted),
       ),
       textScaler: textScaler,
       textDirection: TextDirection.ltr,
@@ -228,5 +233,7 @@ class StartupScenePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(StartupScenePainter oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.textScaler != textScaler;
+      oldDelegate.progress != progress ||
+      oldDelegate.textScaler != textScaler ||
+      oldDelegate.colors != colors;
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'user_display_name.dart';
 import 'company_benefits.dart';
 import 'playful_refresh.dart';
@@ -9,7 +11,9 @@ import 'app_icons.dart';
 import 'app_store.dart';
 import 'chat_history.dart';
 import 'design.dart';
+import 'my_articles_page.dart';
 import 'resume_updated_label.dart';
+import 'resume_pages.dart';
 import 'discovery.dart';
 import 'resume_guidance_view.dart';
 import 'resume_guidance_review.dart';
@@ -20,7 +24,8 @@ String messageTime(Object? value) {
 }
 
 class MessagesPage extends StatefulWidget {
-  const MessagesPage({super.key, required this.store});
+  const MessagesPage({super.key, required this.store, this.standalone = false});
+  final bool standalone;
   final AppStore store;
   @override
   State<MessagesPage> createState() => _MessagesPageState();
@@ -29,64 +34,60 @@ class MessagesPage extends StatefulWidget {
 class _MessagesPageState extends State<MessagesPage> {
   bool chats = false, marking = false;
   @override
+  void initState() {
+    super.initState();
+    if (widget.standalone) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.store.alive || !widget.store.isAuthenticated) {
+          return;
+        }
+        unawaited(widget.store.load('messages'));
+        unawaited(widget.store.load('chats'));
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.store,
     builder: (context, _) {
       final store = widget.store;
       final section = chats ? 'chats' : 'messages';
       final empty = chats ? store.conversations.isEmpty : store.inbox.isEmpty;
-      return PlayfulRefresh(
+      final content = PlayfulRefresh(
         hasError: () => store.errors[section] != null,
         onRefresh: () => store.load(section),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
           children: [
-            SizedBox(
-              height: 48,
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      '消息',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -.5,
+            if (!widget.standalone) ...[
+              SizedBox(
+                height: 48,
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '消息',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.5,
+                        ),
                       ),
                     ),
-                  ),
-                  if (!chats)
-                    IconButton(
-                      tooltip: '系统通知全部已读',
-                      icon: const AppIcon(
-                        AppIcons.readAll,
-                        size: 23,
-                        color: muted,
-                      ),
-                      onPressed:
-                          !store.isAuthenticated ||
-                              marking ||
-                              store.notificationUnreadCount == 0
-                          ? null
-                          : () async {
-                              setState(() => marking = true);
-                              await runRequest(
-                                context,
-                                store.markAllRead,
-                                success: '系统通知已全部标为已读',
-                              );
-                              if (mounted) setState(() => marking = false);
-                            },
-                    ),
-                ],
+                    if (!chats) _markAllReadButton(store),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
+            ],
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: const Color(0xFFEDEFF4),
+                color: (context.isDark
+                    ? context.colors.accentSoft
+                    : const Color(0xFFEDEFF4)),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
@@ -125,7 +126,7 @@ class _MessagesPageState extends State<MessagesPage> {
               ),
             if (!empty)
               Material(
-                color: Colors.white,
+                color: context.colors.surface,
                 clipBehavior: Clip.antiAlias,
                 borderRadius: BorderRadius.circular(18),
                 child: Column(
@@ -133,22 +134,26 @@ class _MessagesPageState extends State<MessagesPage> {
                     if (chats)
                       for (var i = 0; i < store.conversations.length; i++) ...[
                         if (i > 0)
-                          const Divider(
+                          Divider(
                             height: 1,
                             indent: 76,
                             endIndent: 16,
-                            color: Color(0xFFEDF1F7),
+                            color: (context.isDark
+                                ? context.colors.border
+                                : Color(0xFFEDF1F7)),
                           ),
                         _conversation(store.conversations[i]),
                       ]
                     else
                       for (var i = 0; i < store.inbox.length; i++) ...[
                         if (i > 0)
-                          const Divider(
+                          Divider(
                             height: 1,
                             indent: 76,
                             endIndent: 16,
-                            color: Color(0xFFEDF1F7),
+                            color: (context.isDark
+                                ? context.colors.border
+                                : Color(0xFFEDF1F7)),
                           ),
                         _notification(store.inbox[i]),
                       ],
@@ -170,12 +175,38 @@ class _MessagesPageState extends State<MessagesPage> {
           ],
         ),
       );
+      return widget.standalone
+          ? Scaffold(
+              appBar: AppBar(
+                title: const Text('消息'),
+                actions: [if (!chats) _markAllReadButton(store)],
+              ),
+              body: content,
+            )
+          : content;
     },
+  );
+
+  Widget _markAllReadButton(AppStore store) => IconButton(
+    tooltip: '系统通知全部已读',
+    icon: AppIcon(AppIcons.readAll, size: 23, color: context.colors.muted),
+    onPressed:
+        !store.isAuthenticated || marking || store.notificationUnreadCount == 0
+        ? null
+        : () async {
+            setState(() => marking = true);
+            await runRequest(
+              context,
+              store.markAllRead,
+              success: '系统通知已全部标为已读',
+            );
+            if (mounted) setState(() => marking = false);
+          },
   );
 
   Widget _tab(String title, bool value, int unread) => Expanded(
     child: Material(
-      color: chats == value ? Colors.white : Colors.transparent,
+      color: chats == value ? context.colors.surface : Colors.transparent,
       borderRadius: BorderRadius.circular(11),
       child: InkWell(
         borderRadius: BorderRadius.circular(11),
@@ -192,14 +223,21 @@ class _MessagesPageState extends State<MessagesPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: chats == value
-                      ? FontWeight.w600
-                      : FontWeight.w400,
-                  color: chats == value ? ink : muted,
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: chats == value
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                    color: chats == value
+                        ? context.colors.ink
+                        : context.colors.muted,
+                  ),
                 ),
               ),
               if (unread > 0) ...[const SizedBox(width: 6), _badge(unread)],
@@ -240,16 +278,16 @@ class _MessagesPageState extends State<MessagesPage> {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(22),
           ),
-          child: AppIcon(icon, size: 32, color: muted),
+          child: AppIcon(icon, size: 32, color: context.colors.muted),
         ),
         const SizedBox(height: 18),
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: muted, fontSize: 14),
+          style: TextStyle(color: context.colors.muted, fontSize: 14),
         ),
         if (action != null) TextButton(onPressed: onTap, child: Text(action)),
       ],
@@ -305,7 +343,9 @@ class _MessagesPageState extends State<MessagesPage> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: const Color(0xFFEEF4FF),
+                color: (context.isDark
+                    ? context.colors.accentSoft
+                    : const Color(0xFFEEF4FF)),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Center(
@@ -313,7 +353,7 @@ class _MessagesPageState extends State<MessagesPage> {
                   item.type == 'ARTICLE_LIKE'
                       ? AppIcons.like
                       : AppIcons.notification,
-                  color: blue,
+                  color: context.colors.accent,
                   size: 22,
                 ),
               ),
@@ -363,8 +403,8 @@ class _MessagesPageState extends State<MessagesPage> {
                     item.body,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: muted,
+                    style: TextStyle(
+                      color: context.colors.muted,
                       fontSize: 12,
                       height: 1.5,
                     ),
@@ -374,7 +414,10 @@ class _MessagesPageState extends State<MessagesPage> {
                   const SizedBox(height: 8),
                   Text(
                     messageTime(item.time),
-                    style: const TextStyle(fontSize: 10.5, color: muted),
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: context.colors.muted,
+                    ),
                   ),
                 ],
               ],
@@ -386,6 +429,34 @@ class _MessagesPageState extends State<MessagesPage> {
   );
 
   Future<void> _openNotification(InboxItem item) async {
+    if (item.type == 'RESUME_CREATED' &&
+        item.subjectType == 'RESUME' &&
+        item.subjectID > 0) {
+      final epoch = widget.store.epoch;
+      await runRequest(context, () async {
+        final result = await widget.store.request(
+          'GetResumesId',
+          path: {'id': '${item.subjectID}'},
+        );
+        if (!mounted ||
+            epoch != widget.store.epoch ||
+            !widget.store.isAuthenticated) {
+          return;
+        }
+        if (!item.read) await widget.store.markRead(item);
+        if (!mounted ||
+            epoch != widget.store.epoch ||
+            !widget.store.isAuthenticated) {
+          return;
+        }
+        await openPage(
+          context,
+          ResumeEditor(store: widget.store, draft: decodeResume(result.data)),
+        );
+      });
+      return;
+    }
+
     if (item.subjectType == 'COMPANY_BENEFIT_SUBMISSION' &&
         item.subjectID > 0) {
       if (!item.read) await widget.store.markRead(item);
@@ -423,6 +494,9 @@ class _MessagesPageState extends State<MessagesPage> {
             notification: private,
             initialData: result.data,
             fromNotification: true,
+            focusAnnotationID: item.type == 'RESUME_GUIDANCE_FEEDBACK'
+                ? item.annotationID
+                : 0,
             reviewerKey:
                 result.data['is_owner'] == true &&
                     item.actorID > 0 &&
@@ -436,6 +510,8 @@ class _MessagesPageState extends State<MessagesPage> {
     }
     if (const {
           'ARTICLE_LIKE',
+          'ARTICLE_APPROVED',
+          'ARTICLE_REJECTED',
           'ARTICLE_COMMENT',
           'COMMENT_REPLY',
         }.contains(item.type) &&
@@ -447,13 +523,37 @@ class _MessagesPageState extends State<MessagesPage> {
           path: {'id': '${item.subjectID}'},
         );
         if (!mounted) return;
+        final story = decodeStory(result.data);
+        final guidanceData =
+            item.type == 'ARTICLE_APPROVED' && story.hasGuidance
+            ? (await widget.store.request(
+                'GetArticlesIdGuidance',
+                path: {'id': '${item.subjectID}'},
+              )).data
+            : null;
+        if (!mounted) return;
         if (!item.read) {
           await runRequest(context, () => widget.store.markRead(item));
         }
         if (!mounted) return;
         await openPage(
           context,
-          StoryDetail(story: decodeStory(result.data), store: widget.store),
+          item.type == 'ARTICLE_REJECTED'
+              ? OwnArticlePreview(
+                  story: story,
+                  row: {
+                    ...result.data,
+                    'status': result.data['status'] ?? 'REJECTED',
+                    'review_reason': item.reviewReason,
+                  },
+                )
+              : guidanceData == null
+              ? StoryDetail(story: story, store: widget.store)
+              : ResumeGuidanceView(
+                  store: widget.store,
+                  id: item.subjectID,
+                  initialData: guidanceData,
+                ),
         );
       });
       return;
@@ -472,7 +572,10 @@ class _MessagesPageState extends State<MessagesPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('系统通知', style: TextStyle(fontSize: 12, color: blue)),
+                Text(
+                  '系统通知',
+                  style: TextStyle(fontSize: 12, color: context.colors.accent),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   item.title,
@@ -485,7 +588,7 @@ class _MessagesPageState extends State<MessagesPage> {
                 const SizedBox(height: 8),
                 Text(
                   messageTime(item.time),
-                  style: const TextStyle(fontSize: 11, color: muted),
+                  style: TextStyle(fontSize: 11, color: context.colors.muted),
                 ),
                 if (item.body.isNotEmpty) ...[
                   const SizedBox(height: 22),
@@ -548,7 +651,10 @@ class _MessagesPageState extends State<MessagesPage> {
                         messageTime(
                           row['last_message_at'] ?? row['updated_at'],
                         ),
-                        style: const TextStyle(fontSize: 10, color: muted),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: context.colors.muted,
+                        ),
                       ),
                     ],
                   ),
@@ -560,7 +666,10 @@ class _MessagesPageState extends State<MessagesPage> {
                           summary,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: muted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.colors.muted,
+                          ),
                         ),
                       ),
                       if (unread > 0) ...[
@@ -646,7 +755,10 @@ class _ChatPageState extends State<ChatPage> {
                     Expanded(
                       child: Text(
                         history.error ?? '未能更新已读状态',
-                        style: const TextStyle(fontSize: 12, color: muted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.colors.muted,
+                        ),
                       ),
                     ),
                     TextButton(
@@ -689,10 +801,13 @@ class _ChatPageState extends State<ChatPage> {
                       );
                     }
                     if (history.messages.isEmpty && history.error == null) {
-                      return const Padding(
+                      return Padding(
                         padding: EdgeInsets.symmetric(vertical: 100),
                         child: Center(
-                          child: Text('暂无聊天记录', style: TextStyle(color: muted)),
+                          child: Text(
+                            '暂无聊天记录',
+                            style: TextStyle(color: context.colors.muted),
+                          ),
                         ),
                       );
                     }
@@ -704,9 +819,15 @@ class _ChatPageState extends State<ChatPage> {
             SafeArea(
               top: false,
               child: Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: Color(0xFFEDF1F7))),
+                decoration: BoxDecoration(
+                  color: context.colors.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: (context.isDark
+                          ? context.colors.border
+                          : Color(0xFFEDF1F7)),
+                    ),
+                  ),
                 ),
                 padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
                 child: Row(
@@ -725,7 +846,7 @@ class _ChatPageState extends State<ChatPage> {
                           hintText: '输入消息',
                           counterText: '',
                           filled: true,
-                          fillColor: canvasColor,
+                          fillColor: context.colors.canvas,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 12,
@@ -783,7 +904,7 @@ class _ChatPageState extends State<ChatPage> {
         children: [
           Text(
             messageTime(row['created_at']),
-            style: const TextStyle(fontSize: 10, color: muted),
+            style: TextStyle(fontSize: 10, color: context.colors.muted),
           ),
           const SizedBox(height: 6),
           Container(
@@ -792,7 +913,7 @@ class _ChatPageState extends State<ChatPage> {
             ),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: BoxDecoration(
-              color: own ? blue : Colors.white,
+              color: own ? blue : context.colors.surface,
               borderRadius: BorderRadius.circular(16),
             ),
             child:
@@ -804,7 +925,9 @@ class _ChatPageState extends State<ChatPage> {
                     fit: BoxFit.contain,
                     errorBuilder: (_, _, _) => Text(
                       '[图片无法加载]',
-                      style: TextStyle(color: own ? Colors.white : muted),
+                      style: TextStyle(
+                        color: own ? Colors.white : context.colors.muted,
+                      ),
                     ),
                   )
                 : SelectableText(
@@ -812,7 +935,7 @@ class _ChatPageState extends State<ChatPage> {
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.6,
-                      color: own ? Colors.white : ink,
+                      color: own ? Colors.white : context.colors.ink,
                     ),
                   ),
           ),

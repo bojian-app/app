@@ -1,0 +1,336 @@
+{
+  "revision": "final-shared-header-release-2026-10-19-1431",
+  "mode": "click",
+  "video_width": 464,
+  "video_height": 1024,
+  "motion": [
+    {
+      "t": 0.0,
+      "edge": null
+    },
+    {
+      "t": 0.1,
+      "edge": null
+    },
+    {
+      "t": 0.2,
+      "edge": null
+    },
+    {
+      "t": 0.3,
+      "edge": null
+    },
+    {
+      "t": 0.4,
+      "edge": null
+    },
+    {
+      "t": 0.5,
+      "edge": null
+    },
+    {
+      "t": 0.6,
+      "edge": null
+    },
+    {
+      "t": 0.7,
+      "edge": null
+    },
+    {
+      "t": 0.8,
+      "edge": null
+    },
+    {
+      "t": 0.9,
+      "edge": null
+    },
+    {
+      "t": 1.014956,
+      "edge": null
+    },
+    {
+      "t": 1.045978,
+      "edge": 1017
+    },
+    {
+      "t": 1.067433,
+      "edge": 1014
+    },
+    {
+      "t": 1.088378,
+      "edge": 980
+    },
+    {
+      "t": 1.118667,
+      "edge": 968
+    },
+    {
+      "t": 1.136333,
+      "edge": 917
+    },
+    {
+      "t": 1.151656,
+      "edge": 865
+    },
+    {
+      "t": 1.168022,
+      "edge": 756
+    },
+    {
+      "t": 1.1853,
+      "edge": 716
+    },
+    {
+      "t": 1.209856,
+      "edge": 579
+    },
+    {
+      "t": 1.217844,
+      "edge": 555
+    },
+    {
+      "t": 1.234511,
+      "edge": 518
+    },
+    {
+      "t": 1.251011,
+      "edge": 492
+    },
+    {
+      "t": 1.267433,
+      "edge": 472
+    },
+    {
+      "t": 1.284322,
+      "edge": 459
+    },
+    {
+      "t": 1.3004,
+      "edge": 450
+    },
+    {
+      "t": 1.317456,
+      "edge": 444
+    },
+    {
+      "t": 1.333956,
+      "edge": 441
+    },
+    {
+      "t": 1.442189,
+      "edge": 441
+    },
+    {
+      "t": 1.542189,
+      "edge": 441
+    },
+    {
+      "t": 1.642189,
+      "edge": 441
+    },
+    {
+      "t": 1.742189,
+      "edge": 441
+    },
+    {
+      "t": 1.842189,
+      "edge": 441
+    },
+    {
+      "t": 1.942189,
+      "edge": 441
+    },
+    {
+      "t": 2.042189,
+      "edge": 441
+    },
+    {
+      "t": 2.142189,
+      "edge": 441
+    },
+    {
+      "t": 2.242189,
+      "edge": 441
+    },
+    {
+      "t": 2.342189,
+      "edge": 441
+    }
+  ],
+  "frame_timeline": [
+    {
+      "relative_ms": 114.294,
+      "duration_ms": 5.846,
+      "present_type": "Late Present",
+      "jank_type": "Display HAL"
+    },
+    {
+      "relative_ms": 131.426,
+      "duration_ms": 4.316,
+      "present_type": "Late Present",
+      "jank_type": "SurfaceFlinger CPU Deadline Missed"
+    },
+    {
+      "relative_ms": 139.068,
+      "duration_ms": 16.768,
+      "present_type": "Late Present",
+      "jank_type": "SurfaceFlinger CPU Deadline Missed, App Deadline Missed"
+    },
+    {
+      "relative_ms": 164.071,
+      "duration_ms": 16.793,
+      "present_type": "Late Present",
+      "jank_type": "App Deadline Missed, SurfaceFlinger Stuffing"
+    },
+    {
+      "relative_ms": 196.763,
+      "duration_ms": 2.264,
+      "present_type": "Late Present",
+      "jank_type": "SurfaceFlinger CPU Deadline Missed"
+    },
+    {
+      "relative_ms": 221.938,
+      "duration_ms": 3.272,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 238.365,
+      "duration_ms": 3.199,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 255.421,
+      "duration_ms": 2.01,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 263.393,
+      "duration_ms": 2.392,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 272.235,
+      "duration_ms": 2.863,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 287.975,
+      "duration_ms": 9.702,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 296.3,
+      "duration_ms": 7.365,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 313.134,
+      "duration_ms": 4.915,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 321.623,
+      "duration_ms": 3.198,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 329.628,
+      "duration_ms": 4.514,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 337.903,
+      "duration_ms": 4.243,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 346.194,
+      "duration_ms": 4.149,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 354.863,
+      "duration_ms": 4.581,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 362.885,
+      "duration_ms": 5.053,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 370.938,
+      "duration_ms": 4.929,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 379.404,
+      "duration_ms": 3.86,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 387.752,
+      "duration_ms": 3.056,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 395.847,
+      "duration_ms": 3.669,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 404.233,
+      "duration_ms": 5.134,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 412.664,
+      "duration_ms": 5.323,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 420.646,
+      "duration_ms": 3.686,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 429.162,
+      "duration_ms": 2.229,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 437.692,
+      "duration_ms": 2.11,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    },
+    {
+      "relative_ms": 445.805,
+      "duration_ms": 2.185,
+      "present_type": "On-time Present",
+      "jank_type": "None"
+    }
+  ]
+}

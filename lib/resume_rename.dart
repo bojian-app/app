@@ -33,11 +33,11 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
   bool editing = false;
   bool saving = false;
   String? error;
-  static const titleStyle = TextStyle(
+  TextStyle get titleStyle => TextStyle(
     fontSize: 14,
     height: 1.3,
     fontWeight: FontWeight.w700,
-    color: ink,
+    color: context.colors.ink,
   );
 
   @override
@@ -103,8 +103,12 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
           padding: EdgeInsets.zero,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           overlayColor: Colors.transparent,
+        ).withoutHover(),
+        icon: AppIcon(
+          icon,
+          size: 17,
+          color: label == '保存名称' ? context.colors.accent : context.colors.muted,
         ),
-        icon: AppIcon(icon, size: 17, color: label == '保存名称' ? blue : muted),
       );
 
   @override
@@ -135,7 +139,7 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
                   ),
                 ),
                 const SizedBox(width: 5),
-                const AppIcon(AppIcons.edit, size: 13, color: muted),
+                AppIcon(AppIcons.edit, size: 13, color: context.colors.muted),
               ],
             ),
           ),
@@ -165,7 +169,7 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
                     maxLength: 160,
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => save(),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: '简历名称',
                       counterText: '',
                       isDense: true,
@@ -173,7 +177,11 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
                       filled: false,
                       border: UnderlineInputBorder(),
                       enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFFDCE5F6)),
+                        borderSide: BorderSide(
+                          color: (context.isDark
+                              ? context.colors.border
+                              : Color(0xFFDCE5F6)),
+                        ),
                       ),
                       focusedBorder: UnderlineInputBorder(
                         borderSide: BorderSide(color: blue),
