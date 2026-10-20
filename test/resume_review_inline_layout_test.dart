@@ -424,7 +424,9 @@ void main() {
       for (var i = 0; i < waves.length; i++) {
         expect(waves[i].left, closeTo(boxes[i].$2.left, .01));
         expect(waves[i].right, closeTo(boxes[i].$2.right, .01));
-        expect(waves[i].top, greaterThanOrEqualTo(boxes[i].$2.top));
+        // The wave follows the whole line's metrics, including font fallback.
+        expect(waves[i].top, lessThanOrEqualTo(boxes[i].$2.top));
+        expect(waves[i].bottom, greaterThanOrEqualTo(boxes[i].$2.bottom));
       }
       _expectInsidePages(document);
     },

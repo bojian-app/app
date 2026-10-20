@@ -911,6 +911,28 @@ class ResumeReviewRegion {
   final List<Rect> waveRects;
 }
 
+List<Rect> _mergeReviewLineRects(Iterable<Rect> rects) {
+  final sorted = rects.toList()
+    ..sort((a, b) {
+      final line = a.top.compareTo(b.top);
+      return line == 0 ? a.left.compareTo(b.left) : line;
+    });
+  final merged = <Rect>[];
+  for (final rect in sorted) {
+    if (merged.isNotEmpty) {
+      final previous = merged.last;
+      if ((previous.top - rect.top).abs() < .01 &&
+          (previous.bottom - rect.bottom).abs() < .01 &&
+          rect.left <= previous.right + .01) {
+        merged[merged.length - 1] = previous.expandToInclude(rect);
+        continue;
+      }
+    }
+    merged.add(rect);
+  }
+  return merged;
+}
+
 List<List<ResumeReviewRegion>> resumeReviewRegions(
   ResumeDocument document,
   List<ResumeReviewHighlight> highlights, {
@@ -944,6 +966,9 @@ List<List<ResumeReviewRegion>> resumeReviewRegions(
           );
           for (final box in run.text.getBoxesForSelection(
             TextSelection(baseOffset: 0, extentOffset: length),
+            boxHeightStyle: highlight.colorText
+                ? ui.BoxHeightStyle.tight
+                : ui.BoxHeightStyle.max,
           )) {
             final rect = box.toRect().shift(
               run.position - Offset(0, run.sourceTop),
@@ -986,6 +1011,11 @@ List<List<ResumeReviewRegion>> resumeReviewRegions(
           baseOffset: matchedStart,
           extentOffset: matchedStart + highlight.text.length,
         ),
+        // Font fallback and rich spans can produce several boxes on one line.
+        // Use the line's height so every wave segment shares its baseline.
+        boxHeightStyle: highlight.colorText
+            ? ui.BoxHeightStyle.tight
+            : ui.BoxHeightStyle.max,
       );
       for (final (index, run) in matches) {
         if (!identical(run.text, matchedPainter)) continue;
@@ -1102,6 +1132,13 @@ List<List<ResumeReviewRegion>> resumeReviewRegions(
           j++;
         }
       }
+    }
+    for (final region in regions) {
+      if (region.highlights.first.colorText) continue;
+      final lines = _mergeReviewLineRects(region.waveRects);
+      region.waveRects
+        ..clear()
+        ..addAll(lines);
     }
   }
   return pages;
