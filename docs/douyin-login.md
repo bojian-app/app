@@ -2,6 +2,8 @@
 
 抖音入口使用官方 SDK 原生授权。仅在用户明确同意协议并主动点击后初始化 SDK；取消或授权失败不会创建会话，未知账号需点击“确认注册并登录”。微信与抖音账号分别识别，不按昵称、手机号或跨应用标识自动合并。
 
+退出博简会清除博简会话；再次点击抖音登录仍重新调用官方 SDK 获取授权码。Android 每次授权通过 `Authorization.Request.extras` 设置当前官方 SDK 公开常量 `ParamKeyConstants.AuthParams.EXTRA_AUTH_NOT_SKIP_CONFIRM`（`not_skip_confirm`）为布尔值 `true`，请求不跳过授权确认页，近期已授权账号的真实显示效果需真机验收。iOS `4.2.5` 的 `DouyinOpenSDKAuthRequest` 尚未确认同等受支持的参数，暂不保证每次显示确认页。手机号授权的 UI 参数不用于基础账号登录，不额外申请权限或自动撤销用户授权来触发确认页。
+
 ## 应用配置
 
 - Client Key：`awll007zjoe179hs`，仅为应用公开标识，可通过 Dart define `DOUYIN_CLIENT_KEY` 配置。变更后须同时更新 iOS URL Scheme 和桥接代码中的应用校验。

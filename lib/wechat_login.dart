@@ -61,7 +61,11 @@ class NativeWeChatAuthorizer implements WeChatAuthorizer {
       try {
         final launched = await sdk
             .authBy(
-              which: NormalAuth(scope: 'snsapi_userinfo', state: state),
+              which: NormalAuth(
+                scope: 'snsapi_userinfo',
+                state: state,
+                nonAutomatic: true,
+              ),
             )
             .timeout(const Duration(seconds: 10));
         if (!launched) throw const ApiFailure('无法打开微信，请稍后重试');

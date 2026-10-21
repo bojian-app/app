@@ -45,6 +45,7 @@ class _SDK implements Fluwx {
     requests++;
     final request = which as NormalAuth;
     expectSync(request.scope, 'snsapi_userinfo');
+    expectSync(request.nonAutomatic, isTrue);
     expectSync(request.state.length, greaterThanOrEqualTo(32));
     requestState = request.state;
     if (autoRespond) respond();
@@ -68,15 +69,28 @@ class _SDK implements Fluwx {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  testWidgets(
-    'Native WeChat returns only a matching one-time authorization code',
-    (tester) async {
-      final sdk = _SDK();
-      expect(await NativeWeChatAuthorizer(sdk).authorize(), 'one-time-code');
-      expect(sdk.requests, 1);
-      expect(sdk.removed, isTrue);
-    },
-  );
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    testWidgets(
+      'Native WeChat requires confirmation on every $platform login',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = platform;
+        try {
+          final sdk = _SDK();
+          final authorizer = NativeWeChatAuthorizer(sdk);
+          expect(await authorizer.authorize(), 'one-time-code');
+          final firstState = sdk.requestState;
+          expect(sdk.removed, isTrue);
+          sdk.removed = false;
+          expect(await authorizer.authorize(), 'one-time-code');
+          expect(sdk.requestState, isNot(firstState));
+          expect(sdk.requests, 2);
+          expect(sdk.removed, isTrue);
+        } finally {
+          debugDefaultTargetPlatformOverride = null;
+        }
+      },
+    );
+  }
   testWidgets(
     'Cancel returns no code and removes the authorization subscriber',
     (tester) async {

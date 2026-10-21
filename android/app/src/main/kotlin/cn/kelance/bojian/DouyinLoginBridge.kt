@@ -1,10 +1,12 @@
 package cn.kelance.bojian
 
 import android.app.Activity
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.SparseArray
 import com.bytedance.sdk.open.aweme.authorize.model.Authorization
+import com.bytedance.sdk.open.aweme.common.constants.ParamKeyConstants
 import com.bytedance.sdk.open.aweme.core.OpenHostInfoService
 import com.bytedance.sdk.open.aweme.core.OpenLogService
 import com.bytedance.sdk.open.aweme.init.DouYinOpenSDKConfig
@@ -52,6 +54,9 @@ class DouyinLoginBridge(private val activity: Activity, messenger: BinaryMesseng
                                 val request = Authorization.Request().apply {
                                     this.state = state
                                     scope = "user_info"
+                                    extras = Bundle().apply {
+                                        putBoolean(ParamKeyConstants.AuthParams.EXTRA_AUTH_NOT_SKIP_CONFIRM, true)
+                                    }
                                     redirectUri = redirect
                                     callerLocalEntry = "cn.kelance.bojian.douyinapi.DouYinEntryActivity"
                                 }
