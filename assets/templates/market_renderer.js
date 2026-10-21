@@ -2,7 +2,10 @@
 // Preview and export both use these exact pages; no PDF preview is involved.
 (function () {
   const tell = value => BojianPages.postMessage(JSON.stringify(value));
-  const scalar = (scope, key) => key === 'photo' ? payload.photo : scope[key] ?? payload.fields[key] ?? '';
+  const itemKeys = new Set(['name','title','subtitle','auxiliary','start_date','end_date','detail','secondary_detail']);
+  const scalar = (scope, key) => key === 'photo' ? payload.photo : scope[key] ?? (scope !== payload.fields && itemKeys.has(key) ? '' : payload.fields[key] ?? '');
+  const meaningful = value => Array.isArray(value) ? value.some(meaningful) : value && typeof value === 'object' ? Object.values(value).some(meaningful) : value != null && String(value).trim() !== '';
+  const conditionValue = (scope, keys) => keys.split('|').some(key => meaningful(scalar(scope, key)));
   const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function replaceText(element, scope) {
     function snapshot() {
@@ -23,11 +26,11 @@
     // Inline conditions retain all spans inside a visible branch.
     for (let pass=0;pass<20;pass++) {
       const state=snapshot();
-      const conditions=[...state.text.matchAll(/\{\{#if\s+([a-z_]+)\}\}((?:(?!\{\{#if)[\s\S])*?)\{\{\/if\}\}/g)].reverse();
+      const conditions=[...state.text.matchAll(/\{\{(?:#if\s+|\?)([a-z_]+(?:\|[a-z_]+)*)\}\}((?:(?!\{\{(?:#if\s|\?))[\s\S])*?)\{\{\/if\}\}/g)].reverse();
       if (!conditions.length) break;
       for (const token of conditions) {
         const start=token.index,end=start+token[0].length;
-        if (scalar(scope,token[1])) {
+        if (conditionValue(scope,token[1])) {
           replaceRange(state.nodes,end-7,end,'');
           replaceRange(state.nodes,start,start+token[0].indexOf('}}')+2,'');
         } else replaceRange(state.nodes,start,end,'');
@@ -44,23 +47,24 @@
     while (index < parent.children.length) {
       const child = parent.children[index], text = child.textContent.trim();
       const loop = text.match(/^\{\{#([a-z_]+)\}\}$/);
-      const condition = text.match(/^\{\{#if\s+([a-z_]+)\}\}$/);
+      const condition = text.match(/^\{\{(?:#if\s+|\?)([a-z_]+(?:\|[a-z_]+)*)\}\}$/);
       if (loop || condition) {
         const key = (loop || condition)[1], close = condition ? '{{/if}}' : '{{/'+key+'}}';
         let end = index+1, depth = 1;
         for (; end < parent.children.length; end++) {
           const next = parent.children[end].textContent.trim();
-          if (condition && /^\{\{#if\s+/.test(next)) depth++;
+          if (condition && /^\{\{(?:#if\s+|\?)[a-z_]+(?:\|[a-z_]+)*\}\}$/.test(next)) depth++;
           if (next === close && --depth === 0) break;
           // A loop has no nested loops; only matching endings affect depth.
-          if (next !== close && !(condition && /^\{\{#if\s+/.test(next))) depth = Math.max(1,depth);
+          if (next !== close && !(condition && /^\{\{(?:#if\s+|\?)[a-z_]+(?:\|[a-z_]+)*\}\}$/.test(next))) depth = Math.max(1,depth);
         }
         if (end >= parent.children.length) throw new Error('模板循环或条件格式不完整');
         const originals = Array.from(parent.children).slice(index+1,end);
-        const values = loop ? scalar(scope,key) : (scalar(scope,key) ? [scope] : []);
+        const values = loop ? (scalar(scope,key) || []) : (conditionValue(scope,key) ? [scope] : []);
         if (!Array.isArray(values)) throw new Error('模板循环字段无效');
         const fragment = document.createDocumentFragment();
-        for (const value of values) {
+        if (values.length > 100) throw new Error('模板条目过多');
+        for (const value of values.filter(meaningful)) {
           const holder = document.createElement('div');
           originals.forEach(item => holder.appendChild(item.cloneNode(true)));
           bind(holder, value);
@@ -114,7 +118,7 @@
         p.innerHTML = payload.photo ? '<img style="width:75pt;height:90pt;object-fit:cover" src="'+escape(payload.photo)+'">' : '';
       }
     });
-    if (/\{\{[#/]/.test(flow.textContent)) throw new Error('模板占位结构暂不支持');
+    if (/\{\{|\}\}/.test(flow.textContent)) throw new Error('模板占位结构暂不支持');
     await document.fonts.ready;
     await Promise.all(Array.from(flow.querySelectorAll('img')).map(image=>new Promise((resolve,reject)=>{
       if (image.complete) return image.naturalWidth ? resolve() : reject(new Error('模板图片不可用'));
