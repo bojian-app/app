@@ -3,6 +3,8 @@ allprojects {
         google()
         mavenCentral()
         maven { url = uri("https://artifact.bytedance.com/repository/AwemeOpenSDK") }
+        // 穿山甲 / GroMore SDK
+        maven { url = uri("https://artifact.bytedance.com/repository/pangle") }
     }
 }
 

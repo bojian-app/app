@@ -13,9 +13,11 @@ App 登录页提供微信及抖音登录。抖音移动应用已审核通过，�
 Android 注册信息：
 
 - 包名：`cn.kelance.bojian`
-- 当前测试包签名 MD5：`b1e2c83b09bcdea35a00ce4bd15bae42`
+- 当前测试包（debug 证书）签名 MD5：`b1e2c83b09bcdea35a00ce4bd15bae42`
+- 本机 `%USERPROFILE%\.android\debug.keystore` 实际 MD5：`9d09337c5d06e426ed924cb7dd94ffc6`（**与上面那个不同**，这台机器签出来的 debug 包无法通过微信校验）
+- 正式包（release 证书）签名 MD5：`041be49bd42cc4b8e8ae534eee604765`
 - 微信 SDK 回调由插件注册的 `cn.kelance.bojian.wxapi.WXEntryActivity` 接收。
-- 当前 release 配置使用本机 debug 证书；正式签名变更时，须同步微信开放平台中的应用签名。
+- **上架前必须把微信开放平台的「应用签名」改成正式包的 MD5**，否则签名校验失败、微信登录直接不可用；改完用正式包真机回归一次授权与回跳。
 
 iOS 注册信息：
 

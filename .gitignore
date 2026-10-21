@@ -54,5 +54,6 @@ app.*.map.json
 *.csr
 *.jks
 *.keystore
+/android/key.properties
 /.pnpm-store/
 /material/

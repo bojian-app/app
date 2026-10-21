@@ -9,7 +9,7 @@
 - Client Key：`awll007zjoe179hs`，仅为应用公开标识，可通过 Dart define `DOUYIN_CLIENT_KEY` 配置。变更后须同时更新 iOS URL Scheme 和桥接代码中的应用校验。
 - 登录回调：`https://bojian.kelance.cn/douyin/`。
 - Android applicationId：`cn.kelance.bojian`；开放平台中的包名和应用签名必须与安装包一致。
-- 当前安装包签名 MD5：`b1e2c83b09bcdea35a00ce4bd15bae42`。如授权页提示 `10011`，核对包名；`10017` 核对签名；`10015` 核对是否使用了移动应用的 Client Key。SDK 的失败回调保留数值错误码，不再把所有失败视为用户拒绝；原始 SDK 文本、授权码与令牌不用于错误提示。
+- 当前安装包签名 MD5（debug 证书）：`b1e2c83b09bcdea35a00ce4bd15bae42`；正式包（release 证书）：`041be49bd42cc4b8e8ae534eee604765`。**上架前须把抖音开放平台的应用签名同步为正式包 MD5**，否则授权会失败。如授权页提示 `10011`，核对包名；`10017` 核对签名；`10015` 核对是否使用了移动应用的 Client Key。SDK 的失败回调保留数值错误码，不再把所有失败视为用户拒绝；原始 SDK 文本、授权码与令牌不用于错误提示。
 - iOS Bundle ID：`cn.kelance.bojian`；URL Scheme 使用 Client Key，域名关联沿用 `applinks:bojian.kelance.cn`。
 - iOS 域名关联文件需为 `C6Z4939YD6.cn.kelance.bojian` 同时保留 `/wechat/*` 和 `/douyin/*`；可发布的文件位于 `ios/universal-links/`。回调落地页不处理、展示或存储 URL 中的授权码，回调请求不写访问日志。
 - SDK scope 仅 `user_info`，关闭可选 SDK 行为统计，不请求手机号、视频、关系或分享权限。

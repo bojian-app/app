@@ -51,6 +51,9 @@ dependencies:
   webview_flutter: ^4.14.1
   flutter_quill: ^11.6.0
   fluwx_no_pay: ^6.0.6
+  # 穿山甲（GroMore）开屏 / Banner 原生通道，本地包。
+  pangle_ads:
+    path: packages/pangle_ads
 
 dev_dependencies:
   integration_test:

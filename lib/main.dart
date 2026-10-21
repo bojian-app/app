@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_shell.dart';
 import 'auth_page.dart';
 import 'app_store.dart';
+import 'ads/ads_config.dart';
+import 'ads/ads_service.dart';
 import 'confirmation_dialog.dart';
 import 'phone_binding_dialog.dart';
 import 'design.dart';
@@ -52,7 +55,32 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     unawaited(files.start());
     unawaited(
       store.initialize().then((_) {
-        if (mounted) maybeShowPhoneBinding();
+        if (!mounted) return;
+        // 纯看广告的联调包：没有账号也直接以游客身份进入。
+        if (AdsConfig.forceGuest && !store.isAuthenticated) {
+          store.browseAsGuest();
+        }
+        maybeShowPhoneBinding();
+        maybeStartAds();
+      }),
+    );
+    // 仅联调：debug 或带 --dart-define=ADS_FORCE=true 的包，不登录也直接把广告拉起来。
+    if (AdsConfig.forceEnabled ||
+        (kDebugMode && AdsConfig.debugTestWithoutLogin)) {
+      unawaited(
+        AdsService.bootstrap().then((ready) {
+          if (ready) unawaited(AdsService.showSplashOnce());
+        }),
+      );
+    }
+  }
+
+  /// 登录态代表用户已明确同意协议与隐私政策，只有此时才允许初始化广告 SDK。
+  void maybeStartAds() {
+    if (!store.isAuthenticated) return;
+    unawaited(
+      AdsService.bootstrap().then((ready) {
+        if (ready) unawaited(AdsService.showSplashOnce());
       }),
     );
   }
@@ -80,6 +108,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     if (store.isAuthenticated) {
       maybeShowPhoneBinding();
+      maybeStartAds();
       sharedFileChanged();
     }
   }

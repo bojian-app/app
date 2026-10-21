@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'app_icons.dart';
 import 'app_store.dart';
+import 'ads/ads_banner.dart';
 import 'design.dart';
 import 'resume_pages.dart';
 import 'resume_guidance_share.dart';
@@ -182,6 +183,9 @@ class _PointsPageState extends State<PointsPage> {
                       ),
                       if (tab == 0) ...[
                         if (store.isAuthenticated) _checkIn(),
+                        const SizedBox(height: 12),
+                        // 放在任务卡之前，避免用户不滚动就看不到。
+                        AdsBanner(enabled: store.isAuthenticated),
                         const SizedBox(height: 12),
                         _tasks(),
                       ] else ...[
