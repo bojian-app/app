@@ -12,7 +12,7 @@ void main() {
       final authorizer = FakeWeChatAuthorizer();
       final api = FakeGateway();
       final store = await testStore(api: api, weChatAuthorizer: authorizer);
-      await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsNothing);
       expect(find.byKey(const ValueKey('auth-phone-login')), findsNothing);
@@ -42,7 +42,7 @@ void main() {
     final api = FakeGateway();
     final authorizer = FakeDouyinAuthorizer();
     final store = await testStore(api: api, douyinAuthorizer: authorizer);
-    await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+    await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
     await tester.pumpAndSettle();
     final before = List<String>.of(api.calls);
     await tester.tap(find.byKey(const ValueKey('auth-douyin')));
@@ -68,7 +68,7 @@ void main() {
       final authorizer = FakeWeChatAuthorizer();
       final api = FakeGateway()..failing = 'WeChatLogin';
       final store = await testStore(api: api, weChatAuthorizer: authorizer);
-      await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('auth-consent')));
       await tester.tap(find.byKey(const ValueKey('auth-wechat')));
@@ -95,7 +95,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await tester.pumpWidget(
-        MyApp(nativeStartup: true, store: await testStore()),
+        MyApp(startupAdsEnabled: false, store: await testStore()),
       );
       await tester.pumpAndSettle();
       for (final key in ['auth-wechat', 'auth-douyin', 'auth-consent']) {

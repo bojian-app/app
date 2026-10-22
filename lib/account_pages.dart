@@ -11,6 +11,8 @@ import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 
 import 'app_store.dart';
+import 'developer_verification_page.dart';
+import 'app_qr_login_page.dart';
 import 'design.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
@@ -18,6 +20,7 @@ import 'resume_pages.dart';
 import 'profile_avatar.dart';
 import 'profile_identity.dart';
 import 'profile_edit_actions.dart';
+import 'points_page.dart';
 import 'profile_editor_views.dart';
 import 'resume_photo.dart';
 import 'resume_photo_crop.dart';
@@ -137,7 +140,7 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
   }
 }
 
-enum _ProfileMenuPage { drafts, settings }
+enum _ProfileMenuPage { drafts, settings, points, developerVerification, scan }
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.store});
@@ -458,12 +461,45 @@ class _ProfilePageState extends State<ProfilePage>
     }
     cancelPull();
     openingMenu = true;
+    unawaited(store.load('identity'));
     final epoch = store.epoch;
     final reduced = MediaQuery.disableAnimationsOf(context);
-    _ProfileMenuPage? destination;
-    bool closing = false;
+    bool closing = false, openingDestination = false;
+    Future<void> openDestination(
+      BuildContext menuContext,
+      _ProfileMenuPage destination,
+    ) async {
+      if (openingDestination ||
+          !menuContext.mounted ||
+          !store.isAuthenticated ||
+          store.epoch != epoch ||
+          ModalRoute.of(menuContext)?.isCurrent != true) {
+        return;
+      }
+      openingDestination = true;
+      try {
+        await openPage<void>(menuContext, switch (destination) {
+          _ProfileMenuPage.drafts => MyArticlesPage(
+            store: store,
+            draftsOnly: true,
+          ),
+          _ProfileMenuPage.settings => SettingsPage(store: store),
+          _ProfileMenuPage.scan => AppQRLoginPage(store: store),
+          _ProfileMenuPage.developerVerification => DeveloperVerificationPage(
+            store: store,
+          ),
+          _ProfileMenuPage.points => Scaffold(
+            appBar: AppBar(title: const Text('我的积分')),
+            body: PointsPage(store: store),
+          ),
+        });
+      } finally {
+        openingDestination = false;
+      }
+    }
+
     try {
-      destination = await showGeneralDialog<_ProfileMenuPage>(
+      await showGeneralDialog<void>(
         context: context,
         barrierDismissible: true,
         barrierLabel: MaterialLocalizations.of(context)
@@ -479,9 +515,14 @@ class _ProfilePageState extends State<ProfilePage>
                   if (!closing) {
                     closing = true;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (menuContext.mounted &&
-                          ModalRoute.of(menuContext)?.isCurrent == true) {
-                        Navigator.of(menuContext).pop();
+                      if (!menuContext.mounted) return;
+                      final route = ModalRoute.of(menuContext);
+                      if (route == null || !route.isActive) return;
+                      final navigator = Navigator.of(menuContext);
+                      if (route.isCurrent) {
+                        navigator.pop();
+                      } else {
+                        navigator.removeRoute(route);
                       }
                     });
                   }
@@ -493,40 +534,134 @@ class _ProfilePageState extends State<ProfilePage>
                     alignment: AlignmentDirectional.centerStart,
                     child: Drawer(
                       key: const ValueKey('profile-drawer'),
+                      width: (MediaQuery.sizeOf(context).width * .8).clamp(
+                        0.0,
+                        280.0,
+                      ),
                       backgroundColor: context.colors.surface,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadiusDirectional.horizontal(
+                          end: Radius.circular(12),
+                        ),
+                      ),
                       child: SafeArea(
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                        child: Column(
                           children: [
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: IconButton(
-                                tooltip: '关闭菜单',
-                                onPressed: () =>
-                                    Navigator.of(menuContext).pop(),
-                                icon: const AppIcon(AppIcons.close),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                              child: Row(
+                                children: [
+                                  Semantics(
+                                    label: '关闭菜单',
+                                    button: true,
+                                    excludeSemantics: true,
+                                    onTap: () =>
+                                        Navigator.of(menuContext).pop(),
+                                    child: IconButton(
+                                      key: const ValueKey('profile-menu-close'),
+                                      tooltip: '关闭菜单',
+                                      style: IconButton.styleFrom(
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      constraints:
+                                          const BoxConstraints.tightFor(
+                                            width: 44,
+                                            height: 44,
+                                          ),
+                                      onPressed: () =>
+                                          Navigator.of(menuContext).pop(),
+                                      icon: const AppIcon(
+                                        AppIcons.close,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Semantics(
+                                    label: '扫一扫',
+                                    button: true,
+                                    enabled: true,
+                                    excludeSemantics: true,
+                                    onTap: () => openDestination(
+                                      menuContext,
+                                      _ProfileMenuPage.scan,
+                                    ),
+                                    child: IconButton(
+                                      key: const ValueKey('profile-menu-scan'),
+                                      style: IconButton.styleFrom(
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      constraints:
+                                          const BoxConstraints.tightFor(
+                                            width: 44,
+                                            height: 44,
+                                          ),
+                                      onPressed: () => openDestination(
+                                        menuContext,
+                                        _ProfileMenuPage.scan,
+                                      ),
+                                      icon: const AppIcon(
+                                        AppIcons.scan,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            _menu(
-                              context,
-                              '草稿箱',
-                              AppIcons.folder,
-                              () =>
-                                  Navigator.of(menuContext)
-                                      .pop(_ProfileMenuPage.drafts),
+                            Expanded(
+                              child: ListView(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  4,
+                                  12,
+                                  12,
+                                ),
+                                children: [
+                                  _ProfileMenuIdentity(
+                                    store: store,
+                                    onPoints: () => openDestination(
+                                      menuContext,
+                                      _ProfileMenuPage.points,
+                                    ),
+                                  ),
+                                  _menu(
+                                    context,
+                                    '草稿箱',
+                                    AppIcons.folder,
+                                    () => openDestination(
+                                      menuContext,
+                                      _ProfileMenuPage.drafts,
+                                    ),
+                                  ),
+                                  _menu(
+                                    context,
+                                    '隐私与设置',
+                                    AppIcons.settings,
+                                    () => openDestination(
+                                      menuContext,
+                                      _ProfileMenuPage.settings,
+                                    ),
+                                  ),
+                                  if (store.canApplyDeveloperVerification)
+                                    _menu(
+                                      context,
+                                      '申请开发者认证',
+                                      AppIcons.identityVerification,
+                                      () => openDestination(
+                                        menuContext,
+                                        _ProfileMenuPage.developerVerification,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
-                            const Divider(height: 1, indent: 42),
-                            _menu(
-                              context,
-                              '隐私与设置',
-                              AppIcons.settings,
-                              () =>
-                                  Navigator.of(menuContext)
-                                      .pop(_ProfileMenuPage.settings),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                              child: _SignOutButton(store: store),
                             ),
-                            const SizedBox(height: 20),
-                            _SignOutButton(store: store),
                           ],
                         ),
                       ),
@@ -546,18 +681,6 @@ class _ProfilePageState extends State<ProfilePage>
     } finally {
       openingMenu = false;
     }
-    if (destination == null ||
-        !mounted ||
-        !store.isAuthenticated ||
-        store.epoch != epoch ||
-        ModalRoute.of(context)?.isCurrent != true ||
-        !TickerMode.valuesOf(context).enabled) {
-      return;
-    }
-    await openPage(context, switch (destination) {
-      _ProfileMenuPage.drafts => MyArticlesPage(store: store, draftsOnly: true),
-      _ProfileMenuPage.settings => SettingsPage(store: store),
-    });
   }
 
   @override
@@ -733,16 +856,73 @@ class _ProfilePageState extends State<ProfilePage>
   ) => Material(
     color: Colors.transparent,
     child: ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: 6),
-      minLeadingWidth: 24,
-      leading: AppIcon(icon, size: 22, color: context.colors.ink),
-      title: Text(label, style: const TextStyle(fontSize: 14)),
+      minTileHeight: 48,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      horizontalTitleGap: 12,
+      minLeadingWidth: 20,
+      leading: AppIcon(icon, size: 20, color: context.colors.ink),
+      title: Text(label, style: const TextStyle(fontSize: 13)),
       trailing: AppIcon(
         AppIcons.forward,
-        size: 16,
+        size: 14,
         color: context.colors.muted,
       ),
       onTap: onTap,
+    ),
+  );
+}
+
+class _ProfileMenuIdentity extends StatelessWidget {
+  const _ProfileMenuIdentity({required this.store, required this.onPoints});
+  final AppStore store;
+  final VoidCallback onPoints;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    key: const ValueKey('profile-menu-identity'),
+    padding: const EdgeInsets.fromLTRB(8, 12, 8, 20),
+    child: Row(
+      children: [
+        ProfileAvatar(
+          seed: profileAvatarSeed(store),
+          url: store.avatarURL,
+          size: 44,
+          borderRadius: 22,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                userDisplayName(store.name),
+                key: const ValueKey('profile-menu-name'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              InkWell(
+                key: const ValueKey('profile-menu-points'),
+                onTap: onPoints,
+                child: Text(
+                  '积分余额：${store.points ?? '—'}',
+                  key: const ValueKey('profile-menu-balance'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.3,
+                    color: context.colors.muted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -860,8 +1040,10 @@ class _SignOutButtonState extends State<_SignOutButton> {
       foregroundColor: Theme.of(context).colorScheme.error,
       backgroundColor: context.colors.surface,
       side: BorderSide(color: context.colors.border),
-      minimumSize: const Size.fromHeight(48),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      minimumSize: const Size.fromHeight(44),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ).withoutHover(),
     onPressed: busy
         ? null

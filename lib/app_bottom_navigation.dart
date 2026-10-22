@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'navigation_icon.dart';
 import 'design.dart';
 
-/// Four persistent tabs. Company benefits are opened from Discovery.
+/// Four persistent tabs.
 class AppBottomNavigation extends StatelessWidget {
   const AppBottomNavigation({
     super.key,

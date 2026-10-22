@@ -97,6 +97,15 @@ class GuidanceFeedCard extends StatelessWidget {
                       name: authorName,
                       flat: flat,
                       fontWeight: FontWeight.w500,
+                      metadataTrailing: ListenableBuilder(
+                        listenable: store,
+                        builder: (context, _) => Text(
+                          story.guidanceParticipantCount == null
+                              ? '参与人数暂不可用'
+                              : '已有${story.guidanceParticipantCount}人参与',
+                          key: ValueKey('guidance-participants-${story.id}'),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -157,19 +166,6 @@ class GuidanceFeedCard extends StatelessWidget {
                           color: context.colors.muted,
                         ),
                       ),
-                    ListenableBuilder(
-                      listenable: store,
-                      builder: (context, _) => Text(
-                        story.guidanceParticipantCount == null
-                            ? '参与人数暂不可用'
-                            : '${story.guidanceParticipantCount} 人参与',
-                        key: ValueKey('guidance-participants-${story.id}'),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: context.colors.muted,
-                        ),
-                      ),
-                    ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

@@ -53,7 +53,7 @@ void main() {
         api: api,
         weChatAuthorizer: FakeWeChatAuthorizer(),
       );
-      await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
       await tester.pumpAndSettle();
       await _login(tester);
       expect(store.isAuthenticated, isTrue);
@@ -104,7 +104,7 @@ void main() {
       api: api,
       weChatAuthorizer: FakeWeChatAuthorizer(),
     );
-    await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+    await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
     await tester.pumpAndSettle();
     await _login(tester);
     expect(find.byType(PhoneBindingDialog), findsNothing);
@@ -121,7 +121,7 @@ void main() {
     final api = FakeGateway();
     api.documents['GetMe']!.remove('phone_masked');
     final store = await testStore(authenticated: true, api: api);
-    await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+    await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
     await tester.pumpAndSettle();
     expect(find.byType(PhoneBindingDialog), findsOneWidget);
     await tester.binding.handlePopRoute();
@@ -144,7 +144,7 @@ void main() {
       final api = FakeGateway();
       api.documents['GetMe']!.remove('phone_masked');
       final store = await testStore(authenticated: true, api: api);
-      await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
       await tester.pumpAndSettle();
       final phone = find.byKey(const ValueKey('phone-binding-phone'));
       await tester.ensureVisible(phone);

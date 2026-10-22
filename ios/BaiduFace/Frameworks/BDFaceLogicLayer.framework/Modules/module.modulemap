@@ -1,0 +1,6 @@
+framework module BDFaceLogicLayer {
+  umbrella header "BDFaceLogicLayer.h"
+  export *
+
+  module * { export * }
+}

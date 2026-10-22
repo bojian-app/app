@@ -198,7 +198,15 @@ class BojianApi implements ApiGateway {
               (envelope?['meta']?['next_cursor'] ?? data['next_cursor'] ?? '')
                   as String,
         );
-      })().timeout(const Duration(seconds: 20));
+      })().timeout(
+        Duration(
+          seconds:
+              route == '/me/identity-verification/ocr' ||
+                  route.startsWith('/me/identity-verification/face-sessions')
+              ? 45
+              : 20,
+        ),
+      );
     } on HandshakeException catch (e) {
       throw ApiFailure('无法建立服务器安全连接，请稍后重试', cause: e);
     } on SocketException catch (e) {

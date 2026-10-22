@@ -1,8 +1,10 @@
 PODS:
+  - BojianBaiduFaceSDK (1.0.0)
   - DouyinOpenSDK (4.2.5)
   - Flutter (1.0.0)
 
 DEPENDENCIES:
+  - BojianBaiduFaceSDK (from `BaiduFace`)
   - DouyinOpenSDK (= 4.2.5)
   - Flutter (from `Flutter`)
 
@@ -11,13 +13,16 @@ SPEC REPOS:
     - DouyinOpenSDK
 
 EXTERNAL SOURCES:
+  BojianBaiduFaceSDK:
+    :path: BaiduFace
   Flutter:
     :path: Flutter
 
 SPEC CHECKSUMS:
+  BojianBaiduFaceSDK: 98ac3d86468f3f65b996cd29a6a65efc00f013b8
   DouyinOpenSDK: f7ef5783f185e612dd957d8e231cc4972f965190
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
 
-PODFILE CHECKSUM: 0999f8483cc798cc4b475a0975a8678f3a7d3b22
+PODFILE CHECKSUM: 418a82944b246bb165249f8a05276e33993ecbeb
 
 COCOAPODS: 1.17.0

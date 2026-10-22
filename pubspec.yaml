@@ -51,6 +51,8 @@ dependencies:
   webview_flutter: ^4.14.1
   flutter_quill: ^11.6.0
   fluwx_no_pay: ^6.0.6
+  image_picker: ^1.2.4
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   integration_test:
@@ -77,6 +79,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/app_icon.png
+    - assets/badges/developer_crystal_v1.png
     - assets/login/reading.svg
     - assets/login/OPEN-DOODLES-LICENSE.txt
     - assets/login/wechat.jpg
@@ -86,6 +89,10 @@ flutter:
     - assets/points/tasks/
     - assets/fonts/OFL.txt
     - assets/fonts/ChillRound-OFL.txt
+    - assets/fonts/AlibabaPuHuiTi-LICENSE.txt
+    - assets/fonts/alibaba-puhuiti-3-regular.ttf
+    - assets/fonts/alibaba-puhuiti-3-medium.ttf
+    - assets/fonts/alibaba-puhuiti-3-bold.ttf
   fonts:
     - family: ResumeDocument
       fonts:

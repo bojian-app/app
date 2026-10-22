@@ -16,7 +16,7 @@ import 'app_icons.dart';
 import 'package:flutter/material.dart';
 
 import 'app_store.dart';
-import 'company_benefits.dart';
+import 'discovery_banner.dart';
 import 'design.dart';
 import 'discovery_art.dart';
 import 'messages_button.dart';
@@ -290,65 +290,6 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     );
   }
 
-  Widget entries(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-    child: Column(
-      children: [
-        InkWell(
-          key: const ValueKey('discovery-company-benefits'),
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => openPage(
-            context,
-            CompanyBenefitsPage(store: widget.store, standalone: true),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              children: [
-                AppIcon(
-                  AppIcons.companyBenefits,
-                  size: 26,
-                  color: context.colors.accent,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '企业福利',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: context.colors.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '了解待遇，选择适合自己的工作',
-                        style: TextStyle(
-                          fontSize: 11,
-                          height: 1.4,
-                          color: context.colors.muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                AppIcon(
-                  AppIcons.forward,
-                  size: 16,
-                  color: context.colors.muted,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
@@ -373,7 +314,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                 ],
               ),
             ),
-            SliverToBoxAdapter(child: entries(context)),
+            SliverToBoxAdapter(child: DiscoveryBanner(store: widget.store)),
             SliverToBoxAdapter(
               child: ColoredBox(
                 color: context.colors.canvas,
@@ -879,6 +820,8 @@ class _StoryDetailState extends State<StoryDetail> {
         articleAuthorID: widget.story.authorID,
         currentUserID: widget.store.userID,
         nested: nested,
+        onAuthorTap: () =>
+            openUserProfile(context, store: widget.store, userID: c.authorID),
         onReply: () => reply(c),
         onLike: () => react(c, false),
         onDislike: () => react(c, true),

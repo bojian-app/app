@@ -96,7 +96,7 @@ void main() {
     api.documents['GetMeSessions'] = {
       'items': [
         {'id': 1, 'platform': 'ANDROID', 'is_current': true},
-        {'id': 2, 'platform': 'MACOS', 'is_current': false},
+        {'id': 2, 'platform': 'WEB', 'is_current': false},
       ],
     };
     final store = await testStore(authenticated: true, api: api);
@@ -121,11 +121,11 @@ void main() {
     }
 
     await logout();
-    expect(find.text('macOS 设备'), findsOneWidget);
+    expect(find.text('网页 设备'), findsOneWidget);
     expect(store.isAuthenticated, true);
     api.failing = null;
     await logout();
-    expect(find.text('macOS 设备'), findsNothing);
+    expect(find.text('网页 设备'), findsNothing);
     expect(find.text('Android 设备'), findsOneWidget);
     expect(store.isAuthenticated, true);
   });

@@ -6,10 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
 
-Story guidance({int? count}) => decodeStory({
+Story guidance({int? count, String location = '浙江省'}) => decodeStory({
   'id': 9,
   'title': '前端开发工程师-4年-标准简历',
-  'author': {'id': 2, 'display_name': '测试作者'},
+  'author': {'id': 2, 'display_name': '测试作者', 'city': location},
   'content': {'kind': 'RESUME_GUIDANCE', 'question': '想请大家帮我看看这份简历，有哪些地方可以改进？'},
   'guidance_participant_count': ?count,
   'published_at': '2026-10-18T08:00:00Z',
@@ -56,11 +56,29 @@ void main() {
             find.ancestor(of: question, matching: find.byType(DecoratedBox)),
             findsNothing,
           );
-          expect(find.text('123 人参与'), findsOneWidget);
+          final participants = find.byKey(
+            const ValueKey('guidance-participants-9'),
+          );
+          final location = find.text('IP属地：浙江');
+          expect(
+            tester.getBottomLeft(participants).dy,
+            lessThan(tester.getTopLeft(question).dy),
+          );
+          if (scale == 1) {
+            expect(
+              tester.getTopLeft(participants).dy,
+              tester.getTopLeft(location).dy,
+            );
+            expect(
+              tester.getTopLeft(participants).dx,
+              greaterThan(tester.getTopRight(location).dx),
+            );
+          }
+          expect(find.text('已有123人参与'), findsOneWidget);
           story.guidanceParticipantCount = 124;
           store.changed();
           await tester.pump();
-          expect(find.text('124 人参与'), findsOneWidget);
+          expect(find.text('已有124人参与'), findsOneWidget);
           expect(tester.takeException(), isNull);
         },
       );
@@ -71,7 +89,7 @@ void main() {
   ) async {
     final store = await testStore();
     addTearDown(store.dispose);
-    final story = guidance();
+    final story = guidance(location: '');
     await tester.pumpWidget(
       MaterialApp(
         theme: appTheme,
@@ -81,11 +99,11 @@ void main() {
       ),
     );
     expect(find.text('参与人数暂不可用'), findsOneWidget);
-    expect(find.text('0 人参与'), findsNothing);
+    expect(find.text('已有0人参与'), findsNothing);
     story.guidanceParticipantCount = 0;
     store.changed();
     await tester.pump();
-    expect(find.text('0 人参与'), findsOneWidget);
+    expect(find.text('已有0人参与'), findsOneWidget);
   });
   test('Returning from guidance refreshes the confirmed total', () async {
     final api = FakeGateway();

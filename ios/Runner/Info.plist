@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>用于您主动扫描博简官网登录二维码、拍摄认证所需的证件照片，以及经您同意后进行本人活体人脸核验。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于您主动选择认证所需的证件照片，并在您同意后提交身份证识别。</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>weixin</string>

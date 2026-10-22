@@ -101,7 +101,7 @@ Future<AppStore> _requestCode(
 }) async {
   gateway.documents['GetMe']!.remove('phone_masked');
   final store = await testStore(authenticated: true, api: gateway);
-  await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+  await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
   await tester.pumpAndSettle();
   await tester.enterText(
     find.byKey(const ValueKey('phone-binding-phone')),

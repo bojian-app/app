@@ -1,5 +1,17 @@
 // Routes from bojian-backend/api/proto/routes.json.
 const httpRoutes = <String, (String, String)>{
+  'PostMeAppQRSessionsSessionScan': (
+    'POST',
+    '/me/app-qr-sessions/{session}/scan',
+  ),
+  'PostMeAppQRSessionsSessionConfirm': (
+    'POST',
+    '/me/app-qr-sessions/{session}/confirm',
+  ),
+  'PostMeAppQRSessionsSessionCancel': (
+    'POST',
+    '/me/app-qr-sessions/{session}/cancel',
+  ),
   'GetHealth': ('GET', '/health'),
   'GetPublicResumesId': ('GET', '/public/resumes/{id}'),
   'PostAuthLogout': ('POST', '/auth/logout'),
@@ -20,21 +32,22 @@ const httpRoutes = <String, (String, String)>{
   'DeleteMeAvatar': ('DELETE', '/me/avatar'),
   'GetMeIdentityVerification': ('GET', '/me/identity-verification'),
   'PostMeIdentityVerification': ('POST', '/me/identity-verification'),
+  'GetMeIdentityVerificationCapabilities': (
+    'GET',
+    '/me/identity-verification/capabilities',
+  ),
+  'PostMeIdentityVerificationOCR': ('POST', '/me/identity-verification/ocr'),
+  'PostMeIdentityVerificationFaceSessions': (
+    'POST',
+    '/me/identity-verification/face-sessions',
+  ),
+  'PostMeIdentityVerificationFaceSessionsSessionRefresh': (
+    'POST',
+    '/me/identity-verification/face-sessions/{session}/refresh',
+  ),
   'GetUsersFirstSecond': ('GET', '/users/{first}/{second}'),
   'PostFilesUploads': ('POST', '/files/uploads'),
   'PostFilesUploadsIdComplete': ('POST', '/files/uploads/{id}/complete'),
-  'GetCompanyBenefits': ('GET', '/company-benefits'),
-  'GetCompanyBenefitsId': ('GET', '/company-benefits/{id}'),
-  'PostCompanyBenefitSubmissions': ('POST', '/company-benefit-submissions'),
-  'PatchCompanyBenefitSubmissionsId': (
-    'PATCH',
-    '/company-benefit-submissions/{id}',
-  ),
-  'GetCompanyBenefitSubmissionsId': (
-    'GET',
-    '/company-benefit-submissions/{id}',
-  ),
-  'GetMeCompanyBenefitSubmissions': ('GET', '/me/company-benefit-submissions'),
   'GetResumes': ('GET', '/resumes'),
   'PostResumes': ('POST', '/resumes'),
   'GetResumesId': ('GET', '/resumes/{id}'),

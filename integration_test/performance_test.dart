@@ -6,9 +6,9 @@ import 'package:integration_test/integration_test.dart';
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('WeChat login consent dialog interaction', (tester) async {
-    await tester.pumpWidget(const MyApp(nativeStartup: true));
+    await tester.pumpWidget(const MyApp(startupAdsEnabled: false));
     await tester.pumpAndSettle();
-    // Let the native startup layer finish before measuring interaction.
+    // Let the initial application frame settle before measuring interaction.
     await Future<void>.delayed(const Duration(seconds: 3));
     await binding.watchPerformance(() async {
       for (var i = 0; i < 5; i++) {

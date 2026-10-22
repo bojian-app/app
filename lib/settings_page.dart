@@ -646,6 +646,7 @@ class _SecurityPageState extends State<_SecurityPage> {
     'IOS' => 'iOS',
     'MACOS' => 'macOS',
     'WINDOWS' => 'Windows',
+    'WEB' => '网页',
     _ => '未知系统',
   };
 
@@ -658,7 +659,7 @@ class _SecurityPageState extends State<_SecurityPage> {
 
   Widget deviceRow(Map<String, dynamic> session) {
     final current = session['is_current'] == true;
-    final desktop = ['MACOS', 'WINDOWS'].contains(session['platform']);
+    final desktop = ['MACOS', 'WINDOWS', 'WEB'].contains(session['platform']);
     final reportedModel =
         '${session['device_model'] ?? session['device_name'] ?? ''}'.trim();
     final currentModel = widget.store.deviceMetadata.model.trim();

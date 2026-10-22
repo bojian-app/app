@@ -33,6 +33,7 @@ class GuidanceParticipant {
   GuidanceParticipant(this.key, this.records);
   final String key;
   final List<Map<String, dynamic>> records;
+  int get userID => integer(records.first['reviewer_id']);
   String get name {
     final value = '${records.first['reviewer_name'] ?? ''}'.trim();
     return userDisplayName(value);
@@ -85,11 +86,13 @@ class GuidanceParticipantList extends StatelessWidget {
     required this.records,
     required this.onReview,
     required this.onRefresh,
+    this.onOpenProfile,
   });
   final String title;
   final List<Map<String, dynamic>> records;
   final ValueChanged<GuidanceParticipant> onReview;
   final Future<void> Function() onRefresh;
+  final ValueChanged<GuidanceParticipant>? onOpenProfile;
   @override
   Widget build(BuildContext context) {
     final people = guidanceParticipants(records);
@@ -176,9 +179,18 @@ class GuidanceParticipantList extends StatelessWidget {
                                 Row(
                                   children: [
                                     ProfileAvatar(
+                                      key: ValueKey(
+                                        'guidance-participant-avatar-${person.key}',
+                                      ),
                                       seed: person.seed,
                                       url: person.avatar,
                                       size: 42,
+                                      onTap:
+                                          person.userID > 0 &&
+                                              onOpenProfile != null
+                                          ? () => onOpenProfile!(person)
+                                          : null,
+                                      semanticsLabel: '查看${person.name}的主页',
                                     ),
                                     const SizedBox(width: 14),
                                     Expanded(
@@ -280,17 +292,25 @@ class GuidanceParticipantList extends StatelessWidget {
 }
 
 class GuidanceReviewHeading extends StatelessWidget {
-  const GuidanceReviewHeading({super.key, required this.participant});
+  const GuidanceReviewHeading({
+    super.key,
+    required this.participant,
+    this.onOpenProfile,
+  });
   final GuidanceParticipant participant;
+  final VoidCallback? onOpenProfile;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
     child: Row(
       children: [
         ProfileAvatar(
+          key: const ValueKey('guidance-review-avatar'),
           seed: participant.seed,
           url: participant.avatar,
           size: 28,
+          onTap: participant.userID > 0 ? onOpenProfile : null,
+          semanticsLabel: '查看${participant.name}的主页',
         ),
         const SizedBox(width: 10),
         Expanded(

@@ -9,6 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/fake_template_webview.dart';
+
+import 'package:bojian_mobile/template_live_preview.dart';
 
 class MarketGateway extends FakeGateway {
   final requests =
@@ -66,6 +69,7 @@ class MarketGateway extends FakeGateway {
       calls.add(method);
       documents['GetMeTemplates'] = {
         'items': [
+          ...?documents['GetMeTemplates']?['items'] as List?,
           {'id': 7, 'name': '商务设计', 'source': 'ACQUIRED'},
         ],
       };
@@ -86,8 +90,24 @@ void main() {
   late MarketGateway api;
   late AppStore store;
   late TemplateMarketStore market;
+  late FakeTemplateWebView preview;
+  Future<void> settlePreview(WidgetTester tester) async {
+    await tester.runAsync(() async {
+      await tester.pump();
+      await preview.loaded.future.timeout(const Duration(seconds: 5));
+    });
+    await tester.pumpAndSettle();
+  }
+
   setUp(() async {
     api = MarketGateway();
+    preview = FakeTemplateWebView()..install();
+    api.documents['GetTemplatesIdDom'] = {
+      'template_id': 7,
+      'version': 1,
+      'html': '<h1>{{name}}</h1>',
+      'css': '',
+    };
     store = AppStore(api: api, storage: MemoryStorage());
     await store.initialize();
     store.session = {'access_token': 'test'};
@@ -98,6 +118,8 @@ void main() {
       'price_points': 80,
       'pricing_type': 'PAID',
       'revision': 3,
+      'version': 1,
+      'creator_name': '模板作者',
       'compatible': true,
       'status': 'PUBLISHED',
     };
@@ -277,6 +299,99 @@ void main() {
       expect(api.calls, isNot(contains('PostTemplateOrders')));
     },
   );
+  for (final price in [0, 80]) {
+    testWidgets('Author acquires own $price-point template and uses it', (
+      tester,
+    ) async {
+      api.documents['GetTemplatesId']!.addAll({
+        'price_points': price,
+        'pricing_type': price == 0 ? 'FREE' : 'PAID',
+      });
+      api.documents['GetMeTemplates'] = {
+        'items': [
+          {'id': 7, 'name': '商务设计', 'source': 'PUBLISHED_BY_ME'},
+        ],
+      };
+      api.failing = 'GetWallet';
+      int? usedID;
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.runAsync(() async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: appTheme,
+            home: TemplateMarketDetail(
+              market: market,
+              template: {'id': 7, 'name': '商务设计'},
+              onUseTemplate: (_, template) => usedID = template['id'] as int,
+            ),
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await settlePreview(tester);
+      expect(find.text('免费获取'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(() async {
+        await tester.tap(find.text('免费获取'));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('使用模板'), findsOneWidget);
+      expect(find.text('购买模板'), findsNothing);
+      expect(api.calls, isNot(contains('PostTemplateOrders')));
+      expect(market.authored, {7});
+      expect(market.ownedIDs, {7});
+      market.select(TemplateMarketFilter.owned);
+      expect(market.visible.single['id'], 7);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('使用模板'));
+      expect(usedID, 7);
+      await tester.runAsync(
+        () => market.acquire(
+          id: 7,
+          quotedPrice: price,
+          quotedRevision: 3,
+          idempotencyKey: 'retry-author',
+        ),
+      );
+      expect(
+        api.requests.where((r) => r.method == 'PostTemplatesIdAcquisitions'),
+        hasLength(1),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+  test(
+    'Author cannot acquire an unpublished or incompatible template',
+    () async {
+      api.documents['GetMeTemplates'] = {
+        'items': [
+          {'id': 7, 'source': 'PUBLISHED_BY_ME'},
+        ],
+      };
+      for (final changes in [
+        {'status': 'DRAFT', 'compatible': true},
+        {'status': 'PUBLISHED', 'compatible': false},
+      ]) {
+        api.documents['GetTemplatesId']!.addAll(changes);
+        await expectLater(
+          market.acquire(
+            id: 7,
+            quotedPrice: 80,
+            quotedRevision: 3,
+            idempotencyKey: 'unavailable-author',
+          ),
+          throwsA(isA<ApiFailure>()),
+        );
+      }
+      expect(api.calls, isNot(contains('PostTemplatesIdAcquisitions')));
+      expect(api.calls, isNot(contains('PostTemplateOrders')));
+    },
+  );
   testWidgets(
     'Market uses actual preview cards, supports filters and landscape layout',
     (tester) async {
@@ -347,7 +462,7 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
-    await tester.pumpAndSettle();
+    await settlePreview(tester);
     await tester.tap(find.text('积分购买'));
     await tester.pumpAndSettle();
     expect(find.text('本次使用 80 积分'), findsOneWidget);
@@ -371,4 +486,106 @@ void main() {
       expect(store.resumes.single.marketTemplateID, 7);
     },
   );
+  for (final dark in [false, true]) {
+    testWidgets(
+      'Fullscreen reuses loaded preview and returns without another DOM request ($dark)',
+      (tester) async {
+        tester.view.physicalSize = dark
+            ? const Size(320, 640)
+            : const Size(844, 390);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        api.documents['GetTemplatesId']!.addAll({
+          'name': '简洁清晰的个人简历模板，适用于不同工作阶段',
+          'creator_name': '一位名字很长的模板作者，认真设计每一份简历',
+        });
+        await tester.runAsync(() async {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: dark ? appDarkTheme : appTheme,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(dark ? 1.6 : 1)),
+                child: child!,
+              ),
+              home: TemplateMarketDetail(
+                market: market,
+                template: {'id': 7},
+                onUseTemplate: (_, _) {},
+              ),
+            ),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        });
+        await settlePreview(tester);
+        expect(find.byType(MarketTemplateArtwork), findsNothing);
+        expect(find.byType(TemplateLivePreview), findsOneWidget);
+        expect(find.text('积分购买'), findsOneWidget);
+        expect(api.calls, isNot(contains('GetTemplatesIdPreviewAssets')));
+        expect(tester.takeException(), isNull);
+        final web = preview.controllers.single;
+        final element = tester.element(find.byType(TemplateLivePreview));
+        final inlineSize = tester.getSize(find.byType(TemplateLivePreview));
+        for (final page in [1, 0]) {
+          web.message('{"type":"open-page","index":$page}');
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 45));
+          final transition = tester.widget<FadeTransition>(
+            find.byKey(const ValueKey('template-preview-transition')),
+          );
+          expect(transition.opacity.value, greaterThan(0));
+          expect(transition.opacity.value, lessThan(1));
+          expect(tester.getSize(find.byType(TemplateLivePreview)), inlineSize);
+          // Repeated taps during the outgoing animation must not restart it.
+          web.message('{"type":"open-page","index":$page}');
+          await tester.pumpAndSettle();
+          expect(preview.controllers, hasLength(1));
+          expect(web.loadCount, 1);
+          expect(
+            tester.element(find.byType(TemplateLivePreview)),
+            same(element),
+          );
+          expect(
+            web.scripts,
+            contains('window.setPreviewMode?.(true, $page);'),
+          );
+          expect(find.text('积分购买'), findsNothing);
+          expect(
+            tester.getSize(find.byType(TemplateLivePreview)).width,
+            greaterThan(inlineSize.width),
+          );
+          expect(
+            find.bySemanticsLabel('2 页简历预览，作者水印：一位名字很长的模板作者，认真设计每一份简历'),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+          if (page == 1) {
+            await tester.tap(find.byTooltip('返回模板详情'));
+          } else {
+            await tester.binding.handlePopRoute();
+          }
+          await tester.pumpAndSettle();
+          expect(
+            web.scripts,
+            contains('window.setPreviewMode?.(false, $page);'),
+          );
+          expect(find.text('积分购买'), findsOneWidget);
+          expect(tester.getSize(find.byType(TemplateLivePreview)), inlineSize);
+          expect(
+            tester.element(find.byType(TemplateLivePreview)),
+            same(element),
+          );
+          expect(tester.takeException(), isNull);
+        }
+        expect(preview.controllers, hasLength(1));
+        expect(web.loadCount, 1);
+        expect(
+          api.requests.where((r) => r.method == 'GetTemplatesIdDom'),
+          hasLength(1),
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 }

@@ -19,7 +19,7 @@ Future<void> launch(
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MyApp(
-      nativeStartup: true,
+      startupAdsEnabled: false,
       store: store ?? await testStore(authenticated: true),
     ),
   );
@@ -148,7 +148,7 @@ void main() {
       expect(find.byKey(const ValueKey('discovery-resume-card')), findsNothing);
       expect(find.text('创建我的简历'), findsNothing);
       expect(find.text('待完善简历'), findsNothing);
-      expect(find.text('企业福利'), findsOneWidget);
+      expect(find.text('企业福利'), findsNothing);
       expect(tester.takeException(), isNull);
     }
   });

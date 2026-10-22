@@ -12,6 +12,7 @@ class StoryAuthorIdentity extends StatelessWidget {
     this.name,
     this.flat = false,
     this.fontWeight = FontWeight.w600,
+    this.metadataTrailing,
   });
 
   final Story story;
@@ -19,6 +20,7 @@ class StoryAuthorIdentity extends StatelessWidget {
   final String? name;
   final bool flat;
   final FontWeight fontWeight;
+  final Widget? metadataTrailing;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -39,16 +41,32 @@ class StoryAuthorIdentity extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: flat ? 13 : 11, fontWeight: fontWeight),
           ),
-          if (location.isNotEmpty) ...[
+          if (location.isNotEmpty || metadataTrailing != null) ...[
             const SizedBox(height: 3),
-            Text(
-              'IP属地：$location',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            DefaultTextStyle.merge(
               style: TextStyle(
                 fontSize: flat ? 10 : 9.5,
                 color: context.colors.muted,
                 height: 1.25,
+              ),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 3,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (location.isNotEmpty)
+                    Text(
+                      'IP属地：$location',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: flat ? 10 : 9.5,
+                        color: context.colors.muted,
+                        height: 1.25,
+                      ),
+                    ),
+                  ?metadataTrailing,
+                ],
               ),
             ),
           ],

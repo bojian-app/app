@@ -17,12 +17,13 @@ class ArticleCommentTile extends StatelessWidget {
     this.onReply,
     this.onLike,
     this.onDislike,
+    this.onAuthorTap,
     this.pending = false,
   });
   final ArticleComment comment;
   final int articleAuthorID, currentUserID;
   final bool nested;
-  final VoidCallback? onReply, onLike, onDislike;
+  final VoidCallback? onReply, onLike, onDislike, onAuthorTap;
   final bool pending;
 
   @override
@@ -81,6 +82,7 @@ class ArticleCommentTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipOval(
+            key: ValueKey('comment-avatar-${comment.id}'),
             child: comment.deleted
                 ? Container(
                     width: nested ? 24 : 32,
@@ -100,6 +102,8 @@ class ArticleCommentTile extends StatelessWidget {
                         : comment.author,
                     url: comment.avatarURL,
                     size: nested ? 24 : 32,
+                    onTap: comment.authorID > 0 ? onAuthorTap : null,
+                    semanticsLabel: '查看${userDisplayName(comment.author)}的主页',
                   ),
           ),
           SizedBox(width: nested ? 8 : 10),

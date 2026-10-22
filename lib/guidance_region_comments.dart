@@ -10,6 +10,7 @@ import 'profile_avatar.dart';
 import 'resume_updated_label.dart';
 import 'design.dart';
 import 'resume_guidance_annotations.dart';
+import 'user_profile_page.dart';
 
 String _commentAuthor(Map? item) {
   final name = '${item?['reviewer_name'] ?? ''}'.trim();
@@ -391,10 +392,19 @@ class _RegionCommentsState extends State<_RegionComments>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipOval(
+            key: ValueKey('region-avatar-${_commentKey(item)}'),
             child: ProfileAvatar(
               seed: '${item['reviewer_id'] ?? item['id']}',
               url: '${item['reviewer_avatar_url'] ?? ''}',
               size: nested ? 24 : 32,
+              onTap: integer(item['reviewer_id']) > 0
+                  ? () => openUserProfile(
+                      context,
+                      store: widget.store,
+                      userID: integer(item['reviewer_id']),
+                    )
+                  : null,
+              semanticsLabel: '查看${_commentAuthor(item)}的主页',
             ),
           ),
           SizedBox(width: nested ? 8 : 10),

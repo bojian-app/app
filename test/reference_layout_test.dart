@@ -103,14 +103,14 @@ void main() {
         );
         await tester.pumpAndSettle();
         final story = store.stories.single;
-        expect(find.text('企业福利'), findsOneWidget);
+        expect(find.text('企业福利'), findsNothing);
         expect(
           find.byKey(const ValueKey('discovery-resume-card')),
           findsNothing,
         );
         expect(
           tester.getTopLeft(find.byType(TabBar)).dy,
-          lessThan(tester.getTopLeft(find.text('企业福利')).dy),
+          lessThan(tester.getTopLeft(find.byType(StoryCard)).dy),
         );
         if (config.size.height < 500) {
           await tester.drag(

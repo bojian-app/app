@@ -9,6 +9,19 @@ import 'discovery.dart';
 import 'profile_identity.dart';
 import 'public_profile_controller.dart';
 
+Future<void> openUserProfile(
+  BuildContext context, {
+  required AppStore store,
+  required int userID,
+}) async {
+  if (userID <= 0 ||
+      !context.mounted ||
+      ModalRoute.of(context)?.isCurrent == false) {
+    return;
+  }
+  await openPage<void>(context, UserProfilePage(store: store, userID: userID));
+}
+
 class UserProfilePage extends StatefulWidget {
   const UserProfilePage({super.key, required this.store, required this.userID});
   final AppStore store;

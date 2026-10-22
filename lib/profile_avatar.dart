@@ -35,19 +35,23 @@ class ProfileAvatar extends StatelessWidget {
     this.file,
     this.size = 36,
     this.borderRadius,
+    this.onTap,
+    this.semanticsLabel = '查看用户主页',
   });
   final String seed, url;
   final int? variant;
   final XFile? file;
   final double size;
   final double? borderRadius;
+  final VoidCallback? onTap;
+  final String semanticsLabel;
   @override
   Widget build(BuildContext context) {
     final fallback = CustomPaint(
       painter: SystemAvatarPainter(variant ?? assignedAvatar(seed)),
       size: Size.square(size),
     );
-    return ClipRRect(
+    final avatar = ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius ?? size * .34),
       child: SizedBox.square(
         dimension: size,
@@ -66,6 +70,16 @@ class ProfileAvatar extends StatelessWidget {
                     .ceil(),
                 errorBuilder: (_, _, _) => fallback,
               ),
+      ),
+    );
+    if (onTap == null) return avatar;
+    return Semantics(
+      button: true,
+      label: semanticsLabel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: avatar,
       ),
     );
   }

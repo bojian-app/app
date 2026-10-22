@@ -195,10 +195,9 @@ class TemplateMarketStore extends ChangeNotifier {
     if (!valid) throw const ApiFailure('登录状态已变化，请重试');
     if (ownedError != null) throw ApiFailure(ownedError!);
     if (ownedIDs.contains(id)) {
-      if (quotedPrice > 0) await syncWallet();
+      if (quotedPrice > 0 && !authored.contains(id)) await syncWallet();
       return;
     }
-    if (authored.contains(id)) throw const ApiFailure('这是你发布的模板，无需购买');
     final detail = await store.request('GetTemplatesId', path: {'id': '$id'});
     if (!valid) throw const ApiFailure('登录状态已变化，请重试');
     if (integer(detail.data['price_points']) != quotedPrice ||
@@ -209,7 +208,8 @@ class TemplateMarketStore extends ChangeNotifier {
         detail.data['status'] != 'PUBLISHED') {
       throw const ApiFailure('模板暂不可用');
     }
-    if (quotedPrice == 0 && detail.data['pricing_type'] == 'FREE') {
+    if (authored.contains(id) ||
+        (quotedPrice == 0 && detail.data['pricing_type'] == 'FREE')) {
       await store.request(
         'PostTemplatesIdAcquisitions',
         path: {'id': '$id'},

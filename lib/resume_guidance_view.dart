@@ -15,6 +15,7 @@ import 'resume_document.dart';
 import 'resume_guidance_privacy.dart';
 import 'resume_guidance_annotations.dart';
 import 'resume_guidance_review.dart';
+import 'user_profile_page.dart';
 
 class ResumeGuidanceView extends StatefulWidget {
   const ResumeGuidanceView({
@@ -754,11 +755,21 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
                 records: records,
                 onReview: openReviewer,
                 onRefresh: load,
+                onOpenProfile: (person) => openUserProfile(
+                  context,
+                  store: widget.store,
+                  userID: person.userID,
+                ),
               )
             : Column(
                 children: [
                   if (ownerReview && reviewerRecords.isNotEmpty)
                     GuidanceReviewHeading(
+                      onOpenProfile: () => openUserProfile(
+                        context,
+                        store: widget.store,
+                        userID: integer(reviewerRecords.first['reviewer_id']),
+                      ),
                       participant: GuidanceParticipant(
                         reviewerKey!,
                         reviewerRecords,

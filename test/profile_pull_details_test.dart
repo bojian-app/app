@@ -39,7 +39,7 @@ Future<AppStore> mount(
     RepaintBoundary(
       key: surface,
       child: realApp
-          ? MyApp(nativeStartup: true, store: store)
+          ? MyApp(startupAdsEnabled: false, store: store)
           : MaterialApp(
               debugShowCheckedModeBanner: false,
               theme: (dark ? appDarkTheme : appTheme).copyWith(

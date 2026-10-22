@@ -18,7 +18,7 @@ void main() {
         addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
         final store = await testStore(authenticated: true, seeded: true);
 
-        await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+        await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('nav-3')));
         await tester.pumpAndSettle();

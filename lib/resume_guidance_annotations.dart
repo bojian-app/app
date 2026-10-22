@@ -11,6 +11,7 @@ import 'app_icons.dart';
 import 'profile_avatar.dart';
 import 'resume_updated_label.dart';
 import 'resume_guidance_review.dart';
+import 'user_profile_page.dart';
 
 String guidanceFieldText(Map snapshot, String path) {
   dynamic value = snapshot;
@@ -453,9 +454,21 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
           Row(
             children: [
               ProfileAvatar(
+                key: ValueKey(
+                  'guidance-record-avatar-${guidanceRecordKey(item)}',
+                ),
                 seed: '${item['reviewer_id'] ?? guidanceReviewerKey(item)}',
                 url: '${item['reviewer_avatar_url'] ?? ''}',
                 size: 32,
+                onTap: integer(item['reviewer_id']) > 0
+                    ? () => openUserProfile(
+                        context,
+                        store: widget.store,
+                        userID: integer(item['reviewer_id']),
+                      )
+                    : null,
+                semanticsLabel:
+                    '查看${userDisplayName(item['reviewer_name'])}的主页',
               ),
               const SizedBox(width: 10),
               Expanded(

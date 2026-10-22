@@ -15,7 +15,6 @@ abstract final class AppIcons {
   static const moveUp = HugeIcons.strokeRoundedArrowUp01;
   static const moveDown = HugeIcons.strokeRoundedArrowDown01;
   static const delete = HugeIcons.strokeRoundedDelete02;
-  static const companyBenefits = HugeIcons.strokeRoundedBuilding03;
   static const location = HugeIcons.strokeRoundedLocation01;
   static const filter = HugeIcons.strokeRoundedFilterHorizontal;
   static const work = HugeIcons.strokeRoundedBriefcase01;
@@ -99,6 +98,7 @@ abstract final class AppIcons {
   static const refresh = HugeIcons.strokeRoundedRefresh;
   static const hideKeyboard = HugeIcons.strokeRoundedKeyboard;
   static const menu = HugeIcons.strokeRoundedMenu01;
+  static const scan = HugeIcons.strokeRoundedScan;
   static const coins = HugeIcons.strokeRoundedCoins01;
 }
 

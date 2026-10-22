@@ -3,9 +3,11 @@ import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/design.dart';
+import 'package:bojian_mobile/developer_verification_page.dart';
 import 'package:bojian_mobile/my_articles_page.dart';
 import 'package:bojian_mobile/profile_avatar.dart';
 import 'package:bojian_mobile/profile_identity.dart';
+import 'package:bojian_mobile/points_page.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/saved_articles_page.dart';
 import 'package:flutter/material.dart';
@@ -156,6 +158,60 @@ Future<void> pullAt(WidgetTester tester, Offset start) async {
 }
 
 void main() {
+  for (final dark in [false, true]) {
+    testWidgets(
+      'Certified profile displays its badge and removes the application, dark=$dark',
+      (tester) async {
+        final api = ProfileContentGateway()
+          ..documents['GetMeIdentityVerification'] = {
+            'status': 'VERIFIED',
+            'valid_until': '2099-12-31',
+          };
+        await mount(
+          tester,
+          api,
+          size: const Size(320, 700),
+          scale: 2,
+          dark: dark,
+        );
+        expect(
+          find.byKey(const ValueKey('profile-developer-badge')),
+          findsOneWidget,
+        );
+        expect(find.text('开发者认证'), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('profile-menu')));
+        await tester.pumpAndSettle();
+        expect(find.text('申请开发者认证'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'The open profile menu updates when the server confirms certification',
+    (tester) async {
+      final api = ProfileContentGateway();
+      final store = await mount(tester, api);
+      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await tester.pumpAndSettle();
+      expect(find.text('申请开发者认证'), findsOneWidget);
+      api.documents['GetMeIdentityVerification'] = {
+        'status': 'VERIFIED',
+        'valid_until': '2099-12-31',
+      };
+      await store.load('identity');
+      await tester.pumpAndSettle();
+      expect(find.text('申请开发者认证'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('profile-developer-badge')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final tab in ['articles', 'saved', 'resumes']) {
     testWidgets('Pulling $tab refreshes only the touched content region', (
       tester,
@@ -529,6 +585,81 @@ void main() {
   );
 
   testWidgets(
+    'Menu identity updates live and points keeps the drawer for return',
+    (tester) async {
+      final api = ProfileContentGateway();
+      final store = await mount(tester, api, shell: true);
+      store.points = null;
+      store.changed();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await tester.pumpAndSettle();
+      final identity = find.byKey(const ValueKey('profile-menu-identity'));
+      final avatar = tester.widget<ProfileAvatar>(
+        find.descendant(of: identity, matching: find.byType(ProfileAvatar)),
+      );
+      expect(avatar.seed, '${store.userID}');
+      expect(avatar.url, store.avatarURL);
+      expect(avatar.size, 44);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('profile-menu-balance')))
+            .data,
+        '积分余额：—',
+      );
+      store.name = '更新后的昵称';
+      store.points = 321;
+      store.changed();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('profile-menu-name')))
+            .data,
+        '更新后的昵称',
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('profile-menu-balance')))
+            .data,
+        '积分余额：321',
+      );
+      final close = find.byKey(const ValueKey('profile-menu-close'));
+      final scan = find.byKey(const ValueKey('profile-menu-scan'));
+      expect(tester.getCenter(close).dx, lessThan(tester.getCenter(scan).dx));
+      expect(tester.widget<IconButton>(scan).onPressed, isNotNull);
+      final calls = List<String>.of(api.calls);
+      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+      expect(api.calls, calls);
+      await tester.tap(find.byKey(const ValueKey('profile-menu-points')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profile-drawer')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.byType(PointsPage), findsOneWidget);
+      expect(
+        tester
+            .state<AppShellState>(find.byType(AppShell, skipOffstage: false))
+            .selected,
+        3,
+      );
+      expect(api.calls, isNot(contains('PostWalletDailyRewardClaims')));
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+      expect(find.text('积分余额：${store.points}'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'The left menu opens a dedicated draft box and preserves profile tabs',
     (tester) async {
       final api = ProfileContentGateway();
@@ -553,6 +684,18 @@ void main() {
       expect(api.statuses, ['PUBLISHED', 'DRAFT']);
       expect(find.byKey(const ValueKey('articles-SUBMITTED')), findsNothing);
       await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+      // A second visit reuses the same retained drawer, without stacking menus.
+      await tester.tap(find.text('草稿箱'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
+        findsOneWidget,
+      );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
       await tester.pumpAndSettle();
       expect(tabs(tester).index, 0);
       expect(
@@ -598,6 +741,32 @@ void main() {
       expect(find.byKey(const ValueKey('profile-tabs')), findsNothing);
       expect(find.byType(SettingsPage), findsNothing);
       expect(find.byType(MyArticlesPage), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Signing out beneath an opened destination removes the retained drawer',
+    (tester) async {
+      final store = await mount(tester, ProfileContentGateway());
+      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('隐私与设置'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsPage), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
+        findsOneWidget,
+      );
+      await store.endSession(remote: false);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
+        findsNothing,
+      );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profile-menu-identity')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -664,6 +833,10 @@ void main() {
     testWidgets('Profile menu and all pages remain usable at $config', (
       tester,
     ) async {
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 20);
+      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 20);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
       final api = ProfileContentGateway();
       final store = await mount(
         tester,
@@ -681,10 +854,57 @@ void main() {
       expect(find.byKey(const ValueKey('profile-points-card')), findsNothing);
       expect(find.text('模板市场'), findsNothing);
       expect(find.text('身份认证'), findsNothing);
+      final drawer = find.byKey(const ValueKey('profile-drawer'));
+      final drawerRect = tester.getRect(drawer);
+      final signOut = find.byKey(const ValueKey('account-sign-out'));
+      final signOutRect = tester.getRect(signOut);
+      expect(drawerRect.width, lessThanOrEqualTo(280));
+      expect(signOutRect.bottom, closeTo(config.size.height - 20 - 16, .01));
+      expect(signOut.hitTestable(), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('profile-menu-close'))),
+        const Size(44, 44),
+      );
+      final draftRow = find.widgetWithText(ListTile, '草稿箱');
+      if (config.scale == 1) {
+        expect(tester.getSize(draftRow).height, 48);
+        expect(signOutRect.height, 44);
+      }
+      expect(
+        find.descendant(of: drawer, matching: find.byType(Divider)),
+        findsNothing,
+      );
       final menuScroll = find.descendant(
         of: find.byKey(const ValueKey('profile-drawer')),
         matching: find.byType(Scrollable),
       );
+      await tester.scrollUntilVisible(
+        find.text('申请开发者认证'),
+        100,
+        scrollable: menuScroll,
+      );
+      await tester.ensureVisible(find.text('申请开发者认证'));
+      await tester.pumpAndSettle();
+      final callsBeforeCertification = List<String>.of(api.calls);
+      await tester.tap(find.text('申请开发者认证'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DeveloperVerificationPage), findsOneWidget);
+      expect(find.text('本人实名认证'), findsOneWidget);
+      final titleRect = tester.getRect(find.text('开发者认证'));
+      expect(
+        titleRect.left,
+        greaterThanOrEqualTo(tester.getRect(find.byType(BackButton)).right),
+      );
+      expect(titleRect.left, lessThan(config.size.width / 3));
+      expect(find.byTooltip('认证帮助'), findsNothing);
+      expect(find.text('当前仅本机预览，暂不提交认证资料'), findsNothing);
+      expect(find.text('请使用本人有效证件，确保信息真实、照片清晰'), findsNothing);
+      expect(api.calls, callsBeforeCertification);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('开发者认证暂未开放'), findsNothing);
+      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+      expect(tester.takeException(), isNull);
       await tester.scrollUntilVisible(
         find.text('隐私与设置'),
         100,
@@ -696,6 +916,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SettingsPage), findsOneWidget);
       await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
       await tester.pumpAndSettle();
       expect(tabs(tester).index, 0);
       nested(tester).outerController

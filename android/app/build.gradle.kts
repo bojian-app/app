@@ -18,7 +18,7 @@ android {
         applicationId = "cn.kelance.bojian"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
@@ -48,6 +48,10 @@ flutter {
 }
 
 dependencies {
+    implementation("com.pangle.cn:mediation-sdk:7.8.1.4")
+    implementation(fileTree("libs/baidu-face") { include("*.aar") })
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // 0.2.0.11's polaris dependency is unavailable from the documented repository.
     val douyinSdkVersion = "0.2.0.10"
     implementation("com.bytedance.ies.ugc.aweme:opensdk-china-external:$douyinSdkVersion")

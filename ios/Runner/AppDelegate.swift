@@ -1,10 +1,12 @@
 import Flutter
 import UIKit
 import DouyinOpenSDK
+import BojianBaiduFaceSDK
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var douyinLogin: BojianDouyinLogin?
+  private var baiduFace: BojianNativeFaceBridge?
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -16,6 +18,9 @@ import DouyinOpenSDK
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianDouyinLogin") {
       douyinLogin = BojianDouyinLogin(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianNativeFace") {
+      baiduFace = BojianNativeFaceBridge(messenger: registrar.messenger())
     }
     guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianDeviceMetadata") else { return }
     FlutterMethodChannel(name: "cn.kelance.bojian/settings", binaryMessenger: registrar.messenger())
@@ -154,4 +159,40 @@ final class BojianDouyinLogin: NSObject, DouyinOpenSDKLogDelegate {
 
   // Provider authorization codes and tokens must not be forwarded to app logs.
   func onLog(_ logInfo: String) {}
+}
+
+
+final class BojianNativeFaceBridge {
+  private let sdk = BJNativeFace()
+  private let channel: FlutterMethodChannel
+  private var pendingSession: String?
+  init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: "cn.kelance.bojian/identity_face", binaryMessenger: messenger)
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self else { return result(FlutterError(code: "UNAVAILABLE", message: "人脸核验不可用", details: nil)) }
+      let args = call.arguments as? [String: Any] ?? [:]
+      switch call.method {
+      case "available": result(["available": self.sdk.available(), "plan_id": "27030"])
+      case "cancel":
+        if args["session_id"] as? String == self.pendingSession { self.sdk.cancel() }
+        result(nil)
+      case "verify":
+        guard self.pendingSession == nil else { return result(FlutterError(code: "BUSY", message: "正在进行人脸核验", details: nil)) }
+        guard let session = args["session_id"] as? String, session.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil,
+              let token = args["native_token"] as? String, !token.isEmpty, token.count <= 512,
+              args["plan_id"] as? String == "27030", args["match_source"] as? Int == 0, args["consent"] as? Bool == true,
+              let presenter = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap({ $0.windows }).first(where: { $0.isKeyWindow })?.rootViewController else {
+          return result(FlutterError(code: "INVALID_REQUEST", message: "人脸核验参数无效", details: nil))
+        }
+        self.pendingSession = session
+        self.sdk.verify(token: token, session: session, presenter: presenter, accent: (args["accent_color"] as? NSNumber) ?? 0xFF2867EE, dark: args["dark"] as? Bool ?? false) { [weak self] code in
+          guard let self, self.pendingSession == session else { return }
+          self.pendingSession = nil
+          if code == 0 || code == -102 { result(["session_id": session, "cancelled": code == -102]) }
+          else { result(FlutterError(code: "VERIFY_FAILED", message: "人脸核验未完成（\(code)），请重试", details: nil)) }
+        }
+      default: result(FlutterMethodNotImplemented)
+      }
+    }
+  }
 }

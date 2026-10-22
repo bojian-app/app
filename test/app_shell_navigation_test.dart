@@ -192,10 +192,10 @@ void main() {
     (tester) async {
       await _showShell(tester);
       expect(
-        find.byKey(const ValueKey('discovery-company-benefits')).hitTestable(),
+        find.byKey(const ValueKey('discovery-messages')).hitTestable(),
         findsOneWidget,
       );
-      expect(find.semantics.byLabel(RegExp('企业福利')), findsOneWidget);
+      expect(find.semantics.byLabel(RegExp('推荐')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
 
@@ -209,10 +209,10 @@ void main() {
       expect(middleOpacity, greaterThan(startOpacity));
       expect(middleOpacity, lessThan(1));
       expect(
-        find.byKey(const ValueKey('discovery-company-benefits')).hitTestable(),
+        find.byKey(const ValueKey('discovery-messages')).hitTestable(),
         findsNothing,
       );
-      expect(find.semantics.byLabel(RegExp('企业福利')), findsNothing);
+      expect(find.semantics.byLabel(RegExp('推荐')), findsNothing);
       expect(find.text('我的积分').hitTestable(), findsOneWidget);
       expect(find.semantics.byLabel(RegExp('可用积分')), findsOneWidget);
       expect(
@@ -268,7 +268,7 @@ void main() {
         findsNothing,
       );
       expect(find.semantics.byLabel(RegExp('可用积分')), findsNothing);
-      expect(find.semantics.byLabel(RegExp('企业福利')), findsNothing);
+      expect(find.semantics.byLabel(RegExp('推荐')), findsNothing);
       expect(
         TickerMode.valuesOf(tester.element(find.byType(ProfilePage))).enabled,
         isTrue,

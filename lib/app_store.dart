@@ -597,6 +597,27 @@ class AppStore extends ChangeNotifier {
   bool restoring = true;
   bool isGuest = false;
   bool get isAuthenticated => session != null;
+  bool? _identityVerified;
+  int _identityRevision = 0;
+  bool get identityVerified => _identityVerified == true;
+  bool get canApplyDeveloperVerification => _identityVerified == false;
+
+  // Only called after the server confirms and persists a successful face result.
+  void recordIdentityVerificationSuccess({
+    required int verificationID,
+    required int expectedEpoch,
+  }) {
+    if (!alive ||
+        !isAuthenticated ||
+        epoch != expectedEpoch ||
+        verificationID <= 0) {
+      return;
+    }
+    ++_identityRevision;
+    _identityVerified = true;
+    changed();
+  }
+
   String name = '', bio = '', publicID = '', avatarURL = '';
   DateTime? registeredAt;
   String ipLocation = '';
@@ -938,6 +959,8 @@ class AppStore extends ChangeNotifier {
     ipLocation = '';
     phoneMasked = '';
     phoneBindingChecked = false;
+    _identityVerified = null;
+    ++_identityRevision;
     ++_phoneBindingRevision;
     userID = response.user.id.toInt();
     isGuest = false;
@@ -975,6 +998,8 @@ class AppStore extends ChangeNotifier {
     _deliveryPending.clear();
     ++epoch;
     session = null;
+    _identityVerified = null;
+    ++_identityRevision;
     isGuest = false;
     name = '';
     bio = '';
@@ -1024,7 +1049,15 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> loadAll() async => Future.wait(
-    ['feed', 'resumes', 'messages', 'chats', 'profile', 'templates'].map(load),
+    [
+      'feed',
+      'resumes',
+      'messages',
+      'chats',
+      'profile',
+      'identity',
+      'templates',
+    ].map(load),
   );
   Future<void> load(String section, {bool more = false}) {
     final existing = sectionRequests[section];
@@ -1133,6 +1166,36 @@ class AppStore extends ChangeNotifier {
             }
           }
           cursors[section] = v.nextCursor;
+        case 'identity':
+          final revision = _identityRevision;
+          final result = await request('GetMeIdentityVerification');
+          if (version != epoch || !alive || revision != _identityRevision) {
+            return;
+          }
+          final status = result.data['status'];
+          if (!const {
+            'NOT_VERIFIED',
+            'PENDING',
+            'REJECTED',
+            'EXPIRED',
+            'VERIFIED',
+          }.contains(status)) {
+            throw const ApiFailure('认证状态暂不可用，请稍后重试');
+          }
+          final validUntil = result.data['valid_until'];
+          if (status == 'VERIFIED' &&
+              (validUntil is! String ||
+                  DateTime.tryParse(validUntil) == null)) {
+            throw const ApiFailure('认证有效期无效，请稍后重试');
+          }
+          final today = DateTime.now()
+              .toUtc()
+              .add(const Duration(hours: 8))
+              .toIso8601String()
+              .substring(0, 10);
+          _identityVerified =
+              status == 'VERIFIED' &&
+              (validUntil as String).compareTo(today) >= 0;
         case 'profile':
           final phoneRevision = _phoneBindingRevision;
           final v = await request('GetMe');

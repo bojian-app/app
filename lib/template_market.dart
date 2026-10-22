@@ -11,6 +11,8 @@ import 'app_store.dart';
 import 'design.dart';
 import 'confirmation_dialog.dart';
 import 'template_market_store.dart';
+import 'template_live_preview.dart';
+import 'profile_avatar.dart';
 
 class TemplateMarketView extends StatefulWidget {
   const TemplateMarketView({
@@ -540,16 +542,38 @@ class TemplateMarketDetail extends StatefulWidget {
   State<TemplateMarketDetail> createState() => _TemplateMarketDetailState();
 }
 
-class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
+class _TemplateMarketDetailState extends State<TemplateMarketDetail>
+    with SingleTickerProviderStateMixin {
   late Map<String, dynamic> design = {...widget.template};
   late final purchaseKey = 'template-${widget.template['id']}-${newDeviceID()}';
-  bool loading = true, busy = false;
+  bool loading = true, busy = false, previewOpen = false;
+  final detailScroll = ScrollController();
+  bool previewTransitioning = false, closePreviewRequested = false;
+  late final previewTransition = AnimationController(
+    vsync: this,
+    value: 1,
+    duration: const Duration(milliseconds: 220),
+    reverseDuration: const Duration(milliseconds: 90),
+  );
+  late final previewOpacity = CurvedAnimation(
+    parent: previewTransition,
+    curve: Curves.easeOutCubic,
+    reverseCurve: Curves.easeInCubic,
+  );
+  late final previewSlide = Tween<Offset>(
+    begin: const Offset(0, 0.012),
+    end: Offset.zero,
+  ).animate(previewOpacity);
+  double inlineScrollOffset = 0;
+  int previewPage = 0;
   String? error;
   int? balance;
   int operation = 0;
+  Map<String, dynamic> creator = {};
   TemplateMarketStore get market => widget.market;
   int get id => integer(widget.template['id']);
   bool get acquired => market.ownedIDs.contains(id);
+  bool get authored => market.authored.contains(id);
   @override
   void initState() {
     super.initState();
@@ -562,6 +586,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
       loading = true;
       error = null;
       balance = null;
+      creator = {};
     });
     try {
       final response = await market.store.request(
@@ -572,26 +597,16 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
       if (!market.valid) throw const ApiFailure('登录状态已变化，请返回后重试');
       if (market.ownedError != null) throw ApiFailure(market.ownedError!);
       final data = {...widget.template, ...response.data};
-      if (integer(data['price_points']) > 0 &&
-          !acquired &&
-          !market.authored.contains(id)) {
+      if (integer(data['price_points']) > 0 && !acquired && !authored) {
         final wallet = await market.store.request('GetWallet');
         if (wallet.data['available_points'] == null) {
           throw const ApiFailure('积分余额暂不可用，请重试');
         }
         balance = integer(wallet.data['available_points']);
       }
-      try {
-        final preview = await market.store.request(
-          'GetTemplatesIdPreviewAssets',
-          path: {'id': '$id'},
-        );
-        data.addAll(preview.data);
-      } catch (_) {
-        /* Retain catalogue preview if assets are still generating. */
-      }
       if (mounted && request == operation && market.valid) {
         setState(() => design = data);
+        unawaited(loadCreator(data, request));
       }
     } catch (e) {
       if (mounted && request == operation) {
@@ -609,7 +624,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
       return;
     }
     final price = integer(design['price_points']);
-    if (price > 0) {
+    if (price > 0 && !authored) {
       final confirmed = await showAppConfirmation(
         context,
         title: '购买模板',
@@ -641,7 +656,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
       );
       if (mounted && market.valid) {
         setState(() => balance = market.store.points);
-        toast(context, '模板已加入我的模板');
+        toast(context, '获取成功');
       }
     } catch (e) {
       if (mounted) {
@@ -652,252 +667,449 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail> {
     }
   }
 
+  Future<void> loadCreator(Map<String, dynamic> data, int request) async {
+    final creatorID = integer(data['creator_id']);
+    if (creatorID <= 0) return;
+    try {
+      final response = await market.store.request(
+        'GetTemplateAuthorsId',
+        path: {'id': '$creatorID'},
+      );
+      if (mounted && request == operation && market.valid) {
+        setState(() => creator = response.data);
+      }
+    } catch (_) {
+      // An unavailable/private profile must not block preview or acquisition.
+      // Refreshing details also refreshes the avatar's signed URL.
+    }
+  }
+
+  String get authorName {
+    final nickname = '${creator['nickname'] ?? ''}'.trim();
+    if (nickname.isNotEmpty) return nickname;
+    final name = '${design['creator_name'] ?? ''}'.trim();
+    return name.isNotEmpty && name != '模板作者' ? name : userDisplayName(null);
+  }
+
+  String get authorAvatar {
+    final url = '${creator['avatar_url'] ?? ''}'.trim();
+    return url.isNotEmpty
+        ? url
+        : authored
+        ? market.store.avatarURL
+        : '';
+  }
+
+  String get authorProvince =>
+      '${creator['city'] ?? ''}'.trim().replaceFirst(RegExp(r'省$'), '');
+
+  String get usageLabel {
+    final count = int.tryParse('${design['usage_count'] ?? ''}');
+    if (count == null || count < 0) {
+      return loading ? '正在加载使用人数' : '使用人数暂不可用';
+    }
+    return '$count 人在用';
+  }
+
+  bool get canAcquire =>
+      !loading &&
+      !busy &&
+      error == null &&
+      market.valid &&
+      (acquired || design['status'] == 'PUBLISHED') &&
+      design['compatible'] == true;
+
+  void openPreview(int page) {
+    if (previewOpen || previewTransitioning || !mounted || !market.valid) {
+      return;
+    }
+    inlineScrollOffset = detailScroll.hasClients ? detailScroll.offset : 0;
+    unawaited(transitionPreview(true, page));
+  }
+
+  void closePreview() {
+    if (previewTransitioning) {
+      closePreviewRequested = true;
+      return;
+    }
+    if (previewOpen) unawaited(transitionPreview(false, previewPage));
+  }
+
+  Future<void> transitionPreview(bool expanded, int page) async {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    setState(() => previewTransitioning = true);
+    try {
+      if (!reduceMotion) await previewTransition.reverse().orCancel;
+      if (!mounted) return;
+      setState(() {
+        previewPage = page;
+        previewOpen = expanded;
+      });
+      restoreDetailScroll(expanded ? 0 : inlineScrollOffset);
+      if (!reduceMotion) {
+        // Change the native viewport once, while hidden. Allow its resize and
+        // page positioning to settle before revealing it; don't resize per tick.
+        await WidgetsBinding.instance.endOfFrame;
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        await previewTransition.forward().orCancel;
+      }
+    } on TickerCanceled {
+      // Leaving the screen disposes the active transition.
+    } finally {
+      if (mounted) {
+        setState(() => previewTransitioning = false);
+        if (closePreviewRequested) {
+          closePreviewRequested = false;
+          closePreview();
+        }
+      }
+    }
+  }
+
+  void restoreDetailScroll(double offset) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !detailScroll.hasClients) return;
+      detailScroll.jumpTo(
+        offset.clamp(0, detailScroll.position.maxScrollExtent),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    previewOpacity.dispose();
+    previewTransition.dispose();
+    detailScroll.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: market,
-    builder: (context, _) => Scaffold(
-      appBar: AppBar(
-        title: const Text('模板详情'),
-        centerTitle: false,
-        titleTextStyle: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-          color: context.colors.ink,
-        ),
-        actions: [
-          IconButton(
-            tooltip: '刷新详情',
-            onPressed: loading || busy ? null : load,
-            icon: const AppIcon(AppIcons.refresh, size: 20),
+    builder: (context, _) => PopScope(
+      canPop: !previewOpen && !previewTransitioning,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && (previewOpen || previewTransitioning)) closePreview();
+      },
+      child: Scaffold(
+        backgroundColor: context.colors.surface,
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: previewOpen ? '返回模板详情' : '返回',
+            onPressed: () {
+              if (previewOpen || previewTransitioning) {
+                closePreview();
+              } else {
+                Navigator.of(context).maybePop();
+              }
+            },
+            icon: AppIcon(AppIcons.back, size: 22, color: context.colors.ink),
           ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          title: Text(
+            '${design['name'] ?? '简历模板'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          backgroundColor: context.colors.surface,
+          scrolledUnderElevation: 0,
+          centerTitle: false,
+          titleSpacing: 0,
+          titleTextStyle: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: context.colors.ink,
+          ),
+        ),
+        body: IgnorePointer(
+          ignoring: previewTransitioning,
+          child: FadeTransition(
+            key: const ValueKey('template-preview-transition'),
+            opacity: previewOpacity,
+            child: SlideTransition(
+              position: previewSlide,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final preview = Column(
-                    children: [
-                      SizedBox(
-                        width: constraints.maxWidth >= 650 ? 280 : 232,
-                        child: AspectRatio(
-                          aspectRatio: 595.28 / 841.89,
-                          child: Material(
-                            color: Colors.white,
-                            elevation: 1,
-                            child: MarketTemplateArtwork(template: design),
-                          ),
+                  final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+                  final previewHeight = previewOpen
+                      ? (constraints.maxHeight - bottomInset).clamp(
+                          0.0,
+                          double.infinity,
+                        )
+                      : (constraints.maxHeight - 100).clamp(350.0, 760.0);
+                  return SingleChildScrollView(
+                    controller: detailScroll,
+                    physics: previewOpen
+                        ? const NeverScrollableScrollPhysics()
+                        : null,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: previewOpen ? double.infinity : 860,
                         ),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => _TemplateZoom(template: design),
-                          ),
-                        ),
-                        child: const Text('查看大图'),
-                      ),
-                    ],
-                  );
-                  final information = Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${design['name']}',
-                        style: const TextStyle(
-                          fontSize: 21,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '作者 · ${userDisplayName(design['creator_name'])}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.colors.muted,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      if ('${design['description'] ?? ''}'.trim().isNotEmpty)
-                        Text(
-                          '${design['description']}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            height: 1.7,
-                            color: context.colors.ink,
-                          ),
-                        ),
-                      if (acquired)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 16),
-                          child: Text(
-                            '已加入我的模板',
-                            style: TextStyle(
-                              color: Color(0xFF39816B),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      if (balance != null && !acquired)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 16),
-                          child: Text(
-                            '积分余额 ${balance!}',
-                            style: TextStyle(
-                              color: context.colors.muted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      if (!loading &&
-                          error == null &&
-                          design['compatible'] != true)
-                        Padding(
-                          padding: EdgeInsets.only(top: 16),
-                          child: Text(
-                            '模板正在准备，暂时无法获取',
-                            style: TextStyle(
-                              color: context.colors.muted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      if (loading)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 20),
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      if (error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 16),
+                        child: Padding(
+                          padding: previewOpen
+                              ? EdgeInsets.only(bottom: bottomInset)
+                              : const EdgeInsets.fromLTRB(20, 10, 20, 24),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                error!,
-                                style: const TextStyle(
-                                  color: Colors.redAccent,
-                                  fontSize: 12,
-                                  height: 1.5,
+                              // Keep the preview's element path stable when expanding:
+                              // recreating its WebView repeats font loading and pagination.
+                              Visibility(
+                                visible: !previewOpen,
+                                maintainState: true,
+                                child: Row(
+                                  children: [
+                                    ProfileAvatar(
+                                      key: const ValueKey(
+                                        'template-author-avatar',
+                                      ),
+                                      seed:
+                                          '${creator['public_id'] ?? design['creator_id'] ?? authorName}',
+                                      url: authorAvatar,
+                                      size: 30,
+                                      borderRadius: 15,
+                                    ),
+                                    const SizedBox(width: 9),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            authorName,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              height: 1.4,
+                                              fontWeight: FontWeight.w500,
+                                              color: context.colors.ink,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          DefaultTextStyle.merge(
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              height: 1.25,
+                                              color: context.colors.muted,
+                                            ),
+                                            child: Wrap(
+                                              spacing: 10,
+                                              runSpacing: 3,
+                                              children: [
+                                                if (authorProvince.isNotEmpty)
+                                                  Text(
+                                                    'IP属地：$authorProvince',
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                Text(
+                                                  usageLabel,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              TextButton(
-                                onPressed: busy ? null : load,
-                                child: const Text('刷新后重试'),
+                              SizedBox(height: previewOpen ? 0 : 20),
+                              SizedBox(
+                                height: previewHeight,
+                                child: loading
+                                    ? const Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : design['compatible'] == true &&
+                                          market.valid
+                                    ? TemplateLivePreview(
+                                        key: ValueKey('preview-$id-$operation'),
+                                        store: market.store,
+                                        templateID: id,
+                                        version: integer(design['version']),
+                                        author: authorName,
+                                        onOpenPage: openPreview,
+                                        fullscreen: previewOpen,
+                                        initialPage: previewPage,
+                                      )
+                                    : Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(24),
+                                          child: Text(
+                                            error ?? '模板正在准备，暂时无法预览',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: context.colors.muted,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                               ),
+                              if (!previewOpen &&
+                                  '${design['description'] ?? ''}'
+                                      .trim()
+                                      .isNotEmpty) ...[
+                                const SizedBox(height: 24),
+                                Text(
+                                  '关于这个模板',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: context.colors.ink,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${design['description']}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    height: 1.7,
+                                    color: context.colors.muted,
+                                  ),
+                                ),
+                              ],
+                              if (!previewOpen && error != null) ...[
+                                const SizedBox(height: 16),
+                                Text(
+                                  error!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    height: 1.5,
+                                    color: context.colors.muted,
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: busy ? null : load,
+                                  child: const Text('重试'),
+                                ),
+                              ],
                             ],
                           ),
                         ),
-                    ],
+                      ),
+                    ),
                   );
-                  return constraints.maxWidth >= 650
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: preview),
-                            const SizedBox(width: 28),
-                            Expanded(child: information),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Center(child: preview),
-                            const SizedBox(height: 12),
-                            information,
-                          ],
-                        );
                 },
               ),
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                border: Border(top: BorderSide(color: context.colors.border)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      acquired
-                          ? '已获取'
-                          : integer(design['price_points']) == 0
-                          ? '免费'
-                          : '${design['price_points']} 积分',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: context.colors.accent,
+        ),
+        bottomNavigationBar: previewOpen
+            ? null
+            : IgnorePointer(
+                ignoring: previewTransitioning,
+                child: FadeTransition(
+                  opacity: previewOpacity,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: context.colors.surface,
+                      border: Border(
+                        top: BorderSide(color: context.colors.border),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Center(
+                        heightFactor: 1,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 860),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                            child: Row(
+                              children: [
+                                if (!acquired) ...[
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          authored ||
+                                                  integer(
+                                                        design['price_points'],
+                                                      ) ==
+                                                      0
+                                              ? '免费'
+                                              : '${design['price_points']} 积分',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            height: 1.3,
+                                            fontWeight: FontWeight.w600,
+                                            color: context.colors.ink,
+                                          ),
+                                        ),
+                                        if (balance != null && !authored) ...[
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            '余额 $balance 积分',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: context.colors.muted,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                ],
+                                Expanded(
+                                  flex: acquired ? 1 : 2,
+                                  child: FilledButton(
+                                    onPressed: canAcquire ? acquire : null,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: context.colors.accent,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(0, 46),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      busy
+                                          ? '正在处理…'
+                                          : acquired
+                                          ? '使用模板'
+                                          : authored ||
+                                                integer(
+                                                      design['price_points'],
+                                                    ) ==
+                                                    0
+                                          ? '免费获取'
+                                          : '积分购买',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  FilledButton(
-                    onPressed:
-                        loading ||
-                            busy ||
-                            error != null ||
-                            !market.valid ||
-                            market.authored.contains(id) ||
-                            design['compatible'] != true
-                        ? null
-                        : acquire,
-                    child: Text(
-                      busy
-                          ? '正在处理…'
-                          : market.authored.contains(id)
-                          ? '自己发布的模板'
-                          : acquired
-                          ? '使用模板'
-                          : integer(design['price_points']) == 0
-                          ? '免费获取'
-                          : '积分购买',
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _TemplateZoom extends StatelessWidget {
-  const _TemplateZoom({required this.template});
-  final Map<String, dynamic> template;
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text('${template['name']}', style: const TextStyle(fontSize: 16)),
-    ),
-    body: InteractiveViewer(
-      minScale: 1,
-      maxScale: 4,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: AspectRatio(
-            aspectRatio: 595.28 / 841.89,
-            child: ColoredBox(
-              color: Colors.white,
-              child: MarketTemplateArtwork(template: template),
-            ),
-          ),
-        ),
       ),
     ),
   );

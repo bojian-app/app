@@ -115,7 +115,7 @@ void main() {
     expect(privacy.plainText, contains('fengzijian@kelantech.cn'));
     expect(
       privacy.sections.first.blocks.whereType<LegalSubheading>(),
-      hasLength(14),
+      hasLength(15),
     );
   });
 
@@ -128,10 +128,12 @@ void main() {
           .toList();
       expect(tables, hasLength(2));
       expect(tables.first.headers, ['系统功能', '用途']);
-      expect(tables.first.rows, hasLength(6));
+      expect(tables.first.rows, hasLength(8));
       expect(tables.first.rows.map((row) => row.first), [
         '网络（INTERNET）',
         '系统文件选择器',
+        '扫一扫相机',
+        '系统相机与照片选择器',
         '系统分享面板',
         '剪贴板写入',
         '微信与抖音可见性查询（Android）',
@@ -139,9 +141,12 @@ void main() {
       ]);
       expect(tables.first.plainText, contains('不自动读取剪贴板'));
       expect(tables.first.plainText, contains('不获取完整已安装应用列表'));
+      expect(tables.first.plainText, contains('同意后用于身份证识别'));
+      expect(tables.first.plainText, contains('相册仅访问您选中的照片'));
       expect(tables.last.headers, ['第三方', '数据与用途', '备注']);
-      expect(tables.last.rows, hasLength(5));
+      expect(tables.last.rows, hasLength(6));
       expect(tables.last.rows.map((row) => row.first), [
+        '百度智能云（百度）',
         '七牛对象存储',
         '短信服务提供方【腾讯云/配置网关，待确认】',
         '微信开放平台 SDK（腾讯，Fluwx 接入）',

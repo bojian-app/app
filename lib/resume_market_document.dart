@@ -102,10 +102,13 @@ String marketDocumentHtml({
   required String rendererScript,
   String photo = '',
   String fontStyles = '',
+  Map<String, dynamic>? fields,
+  bool marketplacePreview = false,
+  String previewScript = '',
 }) {
   final payload = jsonEncode({
     'html': dom['html'],
-    'fields': marketResumeFields(resume),
+    'fields': fields ?? marketResumeFields(resume),
     'photo': photo,
   }).replaceAll('<', r'\u003c');
   final css = (dom['css'] as String? ?? '').replaceAll(
@@ -113,7 +116,7 @@ String marketDocumentHtml({
     '< /style',
   );
   return '''<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=826,initial-scale=0.43,minimum-scale=0.3,maximum-scale=2.5">
+<meta name="viewport" content="${marketplacePreview ? 'width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=4' : 'width=826,initial-scale=0.43,minimum-scale=0.3,maximum-scale=2.5'}">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src file: data:">
 <style>$fontStyles</style><style>$css</style><style>
 html,body{margin:0!important;padding:0!important;background:#f5f7fa!important;font-family:'ResumeDocument',sans-serif!important}
@@ -126,6 +129,7 @@ html,body{margin:0!important;padding:0!important;background:#f5f7fa!important;fo
 p{white-space:pre-wrap} img{max-width:100%}
 </style></head><body><div id="flow"></div><div id="pages"></div>
 <script>const payload=$payload;</script><script>$captureScript</script><script>$rendererScript</script>
+<script>$previewScript</script>
 </body></html>''';
 }
 

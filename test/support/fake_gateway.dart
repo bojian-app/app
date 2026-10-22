@@ -53,6 +53,7 @@ class FakeGateway implements ApiGateway {
   Map<String, dynamic>? lastMutationBody;
   Map<String, String>? lastHeaders;
   FakeGateway({bool seeded = false}) {
+    documents['GetMeIdentityVerification'] = {'status': 'NOT_VERIFIED'};
     documents['GetMe'] = {
       'nickname': '测试账号',
       'bio': '',

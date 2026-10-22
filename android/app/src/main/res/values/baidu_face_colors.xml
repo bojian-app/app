@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="face_liveness_progress_border">#2867EE</color>
+    <color name="face_liveness_progress_border_black">#8AB4FF</color>
+    <color name="face_liveness_progress_border_custom">#2867EE</color>
+    <color name="face_liveness_result_recollect_bg">#2867EE</color>
+    <color name="face_liveness_result_recollect_bg_black">#8AB4FF</color>
+    <color name="face_liveness_result_recollect_bg_custom">#2867EE</color>
+    <color name="face_liveness_timeout_dialog_recollect_bg">#2867EE</color>
+    <color name="face_liveness_timeout_dialog_recollect_bg_black">#8AB4FF</color>
+    <color name="face_liveness_timeout_dialog_recollect_bg_custom">#2867EE</color>
+</resources>

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'app_icons.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'developer_certification_badge.dart';
 import 'profile_avatar.dart';
 import 'profile_identity_data.dart';
 export 'profile_identity_data.dart';
@@ -116,6 +117,13 @@ class ProfileHeader extends StatelessWidget {
       final t = collapseProgress;
       final inset = MediaQuery.paddingOf(context).top;
       final width = constraints.maxWidth;
+      final certified = identity == null && store.identityVerified;
+      final badgeSize = ui.lerpDouble(
+        DeveloperCertificationBadge.expandedSize,
+        DeveloperCertificationBadge.compactSize,
+        t,
+      )!;
+      final badgeGap = ui.lerpDouble(6, 4, t)!;
       final toolbar = toolbarHeight(context);
       final color = Color.lerp(
         Colors.white,
@@ -134,15 +142,27 @@ class ProfileHeader extends StatelessWidget {
       );
       // Reserve the expanded name's height while its one existing Text moves.
       // Its changing font/width must not change the Sliver's natural extent.
-      final namePainter = TextPainter(
-        text: TextSpan(text: userDisplayName(data.name), style: sourceStyle),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-        locale: Localizations.maybeLocaleOf(context),
-        maxLines: 2,
-        ellipsis: '…',
-      )..layout(maxWidth: width - 32);
-      final nameHeight = namePainter.height;
+      final namePainter =
+          TextPainter(
+            text: TextSpan(
+              text: userDisplayName(data.name),
+              style: sourceStyle,
+            ),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+            locale: Localizations.maybeLocaleOf(context),
+            maxLines: 2,
+            ellipsis: '…',
+          )..layout(
+            maxWidth:
+                width -
+                32 -
+                (certified ? DeveloperCertificationBadge.expandedSize + 6 : 0),
+          );
+      final nameHeight = namePainter.height.clamp(
+        certified ? DeveloperCertificationBadge.expandedSize : 0.0,
+        double.infinity,
+      );
       final avatarTop = inset + toolbar + 24 + pullProgress * pullExtent;
       final nameTop = avatarTop + 106;
       final nameWidth = ui.lerpDouble(
@@ -173,11 +193,23 @@ class ProfileHeader extends StatelessWidget {
       namePainter
         ..text = TextSpan(text: userDisplayName(data.name), style: nameStyle)
         ..maxLines = t == 1 ? 1 : 2
-        ..layout(maxWidth: nameWidth);
-      final surfaceHeight = (nameY + namePainter.height).clamp(
-        inset + toolbar,
-        double.infinity,
-      );
+        ..layout(
+          maxWidth: (nameWidth - (certified ? badgeSize + badgeGap : 0)).clamp(
+            0,
+            width,
+          ),
+        );
+      final nameLineMetrics = namePainter.computeLineMetrics();
+      final firstLineHeight = nameLineMetrics.isEmpty
+          ? nameLineHeight
+          : nameLineMetrics.first.height;
+      final surfaceHeight =
+          (nameY +
+                  namePainter.height.clamp(
+                    certified ? badgeSize : 0.0,
+                    double.infinity,
+                  ))
+              .clamp(inset + toolbar, double.infinity);
       namePainter.dispose();
       final buttonStyle =
           (IconButtonTheme.of(context).style ?? const ButtonStyle()).copyWith(
@@ -316,15 +348,22 @@ class ProfileHeader extends StatelessWidget {
               width: nameWidth,
               child: Opacity(
                 opacity: showName && !transitionSnapshot ? 1 : 0,
-                child: _ProfileMorphHero(
-                  store: store,
-                  identity: identity,
-                  child: Text(
-                    userDisplayName(data.name),
-                    key: const ValueKey('profile-identity-name'),
-                    maxLines: t == 1 ? 1 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: nameStyle,
+                child: _ProfileCertifiedName(
+                  certified: certified,
+                  badgeSize: badgeSize,
+                  gap: badgeGap,
+                  firstLineHeight: firstLineHeight,
+                  badgeKey: const ValueKey('profile-developer-badge'),
+                  child: _ProfileMorphHero(
+                    store: store,
+                    identity: identity,
+                    child: Text(
+                      userDisplayName(data.name),
+                      key: const ValueKey('profile-identity-name'),
+                      maxLines: t == 1 ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: nameStyle,
+                    ),
                   ),
                 ),
               ),
@@ -862,6 +901,40 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
   );
 }
 
+class _ProfileCertifiedName extends StatelessWidget {
+  const _ProfileCertifiedName({
+    required this.child,
+    required this.certified,
+    required this.badgeSize,
+    required this.gap,
+    required this.firstLineHeight,
+    this.badgeKey,
+  });
+  final Widget child;
+  final bool certified;
+  final double badgeSize, gap, firstLineHeight;
+  final Key? badgeKey;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!certified) return child;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Flexible(child: child),
+        SizedBox(width: gap),
+        Padding(
+          padding: EdgeInsets.only(
+            top: ((firstLineHeight - badgeSize) / 2).clamp(0, double.infinity),
+          ),
+          child: DeveloperCertificationBadge(key: badgeKey, size: badgeSize),
+        ),
+      ],
+    );
+  }
+}
+
 class _ProfileMorphHero extends StatelessWidget {
   const _ProfileMorphHero({
     required this.store,
@@ -1018,19 +1091,32 @@ class _ProfileDetailsLayout extends StatelessWidget {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          _ProfileMorphHero(
-                                            store: store,
-                                            identity: identity,
-                                            child: Text(
-                                              userDisplayName(data.name),
-                                              key: const ValueKey(
-                                                'profile-details-name',
-                                              ),
-                                              style: const TextStyle(
-                                                fontSize: 22,
-                                                height: 1.25,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.white,
+                                          _ProfileCertifiedName(
+                                            certified:
+                                                identity == null &&
+                                                store.identityVerified,
+                                            badgeSize:
+                                                DeveloperCertificationBadge
+                                                    .expandedSize,
+                                            gap: 6,
+                                            firstLineHeight:
+                                                MediaQuery.textScalerOf(context)
+                                                    .scale(22) *
+                                                1.25,
+                                            child: _ProfileMorphHero(
+                                              store: store,
+                                              identity: identity,
+                                              child: Text(
+                                                userDisplayName(data.name),
+                                                key: const ValueKey(
+                                                  'profile-details-name',
+                                                ),
+                                                style: const TextStyle(
+                                                  fontSize: 22,
+                                                  height: 1.25,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
+                                                ),
                                               ),
                                             ),
                                           ),

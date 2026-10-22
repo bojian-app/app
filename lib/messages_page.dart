@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'user_display_name.dart';
-import 'company_benefits.dart';
 import 'playful_refresh.dart';
 import 'profile_avatar.dart';
 
@@ -17,6 +16,7 @@ import 'resume_pages.dart';
 import 'discovery.dart';
 import 'resume_guidance_view.dart';
 import 'resume_guidance_review.dart';
+import 'user_profile_page.dart';
 
 String messageTime(Object? value) {
   final date = DateTime.tryParse(value?.toString() ?? '');
@@ -334,9 +334,18 @@ class _MessagesPageState extends State<MessagesPage> {
         children: [
           if (item.type == 'RESUME_GUIDANCE_FEEDBACK')
             ProfileAvatar(
+              key: ValueKey('notification-actor-avatar-${item.id}'),
               seed: '${item.actorID}',
               url: item.actorAvatarURL,
               size: 44,
+              onTap: item.actorID > 0
+                  ? () => openUserProfile(
+                      context,
+                      store: widget.store,
+                      userID: item.actorID,
+                    )
+                  : null,
+              semanticsLabel: '查看${userDisplayName(item.actorName)}的主页',
             )
           else
             Container(
@@ -454,21 +463,6 @@ class _MessagesPageState extends State<MessagesPage> {
           ResumeEditor(store: widget.store, draft: decodeResume(result.data)),
         );
       });
-      return;
-    }
-
-    if (item.subjectType == 'COMPANY_BENEFIT_SUBMISSION' &&
-        item.subjectID > 0) {
-      if (!item.read) await widget.store.markRead(item);
-      if (!mounted) return;
-      await openPage(
-        context,
-        BenefitDetailPage(
-          store: widget.store,
-          id: '${item.subjectID}',
-          mine: true,
-        ),
-      );
       return;
     }
 

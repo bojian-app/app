@@ -9,22 +9,22 @@ import 'app_store.dart';
 import 'confirmation_dialog.dart';
 import 'phone_binding_dialog.dart';
 import 'design.dart';
-import 'startup_screen.dart';
+import 'startup_ads.dart';
 import 'resume_files.dart';
 import 'resume_pages.dart';
 
-void main(List<String> args) {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   // Keep decoded previews bounded while browsing; old entries are evicted by LRU.
   PaintingBinding.instance.imageCache
     ..maximumSize = 160
     ..maximumSizeBytes = 32 * 1024 * 1024;
-  runApp(MyApp(nativeStartup: args.contains('--native-startup')));
+  runApp(const MyApp());
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key, this.nativeStartup = false, this.store});
-  final bool nativeStartup;
+  const MyApp({super.key, this.startupAdsEnabled = true, this.store});
+  final bool startupAdsEnabled;
   final AppStore? store;
   @override
   State<MyApp> createState() => _MyAppState();
@@ -40,6 +40,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool entryAllowed = false;
   int? phoneBindingPromptEpoch;
   bool showingPhoneBinding = false;
+  bool preparingStartup = true;
+  bool startupInterrupted = false;
 
   @override
   void initState() {
@@ -50,14 +52,40 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     files.incoming.addListener(sharedFileChanged);
     files.error.addListener(sharedFileError);
     unawaited(files.start());
-    unawaited(
-      store.initialize().then((_) {
-        if (mounted) maybeShowPhoneBinding();
-      }),
-    );
+    unawaited(prepareStartup());
+  }
+
+  Future<void> prepareStartup() async {
+    try {
+      await store.initialize();
+      if (!mounted) return;
+      await WidgetsBinding.instance.endOfFrame;
+      // Only a restored login may request an ad at cold start. A fresh login,
+      // guest visit or return from another app must never trigger a late splash.
+      if (mounted &&
+          widget.startupAdsEnabled &&
+          store.isAuthenticated &&
+          !startupInterrupted &&
+          (WidgetsBinding.instance.lifecycleState == null ||
+              WidgetsBinding.instance.lifecycleState ==
+                  AppLifecycleState.resumed)) {
+        await StartupAds.showOnce();
+      }
+    } finally {
+      StartupAds.readyForBanner.value = mounted && widget.startupAdsEnabled;
+      if (mounted) {
+        setState(() => preparingStartup = false);
+        maybeShowPhoneBinding();
+        sharedFileChanged();
+      }
+    }
   }
 
   void sessionChanged() {
+    if (preparingStartup && !store.restoring && !store.isAuthenticated) {
+      startupInterrupted = true;
+      if (widget.startupAdsEnabled) unawaited(StartupAds.cancel());
+    }
     final allowed = store.isAuthenticated || store.isGuest;
     final entryChanged = entryAllowed != allowed;
     if (entryChanged) {
@@ -85,7 +113,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void maybeShowPhoneBinding() {
-    if (!store.isAuthenticated ||
+    if (preparingStartup ||
+        !store.foreground ||
+        !store.isAuthenticated ||
         !store.phoneBindingChecked ||
         store.hasBoundPhone ||
         phoneBindingPromptEpoch == store.epoch ||
@@ -118,7 +148,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void sharedFileChanged() {
-    if (!store.isAuthenticated ||
+    if (preparingStartup ||
+        !store.foreground ||
+        !store.isAuthenticated ||
         showingPhoneBinding ||
         files.activeImports > 0 ||
         files.incoming.value == null ||
@@ -173,6 +205,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    if (widget.startupAdsEnabled) unawaited(StartupAds.cancel());
     WidgetsBinding.instance.removeObserver(this);
     store.removeListener(sessionChanged);
     files.incoming.removeListener(sharedFileChanged);
@@ -183,45 +216,61 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) store.setForeground(true);
+    if (state == AppLifecycleState.resumed) {
+      store.setForeground(true);
+      maybeShowPhoneBinding();
+      sharedFileChanged();
+    }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       store.setForeground(false);
+      startupInterrupted = true;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final home = Builder(
-      builder: (context) => AnimatedSwitcher(
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 380),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, .025),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
+      builder: (context) {
+        // A missing session is inconclusive until secure storage has finished.
+        // Keep both auth and the app shell out of the first frame, including
+        // while the native splash is loading/showing, to avoid flashing either.
+        if (preparingStartup) {
+          return ColoredBox(
+            key: const ValueKey('startup-session-gate'),
+            color: context.colors.canvas,
+          );
+        }
+        return AnimatedSwitcher(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 380),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, .025),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
           ),
-        ),
-        layoutBuilder: (current, previous) => Stack(
-          fit: StackFit.expand,
-          children: [
-            for (final child in previous)
-              ExcludeSemantics(child: IgnorePointer(child: child)),
-            ?current,
-          ],
-        ),
-        child: entryAllowed
-            ? AppShell(key: shellKey, store: store)
-            : AuthPage(key: const ValueKey('signed-out-home'), store: store),
-      ),
+          layoutBuilder: (current, previous) => Stack(
+            fit: StackFit.expand,
+            children: [
+              for (final child in previous)
+                ExcludeSemantics(child: IgnorePointer(child: child)),
+              ?current,
+            ],
+          ),
+          child: entryAllowed
+              ? AppShell(key: shellKey, store: store)
+              : AuthPage(key: const ValueKey('signed-out-home'), store: store),
+        );
+      },
     );
     return MaterialApp(
       title: '博简',
@@ -249,7 +298,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           child: TooltipVisibility(visible: false, child: child!),
         ),
       ),
-      home: widget.nativeStartup ? home : StartupScreen(child: home),
+      home: home,
     );
   }
 }

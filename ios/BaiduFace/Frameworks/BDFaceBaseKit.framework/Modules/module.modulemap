@@ -1,0 +1,6 @@
+framework module BDFaceBaseKit {
+  umbrella header "BDFaceBaseKit.h"
+  export *
+
+  module * { export * }
+}

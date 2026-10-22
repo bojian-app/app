@@ -1,0 +1,1 @@
+{"version":"1.0","background":0,"openSound":1,"showTimeoutDialog":1,"timeoutTime":20,"strictMode":0,"maxImageNum":1,"compressValue":300,"openRecord":0,"recordMaxTime":60,"videoWhenError":0,"ignoreRecordError":0,"qualityLevel":1,"openColorLive":0,"openActionLive":1,"openDistanceLive":0,"actionNum":3,"actionList":["eye","mouth","headRight"]}

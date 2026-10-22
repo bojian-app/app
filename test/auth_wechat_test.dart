@@ -54,7 +54,7 @@ void main() {
   ) async {
     final authorizer = _Authorizer();
     final store = await testStore(weChatAuthorizer: authorizer);
-    await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+    await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
     await tester.pumpAndSettle();
     final button = find.byKey(const ValueKey('auth-wechat'));
     await tester.ensureVisible(button);
@@ -78,7 +78,7 @@ void main() {
         gateway.failure = const ApiFailure('微信授权失败，请重新登录');
       }
       final store = await testStore(api: gateway, weChatAuthorizer: authorizer);
-      await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const ValueKey('auth-consent')));
       await tester.tap(find.byKey(const ValueKey('auth-consent')));
@@ -177,7 +177,7 @@ void main() {
             api: gateway,
             weChatAuthorizer: authorizer,
           );
-          await tester.pumpWidget(MyApp(nativeStartup: true, store: store));
+          await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
           await tester.pumpAndSettle();
           final consent = find.byKey(const ValueKey('auth-consent'));
           await tester.ensureVisible(consent);
