@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'app_store.dart';
+import 'api/bojian_api.dart';
 import 'app_theme.dart';
 
 export 'app_theme.dart';
@@ -32,8 +33,35 @@ Future<bool> runRequest(
     if (success != null && context.mounted) toast(context, success);
     return true;
   } catch (e) {
-    if (context.mounted) toast(context, '$e');
+    if (context.mounted) await showRequestFailure(context, e);
     return false;
+  }
+}
+
+Future<void> showRequestFailure(BuildContext context, Object error) async {
+  if (error is ApiFailure && error.code == 'CONTENT_REJECTED') {
+    final reasons = error.violationMessages;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('内容未通过审核'),
+        content: SingleChildScrollView(
+          child: Text(
+            reasons.isEmpty
+                ? error.message
+                : '请修改以下违规内容后重新提交：\n\n${reasons.map((v) => '• $v').join('\n\n')}',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('返回修改'),
+          ),
+        ],
+      ),
+    );
+  } else {
+    toast(context, '$error');
   }
 }
 

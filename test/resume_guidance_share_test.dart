@@ -298,7 +298,7 @@ void main() {
       });
       expect(api.keys.single, isNotEmpty);
       expect(find.byType(ResumeGuidanceShare), findsNothing);
-      expect(find.text('已提交审核，通过后展示在社区'), findsOneWidget);
+      expect(find.text('已提交人工审核，通过后展示在社区'), findsOneWidget);
     },
   );
 

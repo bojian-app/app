@@ -2,12 +2,12 @@ import 'dart:convert';
 
 import 'app_store.dart';
 import 'resume_market_document.dart';
+import 'resume_native_export.dart';
 
-const templatePreviewFontAssets = {
-  'regular.ttf': 'assets/fonts/alibaba-puhuiti-3-regular.ttf',
-  'medium.ttf': 'assets/fonts/alibaba-puhuiti-3-medium.ttf',
-  'bold.ttf': 'assets/fonts/alibaba-puhuiti-3-bold.ttf',
-};
+const templatePreviewFontAssets = resumeDocumentFontAssets;
+const traceTemplatePreview = bool.fromEnvironment(
+  'BOJIAN_TRACE_TEMPLATE_PREVIEW',
+);
 
 /// Fictional content only: browsing a template never reads the user's resumes.
 const templatePreviewFields = <String, dynamic>{
@@ -135,14 +135,10 @@ String templatePreviewDocument({
   resume: ResumeDraft(id: 0, title: '模板示例'),
   fields: templatePreviewFields,
   photo: photo,
-  captureScript: '',
+  captureScript: traceTemplatePreview ? 'window.bojianTrace=true;' : '',
   rendererScript: rendererScript,
   marketplacePreview: true,
   previewScript:
       'window.bojianPreviewOptions=${jsonEncode({'author': author, 'initialPage': initialPage, 'showPageActions': showPageActions}).replaceAll('<', r'\u003c')};\n$previewScript',
-  fontStyles: """
-@font-face{font-family:ResumeDocument;src:url('regular.ttf') format('truetype');font-weight:400;font-style:normal}
-@font-face{font-family:ResumeDocument;src:url('medium.ttf') format('truetype');font-weight:500 600;font-style:normal}
-@font-face{font-family:ResumeDocument;src:url('bold.ttf') format('truetype');font-weight:700 900;font-style:normal}
-""",
+  fontStyles: resumeDocumentFontStyles,
 );

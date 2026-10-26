@@ -128,6 +128,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('更多基本信息'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('更多基本信息'));
+      await tester.pumpAndSettle();
       expect(find.text('性别'), findsOneWidget);
       expect(find.text('年龄：${resumeAge('2000-01-01')} 岁'), findsNothing);
       final project = find.byKey(

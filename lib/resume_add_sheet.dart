@@ -32,8 +32,8 @@ Future<ResumeAddSource?> showResumeAddSheet(
           for (final (source, title, subtitle, icon) in [
             (
               ResumeAddSource.assistance,
-              '协助添加',
-              '描述经历，帮你整理成简历',
+              'AI生成简历',
+              '问答创建或描述经历，生成专业简历',
               AppIcons.profileEdit,
             ),
             (ResumeAddSource.manual, '手动添加', '从空白简历开始填写', AppIcons.add),

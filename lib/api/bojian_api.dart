@@ -18,11 +18,29 @@ class ApiFailure implements Exception {
     this.code,
     this.unauthenticated = false,
     this.cause,
+    this.details,
   });
   final String message;
   final String? code;
   final bool unauthenticated;
   final Object? cause;
+  final Object? details;
+  List<String> get violationMessages {
+    final value = details;
+    if (value is! Map) return const [];
+    final moderation = value['moderation'];
+    if (moderation is! Map) return const [];
+    final violations = moderation['violations'];
+    if (violations is! List) return const [];
+    return violations
+        .whereType<Map>()
+        .map((v) => v['message'])
+        .whereType<String>()
+        .where((v) => v.trim().isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
   @override
   String toString() => message;
 }
@@ -184,6 +202,7 @@ class BojianApi implements ApiGateway {
                 ? '登录已失效，请重新登录'
                 : '服务器请求失败（HTTP ${response.statusCode}），请稍后重试',
             code: error is Map ? error['code'] as String? : null,
+            details: error is Map ? error['details'] : null,
             unauthenticated: response.statusCode == 401,
           );
         }

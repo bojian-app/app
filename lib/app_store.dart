@@ -1,3 +1,4 @@
+import 'content_moderation.dart';
 import 'user_display_name.dart';
 
 import 'dart:async';
@@ -31,6 +32,10 @@ class ArticleComment {
     this.replyCount = 0,
     this.parentID,
     this.replyToName = '',
+    this.status = 'VISIBLE',
+    this.reviewReason = '',
+    this.replyToID,
+    this.local,
   });
   final int id, authorID;
   final String author, content, avatarURL;
@@ -40,6 +45,10 @@ class ArticleComment {
   final bool liked, disliked;
   final int? parentID;
   final String replyToName;
+  final String status, reviewReason;
+  final int? replyToID;
+  final Map<String, dynamic>? local;
+  bool get visible => status == 'VISIBLE';
   ArticleComment withReaction(Map<String, dynamic> row) => ArticleComment(
     id: id,
     authorID: authorID,
@@ -50,6 +59,10 @@ class ArticleComment {
     deleted: deleted,
     parentID: parentID,
     replyToName: replyToName,
+    status: status,
+    reviewReason: reviewReason,
+    replyToID: replyToID,
+    local: local,
     replyCount: replyCount,
     likes: integer(row["like_count"]),
     dislikes: integer(row["dislike_count"]),
@@ -61,6 +74,12 @@ class ArticleComment {
     final author = row['author'] as Map? ?? {};
     return ArticleComment(
       id: integer(row['id']),
+      status: '${row['moderation_status'] ?? row['status'] ?? 'VISIBLE'}',
+      reviewReason: '${row['review_reason'] ?? ''}',
+      replyToID: row['reply_to_id'] == null
+          ? null
+          : integer(row['reply_to_id']),
+      local: row.containsKey('_method') ? row : null,
       authorID: integer(author['id']),
       author: userDisplayName(author['display_name']),
       content: '${row['content'] ?? ''}',
@@ -534,6 +553,24 @@ class AppStore extends ChangeNotifier {
       if (_jobSignals.length >= 200) _jobSignals.remove(_jobSignals.first);
       _jobSignals.add('${data['job_type']}:${data['job_id']}');
     }
+    if (type == 'content.removed') {
+      final data = event['data'] is Map ? event['data'] as Map : const {};
+      final subject = '${data['subject_type']}';
+      final id = integer(data['subject_id']);
+      if (subject == 'ARTICLE' || subject == 'POST') {
+        stories.removeWhere((story) => story.id == integer(data['article_id']));
+      }
+      contentSubmissions.removeWhere(
+        (row) =>
+            integer(row['id']) == id &&
+            (subject == 'COMMENT'
+                ? row['_method'] == 'PostArticlesIdComments'
+                : subject == 'GUIDANCE_ANNOTATION' &&
+                      '${row['_method']}'.contains('Annotations')),
+      );
+      unawaited(saveContentSubmissions().catchError((Object _) {}));
+      changed();
+    }
     _realtimeEvents.add(event);
     final sections = switch (type) {
       'message.created' || 'message.read' => {'chats'},
@@ -544,6 +581,7 @@ class AppStore extends ChangeNotifier {
       'friend_request.updated' ||
       'friendship.ended' => {'messages', 'chats'},
       'job.updated' || 'resume.updated' => {'resumes'},
+      'content.removed' ||
       'article.updated' ||
       'article.comment' ||
       'article.reaction' => {'messages'},
@@ -554,7 +592,11 @@ class AppStore extends ChangeNotifier {
       'account.updated' => {'profile'},
       _ => <String>{},
     };
-    if (const {'article.comment', 'article.reaction'}.contains(type)) {
+    if (const {
+      'article.comment',
+      'article.reaction',
+      'content.removed',
+    }.contains(type)) {
       final data = event['data'] is Map ? event['data'] as Map : const {};
       final id = integer(data['article_id']);
       if (stories.any((story) => story.id == id)) {
@@ -693,6 +735,7 @@ class AppStore extends ChangeNotifier {
       changed();
     }
     if (isAuthenticated) {
+      await restoreContentSubmissions();
       unawaited(loadAll());
       if (foreground) realtime?.start();
     }
@@ -964,6 +1007,7 @@ class AppStore extends ChangeNotifier {
     ++_phoneBindingRevision;
     userID = response.user.id.toInt();
     isGuest = false;
+    await restoreContentSubmissions();
     // Profile setup failure must not turn a valid server login into a fake failure.
     if (nickname != null) {
       try {
@@ -1011,6 +1055,7 @@ class AppStore extends ChangeNotifier {
     phoneBindingChecked = false;
     ++_phoneBindingRevision;
     guidanceReviewDrafts.clear();
+    contentSubmissions.clear();
     userID = 0;
     points = null;
     rewardPoints = null;
@@ -1120,6 +1165,9 @@ class AppStore extends ChangeNotifier {
                       'ARTICLE_APPROVED' => '文章审核通过',
                       'ARTICLE_REJECTED' => '文章审核未通过',
                       'ARTICLE_COMMENT' => '收到新的评论',
+                      'REPORT_RESOLVED' => '举报已成立',
+                      'REPORT_DISMISSED' => '举报未成立',
+                      'REPORT_CONTENT_REMOVED' => '内容已被撤回',
                       'COMMENT_REPLY' => '收到新的回复',
                       _ => '系统通知',
                     },
@@ -1364,6 +1412,7 @@ class AppStore extends ChangeNotifier {
       query: {'limit': '50'},
     );
     if (!alive || version != epoch) return;
+    mergeContent('PostArticlesIdComments', story.id, items(v.data));
     story.comments = items(v.data).map(ArticleComment.fromJson).toList();
     story.commentCount = v.data.containsKey('total')
         ? integer(v.data['total'])
@@ -1396,15 +1445,137 @@ class AppStore extends ChangeNotifier {
     return updated;
   });
 
-  Future<void> comment(Story story, String text, {int? replyToID}) async =>
-      perform('comment-${story.id}', () async {
-        await request(
-          'PostArticlesIdComments',
-          path: {'id': '${story.id}'},
-          body: {'content': text, 'reply_to_id': ?replyToID},
-        );
-        await article(story);
-      });
+  final contentSubmissions = <Map<String, dynamic>>[];
+  Future<void> contentWrites = Future.value();
+  Future<void> saveContentSubmissions() {
+    final uid = userID;
+    final value = jsonEncode(contentSubmissions);
+    return contentWrites = contentWrites
+        .catchError((_) {})
+        .then((_) => storage.write('bojian.content-outbox.$uid', value));
+  }
+
+  Future<void> restoreContentSubmissions() async {
+    final version = epoch;
+    try {
+      final raw = await storage.read('bojian.content-outbox.$userID');
+      if (version != epoch || !alive || raw == null) return;
+      contentSubmissions.clear();
+      for (final row in (jsonDecode(raw) as List).whereType<Map>()) {
+        final item = Map<String, dynamic>.from(row);
+        if (item['moderation_status'] == 'SENDING') {
+          item['moderation_status'] = 'FAILED';
+        }
+        contentSubmissions.add(item);
+      }
+      changed();
+    } catch (_) {
+      /* Server-accepted submissions are also loaded from lists. */
+    }
+  }
+
+  Map<String, dynamic> enqueueContent(
+    String method,
+    int id,
+    Map<String, dynamic> body, {
+    Map<String, dynamic> display = const {},
+  }) {
+    final now = DateTime.now();
+    final row = <String, dynamic>{
+      ...body,
+      ...display,
+      'id': -now.microsecondsSinceEpoch,
+      'created_at': now.toUtc().toIso8601String(),
+      'reviewer_id': userID,
+      'reviewer_name': name,
+      'reviewer_avatar_url': avatarURL,
+      'author': {'id': userID, 'display_name': name, 'avatar_url': avatarURL},
+      '_method': method,
+      '_scope_id': id,
+      '_body': body,
+      'request_key': newDeviceID(),
+      'moderation_status': 'SENDING',
+      'status': 'PENDING',
+    };
+    contentSubmissions.add(row);
+    changed();
+    unawaited(sendContent(row));
+    return row;
+  }
+
+  Future<void> sendContent(Map<String, dynamic> row) async {
+    final version = epoch;
+    row['moderation_status'] = 'SENDING';
+    changed();
+    try {
+      await saveContentSubmissions();
+      if (version != epoch || !alive) return;
+      final response = await request(
+        '${row['_method']}',
+        path: {'id': '${row['_scope_id']}'},
+        body: Map<String, dynamic>.from(row['_body'] as Map),
+        extra: {'idempotency-key': '${row['request_key']}'},
+        expectedEpoch: version,
+      );
+      if (version != epoch || !alive) return;
+      row['id'] = response.data['id'] ?? row['id'];
+      row['moderation_status'] = response.data['status'] ?? 'QUEUED';
+      row['moderation'] = response.data['moderation'];
+      row['review_reason'] = response.data['review_reason'];
+    } catch (e) {
+      if (version != epoch || !alive) return;
+      row['moderation_status'] = 'FAILED';
+      row['review_reason'] = '$e';
+    }
+    if (version != epoch || !alive) return;
+    unawaited(saveContentSubmissions().catchError((Object _) {}));
+    changed();
+  }
+
+  List<Map<String, dynamic>> mergeContent(
+    String method,
+    int id,
+    List<Map<String, dynamic>> remote,
+  ) {
+    final local = contentSubmissions
+        .where((v) => v['_method'] == method && v['_scope_id'] == id)
+        .toList();
+    final acknowledged = local
+        .where(
+          (v) => remote.any(
+            (r) =>
+                (integer(v['id']) > 0 && r['id'] == v['id']) ||
+                (r['request_key'] != null &&
+                    r['request_key'] == v['request_key']),
+          ),
+        )
+        .toList();
+    if (acknowledged.isNotEmpty) {
+      contentSubmissions.removeWhere(acknowledged.contains);
+      unawaited(saveContentSubmissions().catchError((Object _) {}));
+    }
+    return [
+      ...local.where((v) => !acknowledged.contains(v)).toList().reversed,
+      ...remote,
+    ];
+  }
+
+  List<Map<String, dynamic>> localContent(String method, int id) =>
+      contentSubmissions
+          .where((v) => v['_method'] == method && v['_scope_id'] == id)
+          .toList();
+  Future<SubmissionStatus?> comment(
+    Story story,
+    String text, {
+    int? replyToID,
+  }) async {
+    enqueueContent('PostArticlesIdComments', story.id, {
+      'content': text,
+      'reply_to_id': ?replyToID,
+    });
+    return SubmissionStatus.queued;
+  }
+
   Future<void> markRead(InboxItem item) async {
     if (item.read) return;
     final version = epoch;
@@ -1744,22 +1915,32 @@ class AppStore extends ChangeNotifier {
     );
   }
 
-  Future<void> submitArticleDraft(int id, {required int expectedEpoch}) async {
-    await request(
+  Future<SubmissionStatus> submitArticleDraft(
+    int id, {
+    required int expectedEpoch,
+  }) async {
+    final result = await request(
       'PostArticlesIdPublish',
       path: {'id': '$id'},
       body: {'content_policy_confirmed': true, 'public_fields_confirmed': true},
       expectedEpoch: expectedEpoch,
     );
+    final status = submissionStatus(
+      result.data,
+      fallback: SubmissionStatus.pending,
+    );
     unawaited(load('feed'));
+    return status;
   }
 
-  Future<void> publish(
+  Future<SubmissionStatus> publish(
     String title,
     String text,
     String category, {
     Map<String, dynamic>? content,
+    void Function(int)? onDraftSaved,
   }) async {
+    final version = epoch;
     final draft = await request(
       'PostArticles',
       body: {
@@ -1768,12 +1949,10 @@ class AppStore extends ChangeNotifier {
         'visibility': 'PUBLIC',
       },
     );
-    await request(
-      'PostArticlesIdPublish',
-      path: {'id': '${draft.data['id']}'},
-      body: {'content_policy_confirmed': true, 'public_fields_confirmed': true},
-    );
-    await load('feed');
+    final id = integer(draft.data['id']);
+    if (id <= 0) throw const ApiFailure('草稿保存结果无效，请重试');
+    onDraftSaved?.call(id);
+    return submitArticleDraft(id, expectedEpoch: version);
   }
 
   @override

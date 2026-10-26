@@ -20,7 +20,7 @@ class ResumeCreationController extends ChangeNotifier {
       throw const ApiFailure('请填写10至5000字的经历描述');
     }
     if (!store.alive || !store.isAuthenticated) {
-      throw const ApiFailure('请先登录后再发起协助');
+      throw const ApiFailure('请先登录后再生成简历');
     }
     if (_description != description || _requestKey == null) {
       _description = description;
@@ -53,11 +53,11 @@ class ResumeCreationController extends ChangeNotifier {
             'SUCCEEDED',
             'FAILED',
           }.contains(response.data['status'])) {
-        throw const ApiFailure('未能确认协助任务，请重试');
+        throw const ApiFailure('未能确认生成任务，请重试');
       }
       if (response.data['status'] == 'FAILED') {
         _requestKey = null;
-        throw const ApiFailure('上次协助未完成，请重新发起');
+        throw const ApiFailure('上次生成未完成，请重新生成');
       }
       return id;
     } catch (_) {
@@ -72,6 +72,11 @@ class ResumeCreationController extends ChangeNotifier {
       submitting = false;
       if (!_disposed) notifyListeners();
     }
+  }
+
+  /// A terminal failure needs a new key; network retries keep the existing key.
+  void resetFailedJob() {
+    _requestKey = null;
   }
 
   @override

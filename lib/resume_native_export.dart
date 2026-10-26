@@ -13,10 +13,39 @@ import 'package:share_plus/share_plus.dart';
 import 'api/bojian_api.dart';
 
 const resumeDocumentFontFamily = 'ResumeDocument';
-const resumeDocumentTypeface = '寒蝉全圆体';
-const resumeFontRegularAsset = 'assets/fonts/chill-round-f.ttf';
-// Upstream supplies a regular face; renderers synthesize emphasized text.
-const resumeFontBoldAsset = resumeFontRegularAsset;
+const resumeDocumentTypeface = '阿里巴巴普惠体 3.0';
+// Word resolves embedded fonts by the legacy family name (name ID 1).
+const resumeWordRegularTypeface = '阿里巴巴普惠体 3.0 55 Regular';
+const resumeWordMediumTypeface = '阿里巴巴普惠体 3.0 65 Medium';
+const resumeFontRegularAsset = 'assets/fonts/alibaba-puhuiti-3-regular.ttf';
+const resumeFontMediumAsset = 'assets/fonts/alibaba-puhuiti-3-medium.ttf';
+const resumeFontBoldAsset = 'assets/fonts/alibaba-puhuiti-3-bold.ttf';
+const resumeDocumentFontAssets = {
+  'regular.ttf': resumeFontRegularAsset,
+  'medium.ttf': resumeFontMediumAsset,
+  'bold.ttf': resumeFontBoldAsset,
+};
+const resumeDocumentFontStyles = """
+@font-face{font-family:ResumeDocument;src:url('regular.ttf') format('truetype');font-weight:400;font-style:normal}
+@font-face{font-family:ResumeDocument;src:url('medium.ttf') format('truetype');font-weight:500 600;font-style:normal}
+@font-face{font-family:ResumeDocument;src:url('bold.ttf') format('truetype');font-weight:700 900;font-style:normal}
+""";
+
+// PDF imports can contain Unicode radicals in place of ordinary Han letters.
+// Normalize only these visual equivalents, without changing user punctuation.
+String resumeExportText(String text) {
+  const kangxi =
+      '一丨丶丿乙亅二亠人儿入八冂冖冫几凵刀力勹匕匚匸十卜卩厂厶又口囗土士夂夊夕大女子宀寸小尢尸屮山巛工己巾干幺广廴廾弋弓彐彡彳心戈戶手支攴文斗斤方无日曰月木欠止歹殳毋比毛氏气水火爪父爻爿片牙牛犬玄玉瓜瓦甘生用田疋疒癶白皮皿目矛矢石示禸禾穴立竹米糸缶网羊羽老而耒耳聿肉臣自至臼舌舛舟艮色艸虍虫血行衣襾見角言谷豆豕豸貝赤走足身車辛辰辵邑酉釆里金長門阜隶隹雨靑非面革韋韭音頁風飛食首香馬骨高髟鬥鬯鬲鬼魚鳥鹵鹿麥麻黃黍黑黹黽鼎鼓鼠鼻齊齒龍龜龠';
+  const supplement = {0x2ec5: '见', 0x2ed3: '长', 0x2ed4: '门', 0x2eda: '页'};
+  return String.fromCharCodes(
+    text.runes.map((rune) {
+      if (rune >= 0x2f00 && rune < 0x2f00 + kangxi.length) {
+        return kangxi.codeUnitAt(rune - 0x2f00);
+      }
+      return supplement[rune]?.codeUnitAt(0) ?? rune;
+    }),
+  );
+}
 
 class ResumeExportSpan {
   const ResumeExportSpan({
@@ -26,6 +55,7 @@ class ResumeExportSpan {
     required this.size,
     this.color = 0xFF26292E,
     this.bold = false,
+    this.weight,
     this.italic = false,
     this.underline = false,
     this.strike = false,
@@ -34,6 +64,8 @@ class ResumeExportSpan {
   final double x, width, size;
   final int color;
   final bool bold, italic, underline, strike;
+  final int? weight;
+  int get fontWeight => weight ?? (bold ? 700 : 400);
 }
 
 class ResumeExportLine {
@@ -77,10 +109,13 @@ class ResumeExportPage {
     this.lines = const [],
     this.rules = const [],
     this.pictures = const [],
+    this.background,
   });
   final List<ResumeExportLine> lines;
   final List<ResumeExportRule> rules;
   final List<ResumeExportPicture> pictures;
+  // HTML's decorative paint layer only; all resume text stays native.
+  final ResumeExportPicture? background;
 }
 
 class ResumeExportLayout {
@@ -119,8 +154,10 @@ Future<XFile> exportNativeResume({
       .asUint8List();
   final bold = (await rootBundle.load(resumeFontBoldAsset)).buffer
       .asUint8List();
+  final medium = (await rootBundle.load(resumeFontMediumAsset)).buffer
+      .asUint8List();
   final bytes = await Isolate.run(
-    () => encodeNativeResume(layout, format, regular, bold),
+    () => encodeNativeResume(layout, format, regular, bold, medium: medium),
   );
   if (isCancelled()) throw const ApiFailure('导出已取消');
   if (bytes.length > 30 * 1024 * 1024) {
@@ -150,10 +187,11 @@ Future<Uint8List> encodeNativeResume(
   ResumeExportLayout layout,
   String format,
   Uint8List regular,
-  Uint8List bold,
-) async {
-  if (format == 'PDF') return _pdf(layout, regular, bold);
-  if (format == 'DOCX') return _word(layout, regular, bold);
+  Uint8List bold, {
+  Uint8List? medium,
+}) async {
+  if (format == 'PDF') return _pdf(layout, regular, bold, medium);
+  if (format == 'DOCX') return _word(layout, regular, bold, medium);
   throw const ApiFailure('请选择 Word 或 PDF');
 }
 
@@ -163,11 +201,19 @@ PdfColor _color(int argb) => PdfColor.fromInt(argb & 0xFFFFFF);
 // subset writer must not assign two Unicode CIDs to the same glyph in a font.
 // Keep aliases in separate subsets, preserving both appearance and ToUnicode.
 class _PdfTypeface {
-  _PdfTypeface(this.document, this.bytes) {
+  _PdfTypeface(this.document, this.bytes, Set<int> characters) {
     final base = PdfTtfFont(document, ByteData.sublistView(bytes));
     fonts[0] = base;
+    final cmap = base.font.charToGlyphIndexMap;
+    final replacement = cmap[0x25a1] ?? cmap[0xfffd] ?? cmap[0x3f]!;
+    for (final rune in characters) {
+      if ((cmap[rune] ?? 0) == 0) {
+        aliases[rune] = replacement;
+        cmap[rune] = replacement;
+      }
+    }
     final counts = <int, int>{};
-    final entries = base.font.charToGlyphIndexMap.entries.toList()
+    final entries = cmap.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     for (final entry in entries) {
       if (entry.value == 0) continue;
@@ -180,9 +226,12 @@ class _PdfTypeface {
   final Uint8List bytes;
   final fonts = <int, PdfTtfFont>{};
   final ranks = <int, int>{};
+  final aliases = <int, int>{};
   PdfTtfFont font(int rank) => fonts.putIfAbsent(
     rank,
-    () => PdfTtfFont(document, ByteData.sublistView(bytes)),
+    () =>
+        PdfTtfFont(document, ByteData.sublistView(bytes))
+          ..font.charToGlyphIndexMap.addAll(aliases),
   );
   Iterable<({int rank, String text})> pieces(String text) sync* {
     var current = -1;
@@ -204,13 +253,22 @@ Future<Uint8List> _pdf(
   ResumeExportLayout layout,
   Uint8List regular,
   Uint8List bold,
+  Uint8List? medium,
 ) async {
   final document = PdfDocument();
   final synthesizeBold = listEquals(regular, bold);
-  final regularTypeface = _PdfTypeface(document, regular);
+  final characters = layout.pages
+      .expand((page) => page.lines)
+      .expand((line) => line.spans)
+      .expand((span) => resumeExportText(span.text).runes)
+      .toSet();
+  final regularTypeface = _PdfTypeface(document, regular, characters);
   final fonts = [
     regularTypeface,
-    synthesizeBold ? regularTypeface : _PdfTypeface(document, bold),
+    medium == null
+        ? regularTypeface
+        : _PdfTypeface(document, medium, characters),
+    synthesizeBold ? regularTypeface : _PdfTypeface(document, bold, characters),
   ];
   for (final sheet in layout.pages) {
     final page = PdfPage(
@@ -218,7 +276,18 @@ Future<Uint8List> _pdf(
       pageFormat: PdfPageFormat(layout.width, layout.height),
     );
     final canvas = page.getGraphics();
-    for (final rule in sheet.rules) {
+    final background = sheet.background;
+    if (background != null) {
+      canvas.drawImage(
+        PdfImage.file(document, bytes: background.bytes),
+        background.x,
+        layout.height - background.y - background.height,
+        background.width,
+        background.height,
+      );
+    }
+    for (final rule
+        in background == null ? sheet.rules : <ResumeExportRule>[]) {
       canvas.setColor(_color(rule.color));
       if (rule.height > 0) {
         canvas.drawRect(
@@ -242,20 +311,23 @@ Future<Uint8List> _pdf(
     for (final line in sheet.lines) {
       for (final span in line.spans) {
         if (span.text.isEmpty || (span.color >> 24) == 0) continue;
-        final typeface = fonts[span.bold ? 1 : 0];
+        final text = resumeExportText(span.text);
+        final weight = span.fontWeight;
+        final typeface = fonts[weight >= 700 ? 2 : (weight >= 500 ? 1 : 0)];
         final advance =
-            typeface.font(0).stringMetrics(span.text).advanceWidth * span.size;
+            typeface.font(0).stringMetrics(text).advanceWidth * span.size;
         final scale = advance > 0 && span.width > 0
             ? span.width / advance
             : 1.0;
         canvas.setColor(_color(span.color));
-        final strokeBold = span.bold && synthesizeBold;
+        final strokeBold = weight >= 700 && synthesizeBold;
         if (strokeBold) {
           canvas.saveContext();
           canvas.setLineWidth(span.size * .025);
         }
         var x = span.x;
-        for (final piece in typeface.pieces(span.text)) {
+        final baseline = layout.height - line.baseline;
+        for (final piece in typeface.pieces(text)) {
           final font = typeface.font(piece.rank);
           if (span.italic) {
             canvas.saveContext();
@@ -263,7 +335,7 @@ Future<Uint8List> _pdf(
               vm.Matrix4.identity()
                 ..setEntry(0, 1, .2)
                 ..setEntry(0, 3, x)
-                ..setEntry(1, 3, layout.height - line.baseline),
+                ..setEntry(1, 3, baseline),
             );
           }
           canvas.drawString(
@@ -271,7 +343,7 @@ Future<Uint8List> _pdf(
             span.size,
             piece.text,
             span.italic ? 0 : x,
-            span.italic ? 0 : layout.height - line.baseline,
+            span.italic ? 0 : baseline,
             scale: scale,
             mode: strokeBold
                 ? PdfTextRenderingMode.fillAndStroke
@@ -331,7 +403,12 @@ Uint8List _obfuscated(Uint8List bytes, List<int> key) {
   return result;
 }
 
-Uint8List _word(ResumeExportLayout layout, Uint8List regular, Uint8List bold) {
+Uint8List _word(
+  ResumeExportLayout layout,
+  Uint8List regular,
+  Uint8List bold,
+  Uint8List? medium,
+) {
   final zip = Archive();
   void add(String name, Uint8List bytes) =>
       zip.addFile(ArchiveFile(name, bytes.length, bytes));
@@ -341,14 +418,15 @@ Uint8List _word(ResumeExportLayout layout, Uint8List regular, Uint8List bold) {
   const rel =
       'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
   final body = StringBuffer(
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships" xmlns:wp="${ns}drawingml/2006/wordprocessingDrawing" xmlns:a="${ns}drawingml/2006/main" xmlns:pic="${ns}drawingml/2006/picture" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><w:body>',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships" xmlns:wp="${ns}drawingml/2006/wordprocessingDrawing" xmlns:a="${ns}drawingml/2006/main" xmlns:pic="${ns}drawingml/2006/picture" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="wps" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w10="urn:schemas-microsoft-com:office:word"><w:body>',
   );
   final relations = StringBuffer(
-    '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="fonts" Type="${rel}fontTable" Target="fontTable.xml"/>',
+    '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="fonts" Type="${rel}fontTable" Target="fontTable.xml"/><Relationship Id="settings" Type="${rel}settings" Target="settings.xml"/>',
   );
   var id = 1;
   int emu(double value) => (value * 12700).round();
   String anchor(
+    int current,
     String content,
     String uri,
     double x,
@@ -357,53 +435,72 @@ Uint8List _word(ResumeExportLayout layout, Uint8List regular, Uint8List bold) {
     double height, {
     bool background = false,
   }) {
-    final current = id++;
-    return '<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="$current" behindDoc="${background ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>${emu(x)}</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>${emu(y)}</wp:posOffset></wp:positionV><wp:extent cx="${emu(width)}" cy="${emu(height)}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="$current" name="Resume object $current"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="$uri">$content</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>';
+    return '<w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="$current" behindDoc="${background ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>${emu(x)}</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>${emu(y)}</wp:posOffset></wp:positionV><wp:extent cx="${emu(width)}" cy="${emu(height)}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="$current" name="Resume object $current"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="$uri">$content</a:graphicData></a:graphic></wp:anchor></w:drawing>';
   }
 
+  // Both text and its background need a modern shape AND a legacy fallback.
+  // A reader chooses one complete branch; neither branch depends on the other.
+  String rectangle(
+    double x,
+    double y,
+    double width,
+    double height, {
+    int? fill,
+    String? textContent,
+  }) {
+    final current = id++;
+    final background = textContent == null;
+    final shape =
+        '<wps:wsp><wps:cNvSpPr${background ? '' : ' txBox="1"'}/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(width)}" cy="${emu(height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fill == null ? '<a:noFill/>' : '<a:solidFill><a:srgbClr val="${_rgb(fill)}"/></a:solidFill>'}<a:ln><a:noFill/></a:ln></wps:spPr>${textContent == null ? '' : '<wps:txbx>$textContent</wps:txbx>'}<wps:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" vertOverflow="overflow" horzOverflow="overflow"><a:spAutoFit/></wps:bodyPr></wps:wsp>';
+    final drawing = anchor(
+      current,
+      shape,
+      'http://schemas.microsoft.com/office/word/2010/wordprocessingShape',
+      x,
+      y,
+      width,
+      height,
+      background: background,
+    );
+    final legacy =
+        '<w:pict><v:rect id="ResumeObject$current" o:spid="_x0000_s${1024 + current}" style="position:absolute;margin-left:${x.toStringAsFixed(3)}pt;margin-top:${y.toStringAsFixed(3)}pt;width:${width.toStringAsFixed(3)}pt;height:${height.toStringAsFixed(3)}pt;z-index:${background ? current - 100000 : current};mso-position-horizontal-relative:page;mso-position-vertical-relative:page;mso-wrap-style:none" filled="${fill == null ? 'f' : 't'}"${fill == null ? '' : ' fillcolor="#${_rgb(fill)}"'} stroked="f" o:allowincell="f">${textContent == null ? '' : '<v:textbox inset="0,0,0,0" style="mso-wrap-style:none;mso-fit-shape-to-text:t">$textContent</v:textbox>'}<w10:wrap type="none" anchorx="page" anchory="page"/></v:rect></w:pict>';
+    return '<w:r><mc:AlternateContent><mc:Choice Requires="wps">$drawing</mc:Choice><mc:Fallback>$legacy</mc:Fallback></mc:AlternateContent></w:r>';
+  }
+
+  // Do not rely on fitText alone: a substituted font can be wider in readers
+  // that ignore it. Give each transparent box spare horizontal room, disable
+  // wrapping and allow it to grow vertically instead of clipping the text.
+  final metricDocument = PdfDocument();
+  final metrics = [
+    PdfTtfFont(metricDocument, ByteData.sublistView(regular)),
+    PdfTtfFont(metricDocument, ByteData.sublistView(medium ?? regular)),
+    PdfTtfFont(metricDocument, ByteData.sublistView(bold)),
+  ];
   for (var page = 0; page < layout.pages.length; page++) {
     final sheet = layout.pages[page];
-    final sorted = List<ResumeExportLine>.of(sheet.lines)
-      ..sort(
-        (a, b) => (a.top - b.top).abs() < .35
-            ? a.spans.first.x.compareTo(b.spans.first.x)
-            : a.top.compareTo(b.top),
-      );
-    final rows = <List<ResumeExportLine>>[];
-    for (final line in sorted) {
-      if (line.spans.isEmpty) continue;
-      if (rows.isNotEmpty && (rows.last.first.top - line.top).abs() < .35) {
-        rows.last.add(line);
-      } else {
-        rows.add([line]);
-      }
-    }
-    if (rows.isEmpty) {
-      rows.add([
-        const ResumeExportLine(top: 0, height: 1, baseline: 1, spans: []),
-      ]);
-    }
+    // A page has one small anchor paragraph. Every text fragment retains its
+    // own page coordinates, so independent columns never advance each other.
     final drawings = StringBuffer();
-    for (final rule in sheet.rules) {
+    for (final rule
+        in sheet.background == null ? sheet.rules : <ResumeExportRule>[]) {
       final height = rule.height > 0
           ? rule.height
           : math.max(rule.thickness, .1);
       final width = math.max(rule.width, .1);
-      final shape =
-          '<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(width)}" cy="${emu(height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${_rgb(rule.color)}"/></a:solidFill><a:ln><a:noFill/></a:ln></wps:spPr><wps:bodyPr/></wps:wsp>';
       drawings.write(
-        anchor(
-          shape,
-          'http://schemas.microsoft.com/office/word/2010/wordprocessingShape',
+        rectangle(
           rule.x,
           rule.height > 0 ? rule.y : rule.y - height / 2,
           width,
           height,
-          background: true,
+          fill: rule.color,
         ),
       );
     }
-    for (final picture in sheet.pictures) {
+    for (final picture in [
+      if (sheet.background != null) sheet.background!,
+      ...sheet.pictures,
+    ]) {
       final imageId = 'image${id++}';
       add('word/media/$imageId.png', picture.bytes);
       relations.write(
@@ -411,48 +508,60 @@ Uint8List _word(ResumeExportLayout layout, Uint8List regular, Uint8List bold) {
       );
       final pictureXml =
           '<pic:pic><pic:nvPicPr><pic:cNvPr id="$id" name="头像"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="$imageId"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(picture.width)}" cy="${emu(picture.height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>';
+      drawings.write('<w:r>');
       drawings.write(
         anchor(
+          id++,
           pictureXml,
           '${ns}drawingml/2006/picture',
           picture.x,
           picture.y,
           picture.width,
           picture.height,
+          // All text is floating above this first image by relativeHeight.
+          // behindDoc would turn page art into a faded watermark in QuickLook.
         ),
       );
+      drawings.write('</w:r>');
     }
-    var previousBottom = 0.0;
-    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-      final row = rows[rowIndex];
-      final height = row.map((l) => l.height).reduce(math.max);
-      final top = row.map((l) => l.top).reduce(math.min);
-      final spans =
-          row.expand((l) => l.spans).where((s) => (s.color >> 24) != 0).toList()
-            ..sort((a, b) => a.x.compareTo(b.x));
-      final left = spans.isEmpty ? 0.0 : spans.first.x;
-      final gap = math.max(0.0, top - previousBottom);
-      final tabs = <double>[];
-      var right = left;
-      for (final span in spans) {
-        if (span.x > right + .75) tabs.add(span.x);
-        right = span.x + span.width;
-      }
+    if (page > 0) {
       body.write(
-        '<w:p><w:pPr>${page > 0 && rowIndex == 0 ? '<w:pageBreakBefore/>' : ''}<w:spacing w:before="${_twip(gap)}" w:after="0" w:line="${_twip(height)}" w:lineRule="exact"/><w:ind w:left="${_twip(left)}" w:right="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:widowControl w:val="0"/>${tabs.isEmpty ? '' : '<w:tabs>${tabs.map((x) => '<w:tab w:val="left" w:pos="${_twip(x)}"/>').join()}</w:tabs>'}</w:pPr>',
+        '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr><w:r><w:br w:type="page"/></w:r></w:p>',
       );
-      if (rowIndex == 0) body.write(drawings);
-      right = left;
-      for (final span in spans) {
-        if (span.x > right + .75) body.write('<w:r><w:tab/></w:r>');
-        body.write(
-          '<w:r><w:rPr><w:rFonts w:ascii="$resumeDocumentTypeface" w:hAnsi="$resumeDocumentTypeface" w:eastAsia="$resumeDocumentTypeface" w:cs="$resumeDocumentTypeface"/><w:sz w:val="${(span.size * 2).round()}"/><w:szCs w:val="${(span.size * 2).round()}"/><w:color w:val="${_rgb(span.color)}"/>${span.bold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.underline ? '<w:u w:val="single"/>' : ''}${span.strike ? '<w:strike/>' : ''}</w:rPr><w:t xml:space="preserve">${_xml(span.text)}</w:t></w:r>',
-        );
-        right = span.x + span.width;
-      }
-      body.write('</w:p>');
-      previousBottom = top + height;
     }
+    body.write(
+      '<w:p><w:pPr><w:widowControl w:val="0"/><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr>',
+    );
+    body.write(drawings);
+    for (final line in sheet.lines) {
+      for (final span in line.spans) {
+        if (span.text.isEmpty || (span.color >> 24) == 0) continue;
+        final weight = span.fontWeight;
+        final isBold = weight >= 700;
+        final isMedium = weight >= 500 && !isBold && medium != null;
+        final family = isMedium
+            ? resumeWordMediumTypeface
+            : resumeWordRegularTypeface;
+        final text = resumeExportText(span.text);
+        final size = (span.size * 2).round();
+        final face = metrics[isBold ? 2 : (isMedium ? 1 : 0)];
+        final height = math.max(line.height, size / 2 * 1.5);
+        final width = math.max(
+          .1,
+          math.min(
+            layout.width - span.x,
+            math.max(span.width * 1.15, span.width + span.size * 2),
+          ),
+        );
+        // Use the measured baseline and font ascender, rather than the DOM ink
+        // box, for vertical placement (all packaged faces have a 1.06 em ascent).
+        final top = line.baseline - size / 2 * face.ascent;
+        final content =
+            '<w:txbxContent><w:p><w:pPr><w:widowControl w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/><w:sz w:val="$size"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${isBold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.underline ? '<w:u w:val="single"/>' : ''}<w:fitText w:val="${math.max(1, _twip(span.width))}" w:id="$id"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${_xml(text)}</w:t></w:r></w:p></w:txbxContent>';
+        body.write(rectangle(span.x, top, width, height, textContent: content));
+      }
+    }
+    body.write('</w:p>');
   }
   body.write(
     '<w:sectPr><w:pgSz w:w="${_twip(layout.width)}" w:h="${_twip(layout.height)}"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>',
@@ -462,7 +571,7 @@ Uint8List _word(ResumeExportLayout layout, Uint8List regular, Uint8List bold) {
   text('word/_rels/document.xml.rels', relations.toString());
   text(
     '[Content_Types].xml',
-    '<?xml version="1.0"?><Types xmlns="${ns}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/></Types>',
+    '<?xml version="1.0"?><Types xmlns="${ns}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/></Types>',
   );
   text(
     '_rels/.rels',
@@ -473,13 +582,20 @@ Uint8List _word(ResumeExportLayout layout, Uint8List regular, Uint8List bold) {
   final hasBoldFace = !listEquals(regular, bold);
   add('word/fonts/regular.odttf', _obfuscated(regular, keyBytes));
   if (hasBoldFace) add('word/fonts/bold.odttf', _obfuscated(bold, keyBytes));
+  if (medium != null) {
+    add('word/fonts/medium.odttf', _obfuscated(medium, keyBytes));
+  }
   text(
     'word/fontTable.xml',
-    '<?xml version="1.0"?><w:fonts xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships"><w:font w:name="$resumeDocumentTypeface"><w:family w:val="swiss"/><w:embedRegular r:id="regular" w:fontKey="$key"/>${hasBoldFace ? '<w:embedBold r:id="bold" w:fontKey="$key"/>' : ''}</w:font></w:fonts>',
+    '<?xml version="1.0"?><w:fonts xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships"><w:font w:name="$resumeWordRegularTypeface"><w:family w:val="swiss"/><w:embedRegular r:id="regular" w:fontKey="$key"/>${hasBoldFace ? '<w:embedBold r:id="bold" w:fontKey="$key"/>' : ''}</w:font>${medium == null ? '' : '<w:font w:name="$resumeWordMediumTypeface"><w:family w:val="swiss"/><w:embedRegular r:id="medium" w:fontKey="$key"/></w:font>'}</w:fonts>',
   );
   text(
     'word/_rels/fontTable.xml.rels',
-    '<?xml version="1.0"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="regular" Type="${rel}font" Target="fonts/regular.odttf"/>${hasBoldFace ? '<Relationship Id="bold" Type="${rel}font" Target="fonts/bold.odttf"/>' : ''}</Relationships>',
+    '<?xml version="1.0"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="regular" Type="${rel}font" Target="fonts/regular.odttf"/>${hasBoldFace ? '<Relationship Id="bold" Type="${rel}font" Target="fonts/bold.odttf"/>' : ''}${medium == null ? '' : '<Relationship Id="medium" Type="${rel}font" Target="fonts/medium.odttf"/>'}</Relationships>',
+  );
+  text(
+    'word/settings.xml',
+    '<?xml version="1.0"?><w:settings xmlns:w="${ns}wordprocessingml/2006/main"><w:embedTrueTypeFonts/><w:saveSubsetFonts w:val="0"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>',
   );
   return Uint8List.fromList(ZipEncoder().encode(zip));
 }

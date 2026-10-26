@@ -363,13 +363,11 @@ void main() {
         api.failing = 'Post${resource}IdGuidanceAnnotations';
         await tester.tap(find.text('发送'));
         await tester.pumpAndSettle();
-        expect(
-          tester.widget<TextField>(find.byType(TextField)).controller!.text,
-          '谢谢，我补充一下',
-        );
-        expect(find.text('发送失败，请重试'), findsOneWidget);
+        expect(find.byType(TextField), findsNothing);
+        expect(find.text('谢谢，我补充一下'), findsOneWidget);
+        expect(find.text('发送失败'), findsOneWidget);
         api.failing = null;
-        await tester.tap(find.text('发送'));
+        await tester.tap(find.text('重试'));
         await tester.pumpAndSettle();
         expect(api.posted!['parent_id'], 7);
         expect(api.posted!['selected_text'], '网站开发');

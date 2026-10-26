@@ -1,6 +1,8 @@
+import 'content_report.dart';
+import 'content_moderation.dart';
 import 'user_display_name.dart';
 
-import 'dart:convert';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -79,10 +81,14 @@ class _AnnotationComposer extends StatefulWidget {
     required this.original,
     required this.selected,
     required this.replace,
+    this.initialText,
+    this.parentID,
   });
   final AppStore store;
   final int id;
   final bool notification, replace;
+  final String? initialText;
+  final int? parentID;
   final String fieldPath, original, selected;
   @override
   State<_AnnotationComposer> createState() => _AnnotationComposerState();
@@ -99,6 +105,7 @@ class _AnnotationComposerState extends State<_AnnotationComposer> {
   void initState() {
     super.initState();
     if (widget.replace) text.text = widget.selected;
+    if (widget.initialText != null) text.text = widget.initialText!;
   }
 
   @override
@@ -133,28 +140,14 @@ class _AnnotationComposerState extends State<_AnnotationComposer> {
       'selected_text': widget.selected,
       'suggestion': widget.replace ? '' : text.text.trim(),
       'replacement': widget.replace ? text.text.trim() : '',
+      if (widget.parentID != null) 'parent_id': widget.parentID,
     };
-    final next = jsonEncode(body);
-    if (next != payload) {
-      payload = next;
-      key = 'annotation-${widget.id}-${DateTime.now().microsecondsSinceEpoch}';
-    }
-    setState(() => sending = true);
-    final sent = await runRequest(
-      context,
-      () => widget.store.request(
-        annotationMethod(widget.notification, 'Post'),
-        path: {'id': '${widget.id}'},
-        body: body,
-        extra: {'idempotency-key': key!},
-      ),
+    widget.store.enqueueContent(
+      annotationMethod(widget.notification, 'Post'),
+      widget.id,
+      body,
     );
-    if (!mounted) return;
-    if (sent) {
-      Navigator.pop(context, true);
-    } else {
-      setState(() => sending = false);
-    }
+    Navigator.pop(context, true);
   }
 
   @override
@@ -312,21 +305,73 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
   List<Map<String, dynamic>>? items;
   String? error;
   int? busy;
+  Timer? moderationTimer;
+  StreamSubscription<Map<String, dynamic>>? removalSubscription;
+  bool loading = false;
+  void changed() {
+    if (mounted) setState(() {});
+  }
+
+  List<Map<String, dynamic>> get displayedItems =>
+      [
+            ...widget.store.localContent(
+              annotationMethod(widget.notification, 'Post'),
+              widget.id,
+            ),
+            ...?(items?.where((v) => !v.containsKey('_method'))),
+          ]
+          .where(
+            (v) =>
+                (!widget.mineOnly ||
+                    integer(v['reviewer_id']) == widget.store.userID) &&
+                (widget.reviewerKey == null ||
+                    guidanceReviewerKey(v) == widget.reviewerKey) &&
+                (widget.recordKeys == null ||
+                    widget.recordKeys!.contains(guidanceRecordKey(v))),
+          )
+          .toList();
+  @override
+  void dispose() {
+    moderationTimer?.cancel();
+    unawaited(removalSubscription?.cancel());
+    widget.store.removeListener(changed);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
     items = widget.initialItems;
+    widget.store.addListener(changed);
+    removalSubscription = widget.store.realtimeEvents.listen((event) {
+      if (mounted &&
+          guidanceRemovalAffects(event, widget.id, widget.notification)) {
+        load();
+      }
+    });
+    moderationTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted &&
+          widget.store.foreground &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          displayedItems.any(
+            (v) => {'SENDING', 'QUEUED', 'PENDING'}.contains(contentStatus(v)),
+          )) {
+        load();
+      }
+    });
     load();
   }
 
   Future<void> load() async {
+    if (loading) return;
+    loading = true;
     try {
       final result = await widget.store.request(
         annotationMethod(widget.notification, 'Get'),
         path: {'id': '${widget.id}'},
       );
       var legacy = widget.legacyItems;
-      if (widget.mineOnly) {
+      if (!widget.notification || widget.mineOnly) {
         final detail = await widget.store.request(
           widget.notification
               ? 'GetNotificationsIdGuidance'
@@ -339,9 +384,14 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
         setState(() {
           items =
               [
-                    ...(result.data['items'] as List? ?? [])
-                        .whereType<Map>()
-                        .map((v) => Map<String, dynamic>.from(v)),
+                    ...widget.store.mergeContent(
+                      annotationMethod(widget.notification, 'Post'),
+                      widget.id,
+                      (result.data['items'] as List? ?? [])
+                          .whereType<Map>()
+                          .map((v) => Map<String, dynamic>.from(v))
+                          .toList(),
+                    ),
                     ...legacy,
                   ]
                   .where(
@@ -361,6 +411,8 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
       }
     } catch (e) {
       if (mounted) setState(() => error = '$e');
+    } finally {
+      loading = false;
     }
   }
 
@@ -421,6 +473,32 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
     ),
   );
 
+  Future<void> retryRecord(Map<String, dynamic> item) async {
+    if (contentStatus(item) == 'FAILED') {
+      await widget.store.sendContent(item);
+      return;
+    }
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _AnnotationComposer(
+        store: widget.store,
+        id: widget.id,
+        notification: widget.notification,
+        fieldPath: '${item['field_path']}',
+        original: '${item['field_value'] ?? item['selected_text'] ?? ''}',
+        selected: '${item['selected_text'] ?? ''}',
+        replace: '${item['replacement'] ?? ''}'.isNotEmpty,
+        initialText: '${item['replacement'] ?? ''}'.isNotEmpty
+            ? '${item['replacement']}'
+            : '${item['suggestion'] ?? ''}',
+        parentID: item['parent_id'] == null ? null : integer(item['parent_id']),
+      ),
+    );
+    if (result == true && mounted) load();
+  }
+
   Widget recordCard(Map<String, dynamic> item) {
     final replacement = '${item['replacement'] ?? ''}';
     final advice = '${item['suggestion'] ?? ''}';
@@ -441,183 +519,231 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
     final updated = DateTime.tryParse(
       '${item['created_at'] ?? item['updated_at'] ?? ''}',
     );
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: context.colors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              ProfileAvatar(
-                key: ValueKey(
-                  'guidance-record-avatar-${guidanceRecordKey(item)}',
-                ),
-                seed: '${item['reviewer_id'] ?? guidanceReviewerKey(item)}',
-                url: '${item['reviewer_avatar_url'] ?? ''}',
-                size: 32,
-                onTap: integer(item['reviewer_id']) > 0
-                    ? () => openUserProfile(
-                        context,
-                        store: widget.store,
-                        userID: integer(item['reviewer_id']),
-                      )
-                    : null,
-                semanticsLabel:
-                    '查看${userDisplayName(item['reviewer_name'])}的主页',
+    return GestureDetector(
+      onLongPressStart:
+          contentVisible(item) &&
+              integer(item['id']) > 0 &&
+              integer(item['reviewer_id']) != widget.store.userID
+          ? (details) => showReportBubble(
+              context,
+              details.globalPosition,
+              () => reportContent(
+                context,
+                store: widget.store,
+                subjectType: item['legacy'] == true
+                    ? 'GUIDANCE_SUGGESTION'
+                    : 'GUIDANCE_ANNOTATION',
+                subjectID: integer(item['id']),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      userDisplayName(item['reviewer_name']),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (updated != null) ...[
-                      const SizedBox(height: 3),
+            )
+          : null,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: context.colors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                ProfileAvatar(
+                  key: ValueKey(
+                    'guidance-record-avatar-${guidanceRecordKey(item)}',
+                  ),
+                  seed: '${item['reviewer_id'] ?? guidanceReviewerKey(item)}',
+                  url: '${item['reviewer_avatar_url'] ?? ''}',
+                  size: 32,
+                  onTap: integer(item['reviewer_id']) > 0
+                      ? () => openUserProfile(
+                          context,
+                          store: widget.store,
+                          userID: integer(item['reviewer_id']),
+                        )
+                      : null,
+                  semanticsLabel:
+                      '查看${userDisplayName(item['reviewer_name'])}的主页',
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        resumeUpdatedLabel(updated),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: context.colors.muted,
+                        userDisplayName(item['reviewer_name']),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
+                      if (updated != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          resumeUpdatedLabel(updated),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: context.colors.muted,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: .18),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  isReplacement ? '改写' : '评论',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isReplacement
-                        ? const Color(0xFF7A63AC)
-                        : const Color(0xFF408C77),
                   ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .18),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    isReplacement ? '改写' : '评论',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isReplacement
+                          ? const Color(0xFF7A63AC)
+                          : const Color(0xFF408C77),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (quote.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              contentBlock('原文', quote),
+            ],
+            if (isReplacement) ...[
+              const SizedBox(height: 8),
+              contentBlock(
+                '建议替换为',
+                replacement,
+                color: guidanceReplacementColor,
+              ),
+            ],
+            if (advice.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(advice, style: const TextStyle(fontSize: 13, height: 1.6)),
+            ],
+            if (changed) ...[
+              const SizedBox(height: 10),
+              Text(
+                '原文已变化，色块标记的是对应栏目。',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.colors.muted,
+                  height: 1.5,
                 ),
               ),
             ],
-          ),
-          if (quote.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            contentBlock('原文', quote),
-          ],
-          if (isReplacement) ...[
-            const SizedBox(height: 8),
-            contentBlock('建议替换为', replacement, color: guidanceReplacementColor),
-          ],
-          if (advice.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(advice, style: const TextStyle(fontSize: 13, height: 1.6)),
-          ],
-          if (changed) ...[
-            const SizedBox(height: 10),
-            Text(
-              '原文已变化，色块标记的是对应栏目。',
-              style: TextStyle(
-                fontSize: 11,
-                color: context.colors.muted,
-                height: 1.5,
+            if (!contentVisible(item)) ...[
+              const SizedBox(height: 10),
+              Text(
+                moderationLabel(contentStatus(item)),
+                style: TextStyle(fontSize: 12, color: context.colors.muted),
               ),
-            ),
-          ],
-          if (isReplacement) ...[
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            const SizedBox(height: 6),
-            if (item['legacy'] == true)
-              Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Text(
-                  '早期建议，可在简历编辑页中调整。',
-                  style: TextStyle(fontSize: 12, color: context.colors.muted),
+              if ({'REJECTED', 'FAILED'}.contains(contentStatus(item))) ...[
+                Text(
+                  '${item['review_reason'] ?? ''}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
-              )
-            else if (status != 'PENDING')
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  children: [
-                    if (status == 'ACCEPTED') ...[
-                      const AppIcon(
-                        AppIcons.confirm,
-                        size: 16,
-                        color: Color(0xFF408C77),
+                TextButton(
+                  onPressed: () => retryRecord(item),
+                  child: Text(contentStatus(item) == 'FAILED' ? '重试' : '修改后重发'),
+                ),
+              ],
+            ],
+            if (isReplacement && contentVisible(item)) ...[
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 6),
+              if (item['legacy'] == true)
+                Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text(
+                    '早期建议，可在简历编辑页中调整。',
+                    style: TextStyle(fontSize: 12, color: context.colors.muted),
+                  ),
+                )
+              else if (status != 'PENDING')
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      if (status == 'ACCEPTED') ...[
+                        const AppIcon(
+                          AppIcons.confirm,
+                          size: 16,
+                          color: Color(0xFF408C77),
+                        ),
+                        const SizedBox(width: 5),
+                      ],
+                      Text(
+                        status == 'ACCEPTED' ? '作者已采纳' : '作者未采纳',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: status == 'ACCEPTED'
+                              ? const Color(0xFF408C77)
+                              : context.colors.muted,
+                        ),
                       ),
-                      const SizedBox(width: 5),
                     ],
-                    Text(
-                      status == 'ACCEPTED' ? '作者已采纳' : '作者未采纳',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: status == 'ACCEPTED'
-                            ? const Color(0xFF408C77)
-                            : context.colors.muted,
-                      ),
+                  ),
+                )
+              else if (widget.owner)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: busy == null
+                          ? () => decide(item, false)
+                          : null,
+                      style: TextButton.styleFrom(
+                        foregroundColor: context.colors.muted,
+                        minimumSize: const Size(64, 40),
+                      ).withoutHover(),
+                      child: const Text('不采纳'),
+                    ),
+                    const SizedBox(width: 18),
+                    TextButton(
+                      onPressed: busy == null ? () => decide(item, true) : null,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(64, 40),
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ).withoutHover(),
+                      child: busy == integer(item['id'])
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('采纳'),
                     ),
                   ],
-                ),
-              )
-            else if (widget.owner)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: busy == null ? () => decide(item, false) : null,
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.muted,
-                      minimumSize: const Size(64, 40),
-                    ).withoutHover(),
-                    child: const Text('不采纳'),
+                )
+              else
+                Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text(
+                    '等待作者确认',
+                    style: TextStyle(fontSize: 12, color: context.colors.muted),
                   ),
-                  const SizedBox(width: 18),
-                  TextButton(
-                    onPressed: busy == null ? () => decide(item, true) : null,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(64, 40),
-                      textStyle: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ).withoutHover(),
-                    child: busy == integer(item['id'])
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('采纳'),
-                  ),
-                ],
-              )
-            else
-              Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Text(
-                  '等待作者确认',
-                  style: TextStyle(fontSize: 12, color: context.colors.muted),
                 ),
-              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -642,7 +768,7 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : RefreshIndicator(
               onRefresh: load,
-              child: items!.isEmpty
+              child: displayedItems.isEmpty
                   ? LayoutBuilder(
                       builder: (context, constraints) => ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
@@ -665,10 +791,11 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
                   : ListView.separated(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      itemCount: items!.length,
+                      itemCount: displayedItems.length,
                       separatorBuilder: (_, index) =>
                           const SizedBox(height: 12),
-                      itemBuilder: (_, index) => recordCard(items![index]),
+                      itemBuilder: (_, index) =>
+                          recordCard(displayedItems[index]),
                     ),
             ),
     ),

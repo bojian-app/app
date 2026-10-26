@@ -20,6 +20,7 @@ import 'resume_photo_crop.dart';
 import 'resume_export.dart';
 import 'resume_work_experience.dart';
 import 'resume_education.dart';
+import 'resume_editor_progress.dart';
 import 'resume_additional_fields.dart';
 import 'resume_templates.dart';
 import 'resume_updated_label.dart';
@@ -651,122 +652,121 @@ class _ResumeEditorState extends State<ResumeEditor> {
   Widget _photoField() {
     final existing = !photoRemoved && currentDraft.photoFileID > 0;
     final hasPhoto = selectedPhoto != null || existing;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return SizedBox(
+      width: 96,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: SizedBox(
-              width: 70,
-              height: 84,
-              child: selectedPhoto != null
-                  ? Image.file(
-                      File(selectedPhoto!.path),
-                      fit: BoxFit.cover,
-                      alignment: const Alignment(0, -0.35),
-                    )
-                  : existing && currentDraft.photoURL.isNotEmpty
-                  ? Image.network(
-                      currentDraft.photoURL,
-                      cacheWidth: 280,
-                      fit: BoxFit.cover,
-                      alignment: const Alignment(0, -0.35),
-                      errorBuilder: (_, _, _) => TextButton(
-                        onPressed: saving
-                            ? null
-                            : () {
-                                NetworkImage(currentDraft.photoURL).evict();
-                                _loadPhoto();
-                              },
-                        child: const Text(
-                          '加载失败\n点击重试',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 10),
+          InkWell(
+            onTap: saving || pickingPhoto ? null : _pickPhoto,
+            borderRadius: BorderRadius.circular(14),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                width: 88,
+                height: 112,
+                child: selectedPhoto != null
+                    ? Image.file(
+                        File(selectedPhoto!.path),
+                        fit: BoxFit.cover,
+                        alignment: const Alignment(0, -.35),
+                      )
+                    : existing && currentDraft.photoURL.isNotEmpty
+                    ? Image.network(
+                        currentDraft.photoURL,
+                        cacheWidth: 280,
+                        fit: BoxFit.cover,
+                        alignment: const Alignment(0, -.35),
+                        errorBuilder: (_, _, _) => TextButton(
+                          onPressed: saving
+                              ? null
+                              : () {
+                                  NetworkImage(currentDraft.photoURL).evict();
+                                  _loadPhoto();
+                                },
+                          child: const Text(
+                            '加载失败\n点击重试',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 10),
+                          ),
+                        ),
+                      )
+                    : ColoredBox(
+                        color: context.isDark
+                            ? context.colors.inset
+                            : const Color(0xFFF0F2F4),
+                        child: Center(
+                          child: AppIcon(
+                            AppIcons.portrait,
+                            size: 42,
+                            color: context.colors.muted.withValues(alpha: .5),
+                          ),
                         ),
                       ),
-                    )
-                  : ColoredBox(
-                      color: (context.isDark
-                          ? context.colors.accentSoft
-                          : Color(0xFFF0F3F9)),
-                      child: Center(
-                        child: AppIcon(
-                          AppIcons.portrait,
-                          color: context.colors.muted,
-                          size: 30,
-                        ),
-                      ),
-                    ),
+              ),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '简历头像',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '最大 5 MB',
-                  style: TextStyle(color: context.colors.muted, fontSize: 10),
-                ),
-                if (selectedPhoto != null || photoRemoved)
-                  Text(
-                    '保存后生效',
-                    style: TextStyle(
-                      color: context.colors.accent,
-                      fontSize: 10,
-                    ),
-                  ),
-                Wrap(
-                  spacing: 20,
-                  children: [
-                    TextButton(
-                      onPressed: saving || pickingPhoto ? null : _pickPhoto,
-                      child: Text(
-                        pickingPhoto
-                            ? '正在选择…'
-                            : hasPhoto
-                            ? '更换头像'
-                            : '上传头像',
-                      ),
-                    ),
-                    if (hasPhoto)
-                      TextButton(
-                        onPressed: saving
-                            ? null
-                            : () => setState(() {
-                                unawaited(
-                                  discardResumePhotoCrop(selectedPhoto),
-                                );
-                                selectedPhoto = null;
-                                photoRemoved = true;
-                              }),
-                        child: const Text('移除'),
-                      ),
-                    if (photoError != null)
-                      TextButton(
-                        onPressed: saving ? null : _loadPhoto,
-                        child: const Text('重试'),
-                      ),
-                  ],
-                ),
-                if (photoError != null)
-                  Text(
-                    photoError!,
-                    style: const TextStyle(
-                      color: Colors.redAccent,
-                      fontSize: 10,
-                    ),
-                  ),
-              ],
-            ),
+          const SizedBox(height: 5),
+          Text(
+            '简历头像',
+            style: TextStyle(color: context.colors.muted, fontSize: 11),
           ),
+          Text(
+            '最大 5 MB',
+            style: TextStyle(color: context.colors.muted, fontSize: 10),
+          ),
+          if (selectedPhoto != null || photoRemoved)
+            Text(
+              '保存后生效',
+              style: TextStyle(color: context.colors.accent, fontSize: 10),
+            ),
+          Wrap(
+            alignment: WrapAlignment.center,
+            children: [
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  minimumSize: const Size(44, 36),
+                  textStyle: const TextStyle(fontSize: 11),
+                ),
+                onPressed: saving || pickingPhoto ? null : _pickPhoto,
+                child: Text(
+                  pickingPhoto
+                      ? '正在选择…'
+                      : hasPhoto
+                      ? '更换头像'
+                      : '上传头像',
+                ),
+              ),
+              if (hasPhoto)
+                TextButton(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    minimumSize: const Size(44, 36),
+                    textStyle: const TextStyle(fontSize: 11),
+                  ),
+                  onPressed: saving
+                      ? null
+                      : () => setState(() {
+                          unawaited(discardResumePhotoCrop(selectedPhoto));
+                          selectedPhoto = null;
+                          photoRemoved = true;
+                        }),
+                  child: const Text('移除'),
+                ),
+              if (photoError != null)
+                TextButton(
+                  onPressed: saving ? null : _loadPhoto,
+                  child: const Text('重试'),
+                ),
+            ],
+          ),
+          if (photoError != null)
+            Text(
+              photoError!,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 10),
+              textAlign: TextAlign.center,
+            ),
         ],
       ),
     );
@@ -883,9 +883,18 @@ class _ResumeEditorState extends State<ResumeEditor> {
     super.dispose();
   }
 
-  final sectionKeys = List.generate(7, (_) => GlobalKey());
+  final sectionKeys = List.generate(8, (_) => GlobalKey());
   int activeSection = 0;
-  final sectionNames = ['基本信息', '求职意向', '工作经历', '教育经历', '项目经历', '专业技能', '证书'];
+  final sectionNames = [
+    '基本信息',
+    '求职意向',
+    '自我评价',
+    '工作经历',
+    '项目经历',
+    '教育经历',
+    '专业技能',
+    '证书',
+  ];
 
   void _jump(int index) {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -900,149 +909,341 @@ class _ResumeEditorState extends State<ResumeEditor> {
     }
   }
 
+  Iterable<TextEditingController> get _allEditorFields sync* {
+    yield* fields.values;
+    for (final entry in workEntries) {
+      yield* entry.fields.values;
+    }
+    for (final entry in educationEntries) {
+      yield* entry.fields.values;
+    }
+    for (final list in additionalEntries.values) {
+      for (final entry in list) {
+        yield* entry.fields.values;
+      }
+    }
+  }
+
+  Widget _completionCard() => ListenableBuilder(
+    listenable: Listenable.merge(_allEditorFields.toList()),
+    builder: (context, _) {
+      final progress = resumeEditorProgress(
+        fields: fields.map((key, controller) => MapEntry(key, controller.text)),
+        work: workEntries.map((entry) => entry.toJson()),
+        projects: additionalEntries['projects']!.map((entry) => entry.toJson()),
+        education: educationEntries.map((entry) => entry.toJson()),
+        skills: additionalEntries['skills']!.map((entry) => entry.toJson()),
+      );
+      return Container(
+        key: const ValueKey('resume-editor-completeness'),
+        margin: const EdgeInsets.only(bottom: 18),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    '简历完整度',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${progress.percent}%',
+                  key: const ValueKey('resume-editor-completeness-percent'),
+                  style: TextStyle(
+                    color: context.colors.accent,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: progress.fraction,
+                minHeight: 7,
+                color: context.colors.accent,
+                backgroundColor: context.colors.accentSoft,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '已填写 ${progress.filled}/${progress.total} 项基础内容',
+              style: TextStyle(color: context.colors.muted, fontSize: 11),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
+  Widget _basicInformation() => Column(
+    children: [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              children: [
+                _field('name', '姓名'),
+                _field('phone', '手机号码', keyboard: TextInputType.phone),
+                _field('email', '邮箱', keyboard: TextInputType.emailAddress),
+              ],
+            ),
+          ),
+          const SizedBox(width: 20),
+          _photoField(),
+        ],
+      ),
+      _field('title', '简历名称'),
+      ExpansionTile(
+        key: const ValueKey('resume-editor-more-personal'),
+        maintainState: true,
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(top: 12),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        collapsedTextColor: context.colors.muted,
+        textColor: context.colors.ink,
+        iconColor: context.colors.muted,
+        collapsedIconColor: context.colors.muted,
+        title: const Text('更多基本信息', style: TextStyle(fontSize: 13)),
+        children: [_personalFields()],
+      ),
+    ],
+  );
+
+  bool get _compactEditing =>
+      MediaQuery.sizeOf(context).height -
+          MediaQuery.viewInsetsOf(context).bottom <
+      280;
+
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: context.isDark
+        ? context.colors.canvas
+        : const Color(0xFFF3F5F8),
     appBar: AppBar(
-      title: Text(currentDraft.id == 0 ? '创建简历' : '编辑简历'),
+      title: Text(
+        currentDraft.id == 0 ? '创建简历' : '编辑简历',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      backgroundColor: context.colors.surface,
+      surfaceTintColor: Colors.transparent,
       actions: [
         const DismissKeyboardButton(),
-        Padding(
-          padding: const EdgeInsets.only(right: 12),
-          child: TextButton(
+        if (_compactEditing)
+          TextButton(
+            key: const ValueKey('resume-editor-save'),
             onPressed: saving || pickingPhoto ? null : _save,
             child: Text(
               saving ? '保存中…' : '保存',
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
-        ),
       ],
     ),
-    body: Form(
-      key: formKey,
-      child: Column(
-        children: [
-          SizedBox(
-            height: 52,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: List.generate(
-                  sectionNames.length,
-                  (i) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(
-                        sectionNames[i],
-                        style: const TextStyle(fontSize: 12),
+    bottomNavigationBar: _compactEditing
+        ? null
+        : Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.colors.surface,
+                border: Border(top: BorderSide(color: context.colors.border)),
+              ),
+              child: SafeArea(
+                top: false,
+                minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    key: const ValueKey('resume-editor-save'),
+                    onPressed: saving || pickingPhoto ? null : _save,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2167E8),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
                       ),
-                      selected: activeSection == i,
-                      showCheckmark: false,
-                      side: BorderSide.none,
-                      backgroundColor: context.colors.surface,
-                      selectedColor: (context.isDark
-                          ? context.colors.accentSoft
-                          : const Color(0xFFE7EFFF)),
-                      labelStyle: TextStyle(
-                        color: activeSection == i
-                            ? context.colors.accent
-                            : context.colors.muted,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      onSelected: (_) => _jump(i),
+                    ).withoutHover(),
+                    child: Text(
+                      saving ? '保存中…' : '保存',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-          Expanded(
-            child: ListView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                Column(
-                  children: [
-                    _section(0, AppIcons.personalInfo, [
-                      _photoField(),
-                      _field('title', '简历名称'),
-                      _field('name', '姓名'),
-                      _personalFields(),
-                      _pair(
-                        _field('phone', '手机号码', keyboard: TextInputType.phone),
-                        _field(
-                          'email',
-                          '邮箱',
-                          keyboard: TextInputType.emailAddress,
+    body: Form(
+      key: formKey,
+      child: Column(
+        children: [
+          if (!_compactEditing)
+            ColoredBox(
+              color: context.colors.surface,
+              child: SizedBox(
+                height: 38 + MediaQuery.textScalerOf(context).scale(12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      for (var index = 0; index < sectionNames.length; index++)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(
+                              sectionNames[index],
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            selected: activeSection == index,
+                            showCheckmark: false,
+                            side: BorderSide.none,
+                            backgroundColor: context.colors.surface,
+                            selectedColor: context.colors.accentSoft,
+                            labelStyle: TextStyle(
+                              color: activeSection == index
+                                  ? context.colors.accent
+                                  : context.colors.muted,
+                            ),
+                            onSelected: (_) => _jump(index),
+                          ),
                         ),
-                      ),
-                    ]),
-                    _section(1, AppIcons.jobExpectation, [
-                      _pair(_field('position', '意向职位'), _field('city', '意向城市')),
-                      _pair(
-                        _field('industry', '期望行业'),
-                        _field('salary', '期望薪资'),
-                      ),
-                      _field(
-                        'summary',
-                        '求职偏好与个人介绍',
-                        lines: 4,
-                        hint: '填写你的专业方向、经验和优势',
-                      ),
-                    ]),
-                    _section(2, AppIcons.work, [
-                      for (var i = 0; i < workEntries.length; i++)
-                        _workEntry(i),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: TextButton(
-                          onPressed: saving
-                              ? null
-                              : () => setState(
-                                  () =>
-                                      workEntries.add(WorkExperienceFields({})),
-                                ),
-                          child: const Text('添加工作经历'),
-                        ),
-                      ),
-                    ]),
-                    _section(3, AppIcons.education, [
-                      for (var i = 0; i < educationEntries.length; i++)
-                        _educationEntry(i),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: TextButton(
-                          onPressed: saving
-                              ? null
-                              : () => setState(
-                                  () =>
-                                      educationEntries.add(EducationFields({})),
-                                ),
-                          child: const Text('添加教育经历'),
-                        ),
-                      ),
-                    ]),
-                    _section(
-                      4,
-                      AppIcons.projects,
-                      _additionalSection('projects', '项目经历'),
-                    ),
-                    _section(
-                      5,
-                      AppIcons.skills,
-                      _additionalSection('skills', '技能'),
-                    ),
-                    _section(
-                      6,
-                      AppIcons.certificate,
-                      _additionalSection('certifications', '证书'),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ],
+              ),
+            ),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0, .36, 1],
+                  colors: context.isDark
+                      ? [
+                          context.colors.canvas,
+                          context.colors.canvas,
+                          context.colors.canvas,
+                        ]
+                      : [
+                          const Color(0xFFE8F1FF),
+                          const Color(0xFFF3F5F8),
+                          const Color(0xFFF3F5F8),
+                        ],
+                ),
+              ),
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
+                children: [
+                  Column(
+                    children: [
+                      _completionCard(),
+                      _section(0, AppIcons.personalInfo, [_basicInformation()]),
+                      _section(1, AppIcons.jobExpectation, [
+                        _pair(
+                          _field('position', '意向职位'),
+                          _field('city', '意向城市'),
+                        ),
+                        _pair(
+                          _field('industry', '期望行业'),
+                          _field('salary', '期望薪资'),
+                        ),
+                      ]),
+                      _section(2, AppIcons.profileEdit, [
+                        _field(
+                          'summary',
+                          '自我评价与求职偏好',
+                          lines: 4,
+                          hint: '填写你的专业方向、经验和优势',
+                        ),
+                      ]),
+                      _section(3, AppIcons.work, [
+                        for (var index = 0; index < workEntries.length; index++)
+                          _workEntry(index),
+                        _addEntryButton(
+                          '添加工作经历',
+                          () => setState(
+                            () => workEntries.add(WorkExperienceFields({})),
+                          ),
+                        ),
+                      ]),
+                      _section(
+                        4,
+                        AppIcons.projects,
+                        _additionalSection('projects', '项目经历'),
+                      ),
+                      _section(5, AppIcons.education, [
+                        for (
+                          var index = 0;
+                          index < educationEntries.length;
+                          index++
+                        )
+                          _educationEntry(index),
+                        _addEntryButton(
+                          '添加教育经历',
+                          () => setState(
+                            () => educationEntries.add(EducationFields({})),
+                          ),
+                        ),
+                      ]),
+                      _section(
+                        6,
+                        AppIcons.skills,
+                        _additionalSection('skills', '技能'),
+                      ),
+                      _section(
+                        7,
+                        AppIcons.certificate,
+                        _additionalSection('certifications', '证书'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
+      ),
+    ),
+  );
+
+  Widget _addEntryButton(String label, VoidCallback add) => SizedBox(
+    width: double.infinity,
+    child: Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: TextButton.icon(
+        onPressed: saving ? null : add,
+        style: TextButton.styleFrom(
+          foregroundColor: context.colors.ink,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        ),
+        icon: const AppIcon(AppIcons.addCircle, size: 20),
+        label: Text(label, style: const TextStyle(fontSize: 14)),
       ),
     ),
   );
@@ -1059,7 +1260,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+          style: TextStyle(fontSize: 12, color: context.colors.muted),
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
@@ -1067,32 +1268,19 @@ class _ResumeEditorState extends State<ResumeEditor> {
           isExpanded: true,
           icon: AppIcon(AppIcons.expand, size: 18, color: context.colors.muted),
           decoration: InputDecoration(
-            filled: true,
-            fillColor: (context.isDark
-                ? context.colors.inset
-                : const Color(0xFFF8F9FC)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: (context.isDark
-                    ? context.colors.border
-                    : Color(0xFFE9EDF3)),
-              ),
+            filled: false,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            border: UnderlineInputBorder(
+              borderSide: BorderSide(color: context.colors.border),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: (context.isDark
-                    ? context.colors.border
-                    : Color(0xFFE9EDF3)),
-              ),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: context.colors.border),
             ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 13,
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: context.colors.accent),
             ),
           ),
-          style: TextStyle(fontSize: 14, color: context.colors.ink),
+          style: TextStyle(fontSize: 15, color: context.colors.ink),
           items: [
             for (final option in options.entries)
               DropdownMenuItem(value: option.key, child: Text(option.value)),
@@ -1154,6 +1342,66 @@ class _ResumeEditorState extends State<ResumeEditor> {
     );
   }
 
+  Widget _entryTitle(TextEditingController controller, String fallback) =>
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) => Text(
+          value.text.trim().isEmpty ? fallback : value.text.trim(),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            height: 1.5,
+          ),
+        ),
+      );
+
+  Widget _entryMeta(
+    Map<String, TextEditingController> controllers, {
+    List<String> details = const [],
+    bool current = false,
+    bool dateOnly = false,
+  }) => ListenableBuilder(
+    listenable: Listenable.merge(controllers.values.toList()),
+    builder: (context, _) {
+      final detail = details
+          .map((key) => controllers[key]?.text.trim() ?? '')
+          .where((value) => value.isNotEmpty)
+          .join(' · ');
+      final dates = dateOnly
+          ? (controllers['date']?.text.trim() ?? '')
+          : [
+              controllers['start_date']?.text.trim() ?? '',
+              current ? '至今' : controllers['end_date']?.text.trim() ?? '',
+            ].where((value) => value.isNotEmpty).join(' – ');
+      if (detail.isEmpty && dates.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 2, bottom: 12),
+        child: SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 14,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (detail.isNotEmpty)
+                Text(detail, style: const TextStyle(fontSize: 13, height: 1.5)),
+              if (dates.isNotEmpty)
+                Text(
+                  dates.replaceAll('-', '.'),
+                  style: TextStyle(
+                    color: context.colors.muted,
+                    fontSize: 11,
+                    height: 1.5,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+
   List<Widget> _additionalSection(String key, String title) {
     final list = additionalEntries[key]!;
     return [
@@ -1161,14 +1409,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
         Container(
           key: ObjectKey(list[index]),
           margin: const EdgeInsets.only(bottom: 18),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: const EdgeInsets.only(top: 4),
           decoration: BoxDecoration(
-            border: Border.all(
-              color: (context.isDark
-                  ? context.colors.border
-                  : const Color(0xFFE9EDF3)),
-            ),
-            borderRadius: BorderRadius.circular(14),
+            border: Border(bottom: BorderSide(color: context.colors.border)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1176,12 +1419,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: _entryTitle(
+                      list[index].fields['name']!,
                       '$title ${index + 1}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
                     ),
                   ),
                   IconButton(
@@ -1211,7 +1451,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              _entryMeta(
+                list[index].fields,
+                details: key == 'projects' ? ['role'] : const [],
+                dateOnly: key == 'certifications',
+              ),
+              const SizedBox(height: 12),
               for (final field in additionalSchema[key]!)
                 _field(
                   key == 'skills' && index == 0 && field.$1 == 'description'
@@ -1228,14 +1473,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
             ],
           ),
         ),
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: TextButton(
-          onPressed: saving
-              ? null
-              : () => setState(() => list.add(_newEntry(key, {}))),
-          child: Text('添加$title'),
-        ),
+      _addEntryButton(
+        '添加$title',
+        () => setState(() => list.add(_newEntry(key, {}))),
       ),
     ];
   }
@@ -1284,33 +1524,30 @@ class _ResumeEditorState extends State<ResumeEditor> {
       Container(
         key: sectionKeys[index],
         margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 8),
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
         decoration: BoxDecoration(
           color: context.colors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: (context.isDark
-                ? context.colors.border
-                : const Color(0xFFF0F2F5)),
-          ),
+          borderRadius: BorderRadius.circular(22),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                AppIcon(icon, size: 20, color: context.colors.accent),
+                AppIcon(icon, size: 20, color: context.colors.ink),
                 const SizedBox(width: 10),
-                Text(
-                  sectionNames[index],
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    sectionNames[index],
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 22),
             ...children,
           ],
         ),
@@ -1342,8 +1579,8 @@ class _ResumeEditorState extends State<ResumeEditor> {
               label,
               style: TextStyle(
                 fontSize: 12,
-                color: context.colors.ink,
-                fontWeight: FontWeight.w500,
+                color: context.colors.muted,
+                fontWeight: FontWeight.w400,
               ),
             ),
           ),
@@ -1359,7 +1596,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
             textInputAction: lines == 1
                 ? TextInputAction.next
                 : TextInputAction.newline,
-            style: const TextStyle(fontSize: 14, height: 1.5),
+            style: TextStyle(
+              fontSize: key == 'name' ? 22 : 15,
+              height: 1.65,
+              fontWeight: key == 'name' ? FontWeight.w600 : FontWeight.w400,
+              color: dateField ? context.colors.muted : context.colors.ink,
+            ),
             decoration: InputDecoration(
               hintText: dateField && enabled ? '请选择$label' : hint,
               suffixIcon: pick == null
@@ -1393,33 +1635,17 @@ class _ResumeEditorState extends State<ResumeEditor> {
                             ),
                     ),
               hintStyle: TextStyle(color: context.colors.muted, fontSize: 12),
-              filled: true,
-              fillColor: (context.isDark
-                  ? context.colors.inset
-                  : const Color(0xFFF8F9FC)),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 13,
+              filled: false,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              border: UnderlineInputBorder(
+                borderSide: BorderSide(color: context.colors.border),
               ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: (context.isDark
-                      ? context.colors.border
-                      : Color(0xFFE9EDF3)),
-                ),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: context.colors.border),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: (context.isDark
-                      ? context.colors.border
-                      : Color(0xFFE9EDF3)),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: blue),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: context.colors.accent),
               ),
             ),
             validator: (v) =>
@@ -1500,14 +1726,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
     return Container(
       key: ObjectKey(entry),
       margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.only(top: 4),
       decoration: BoxDecoration(
-        border: Border.all(
-          color: (context.isDark
-              ? context.colors.border
-              : const Color(0xFFE9EDF3)),
-        ),
-        borderRadius: BorderRadius.circular(14),
+        border: Border(bottom: BorderSide(color: context.colors.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1515,12 +1736,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  '经历 ${index + 1}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: _entryTitle(
+                  entry.fields['company']!,
+                  '工作经历 ${index + 1}',
                 ),
               ),
               IconButton(
@@ -1548,7 +1766,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          _entryMeta(
+            entry.fields,
+            details: ['position'],
+            current: entry.current,
+          ),
+          const SizedBox(height: 12),
           input('company', '公司名称'),
           input('position', '职位'),
           input('industry', '所属行业'),
@@ -1631,14 +1854,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
     return Container(
       key: ObjectKey(entry),
       margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.only(top: 4),
       decoration: BoxDecoration(
-        border: Border.all(
-          color: (context.isDark
-              ? context.colors.border
-              : const Color(0xFFE9EDF3)),
-        ),
-        borderRadius: BorderRadius.circular(14),
+        border: Border(bottom: BorderSide(color: context.colors.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1646,12 +1864,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  '经历 ${index + 1}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: _entryTitle(
+                  entry.fields['institution']!,
+                  '教育经历 ${index + 1}',
                 ),
               ),
               IconButton(
@@ -1679,7 +1894,8 @@ class _ResumeEditorState extends State<ResumeEditor> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          _entryMeta(entry.fields, details: ['field_of_study', 'degree']),
+          const SizedBox(height: 12),
           input('institution', '学校名称'),
           input('field_of_study', '专业'),
           input('degree', '学历'),

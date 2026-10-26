@@ -1,3 +1,5 @@
+import 'content_moderation.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -44,7 +46,8 @@ class _StoryComposerState extends State<StoryComposer> {
   Map<String, dynamic> get originalContent =>
       Map<String, dynamic>.from(widget.draft?['content'] as Map? ?? {});
   bool get guidance => originalContent['kind'] == 'RESUME_GUIDANCE';
-  int get draftID => integer(widget.draft?['id']);
+  int? createdDraftID;
+  int get draftID => createdDraftID ?? integer(widget.draft?['id']);
   bool get dirty =>
       title.text != initialTitle ||
       jsonEncode(editor.document.toDelta().toJson()) != initialDelta;
@@ -121,24 +124,26 @@ class _StoryComposerState extends State<StoryComposer> {
         : {...originalContent, ...articleContentFromDelta(operations)};
     editor.readOnly = true;
     setState(() => publishing = true);
+    var status = SubmissionStatus.pending;
     final saved = await runRequest(context, () async {
-      if (widget.draft == null) {
-        await widget.store.publish(
+      if (draftID == 0) {
+        status = await widget.store.publish(
           title.text.trim(),
           text,
           '经验分享',
           content: content,
+          onDraftSaved: (id) => createdDraftID = id,
         );
       } else {
         await widget.store.saveArticleDraft(
           id: draftID,
           title: title.text.trim(),
           content: content,
-          resumeID: widget.draft!['resume_id'] as int?,
+          resumeID: widget.draft?['resume_id'] as int?,
           expectedEpoch: session,
         );
         if (submit) {
-          await widget.store.submitArticleDraft(
+          status = await widget.store.submitArticleDraft(
             draftID,
             expectedEpoch: session,
           );
@@ -149,7 +154,7 @@ class _StoryComposerState extends State<StoryComposer> {
     if (saved) {
       setState(() => allowExit = true);
       Navigator.pop(context);
-      toast(context, submit ? '已提交审核' : '草稿已保存');
+      toast(context, submit ? articleSubmissionMessage(status) : '草稿已保存');
     } else {
       editor.readOnly = false;
       setState(() => publishing = false);

@@ -13,16 +13,161 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  late Uint8List regular, bold;
+  late Uint8List regular, medium, bold;
   setUpAll(() async {
     regular = (await rootBundle.load(resumeFontRegularAsset)).buffer
         .asUint8List();
     bold = (await rootBundle.load(resumeFontBoldAsset)).buffer.asUint8List();
+    medium = (await rootBundle.load(resumeFontMediumAsset)).buffer
+        .asUint8List();
     await (FontLoader(resumeDocumentFontFamily)
           ..addFont(Future.value(ByteData.sublistView(regular)))
+          ..addFont(Future.value(ByteData.sublistView(medium)))
           ..addFont(Future.value(ByteData.sublistView(bold))))
         .load();
   });
+
+  test('Word mobile branches retain white text, its background and an unclipped line', () async {
+    final bytes = await encodeNativeResume(
+      const ResumeExportLayout([
+        ResumeExportPage(
+          rules: [ResumeExportRule(30, 40, 220, 0, 0xFFCC4400, height: 50)],
+          lines: [
+            ResumeExportLine(
+              top: 42,
+              height: 9,
+              baseline: 54,
+              spans: [
+                ResumeExportSpan(
+                  text: '中等字重 English：行尾不能消失',
+                  x: 36,
+                  width: 200,
+                  size: 10,
+                  weight: 600,
+                  color: 0xFFFFFFFF,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ]),
+      'DOCX',
+      regular,
+      bold,
+      medium: medium,
+    );
+    final zip = ZipDecoder().decodeBytes(bytes);
+    final xml = utf8.decode(zip.findFile('word/document.xml')!.content);
+    final blocks = RegExp(r'<mc:AlternateContent>(.*?)</mc:AlternateContent>')
+        .allMatches(xml)
+        .map((m) => m.group(1)!)
+        .toList();
+    expect(blocks, hasLength(2));
+    expect(blocks.first, contains('<a:srgbClr val="CC4400"/>'));
+    expect(blocks.first, contains('fillcolor="#CC4400"'));
+    final text = blocks.last;
+    expect(RegExp('行尾不能消失').allMatches(text), hasLength(2));
+    expect(text, contains('wrap="none"'));
+    expect(text, contains('mso-wrap-style:none'));
+    expect(text, contains('mso-fit-shape-to-text:t'));
+    expect(text, isNot(contains('w:lineRule="exact"')));
+    expect(text, isNot(contains('<w:b/>')));
+    expect(text, contains(resumeWordMediumTypeface));
+    expect(text, contains('margin-top:43.400pt'));
+    final table = utf8.decode(zip.findFile('word/fontTable.xml')!.content);
+    expect(table, contains('w:name="$resumeWordMediumTypeface"'));
+    // The embedded face must be the original font, rather than a mislabeled
+    // regular/bold face. Deobfuscation is symmetric over the first 32 bytes.
+    final embedded = Uint8List.fromList(
+      zip.findFile('word/fonts/medium.odttf')!.content,
+    );
+    for (var i = 0; i < 32; i++) {
+      embedded[i] ^= (15 - i % 16) * 17;
+    }
+    expect(embedded, medium);
+  });
+
+  test(
+    'PDF exports imported radical characters and unsupported symbols',
+    () async {
+      final samples = Platform.environment['BOJIAN_EXPORT_SAMPLE_TEXT'];
+      final texts = samples == null
+          ? ['⼦⼴⼯⼤⼭⽬⼈ ⻅⻓⻔⻚ · • □ ? 😀 🚀']
+          : (jsonDecode(await File(samples).readAsString()) as List)
+                .cast<String>();
+      for (final text in texts) {
+        final pdf = await encodeNativeResume(
+          ResumeExportLayout([
+            ResumeExportPage(
+              lines: [
+                ResumeExportLine(
+                  top: 40,
+                  height: 14,
+                  baseline: 51,
+                  spans: [
+                    ResumeExportSpan(text: text, x: 40, width: 500, size: 10),
+                  ],
+                ),
+              ],
+            ),
+          ]),
+          'PDF',
+          regular,
+          bold,
+        );
+        expect(latin1.decode(pdf.take(5).toList()), '%PDF-');
+      }
+    },
+  );
+
+  test(
+    'Word keeps overlapping column rows at their template coordinates',
+    () async {
+      final layout = ResumeExportLayout([
+        ResumeExportPage(
+          lines: [
+            for (final (text, x, top) in [
+              ('左栏第一行', 40.0, 100.0),
+              ('右栏第一行', 320.0, 104.0),
+              ('左栏第二行', 40.0, 114.0),
+              ('⼴州⼯程师', 320.0, 118.0),
+            ])
+              ResumeExportLine(
+                top: top,
+                height: 12,
+                baseline: top + 10,
+                spans: [
+                  ResumeExportSpan(text: text, x: x, width: 100, size: 10),
+                ],
+              ),
+          ],
+        ),
+        const ResumeExportPage(
+          lines: [
+            ResumeExportLine(
+              top: 40,
+              height: 12,
+              baseline: 50,
+              spans: [
+                ResumeExportSpan(text: '第二页', x: 40, width: 60, size: 10),
+              ],
+            ),
+          ],
+        ),
+      ]);
+      final bytes = await encodeNativeResume(layout, 'DOCX', regular, bold);
+      final zip = ZipDecoder().decodeBytes(bytes);
+      final xml = utf8.decode(zip.findFile('word/document.xml')!.content);
+      expect(xml, contains('margin-left:320.000pt;margin-top:103.400pt'));
+      expect(xml, contains('margin-left:40.000pt;margin-top:113.400pt'));
+      expect(xml, contains('广州工程师'));
+      expect(xml, isNot(contains('<w:tab')));
+      // Only one of the equivalent modern/legacy branches is displayed.
+      expect(RegExp('<w:txbxContent>').allMatches(xml).length, 10);
+      expect(RegExp('<w:br w:type="page"/>').allMatches(xml).length, 1);
+      expect(xml, contains('<w:fitText '));
+    },
+  );
 
   test('Native PDF and Word preserve paginated selectable text and rich styles', () async {
     final description = List.generate(
@@ -137,14 +282,20 @@ void main() {
     expect(spans.any((s) => s.italic), isTrue);
     expect(spans.any((s) => s.underline), isTrue);
     expect(spans.any((s) => s.strike), isTrue);
-    final word = await encodeNativeResume(layout, 'DOCX', regular, bold);
+    final word = await encodeNativeResume(
+      layout,
+      'DOCX',
+      regular,
+      bold,
+      medium: medium,
+    );
     final zip = ZipDecoder().decodeBytes(word);
     final xml = utf8.decode(zip.findFile('word/document.xml')!.content);
     expect(xml, contains('<w:t xml:space="preserve">林知远</w:t>'));
     expect(xml, contains('<w:i/>'));
     expect(xml, contains('<w:u w:val="single"/>'));
     expect(
-      RegExp('<w:pageBreakBefore/>').allMatches(xml).length,
+      RegExp('<w:br w:type="page"/>').allMatches(xml).length,
       layout.pages.length - 1,
     );
     expect(zip.files.where((f) => f.name.startsWith('word/media/')).length, 1);
@@ -153,17 +304,28 @@ void main() {
       isFalse,
     );
     expect(zip.findFile('word/fonts/regular.odttf'), isNotNull);
-    // A single-face family must keep its real name and let Word synthesize bold.
-    expect(xml, contains('w:eastAsia="$resumeDocumentTypeface"'));
+    // Embed both real faces so printing does not depend on installed fonts.
+    expect(xml, contains('w:eastAsia="$resumeWordRegularTypeface"'));
     final fontTable = utf8.decode(zip.findFile('word/fontTable.xml')!.content);
-    expect(fontTable, contains('w:name="$resumeDocumentTypeface"'));
+    expect(fontTable, contains('w:name="$resumeWordRegularTypeface"'));
+    expect(fontTable, contains('w:name="$resumeWordMediumTypeface"'));
     expect(fontTable, contains('<w:embedRegular '));
-    expect(fontTable, isNot(contains('<w:embedBold ')));
-    expect(zip.findFile('word/fonts/bold.odttf'), isNull);
-    final pdf = await encodeNativeResume(layout, 'PDF', regular, bold);
+    expect(fontTable, contains('<w:embedBold '));
+    expect(zip.findFile('word/fonts/bold.odttf'), isNotNull);
+    expect(zip.findFile('word/fonts/medium.odttf'), isNotNull);
+    final pdf = await encodeNativeResume(
+      layout,
+      'PDF',
+      regular,
+      bold,
+      medium: medium,
+    );
     expect(latin1.decode(pdf.take(5).toList()), '%PDF-');
     if (Platform.environment['BOJIAN_EXPORT_QA'] == '1') {
-      final output = Directory('/tmp/bojian-native-export-qa');
+      final output = Directory(
+        Platform.environment['BOJIAN_EXPORT_QA_DIR'] ??
+            '/tmp/bojian-native-export-qa',
+      );
       await output.create(recursive: true);
       await File('${output.path}/resume.docx').writeAsBytes(word);
       await File('${output.path}/resume.pdf').writeAsBytes(pdf);
@@ -235,11 +397,14 @@ void main() {
         rendererScript: await rootBundle.loadString(
           'assets/templates/market_renderer.js',
         ),
-        fontStyles: "@font-face{font-family:ResumeDocument;src:url('regular.ttf');font-weight:400}",
+        fontStyles: resumeDocumentFontStyles,
       );
       await File('${output.path}/market.html').writeAsString(marketHtml);
       await File('${output.path}/regular.ttf').writeAsBytes(regular);
       await File('${output.path}/bold.ttf').writeAsBytes(bold);
+      await File('${output.path}/medium.ttf').writeAsBytes(
+        (await rootBundle.load(resumeFontMediumAsset)).buffer.asUint8List(),
+      );
       debugPrint('NATIVE_QA_PAGES=${document.pages.length}');
     }
   });
@@ -280,18 +445,42 @@ void main() {
           .expand((l) => l.spans)
           .map((s) => s.text)
           .join('');
-      expect(text, contains('林知远'));
-      for (var i = 0; i < 52; i++) {
+      final expectedName =
+          Platform.environment['BOJIAN_MARKET_QA_NAME'] ?? '林知远';
+      final recordPrefix =
+          Platform.environment['BOJIAN_MARKET_QA_PREFIX'] ?? '交付记录';
+      final recordCount = int.parse(
+        Platform.environment['BOJIAN_MARKET_QA_COUNT'] ?? '52',
+      );
+      expect(text, contains(expectedName));
+      for (var i = 0; i < recordCount; i++) {
         expect(
-          RegExp('交付记录${i.toString().padLeft(2, '0')}').allMatches(text).length,
+          RegExp('$recordPrefix${i.toString().padLeft(2, '0')}')
+              .allMatches(text)
+              .length,
           1,
         );
       }
+      if ((jsonDecode(await File(source).readAsString()) as List).any(
+        (page) => page['background'] is String,
+      )) {
+        expect(layout.pages.every((page) => page.background != null), isTrue);
+      }
+      final output = Directory(
+        Platform.environment['BOJIAN_EXPORT_QA_DIR'] ??
+            '/tmp/bojian-native-export-qa',
+      );
+      await output.create(recursive: true);
       for (final format in ['PDF', 'DOCX']) {
-        final bytes = await encodeNativeResume(layout, format, regular, bold);
-        await File(
-          '/tmp/bojian-native-export-qa/market.${format.toLowerCase()}',
-        ).writeAsBytes(bytes);
+        final bytes = await encodeNativeResume(
+          layout,
+          format,
+          regular,
+          bold,
+          medium: medium,
+        );
+        await File('${output.path}/market.${format.toLowerCase()}')
+            .writeAsBytes(bytes);
       }
     },
   );

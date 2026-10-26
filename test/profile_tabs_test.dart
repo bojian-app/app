@@ -397,7 +397,7 @@ void main() {
       expect(find.text('产品经理 · 社招简历'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('profile-add-resume')));
       await tester.pumpAndSettle();
-      for (final label in ['协助添加', '手动添加', '从微信导入', '从手机文件导入']) {
+      for (final label in ['AI生成简历', '手动添加', '从微信导入', '从手机文件导入']) {
         expect(find.text(label), findsOneWidget);
       }
       expect(find.byType(BottomSheet), findsOneWidget);

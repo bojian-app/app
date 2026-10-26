@@ -467,7 +467,10 @@ class _MessagesPageState extends State<MessagesPage> {
     }
 
     if ((item.type == 'RESUME_GUIDANCE' ||
-            item.type == 'RESUME_GUIDANCE_FEEDBACK') &&
+            item.type == 'RESUME_GUIDANCE_FEEDBACK' ||
+            (item.type == 'CONTENT_REJECTED' &&
+                (item.annotationID > 0 ||
+                    item.subjectType == 'GUIDANCE_NOTIFICATION'))) &&
         (item.subjectType == 'GUIDANCE_NOTIFICATION' ||
             item.subjectType == 'ARTICLE')) {
       final private = item.subjectType == 'GUIDANCE_NOTIFICATION';
@@ -488,7 +491,9 @@ class _MessagesPageState extends State<MessagesPage> {
             notification: private,
             initialData: result.data,
             fromNotification: true,
-            focusAnnotationID: item.type == 'RESUME_GUIDANCE_FEEDBACK'
+            focusAnnotationID:
+                (item.type == 'RESUME_GUIDANCE_FEEDBACK' ||
+                    item.type == 'CONTENT_REJECTED')
                 ? item.annotationID
                 : 0,
             reviewerKey:
@@ -506,6 +511,7 @@ class _MessagesPageState extends State<MessagesPage> {
           'ARTICLE_LIKE',
           'ARTICLE_APPROVED',
           'ARTICLE_REJECTED',
+          'CONTENT_REJECTED',
           'ARTICLE_COMMENT',
           'COMMENT_REPLY',
         }.contains(item.type) &&
@@ -519,7 +525,9 @@ class _MessagesPageState extends State<MessagesPage> {
         if (!mounted) return;
         final story = decodeStory(result.data);
         final guidanceData =
-            item.type == 'ARTICLE_APPROVED' && story.hasGuidance
+            (item.type == 'ARTICLE_APPROVED' ||
+                    item.type == 'CONTENT_REJECTED') &&
+                story.hasGuidance
             ? (await widget.store.request(
                 'GetArticlesIdGuidance',
                 path: {'id': '${item.subjectID}'},
@@ -567,7 +575,7 @@ class _MessagesPageState extends State<MessagesPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '系统通知',
+                  item.subjectType == 'REPORT' ? '举报处理结果' : '系统通知',
                   style: TextStyle(fontSize: 12, color: context.colors.accent),
                 ),
                 const SizedBox(height: 12),

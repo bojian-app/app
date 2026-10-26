@@ -1,3 +1,5 @@
+import 'api/bojian_api.dart';
+import 'content_report.dart';
 import 'playful_refresh.dart';
 
 import 'dart:async';
@@ -730,6 +732,10 @@ class _StoryDetailState extends State<StoryDetail> {
       );
       if (!mounted) return;
       setState(() {
+        if (result.data['status'] != null &&
+            result.data['status'] != 'PUBLISHED') {
+          articleRemoved = true;
+        }
         if (result.data['content'] != null) {
           bodyContent = decodeStory(result.data).content;
         }
@@ -742,11 +748,19 @@ class _StoryDetailState extends State<StoryDetail> {
         }
         bodyError = null;
       });
-    } catch (_) {
-      if (mounted) setState(() => bodyError = '文章暂时无法加载');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          bodyError = '文章暂时无法加载';
+          if (e is ApiFailure && e.code == 'ARTICLE_NOT_FOUND') {
+            articleRemoved = true;
+          }
+        });
+      }
     }
   }
 
+  bool articleRemoved = false;
   final comment = TextEditingController();
   final commentFocus = FocusNode();
   ArticleComment? replyTarget;
@@ -785,7 +799,14 @@ class _StoryDetailState extends State<StoryDetail> {
       setState(() {
         threads[root] = [
           if (more) ...?threads[root],
-          ...items(result.data).map(ArticleComment.fromJson),
+          ...widget.store
+              .mergeContent(
+                'PostArticlesIdComments',
+                widget.story.id,
+                items(result.data),
+              )
+              .where((r) => integer(r['parent_id']) == root)
+              .map(ArticleComment.fromJson),
         ];
         cursors[root] = result.nextCursor;
       });
@@ -814,6 +835,30 @@ class _StoryDetailState extends State<StoryDetail> {
     });
   }
 
+  List<ArticleComment> get displayedComments {
+    final local = widget.store
+        .localContent('PostArticlesIdComments', widget.story.id)
+        .where((r) => r['parent_id'] == null)
+        .map(ArticleComment.fromJson)
+        .toList();
+    return [
+      ...local.reversed,
+      ...widget.story.comments.where((c) => !local.any((v) => v.id == c.id)),
+    ];
+  }
+
+  List<ArticleComment> threadComments(int root) {
+    final local = widget.store
+        .localContent('PostArticlesIdComments', widget.story.id)
+        .where((r) => integer(r['parent_id']) == root)
+        .map(ArticleComment.fromJson)
+        .toList();
+    return [
+      ...local.reversed,
+      ...(threads[root] ?? []).where((c) => !local.any((v) => v.id == c.id)),
+    ];
+  }
+
   Widget commentTile(ArticleComment c, {bool nested = false}) =>
       ArticleCommentTile(
         comment: c,
@@ -822,7 +867,29 @@ class _StoryDetailState extends State<StoryDetail> {
         nested: nested,
         onAuthorTap: () =>
             openUserProfile(context, store: widget.store, userID: c.authorID),
-        onReply: () => reply(c),
+        onReply: c.visible ? () => reply(c) : null,
+        onReport: () => reportContent(
+          context,
+          store: widget.store,
+          subjectType: 'COMMENT',
+          subjectID: c.id,
+        ),
+        onRetry: c.local == null
+            ? null
+            : () => widget.store.sendContent(c.local!),
+        onEdit: () => setState(() {
+          comment.text = c.content;
+          replyTarget = c.replyToID == null
+              ? null
+              : ArticleComment(
+                  id: c.replyToID!,
+                  authorID: 0,
+                  author: c.replyToName,
+                  content: '',
+                  parentID: c.parentID,
+                );
+          commentFocus.requestFocus();
+        }),
         onLike: () => react(c, false),
         onDislike: () => react(c, true),
         pending: widget.store.pending.contains(
@@ -837,7 +904,7 @@ class _StoryDetailState extends State<StoryDetail> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (expanded) ...[
-            for (final c in threads[root.id] ?? <ArticleComment>[])
+            for (final c in threadComments(root.id))
               commentTile(c, nested: true),
             if (loadingThreads.contains(root.id))
               const Padding(
@@ -860,7 +927,9 @@ class _StoryDetailState extends State<StoryDetail> {
                 child: const Text('查看更多回复'),
               ),
           ],
-          if (root.replyCount > 0 || expanded)
+          if (root.replyCount > 0 ||
+              threadComments(root.id).isNotEmpty ||
+              expanded)
             TextButton(
               key: ValueKey('article-thread-toggle-${root.id}'),
               onPressed: () {
@@ -921,6 +990,7 @@ class _StoryDetailState extends State<StoryDetail> {
   bool commentsLoading = true;
   StreamSubscription<Map<String, dynamic>>? realtime;
   Timer? refreshTimer;
+  Timer? moderationTimer;
   bool refreshingComments = false, refreshCommentsPending = false;
   @override
   void initState() {
@@ -931,10 +1001,41 @@ class _StoryDetailState extends State<StoryDetail> {
         loadComments();
       }
     });
+    moderationTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted ||
+          !widget.store.foreground ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      if (displayedComments.any(
+            (c) => const {'SENDING', 'QUEUED', 'PENDING'}.contains(c.status),
+          ) ||
+          threads.values
+              .expand((v) => v)
+              .any(
+                (c) =>
+                    const {'SENDING', 'QUEUED', 'PENDING'}.contains(c.status),
+              ) ||
+          widget.store
+              .localContent('PostArticlesIdComments', widget.story.id)
+              .any((r) => r['moderation_status'] != 'FAILED')) {
+        loadComments(silent: true);
+        for (final root in expandedThreads.toList()) {
+          loadThread(root);
+        }
+      }
+    });
     realtime = widget.store.realtimeEvents.listen((event) {
       final data = event['data'] is Map ? event['data'] as Map : const {};
+      if (event['type'] == 'content.removed' &&
+          integer(data['article_id']) == widget.story.id &&
+          {'ARTICLE', 'POST'}.contains(data['subject_type'])) {
+        setState(() => articleRemoved = true);
+        return;
+      }
       if (event['type'] != 'connection.ready' &&
           (!{
+                'content.removed',
                 'article.comment',
                 'article.reaction',
                 'article.updated',
@@ -982,6 +1083,7 @@ class _StoryDetailState extends State<StoryDetail> {
   @override
   void dispose() {
     refreshTimer?.cancel();
+    moderationTimer?.cancel();
     unawaited(realtime?.cancel());
     commentFocus.dispose();
     comment.dispose();
@@ -995,380 +1097,409 @@ class _StoryDetailState extends State<StoryDetail> {
       backgroundColor: context.colors.surface,
       appBar: AppBar(
         backgroundColor: context.colors.surface,
-        actions: [const DismissKeyboardButton()],
-      ),
-      body: ListView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-        children: [
-          Text(
-            widget.story.title,
-            style: const TextStyle(
-              fontSize: 26,
-              height: 1.45,
-              fontWeight: FontWeight.w700,
+        actions: [
+          if (!articleRemoved && widget.story.authorID != widget.store.userID)
+            ReportArticleButton(
+              store: widget.store,
+              articleID: widget.story.id,
             ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              ProfileAvatar(
-                seed: widget.story.authorID > 0
-                    ? '${widget.story.authorID}'
-                    : widget.story.author,
-                url: widget.story.authorAvatarURL,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.story.author,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                    Text(
-                      widget.story.role,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: context.colors.muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                widget.story.publishedAt.split('T').first,
-                style: TextStyle(color: context.colors.muted, fontSize: 11),
-              ),
-            ],
-          ),
-          const SizedBox(height: 26),
-          if (widget.story.cover == 1) ...[
-            _StoryCover(),
-            const SizedBox(height: 24),
-          ],
-          if (widget.story.hasGuidance)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: OutlinedButton(
-                onPressed: () => openPage(
-                  context,
-                  ResumeGuidanceView(store: widget.store, id: widget.story.id),
-                ),
-                child: const Text('查看简历并指点'),
-              ),
-            ),
-          ArticleRichBody(
-            content: bodyContent.isEmpty
-                ? richContent(widget.story.paragraphs.join('\n'))
-                : bodyContent,
-          ),
-          if (bodyError != null)
-            TextButton(onPressed: loadBody, child: Text('$bodyError，点击重试')),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              key: const ValueKey('article-end-actions'),
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                ArticleReactionButton(
-                  key: const ValueKey('detail-like'),
-                  count: widget.story.likes,
-                  reaction: ArticleReaction.like,
-                  active: widget.story.liked,
-                  onTap:
-                      widget.store.pending.contains('like-${widget.story.id}')
-                      ? null
-                      : () => runRequest(
-                          context,
-                          () => widget.store.like(widget.story),
-                        ),
-                ),
-                const SizedBox(width: 8),
-                ArticleReactionButton(
-                  key: const ValueKey('detail-bookmark'),
-                  reaction: ArticleReaction.bookmark,
-                  active: widget.story.saved,
-                  onTap:
-                      widget.store.pending.contains(
-                        'bookmark-${widget.story.id}',
-                      )
-                      ? null
-                      : () => runRequest(
-                          context,
-                          () => widget.store.bookmark(widget.story),
-                        ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(),
-          const SizedBox(height: 18),
-          Text(
-            '评论（${widget.story.commentCount}）',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          if (commentError != null) ...[
-            Text(
-              commentError!,
-              style: TextStyle(color: context.colors.muted, fontSize: 12),
-            ),
-            TextButton(onPressed: loadComments, child: const Text('重新加载评论')),
-          ],
-          if (commentsLoading)
-            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          if (widget.story.comments.isEmpty &&
-              commentError == null &&
-              !commentsLoading)
-            Text(
-              '还没有评论，聊聊你的看法',
-              style: TextStyle(color: context.colors.muted, fontSize: 13),
-            ),
-          for (
-            var index = 0;
-            index < widget.story.comments.length;
-            index++
-          ) ...[
-            commentTile(widget.story.comments[index]),
-            thread(widget.story.comments[index]),
-            const SizedBox(height: 10),
-          ],
+          const DismissKeyboardButton(),
         ],
       ),
-      bottomNavigationBar: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: context.colors.surface,
-            border: Border(
-              top: BorderSide(
-                color: (context.isDark
-                    ? context.colors.border
-                    : Color(0xFFF0F1F3)),
-                width: .5,
-              ),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (replyTarget != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
+      body: articleRemoved
+          ? const Center(child: Text('该文章已撤回，暂时无法查看'))
+          : ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              children: [
+                Text(
+                  widget.story.title,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    height: 1.45,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    ProfileAvatar(
+                      seed: widget.story.authorID > 0
+                          ? '${widget.story.authorID}'
+                          : widget.story.author,
+                      url: widget.story.authorAvatarURL,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              '回复 ${replyTarget!.author}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: (context.isDark
-                                    ? context.colors.muted
-                                    : Color(0xFF92969E)),
-                              ),
+                          Text(
+                            widget.story.author,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
                             ),
                           ),
-                          Tooltip(
-                            message: '取消回复',
-                            child: TextButton(
-                              onPressed:
-                                  widget.store.pending.contains(
-                                    'comment-${widget.story.id}',
-                                  )
-                                  ? null
-                                  : () => setState(() {
-                                      replyTarget = null;
-                                      commentSendError = null;
-                                    }),
-                              style: TextButton.styleFrom(
-                                foregroundColor: (context.isDark
-                                    ? context.colors.muted
-                                    : const Color(0xFF92969E)),
-                                overlayColor: Colors.transparent,
-                                padding: EdgeInsets.zero,
-                                minimumSize: const Size(56, 24),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                textStyle: TextStyle(
-                                  fontSize: 11,
-                                  fontFamily: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.fontFamily,
-                                ),
-                              ).withoutHover(),
-                              child: const Text('取消回复'),
+                          Text(
+                            widget.story.role,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: context.colors.muted,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  if (commentSendError != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text(
-                        commentSendError!,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).colorScheme.error,
-                        ),
+                    const SizedBox(width: 10),
+                    Text(
+                      widget.story.publishedAt.split('T').first,
+                      style: TextStyle(
+                        color: context.colors.muted,
+                        fontSize: 11,
                       ),
                     ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          key: const ValueKey('article-comment-input'),
-                          controller: comment,
-                          focusNode: commentFocus,
-                          enabled: !widget.store.pending.contains(
-                            'comment-${widget.story.id}',
-                          ),
-                          minLines: 1,
-                          maxLines:
-                              MediaQuery.sizeOf(context).height -
-                                      MediaQuery.viewInsetsOf(context).bottom <
-                                  280
-                              ? 1
-                              : 3,
-                          style: TextStyle(
-                            fontSize: 14,
-                            height: 1.4,
-                            color: (context.isDark
-                                ? context.colors.ink
-                                : Color(0xFF24262B)),
-                          ),
-                          decoration: InputDecoration(
-                            hintText: replyTarget == null
-                                ? '写下评论…'
-                                : '回复 ${replyTarget!.author}…',
-                            hintStyle: TextStyle(
-                              fontSize: 13,
-                              color: (context.isDark
-                                  ? context.colors.muted
-                                  : Color(0xFFA7ABB3)),
-                            ),
-                            filled: true,
-                            fillColor: (context.isDark
-                                ? context.colors.inset
-                                : const Color(0xFFF4F5F7)),
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 11,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(22),
-                              borderSide: BorderSide.none,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(22),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(22),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _send(),
+                  ],
+                ),
+                const SizedBox(height: 26),
+                if (widget.story.cover == 1) ...[
+                  _StoryCover(),
+                  const SizedBox(height: 24),
+                ],
+                if (widget.story.hasGuidance)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: OutlinedButton(
+                      onPressed: () => openPage(
+                        context,
+                        ResumeGuidanceView(
+                          store: widget.store,
+                          id: widget.story.id,
                         ),
                       ),
+                      child: const Text('查看简历并指点'),
+                    ),
+                  ),
+                ArticleRichBody(
+                  content: bodyContent.isEmpty
+                      ? richContent(widget.story.paragraphs.join('\n'))
+                      : bodyContent,
+                ),
+                if (bodyError != null)
+                  TextButton(
+                    onPressed: loadBody,
+                    child: Text('$bodyError，点击重试'),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    key: const ValueKey('article-end-actions'),
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ArticleReactionButton(
+                        key: const ValueKey('detail-like'),
+                        count: widget.story.likes,
+                        reaction: ArticleReaction.like,
+                        active: widget.story.liked,
+                        onTap:
+                            widget.store.pending.contains(
+                              'like-${widget.story.id}',
+                            )
+                            ? null
+                            : () => runRequest(
+                                context,
+                                () => widget.store.like(widget.story),
+                              ),
+                      ),
                       const SizedBox(width: 8),
-                      ValueListenableBuilder<TextEditingValue>(
-                        valueListenable: comment,
-                        builder: (_, value, _) {
-                          final sending = widget.store.pending.contains(
-                            'comment-${widget.story.id}',
-                          );
-                          return Tooltip(
-                            message: '发送评论',
-                            child: FilledButton(
-                              key: const ValueKey('article-comment-send'),
-                              onPressed: sending || value.text.trim().isEmpty
-                                  ? null
-                                  : _send,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: blue,
-                                disabledBackgroundColor: (context.isDark
-                                    ? context.colors.inset
-                                    : const Color(0xFFF0F1F4)),
-                                disabledForegroundColor: (context.isDark
-                                    ? context.colors.muted
-                                    : const Color(0xFFB3B7BE)),
-                                minimumSize: const Size(52, 42),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(21),
-                                ),
-                                textStyle: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  fontFamily: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.fontFamily,
-                                ),
-                              ).withoutHover(),
-                              child: Text(sending ? '发送中' : '发送'),
-                            ),
-                          );
-                        },
+                      ArticleReactionButton(
+                        key: const ValueKey('detail-bookmark'),
+                        reaction: ArticleReaction.bookmark,
+                        active: widget.story.saved,
+                        onTap:
+                            widget.store.pending.contains(
+                              'bookmark-${widget.story.id}',
+                            )
+                            ? null
+                            : () => runRequest(
+                                context,
+                                () => widget.store.bookmark(widget.story),
+                              ),
                       ),
                     ],
                   ),
+                ),
+                const Divider(),
+                const SizedBox(height: 18),
+                Text(
+                  '评论（${widget.story.commentCount}）',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (commentError != null) ...[
+                  Text(
+                    commentError!,
+                    style: TextStyle(color: context.colors.muted, fontSize: 12),
+                  ),
+                  TextButton(
+                    onPressed: loadComments,
+                    child: const Text('重新加载评论'),
+                  ),
                 ],
+                if (commentsLoading)
+                  const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                if (displayedComments.isEmpty &&
+                    commentError == null &&
+                    !commentsLoading)
+                  Text(
+                    '还没有评论，聊聊你的看法',
+                    style: TextStyle(color: context.colors.muted, fontSize: 13),
+                  ),
+                for (
+                  var index = 0;
+                  index < displayedComments.length;
+                  index++
+                ) ...[
+                  commentTile(displayedComments[index]),
+                  thread(displayedComments[index]),
+                  const SizedBox(height: 10),
+                ],
+              ],
+            ),
+      bottomNavigationBar: articleRemoved
+          ? null
+          : Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: context.colors.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: (context.isDark
+                          ? context.colors.border
+                          : Color(0xFFF0F1F3)),
+                      width: .5,
+                    ),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (replyTarget != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '回复 ${replyTarget!.author}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: (context.isDark
+                                          ? context.colors.muted
+                                          : Color(0xFF92969E)),
+                                    ),
+                                  ),
+                                ),
+                                Tooltip(
+                                  message: '取消回复',
+                                  child: TextButton(
+                                    onPressed:
+                                        widget.store.pending.contains(
+                                          'comment-${widget.story.id}',
+                                        )
+                                        ? null
+                                        : () => setState(() {
+                                            replyTarget = null;
+                                            commentSendError = null;
+                                          }),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: (context.isDark
+                                          ? context.colors.muted
+                                          : const Color(0xFF92969E)),
+                                      overlayColor: Colors.transparent,
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: const Size(56, 24),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                      textStyle: TextStyle(
+                                        fontSize: 11,
+                                        fontFamily: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.fontFamily,
+                                      ),
+                                    ).withoutHover(),
+                                    child: const Text('取消回复'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (commentSendError != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text(
+                              commentSendError!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                key: const ValueKey('article-comment-input'),
+                                controller: comment,
+                                focusNode: commentFocus,
+                                enabled: !widget.store.pending.contains(
+                                  'comment-${widget.story.id}',
+                                ),
+                                minLines: 1,
+                                maxLines:
+                                    MediaQuery.sizeOf(context).height -
+                                            MediaQuery.viewInsetsOf(context)
+                                                .bottom <
+                                        280
+                                    ? 1
+                                    : 3,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  height: 1.4,
+                                  color: (context.isDark
+                                      ? context.colors.ink
+                                      : Color(0xFF24262B)),
+                                ),
+                                decoration: InputDecoration(
+                                  hintText: replyTarget == null
+                                      ? '写下评论…'
+                                      : '回复 ${replyTarget!.author}…',
+                                  hintStyle: TextStyle(
+                                    fontSize: 13,
+                                    color: (context.isDark
+                                        ? context.colors.muted
+                                        : Color(0xFFA7ABB3)),
+                                  ),
+                                  filled: true,
+                                  fillColor: (context.isDark
+                                      ? context.colors.inset
+                                      : const Color(0xFFF4F5F7)),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 11,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(22),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(22),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(22),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                                textInputAction: TextInputAction.send,
+                                onSubmitted: (_) => _send(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: comment,
+                              builder: (_, value, _) {
+                                final sending = widget.store.pending.contains(
+                                  'comment-${widget.story.id}',
+                                );
+                                return Tooltip(
+                                  message: '发送评论',
+                                  child: FilledButton(
+                                    key: const ValueKey('article-comment-send'),
+                                    onPressed:
+                                        sending || value.text.trim().isEmpty
+                                        ? null
+                                        : _send,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: blue,
+                                      disabledBackgroundColor: (context.isDark
+                                          ? context.colors.inset
+                                          : const Color(0xFFF0F1F4)),
+                                      disabledForegroundColor: (context.isDark
+                                          ? context.colors.muted
+                                          : const Color(0xFFB3B7BE)),
+                                      minimumSize: const Size(52, 42),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(21),
+                                      ),
+                                      textStyle: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        fontFamily: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.fontFamily,
+                                      ),
+                                    ).withoutHover(),
+                                    child: Text(sending ? '发送中' : '发送'),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ),
     ),
   );
   Future<void> _send() async {
     final text = comment.text.trim();
-    if (text.isEmpty ||
-        widget.store.pending.contains('comment-${widget.story.id}')) {
-      return;
-    }
+    if (text.isEmpty) return;
     final target = replyTarget;
-    setState(() => commentSendError = null);
-    final sent = await runRequest(
-      context,
-      () => widget.store.comment(widget.story, text, replyToID: target?.id),
+    widget.store.enqueueContent(
+      'PostArticlesIdComments',
+      widget.story.id,
+      {'content': text, if (target != null) 'reply_to_id': target.id},
+      display: {
+        if (target != null) 'parent_id': target.parentID ?? target.id,
+        if (target != null)
+          'reply_to': {'id': target.id, 'display_name': target.author},
+      },
     );
-    if (!mounted) return;
-    if (!sent) {
-      setState(() => commentSendError = '发送失败，请重试');
-      return;
-    }
     setState(() {
-      commentError = null;
-      commentSendError = null;
+      if (target != null) expandedThreads.add(target.parentID ?? target.id);
       replyTarget = null;
+      commentSendError = null;
+      comment.clear();
     });
-    if (target != null) await loadThread(target.parentID ?? target.id);
-    if (!mounted) return;
-    comment.clear();
-    FocusScope.of(context).unfocus();
+    commentFocus.unfocus();
   }
 }
 

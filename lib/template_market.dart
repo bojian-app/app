@@ -12,6 +12,7 @@ import 'design.dart';
 import 'confirmation_dialog.dart';
 import 'template_market_store.dart';
 import 'template_live_preview.dart';
+import 'template_preview_resources.dart';
 import 'profile_avatar.dart';
 
 class TemplateMarketView extends StatefulWidget {
@@ -33,6 +34,7 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
   @override
   void initState() {
     super.initState();
+    unawaited(TemplatePreviewResources.warm());
     market.refresh();
   }
 
@@ -546,7 +548,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
     with SingleTickerProviderStateMixin {
   late Map<String, dynamic> design = {...widget.template};
   late final purchaseKey = 'template-${widget.template['id']}-${newDeviceID()}';
-  bool loading = true, busy = false, previewOpen = false;
+  bool loading = true, detailsReady = false, busy = false, previewOpen = false;
   final detailScroll = ScrollController();
   bool previewTransitioning = false, closePreviewRequested = false;
   late final previewTransition = AnimationController(
@@ -584,19 +586,30 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
     final request = ++operation;
     setState(() {
       loading = true;
+      detailsReady = false;
       error = null;
       balance = null;
       creator = {};
     });
     try {
+      final ownership = Future<void>.microtask(market.loadOwned);
       final response = await market.store.request(
         'GetTemplatesId',
         path: {'id': '$id'},
       );
-      await market.loadOwned();
+      if (!mounted || request != operation || !market.valid) return;
+      final data = {...widget.template, ...response.data};
+      setState(() {
+        design = data;
+        detailsReady = true;
+      });
+      unawaited(loadCreator(data, request));
+      // Preview can render while ownership and balance are checked. Acquisition
+      // remains disabled by `loading` until those checks finish successfully.
+      await ownership;
+      if (!mounted || request != operation) return;
       if (!market.valid) throw const ApiFailure('登录状态已变化，请返回后重试');
       if (market.ownedError != null) throw ApiFailure(market.ownedError!);
-      final data = {...widget.template, ...response.data};
       if (integer(data['price_points']) > 0 && !acquired && !authored) {
         final wallet = await market.store.request('GetWallet');
         if (wallet.data['available_points'] == null) {
@@ -604,16 +617,14 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
         }
         balance = integer(wallet.data['available_points']);
       }
-      if (mounted && request == operation && market.valid) {
-        setState(() => design = data);
-        unawaited(loadCreator(data, request));
-      }
     } catch (e) {
       if (mounted && request == operation) {
         setState(() => error = e is ApiFailure ? e.message : '模板详情加载失败');
       }
     } finally {
-      if (mounted && request == operation) setState(() => loading = false);
+      if (mounted && request == operation) {
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -924,13 +935,14 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                               SizedBox(height: previewOpen ? 0 : 20),
                               SizedBox(
                                 height: previewHeight,
-                                child: loading
+                                child: !detailsReady && loading
                                     ? const Center(
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
                                         ),
                                       )
-                                    : design['compatible'] == true &&
+                                    : detailsReady &&
+                                          design['compatible'] == true &&
                                           market.valid
                                     ? TemplateLivePreview(
                                         key: ValueKey('preview-$id-$operation'),
@@ -938,7 +950,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                                         templateID: id,
                                         version: integer(design['version']),
                                         author: authorName,
-                                        onOpenPage: openPreview,
                                         fullscreen: previewOpen,
                                         initialPage: previewPage,
                                       )

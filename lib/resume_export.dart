@@ -330,7 +330,7 @@ class _ResumeExportSheetState extends State<ResumeExportSheet> {
               contentPadding: EdgeInsets.zero,
               leading: AppIcon(AppIcons.word, color: context.colors.accent),
               title: const Text('Word'),
-              subtitle: const Text('固定版式，与预览完全一致'),
+              subtitle: const Text('保留文字，可继续编辑'),
               onTap: () => generate('DOCX'),
             ),
           ],

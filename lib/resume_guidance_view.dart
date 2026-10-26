@@ -1,4 +1,9 @@
+import 'content_report.dart';
+
 import 'dart:async';
+
+import 'content_moderation.dart';
+
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -45,6 +50,27 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   String? error;
   ResumeDraft? resume;
   List<Map<String, dynamic>> records = [];
+  Timer? moderationTimer;
+  StreamSubscription<Map<String, dynamic>>? removalSubscription;
+  bool refreshingAnnotations = false;
+  void submissionChanged() {
+    if (!mounted) return;
+    final local = widget.store.localContent(
+      annotationMethod(widget.notification, 'Post'),
+      widget.id,
+    );
+    setState(
+      () => records = [
+        ...local,
+        ...records.where(
+          (v) =>
+              !v.containsKey('_method') &&
+              !local.any((l) => l['id'] == v['id']),
+        ),
+      ],
+    );
+  }
+
   String? focusedReviewerKey;
   String? get reviewerKey => focusedReviewerKey ?? widget.reviewerKey;
   bool focusHandled = false, focusScheduled = false;
@@ -263,6 +289,40 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   @override
   void initState() {
     super.initState();
+    widget.store.addListener(submissionChanged);
+    removalSubscription = widget.store.realtimeEvents.listen((event) {
+      if (mounted &&
+          guidanceRemovalAffects(event, widget.id, widget.notification)) {
+        final payload = event['data'] as Map;
+        if ({'ARTICLE', 'POST'}.contains(payload['subject_type'])) {
+          setState(() {
+            data = null;
+            records = [];
+            error = '该内容已撤回';
+          });
+          return;
+        }
+        refreshAnnotations();
+      }
+    });
+    moderationTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted &&
+          data != null &&
+          widget.store.foreground &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          (records.any(
+                (r) =>
+                    {'SENDING', 'QUEUED', 'PENDING'}.contains(contentStatus(r)),
+              ) ||
+              widget.store
+                  .localContent(
+                    annotationMethod(widget.notification, 'Post'),
+                    widget.id,
+                  )
+                  .isNotEmpty)) {
+        refreshAnnotations();
+      }
+    });
     if (widget.initialData != null) {
       applyInitial();
     } else {
@@ -272,6 +332,9 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
 
   @override
   void dispose() {
+    moderationTimer?.cancel();
+    unawaited(removalSubscription?.cancel());
+    widget.store.removeListener(submissionChanged);
     guidance.dispose();
     super.dispose();
   }
@@ -293,7 +356,14 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
       if (!mounted) return;
       nextRecords =
           guidanceRecords(
-                response?.data['items'] as List? ?? [],
+                widget.store.mergeContent(
+                  annotationMethod(widget.notification, 'Post'),
+                  widget.id,
+                  (response?.data['items'] as List? ?? [])
+                      .whereType<Map>()
+                      .map((v) => Map<String, dynamic>.from(v))
+                      .toList(),
+                ),
                 value['suggestions'] as List? ?? [],
               )
               .where(
@@ -409,12 +479,15 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
       replace: replace,
     );
     if (sent == true && mounted) {
-      toast(context, replace ? '替换建议已发送，等待作者确认' : '评论已发送');
+      toast(context, '已提交，审核状态可在我的指点记录中查看');
+      submissionChanged();
       await refreshAnnotations();
     }
   }
 
   Future<void> refreshAnnotations() async {
+    if (refreshingAnnotations || data == null) return;
+    refreshingAnnotations = true;
     try {
       final result = await widget.store.request(
         annotationMethod(widget.notification, 'Get'),
@@ -422,7 +495,14 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
       );
       if (!mounted) return;
       final all = guidanceRecords(
-        result.data['items'] as List? ?? [],
+        widget.store.mergeContent(
+          annotationMethod(widget.notification, 'Post'),
+          widget.id,
+          (result.data['items'] as List? ?? [])
+              .whereType<Map>()
+              .map((v) => Map<String, dynamic>.from(v))
+              .toList(),
+        ),
         data!['suggestions'] as List? ?? [],
       );
       setState(
@@ -436,7 +516,9 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
             .toList(),
       );
     } catch (e) {
-      if (mounted) toast(context, '$e');
+      // Background refresh retries on the next tick without interrupting editing.
+    } finally {
+      refreshingAnnotations = false;
     }
   }
 
@@ -574,7 +656,9 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
           label: '改写',
           colorText: true,
           originalText: '${record['selected_text']}',
-          statusLabel: record['status'] == 'ACCEPTED'
+          statusLabel: !contentVisible(record)
+              ? moderationLabel(contentStatus(record))
+              : record['status'] == 'ACCEPTED'
               ? '已采纳'
               : record['status'] == 'REJECTED'
               ? '未采纳'
@@ -635,7 +719,23 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   Future<void> openReviewMarks(List<ResumeReviewHighlight> marks) async {
     final comments = marks.where((v) => v.commentCount > 0);
     if (comments.isEmpty) {
-      if (!ownerReview) return;
+      if (!ownerReview) {
+        await openPage(
+          context,
+          GuidanceAnnotations(
+            store: widget.store,
+            id: widget.id,
+            notification: widget.notification,
+            owner: data!['is_owner'] == true,
+            onChanged: refreshAnnotations,
+            mineOnly: true,
+            initialItems: records,
+            currentSnapshot: data!['snapshot'] as Map?,
+          ),
+        );
+        if (mounted) refreshAnnotations();
+        return;
+      }
       setState(() => activeRecord = marks.first.key);
       return;
     }
@@ -717,6 +817,10 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
                 : '简历指点',
           ),
           actions: [
+            if (!widget.notification &&
+                data != null &&
+                data?['is_owner'] != true)
+              ReportArticleButton(store: widget.store, articleID: widget.id),
             if (ownerReview && reviewerKey != null)
               Padding(
                 padding: const EdgeInsets.only(right: 16),

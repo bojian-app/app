@@ -1,3 +1,7 @@
+import 'resume_guidance_review.dart' show guidanceRecords;
+import 'content_report.dart';
+import 'content_moderation.dart';
+
 import 'dart:async';
 
 import 'user_display_name.dart';
@@ -93,6 +97,26 @@ class _RegionCommentsState extends State<_RegionComments>
   bool focusHandled = false;
   bool highlightFocus = true;
   Timer? highlightTimer;
+  Timer? moderationTimer;
+  StreamSubscription<Map<String, dynamic>>? removalSubscription;
+  bool loading = false;
+  void changed() {
+    if (mounted) setState(() {});
+  }
+
+  List<Map<String, dynamic>> get displayedItems => [
+    ...widget.store
+        .localContent(annotationMethod(widget.notification, 'Post'), widget.id)
+        .where(
+          (v) =>
+              v['field_path'] == widget.fieldPath &&
+              '${v['replacement'] ?? ''}'.isEmpty &&
+              (widget.selected.isEmpty ||
+                  v['selected_text'] == widget.selected ||
+                  widget.selected.contains('${v['selected_text'] ?? ''}')),
+        ),
+    ...?items,
+  ];
   late final keyboardMotion = AnimationController.unbounded(vsync: this)
     ..addListener(updateKeyboardLayout);
   double targetKeyboardInset = 0, animatedKeyboardInset = 0;
@@ -109,11 +133,31 @@ class _RegionCommentsState extends State<_RegionComments>
   void initState() {
     super.initState();
     load();
+    widget.store.addListener(changed);
+    removalSubscription = widget.store.realtimeEvents.listen((event) {
+      if (mounted &&
+          guidanceRemovalAffects(event, widget.id, widget.notification)) {
+        load();
+      }
+    });
+    moderationTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted &&
+          widget.store.foreground &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          displayedItems.any(
+            (r) => {'SENDING', 'QUEUED', 'PENDING'}.contains(contentStatus(r)),
+          )) {
+        load();
+      }
+    });
   }
 
   @override
   void dispose() {
     highlightTimer?.cancel();
+    moderationTimer?.cancel();
+    unawaited(removalSubscription?.cancel());
+    widget.store.removeListener(changed);
     input.dispose();
     keyboardMotion.dispose();
     focus.dispose();
@@ -169,7 +213,7 @@ class _RegionCommentsState extends State<_RegionComments>
   }
 
   List<_CommentThread> get threads {
-    final all = items ?? [];
+    final all = displayedItems;
     final byID = {
       for (final item in all)
         if (item['legacy'] != true && integer(item['id']) > 0)
@@ -194,7 +238,7 @@ class _RegionCommentsState extends State<_RegionComments>
   }
 
   void selectReply(Map<String, dynamic> item) {
-    if (sending || item['legacy'] == true) return;
+    if (sending || item['legacy'] == true || !contentVisible(item)) return;
     setState(() {
       reply = item;
       sendError = null;
@@ -203,15 +247,37 @@ class _RegionCommentsState extends State<_RegionComments>
   }
 
   Future<void> load() async {
+    if (loading) return;
+    loading = true;
     try {
       final result = await widget.store.request(
         annotationMethod(widget.notification, 'Get'),
         path: {'id': '${widget.id}'},
       );
+      var legacy = widget.legacyItems;
+      if (!widget.notification && legacy.isNotEmpty) {
+        final detail = await widget.store.request(
+          'GetArticlesIdGuidance',
+          path: {'id': '${widget.id}'},
+        );
+        legacy = guidanceRecords([], detail.data['suggestions'] as List? ?? []);
+      }
       if (!mounted) return;
       setState(() {
         items =
-            [...(result.data['items'] as List? ?? []), ...widget.legacyItems]
+            [
+                  ...widget.store
+                      .mergeContent(
+                        annotationMethod(widget.notification, 'Post'),
+                        widget.id,
+                        (result.data['items'] as List? ?? [])
+                            .whereType<Map>()
+                            .map((v) => Map<String, dynamic>.from(v))
+                            .toList(),
+                      )
+                      .where((v) => !v.containsKey('_method')),
+                  ...legacy,
+                ]
                 .whereType<Map>()
                 .map((v) => Map<String, dynamic>.from(v))
                 .where((v) {
@@ -242,6 +308,8 @@ class _RegionCommentsState extends State<_RegionComments>
       );
     } catch (e) {
       if (mounted) setState(() => error = '$e');
+    } finally {
+      loading = false;
     }
   }
 
@@ -326,50 +394,40 @@ class _RegionCommentsState extends State<_RegionComments>
       'replacement': '',
       if (reply != null) 'parent_id': reply!['id'],
     };
-    final payload = body.toString();
-    if (payload != lastPayload) {
-      lastPayload = payload;
-      requestKey =
-          'comment-${widget.id}-${DateTime.now().microsecondsSinceEpoch}';
-    }
     final target = reply;
-    setState(() {
-      sending = true;
-      sendError = null;
-    });
-    final success = await runRequest(
-      context,
-      () => widget.store.request(
-        annotationMethod(widget.notification, 'Post'),
-        path: {'id': '${widget.id}'},
-        body: body,
-        extra: {'idempotency-key': requestKey!},
-      ),
+    widget.store.enqueueContent(
+      annotationMethod(widget.notification, 'Post'),
+      widget.id,
+      body,
     );
-    if (!mounted) return;
     setState(() {
-      sending = false;
-      sendError = success ? null : '发送失败，请重试';
-      if (success) {
-        if (target != null) {
-          for (final thread in threads) {
-            if (_commentKey(thread.comment) == _commentKey(target) ||
-                thread.replies.any(
-                  (item) => _commentKey(item) == _commentKey(target),
-                )) {
-              expandedThreads.add(_commentKey(thread.comment));
-              break;
-            }
+      if (target != null) {
+        for (final thread in threads) {
+          if (_commentKey(thread.comment) == _commentKey(target) ||
+              thread.replies.any(
+                (v) => _commentKey(v) == _commentKey(target),
+              )) {
+            expandedThreads.add(_commentKey(thread.comment));
           }
         }
-        input.clear();
-        reply = null;
       }
+      input.clear();
+      reply = null;
+      sendError = null;
     });
-    if (success) {
-      focus.unfocus();
-      await load();
-    }
+    focus.unfocus();
+  }
+
+  void editRejected(Map<String, dynamic> item) {
+    setState(() {
+      input.text = '${item['suggestion'] ?? ''}';
+      reply = integer(item['parent_id']) > 0
+          ? displayedItems
+                .where((v) => v['id'] == item['parent_id'])
+                .firstOrNull
+          : null;
+    });
+    focus.requestFocus();
   }
 
   Widget commentRow(
@@ -477,7 +535,23 @@ class _RegionCommentsState extends State<_RegionComments>
                 const SizedBox(height: 5),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: sending || item['legacy'] == true
+                  onLongPressStart:
+                      !own && contentVisible(item) && integer(item['id']) > 0
+                      ? (details) => showReportBubble(
+                          context,
+                          details.globalPosition,
+                          () => reportContent(
+                            context,
+                            store: widget.store,
+                            subjectType: item['legacy'] == true
+                                ? 'GUIDANCE_SUGGESTION'
+                                : 'GUIDANCE_ANNOTATION',
+                            subjectID: integer(item['id']),
+                          ),
+                        )
+                      : null,
+                  onTap:
+                      sending || item['legacy'] == true || !contentVisible(item)
                       ? null
                       : () => selectReply(item),
                   child: Text(
@@ -491,6 +565,30 @@ class _RegionCommentsState extends State<_RegionComments>
                     ),
                   ),
                 ),
+                if (!contentVisible(item)) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    moderationLabel(contentStatus(item)),
+                    style: TextStyle(fontSize: 12, color: context.colors.muted),
+                  ),
+                  if ({'REJECTED', 'FAILED'}.contains(contentStatus(item))) ...[
+                    Text(
+                      '${item['review_reason'] ?? ''}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => contentStatus(item) == 'FAILED'
+                          ? widget.store.sendContent(item)
+                          : editRejected(item),
+                      child: Text(
+                        contentStatus(item) == 'FAILED' ? '重试' : '修改后重发',
+                      ),
+                    ),
+                  ],
+                ],
                 const SizedBox(height: 3),
                 Wrap(
                   spacing: 10,
@@ -506,7 +604,7 @@ class _RegionCommentsState extends State<_RegionComments>
                               : Color(0xFFB0B3B9)),
                         ),
                       ),
-                    if (item['legacy'] != true)
+                    if (item['legacy'] != true && contentVisible(item))
                       TextButton(
                         onPressed: sending ? null : () => selectReply(item),
                         style: TextButton.styleFrom(
@@ -895,7 +993,7 @@ class _RegionCommentsState extends State<_RegionComments>
                                 horizontal: 56,
                               ),
                               child: Text(
-                                '评论${items == null ? '' : '（${items!.length}）'}',
+                                '评论${items == null ? '' : '（${displayedItems.where(contentVisible).length}）'}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -938,7 +1036,7 @@ class _RegionCommentsState extends State<_RegionComments>
                               ScrollViewKeyboardDismissBehavior.onDrag,
                           slivers: [
                             if (error != null ||
-                                items == null ||
+                                (items == null && groups.isEmpty) ||
                                 groups.isEmpty)
                               SliverFillRemaining(
                                 hasScrollBody: false,

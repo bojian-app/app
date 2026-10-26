@@ -97,6 +97,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('更多基本信息'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('更多基本信息'));
+      await tester.pumpAndSettle();
       final birth = find.byKey(const ValueKey('resume-birth_date'));
       await tester.ensureVisible(birth);
       await tester.pumpAndSettle();

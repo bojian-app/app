@@ -1,3 +1,4 @@
+import 'content_moderation.dart';
 import 'user_display_name.dart';
 
 import 'dart:convert';
@@ -99,6 +100,7 @@ class _ResumeGuidanceShareState extends State<ResumeGuidanceShare> {
     }
     dismissKeyboard();
     setState(() => sending = true);
+    var status = SubmissionStatus.pending;
     final sent = await runRequest(context, () async {
       final result = await widget.store.request(
         'PostResumesIdGuidance',
@@ -106,6 +108,12 @@ class _ResumeGuidanceShareState extends State<ResumeGuidanceShare> {
         body: body,
         extra: {'idempotency-key': requestKey!},
       );
+      if (community) {
+        status = submissionStatus(
+          result.data,
+          fallback: SubmissionStatus.pending,
+        );
+      }
       if (integer(result.data['id']) <= 0) {
         throw const ApiFailure('分享结果暂不可用，请重试');
       }
@@ -113,7 +121,14 @@ class _ResumeGuidanceShareState extends State<ResumeGuidanceShare> {
     if (!mounted) return;
     if (sent) {
       Navigator.pop(context);
-      toast(context, community ? '已提交审核，通过后展示在社区' : '指点邀请已发送');
+      toast(
+        context,
+        community
+            ? (status == SubmissionStatus.pending
+                  ? '已提交人工审核，通过后展示在社区'
+                  : '已发布到社区')
+            : '指点邀请已发送',
+      );
     } else {
       setState(() => sending = false);
     }

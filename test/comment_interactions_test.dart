@@ -160,18 +160,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.lastBody?['reply_to_id'], 10);
       expect(find.text('我的回复'), findsOneWidget);
-      expect(find.text('回复 阿明'), findsOneWidget);
-      await tester.tap(find.byTooltip('取消回复'));
-      await tester.pumpAndSettle();
+      expect(find.text('发送失败'), findsOneWidget);
+      expect(find.byTooltip('取消回复'), findsNothing);
       expect(find.text('回复 阿明'), findsNothing);
       expect(find.text('我的回复'), findsOneWidget);
       await tester.ensureVisible(find.text('已有回复'));
+      await tester.drag(find.byType(ListView).first, const Offset(0, -150));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('已有回复'));
       await tester.pumpAndSettle();
       expect(find.text('回复 小陈'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('article-comment-input')),
+        '新的回复',
+      );
+      await tester.pump();
       await tester.tap(find.byTooltip('发送评论'));
       await tester.pumpAndSettle();
-      expect(api.lastBody?['reply_to_id'], 11);
+      expect(api.lastMutationBody?['reply_to_id'], 11);
       await tester.pumpWidget(const SizedBox());
       store.dispose();
     },
@@ -274,17 +280,17 @@ void main() {
       api.failing = 'PostArticlesIdComments';
       await tester.tap(find.byTooltip('发送评论'));
       await tester.pumpAndSettle();
-      expect(api.lastBody?['reply_to_id'], 11);
-      expect(find.text('发送失败，请重试'), findsOneWidget);
-      expect(find.text('回复 小陈'), findsOneWidget);
-      expect(
-        tester.widget<TextField>(field).controller!.text,
-        contains('第二行回复内容'),
-      );
+      expect(api.lastMutationBody?['reply_to_id'], 11);
+      expect(store.contentSubmissions.single['moderation_status'], 'FAILED');
+      expect(store.contentSubmissions.single['content'], contains('第二行回复内容'));
+      expect(find.text('回复 小陈'), findsNothing);
+      expect(tester.widget<TextField>(field).controller!.text, isEmpty);
       tester.view.viewInsets = FakeViewPadding.zero;
-      await tester.tap(find.byTooltip('取消回复'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('收起回复'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView).first,const Offset(0,-180));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('收起回复'));
       await tester.pumpAndSettle();
       expect(find.text('已有回复'), findsNothing);

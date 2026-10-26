@@ -279,10 +279,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       final directory = await Directory.systemTemp.createTemp(
         'bojian-market-document-',
       );
-      for (final entry in {
-        'regular.ttf': resumeFontRegularAsset,
-        'bold.ttf': resumeFontBoldAsset,
-      }.entries) {
+      for (final entry in resumeDocumentFontAssets.entries) {
         final data = await rootBundle.load(entry.value);
         await File('${directory.path}/${entry.key}').writeAsBytes(
           data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
@@ -370,7 +367,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
           photo: photo,
           captureScript: captureScript,
           rendererScript: rendererScript,
-          fontStyles: "@font-face{font-family:ResumeDocument;src:url('regular.ttf');font-weight:400}",
+          fontStyles: resumeDocumentFontStyles,
         ),
       );
       await web.loadFile(htmlFile.path);
@@ -402,7 +399,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
     captureToken++;
     try {
       await controller!.runJavaScript('exportNativeLayout($captureToken)');
-      final result = await waiting.future.timeout(const Duration(seconds: 45));
+      final result = await waiting.future.timeout(const Duration(seconds: 90));
       if (!mounted ||
           request != operation ||
           epoch != widget.store.epoch ||
@@ -488,6 +485,15 @@ ResumeExportLayout marketExportLayout(List data) {
   return ResumeExportLayout([
     for (final page in data.cast<Map>())
       ResumeExportPage(
+        background: page['background'] is String
+            ? ResumeExportPicture(
+                base64Decode(page['background'] as String),
+                0,
+                0,
+                595.28,
+                841.89,
+              )
+            : null,
         lines: [
           for (final line in (page['lines'] as List).cast<Map>())
             ResumeExportLine(
@@ -503,6 +509,7 @@ ResumeExportLayout marketExportLayout(List data) {
                     size: n(span, 'size'),
                     color: (span['color'] as num).toInt(),
                     bold: span['bold'] == true,
+                    weight: (span['weight'] as num?)?.toInt(),
                     italic: span['italic'] == true,
                     underline: span['underline'] == true,
                     strike: span['strike'] == true,

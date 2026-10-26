@@ -12,6 +12,8 @@ import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
 import 'template_preview_document.dart';
+import 'template_preview_resources.dart';
+import 'template_preview_cache.dart';
 
 class TemplateLivePreview extends StatefulWidget {
   const TemplateLivePreview({
@@ -37,7 +39,7 @@ class TemplateLivePreview extends StatefulWidget {
 
 class _TemplateLivePreviewState extends State<TemplateLivePreview> {
   WebViewController? controller;
-  Directory? directory;
+  File? document;
   Timer? timeout;
   int operation = 0, pages = 0;
   late final int epoch = widget.store.epoch;
@@ -170,35 +172,57 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
     operation++;
     timeout?.cancel();
     pageActions.dispose();
-    removeDirectory(directory);
+    removeDocument(document);
     super.dispose();
   }
 
-  void removeDirectory(Directory? value) {
+  void removeDocument(File? value) {
     if (value != null) {
-      unawaited(value.delete(recursive: true).catchError((_) => value));
+      unawaited(value.delete().catchError((_) => value));
     }
   }
 
-  Future<void> load() async {
+  Future<void> load({bool refresh = false}) async {
     if (widget.store.epoch != epoch) return;
     final request = ++operation;
+    final clock = Stopwatch()..start();
+    void trace(String stage) {
+      if (traceTemplatePreview) {
+        debugPrint(
+          'BOJIAN_PREVIEW id=${widget.templateID} stage=$stage elapsed_ms=${clock.elapsedMilliseconds}',
+        );
+      }
+    }
+
     timeout?.cancel();
     pageActions.value = [];
-    final previous = directory;
-    directory = null;
+    final previous = document;
+    document = null;
     setState(() {
       ready = false;
       error = null;
       controller = null;
     });
-    removeDirectory(previous);
-    Directory? pending;
+    removeDocument(previous);
+    File? pending;
     try {
-      final result = await widget.store.request(
-        'GetTemplatesIdDom',
-        path: {'id': '${widget.templateID}'},
-      );
+      final prepared = await Future.wait<Object>([
+        loadTemplatePreviewDOM(
+          widget.store,
+          widget.templateID,
+          widget.version,
+          refresh: refresh,
+        ).then((value) {
+          trace('dom-ready');
+          return value;
+        }),
+        TemplatePreviewResources.load().then((value) {
+          trace('assets-ready');
+          return value;
+        }),
+      ]);
+      final result = prepared[0] as ApiDocument;
+      final resources = prepared[1] as TemplatePreviewResources;
       if (!current(request)) return;
       if ((result.data['html'] as String? ?? '').trim().isEmpty) {
         throw const ApiFailure('模板预览正在准备，请稍后重试');
@@ -208,43 +232,19 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
               integer(result.data['version']) != widget.version)) {
         throw const ApiFailure('模板已更新，请刷新详情');
       }
-      final renderer = await rootBundle.loadString(
-        'assets/templates/market_renderer.js',
-      );
-      final preview = await rootBundle.loadString(
-        'assets/templates/market_preview.js',
-      );
-      final fontData = await Future.wait(
-        templatePreviewFontAssets.values.map(rootBundle.load),
-      );
-      final portrait = await rootBundle.load(
-        'assets/templates/preview_portrait.png',
-      );
-      if (!current(request)) return;
-      pending = await Directory.systemTemp.createTemp(
-        'bojian-template-preview-',
-      );
-      for (var index = 0; index < fontData.length; index++) {
-        final font = fontData[index];
-        final name = templatePreviewFontAssets.keys.elementAt(index);
-        await File('${pending.path}/$name').writeAsBytes(
-          font.buffer.asUint8List(font.offsetInBytes, font.lengthInBytes),
-        );
-      }
-      final file = File('${pending.path}/preview.html');
-      await file.writeAsString(
+      final file = pending = await resources.createDocument(
         templatePreviewDocument(
           dom: result.data,
-          rendererScript: renderer,
-          previewScript: preview,
+          rendererScript: resources.renderer,
+          previewScript: resources.preview,
           author: widget.author,
           initialPage: widget.initialPage,
           showPageActions: widget.onOpenPage != null,
-          photo:
-              'data:image/png;base64,${base64Encode(portrait.buffer.asUint8List(portrait.offsetInBytes, portrait.lengthInBytes))}',
+          photo: resources.portrait,
         ),
       );
       if (!current(request)) return;
+      trace('html-ready');
       final web = WebViewController();
       await web.setJavaScriptMode(JavaScriptMode.unrestricted);
       await web.setBackgroundColor(background);
@@ -255,11 +255,16 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
           try {
             final data = jsonDecode(message.message) as Map;
             if (data['type'] == 'ready') {
+              trace('display-ready');
               timeout?.cancel();
               setState(() {
                 pages = integer(data['count']);
                 ready = true;
               });
+            } else if (data['type'] == 'timing' && traceTemplatePreview) {
+              debugPrint(
+                'BOJIAN_PREVIEW id=${widget.templateID} renderer=${data['stage']} elapsed_ms=${data['elapsed_ms']}',
+              );
             } else if (data['type'] == 'page-actions') {
               updatePageActions(data['items']);
             } else if (data['type'] == 'open-page' && ready && error == null) {
@@ -299,9 +304,10 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
         ),
       );
       if (!current(request)) return;
-      directory = pending;
+      document = pending;
       pending = null;
       setState(() => controller = web);
+      trace('webview-ready');
       timeout = Timer(const Duration(seconds: 30), () {
         if (current(request) && !ready) setState(() => error = '模板预览加载超时，请重试');
       });
@@ -312,7 +318,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
         setState(() => error = e is ApiFailure ? e.message : '模板预览加载失败，请重试');
       }
     } finally {
-      removeDirectory(pending);
+      removeDocument(pending);
     }
   }
 
@@ -410,7 +416,10 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
                     style: TextStyle(color: context.colors.muted, height: 1.6),
                   ),
                   if (widget.store.epoch == epoch)
-                    TextButton(onPressed: load, child: const Text('重新加载预览')),
+                    TextButton(
+                      onPressed: () => load(refresh: true),
+                      child: const Text('重新加载预览'),
+                    ),
                 ],
               ),
             ),

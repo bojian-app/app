@@ -1,4 +1,5 @@
 import 'app_theme.dart';
+import 'content_moderation.dart';
 
 import 'dart:math' as math;
 
@@ -7,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'resume_guidance_review.dart';
 
 bool _canDecide(Map record) =>
-    (record['status'] ?? 'PENDING') == 'PENDING' && record['legacy'] != true;
+    contentVisible(record) &&
+    (record['status'] ?? 'PENDING') == 'PENDING' &&
+    record['legacy'] != true;
 
 class _NoteMetrics {
   _NoteMetrics(BuildContext context, double paperScale)

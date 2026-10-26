@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
+import 'content_moderation.dart';
+import 'content_report.dart';
 import 'app_store.dart';
 import 'design.dart';
 import 'profile_avatar.dart';
@@ -19,12 +21,16 @@ class ArticleCommentTile extends StatelessWidget {
     this.onDislike,
     this.onAuthorTap,
     this.pending = false,
+    this.onEdit,
+    this.onRetry,
+    this.onReport,
   });
   final ArticleComment comment;
   final int articleAuthorID, currentUserID;
   final bool nested;
   final VoidCallback? onReply, onLike, onDislike, onAuthorTap;
   final bool pending;
+  final VoidCallback? onEdit, onRetry, onReport;
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +192,19 @@ class ArticleCommentTile extends StatelessWidget {
                 GestureDetector(
                   key: ValueKey('comment-conversation-${comment.id}'),
                   behavior: HitTestBehavior.opaque,
-                  onTap: comment.deleted ? null : onReply,
+                  onTap: comment.deleted || !comment.visible ? null : onReply,
+                  onLongPressStart:
+                      !comment.deleted &&
+                          comment.visible &&
+                          !isOwn &&
+                          comment.id > 0 &&
+                          onReport != null
+                      ? (details) => showReportBubble(
+                          context,
+                          details.globalPosition,
+                          onReport!,
+                        )
+                      : null,
                   child: Text(
                     comment.deleted ? '该评论已删除' : comment.content,
                     style: TextStyle(
@@ -200,7 +218,35 @@ class ArticleCommentTile extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (!comment.deleted) ...[
+                if (!comment.deleted && !comment.visible) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    moderationLabel(comment.status),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color:
+                          comment.status == 'REJECTED' ||
+                              comment.status == 'FAILED'
+                          ? Theme.of(context).colorScheme.error
+                          : context.colors.muted,
+                    ),
+                  ),
+                  if (comment.reviewReason.isNotEmpty &&
+                      (comment.status == 'REJECTED' ||
+                          comment.status == 'FAILED'))
+                    Text(
+                      comment.reviewReason,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.colors.muted,
+                      ),
+                    ),
+                  if (comment.status == 'REJECTED' && onEdit != null)
+                    TextButton(onPressed: onEdit, child: const Text('修改后重发')),
+                  if (comment.status == 'FAILED' && onRetry != null)
+                    TextButton(onPressed: onRetry, child: const Text('重试')),
+                ],
+                if (!comment.deleted && comment.visible) ...[
                   const SizedBox(height: 3),
                   Wrap(
                     spacing: 10,

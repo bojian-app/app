@@ -57,6 +57,38 @@ void main() {
   }
 
   testWidgets(
+    'Reopening reuses font files and removes only the closed document',
+    (tester) async {
+      await open(tester);
+      final first = File(web.controllers.single.filePath!);
+      final fonts = [
+        for (final name in templatePreviewFontAssets.keys)
+          File('${first.parent.path}/$name'),
+      ];
+      final modified = fonts.map((font) => font.lastModifiedSync()).toList();
+      await tester.runAsync(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        for (var i = 0; i < 50 && await first.exists(); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      expect(first.existsSync(), isFalse);
+      for (final font in fonts) {
+        expect(font.existsSync(), isTrue);
+      }
+      await tester.runAsync(() async {
+        web = FakeTemplateWebView()..install();
+      });
+      await open(tester);
+      final second = File(web.controllers.single.filePath!);
+      expect(second.parent.path, first.parent.path);
+      expect(second.path, isNot(first.path));
+      expect(fonts.map((font) => font.lastModifiedSync()).toList(), modified);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
     'Native page actions stay outside zoom content and open the selected page',
     (tester) async {
       int? selected;
@@ -205,10 +237,13 @@ void main() {
     expect(html, contains(renderer));
     expect(html, contains('width=device-width'));
     expect(html, isNot(contains('html2canvas 1.')));
-    await Directory('build/previews').create(recursive: true);
-    await File('build/previews/template-live-qa.html').writeAsString(html);
+    final output = Directory(
+      '${Directory.systemTemp.path}/bojian-template-live-qa',
+    );
+    await output.create(recursive: true);
+    await File('${output.path}/template-live-qa.html').writeAsString(html);
     for (final font in templatePreviewFontAssets.entries) {
-      await File(font.value).copy('build/previews/${font.key}');
+      await File(font.value).copy('${output.path}/${font.key}');
     }
   });
 }

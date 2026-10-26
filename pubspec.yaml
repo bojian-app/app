@@ -84,6 +84,7 @@ flutter:
     - assets/login/OPEN-DOODLES-LICENSE.txt
     - assets/login/wechat.jpg
     - assets/login/douyin.jpg
+    - assets/resume_ai/
     - assets/templates/
     - assets/points/
     - assets/points/tasks/
@@ -96,8 +97,14 @@ flutter:
   fonts:
     - family: ResumeDocument
       fonts:
-        - asset: assets/fonts/chill-round-f.ttf
+        - asset: assets/fonts/alibaba-puhuiti-3-regular.ttf
           weight: 400
+        - asset: assets/fonts/alibaba-puhuiti-3-medium.ttf
+          weight: 500
+        - asset: assets/fonts/alibaba-puhuiti-3-medium.ttf
+          weight: 600
+        - asset: assets/fonts/alibaba-puhuiti-3-bold.ttf
+          weight: 700
     - family: AnnotationUI
       fonts:
         - asset: assets/fonts/annotation-ui.ttf

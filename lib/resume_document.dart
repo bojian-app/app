@@ -2499,6 +2499,7 @@ ResumeExportPage resumeExportSheet(
             width: right - left,
             size: style.fontSize ?? 10,
             color: (style.color ?? resumePaperInk).toARGB32(),
+            weight: (style.fontWeight ?? FontWeight.w400).value.round(),
             bold:
                 (style.fontWeight ?? FontWeight.w400).value >=
                 FontWeight.w600.value,
