@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 
 import 'app_store.dart';
+import 'app_photo_picker.dart';
 import 'developer_verification_page.dart';
 import 'app_qr_login_page.dart';
 import 'design.dart';
@@ -1228,7 +1229,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
   }
 
   Future<void> _pickAvatarPhoto(int epoch) async {
-    final file = await openFile(acceptedTypeGroups: [resumePhotoTypes]);
+    final file = await pickAppGalleryPhoto();
     if (file == null || !_canEdit(epoch)) return;
     await validateResumePhoto(file);
     if (!mounted || !_canEdit(epoch)) return;

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -130,30 +131,34 @@ void main() {
     expect(find.text('PDF'), findsOneWidget);
     expect(find.text('Word'), findsOneWidget);
   });
-  testWidgets('Editor can jump to distant section without losing input', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ResumeEditor(
-          store: store,
-          draft: ResumeDraft(id: 0, title: '简历'),
+  testWidgets(
+    'Editor switches independent sections without losing saved input',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ResumeEditor(
+            store: store,
+            draft: ResumeDraft(id: 0, title: '简历'),
+          ),
         ),
-      ),
-    );
-    await tester.enterText(find.byKey(const ValueKey('resume-name')), '李明');
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '专业技能'));
-    await tester.tap(find.widgetWithText(ChoiceChip, '专业技能'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.getRect(find.text('添加技能')).top,
-      lessThan(tester.view.physicalSize.height),
-    );
-    expect(
-      (tester.widget<TextFormField>(find.byKey(const ValueKey('resume-name'))))
-          .controller!
-          .text,
-      '李明',
-    );
-  });
+      );
+      await openResumeSection(tester, 0);
+      await tester.enterText(find.byKey(const ValueKey('resume-name')), '李明');
+      await saveResumeSection(tester);
+      await openResumeSection(tester, 6);
+      expect(find.text('添加技能'), findsOneWidget);
+      expect(find.byKey(const ValueKey('resume-name')), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('李明'), findsOneWidget);
+      await openResumeSection(tester, 0);
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('resume-name')))
+            .controller!
+            .text,
+        '李明',
+      );
+    },
+  );
 }

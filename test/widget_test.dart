@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
 
 Future<void> launch(
   WidgetTester tester, {
@@ -214,7 +215,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
+    await openResumeSection(tester, 0);
     await tester.enterText(find.byKey(const ValueKey('resume-name')), '李明');
+    await saveResumeSection(tester);
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(

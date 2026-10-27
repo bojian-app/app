@@ -7,13 +7,6 @@ import 'app_store.dart';
 import 'resume_importer.dart';
 
 const maximumResumePhotoBytes = 5 * 1024 * 1024;
-const resumePhotoTypes = XTypeGroup(
-  label: '照片',
-  extensions: ['jpg', 'jpeg', 'png', 'webp'],
-  mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
-  uniformTypeIdentifiers: ['public.jpeg', 'public.png', 'org.webmproject.webp'],
-);
-
 Future<String> validateResumePhoto(XFile file) async {
   final extension = file.name.split('.').last.toLowerCase();
   final mime = switch (extension) {

@@ -60,6 +60,7 @@ Future<DateTime?> showDateWheelPicker(
   return showModalBottomSheet<DateTime>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: context.colors.surface,
     builder: (sheetContext) => Localizations.override(
       context: sheetContext,
@@ -72,65 +73,82 @@ Future<DateTime?> showDateWheelPicker(
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: (MediaQuery.sizeOf(sheetContext).height * .8).clamp(180, 320),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(sheetContext),
-                      child: const Text('取消'),
-                    ),
-                    Expanded(
-                      child: Text(
-                        title,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+          height: (MediaQuery.sizeOf(sheetContext).height * .8).clamp(180, 360),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(56, 48),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        onPressed: () => Navigator.pop(sheetContext),
+                        child: const Text('取消'),
+                      ),
+                      Expanded(
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(sheetContext, selected),
-                      child: const Text('确定'),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: CupertinoTheme(
-                  data: CupertinoTheme.of(sheetContext).copyWith(
-                    textTheme: CupertinoTheme.of(sheetContext).textTheme
-                        .copyWith(
-                          dateTimePickerTextStyle:
-                              CupertinoTheme.of(sheetContext)
-                                  .textTheme
-                                  .dateTimePickerTextStyle
-                                  .copyWith(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w400,
-                                    color: context.colors.ink,
-                                  ),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(56, 48),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                         ),
-                  ),
-                  child: CupertinoDatePicker(
-                    mode: monthOnly
-                        ? CupertinoDatePickerMode.monthYear
-                        : CupertinoDatePickerMode.date,
-                    dateOrder: DatePickerDateOrder.ymd,
-                    initialDateTime: selected,
-                    minimumDate: firstDate,
-                    maximumDate: lastDate,
-                    minimumYear: firstDate.year,
-                    maximumYear: lastDate.year,
-                    onDateTimeChanged: (value) => selected = value,
+                        onPressed: () => Navigator.pop(sheetContext, selected),
+                        child: const Text('确定'),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: CupertinoTheme(
+                    data: CupertinoTheme.of(sheetContext).copyWith(
+                      textTheme: CupertinoTheme.of(sheetContext).textTheme
+                          .copyWith(
+                            dateTimePickerTextStyle:
+                                CupertinoTheme.of(sheetContext)
+                                    .textTheme
+                                    .dateTimePickerTextStyle
+                                    .copyWith(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w400,
+                                      color: context.colors.ink,
+                                    ),
+                          ),
+                    ),
+                    child: CupertinoDatePicker(
+                      mode: monthOnly
+                          ? CupertinoDatePickerMode.monthYear
+                          : CupertinoDatePickerMode.date,
+                      dateOrder: DatePickerDateOrder.ymd,
+                      initialDateTime: selected,
+                      minimumDate: firstDate,
+                      maximumDate: lastDate,
+                      minimumYear: firstDate.year,
+                      maximumYear: lastDate.year,
+                      onDateTimeChanged: (value) => selected = value,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

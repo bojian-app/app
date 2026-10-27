@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 
 import 'resume_files.dart';
+import 'app_photo_picker.dart';
 import 'resume_rename.dart';
 import 'resume_add_sheet.dart';
 import 'resume_assistance_page.dart';
@@ -16,11 +17,14 @@ import 'resume_delete.dart';
 import 'resume_document.dart';
 import 'resume_importer.dart';
 import 'resume_photo.dart';
+import 'resume_photo_actions.dart';
 import 'resume_photo_crop.dart';
 import 'resume_export.dart';
 import 'resume_work_experience.dart';
 import 'resume_education.dart';
 import 'resume_editor_progress.dart';
+import 'resume_editor_sections.dart';
+import 'resume_editor_typography.dart';
 import 'resume_additional_fields.dart';
 import 'resume_templates.dart';
 import 'resume_updated_label.dart';
@@ -584,9 +588,28 @@ class ResumeEditor extends StatefulWidget {
 }
 
 class _ResumeEditorState extends State<ResumeEditor> {
-  final formKey = GlobalKey<FormState>();
+  static const _fieldActionExtent = 48.0;
+
+  final _sectionRevision = ValueNotifier(0);
+  int? _editingSection;
+  int _sectionSession = 0;
+  XFile? _retainedSectionPhoto;
+
+  void _update(VoidCallback change) {
+    if (!mounted) return;
+    setState(change);
+    _sectionRevision.value++;
+  }
+
+  Future<void> _discardEditablePhoto(XFile? file) async {
+    if (!identical(file, _retainedSectionPhoto)) {
+      await discardResumePhotoCrop(file);
+    }
+  }
+
   bool saving = false;
   bool pickingPhoto = false;
+  bool _photoActionsOpen = false;
   bool photoRemoved = false;
   String? photoError;
   XFile? selectedPhoto;
@@ -608,166 +631,152 @@ class _ResumeEditorState extends State<ResumeEditor> {
       );
       if (!mounted || epoch != widget.store.epoch) return;
       final detail = decodeResume(response.data);
-      setState(() {
+      _update(() {
         currentDraft.photoURL = detail.photoURL;
         currentDraft.photoFileID = detail.photoFileID;
         photoError = null;
       });
     } catch (_) {
-      if (mounted) setState(() => photoError = '照片信息加载失败，请重试');
+      if (mounted) _update(() => photoError = '照片信息加载失败，请重试');
     }
   }
 
   Future<void> _pickPhoto() async {
     if (saving || pickingPhoto) return;
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => pickingPhoto = true);
+    final session = _sectionSession;
+    final epoch = widget.store.epoch;
+    _update(() => pickingPhoto = true);
+    bool isCurrent() =>
+        mounted && session == _sectionSession && epoch == widget.store.epoch;
     try {
-      final file = await openFile(acceptedTypeGroups: [resumePhotoTypes]);
-      if (file == null) return;
+      final file = await pickAppGalleryPhoto();
+      if (file == null || !isCurrent()) return;
       await validateResumePhoto(file);
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       final cropped = await Navigator.of(context).push<XFile>(
         MaterialPageRoute(builder: (_) => ResumePhotoCropPage(file: file)),
       );
       if (cropped == null) return;
-      if (!mounted) {
+      if (!isCurrent()) {
         await discardResumePhotoCrop(cropped);
         return;
       }
       final previous = selectedPhoto;
-      setState(() {
+      _update(() {
         selectedPhoto = cropped;
         photoRemoved = false;
         photoError = null;
       });
-      await discardResumePhotoCrop(previous);
+      await _discardEditablePhoto(previous);
     } catch (e) {
       if (mounted) toast(context, e is ApiFailure ? e.message : '无法选择照片，请重试');
     } finally {
-      if (mounted) setState(() => pickingPhoto = false);
+      if (mounted) _update(() => pickingPhoto = false);
     }
   }
 
-  Widget _photoField() {
+  Future<void> _showPhotoActions() async {
+    if (saving || pickingPhoto || _photoActionsOpen || _editingSection != 0) {
+      return;
+    }
+    dismissKeyboard();
+    final session = _sectionSession;
+    final epoch = widget.store.epoch;
+    _photoActionsOpen = true;
+    final ResumePhotoAction? action;
+    try {
+      action = await showResumePhotoActions(
+        context,
+        hasPhoto:
+            selectedPhoto != null ||
+            (!photoRemoved && currentDraft.photoFileID > 0),
+      );
+    } finally {
+      _photoActionsOpen = false;
+    }
+    if (!mounted ||
+        action == null ||
+        session != _sectionSession ||
+        epoch != widget.store.epoch ||
+        _editingSection != 0) {
+      return;
+    }
+    switch (action) {
+      case ResumePhotoAction.modify:
+        await _pickPhoto();
+      case ResumePhotoAction.delete:
+        final previous = selectedPhoto;
+        _update(() {
+          selectedPhoto = null;
+          photoRemoved = true;
+          photoError = null;
+        });
+        await _discardEditablePhoto(previous);
+    }
+  }
+
+  Widget _photoField({bool compact = false}) {
     final existing = !photoRemoved && currentDraft.photoFileID > 0;
-    final hasPhoto = selectedPhoto != null || existing;
-    return SizedBox(
-      width: 96,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: saving || pickingPhoto ? null : _pickPhoto,
-            borderRadius: BorderRadius.circular(14),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: SizedBox(
-                width: 88,
-                height: 112,
-                child: selectedPhoto != null
-                    ? Image.file(
-                        File(selectedPhoto!.path),
-                        fit: BoxFit.cover,
-                        alignment: const Alignment(0, -.35),
-                      )
-                    : existing && currentDraft.photoURL.isNotEmpty
-                    ? Image.network(
-                        currentDraft.photoURL,
-                        cacheWidth: 280,
-                        fit: BoxFit.cover,
-                        alignment: const Alignment(0, -.35),
-                        errorBuilder: (_, _, _) => TextButton(
-                          onPressed: saving
-                              ? null
-                              : () {
-                                  NetworkImage(currentDraft.photoURL).evict();
-                                  _loadPhoto();
-                                },
-                          child: const Text(
-                            '加载失败\n点击重试',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 10),
-                          ),
-                        ),
-                      )
-                    : ColoredBox(
-                        color: context.isDark
-                            ? context.colors.inset
-                            : const Color(0xFFF0F2F4),
-                        child: Center(
-                          child: AppIcon(
-                            AppIcons.portrait,
-                            size: 42,
-                            color: context.colors.muted.withValues(alpha: .5),
-                          ),
-                        ),
+    return Semantics(
+      button: true,
+      label: compact ? '编辑基本信息' : '编辑照片',
+      child: InkWell(
+        onTap: saving || pickingPhoto
+            ? null
+            : compact
+            ? () => _openSection(0)
+            : _showPhotoActions,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: compact ? 76 : 48,
+          height: compact ? 100 : 64,
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: context.colors.border),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: selectedPhoto != null
+                ? Image.file(
+                    File(selectedPhoto!.path),
+                    fit: BoxFit.cover,
+                    alignment: const Alignment(0, -.35),
+                  )
+                : existing && currentDraft.photoURL.isNotEmpty
+                ? Image.network(
+                    currentDraft.photoURL,
+                    cacheWidth: 280,
+                    fit: BoxFit.cover,
+                    alignment: const Alignment(0, -.35),
+                    errorBuilder: (_, _, _) => TextButton(
+                      onPressed: saving
+                          ? null
+                          : () {
+                              NetworkImage(currentDraft.photoURL).evict();
+                              _loadPhoto();
+                            },
+                      child: const Text(
+                        '加载失败\n点击重试',
+                        textAlign: TextAlign.center,
+                        style: ResumeEditorTypography.caption,
                       ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            '简历头像',
-            style: TextStyle(color: context.colors.muted, fontSize: 11),
-          ),
-          Text(
-            '最大 5 MB',
-            style: TextStyle(color: context.colors.muted, fontSize: 10),
-          ),
-          if (selectedPhoto != null || photoRemoved)
-            Text(
-              '保存后生效',
-              style: TextStyle(color: context.colors.accent, fontSize: 10),
-            ),
-          Wrap(
-            alignment: WrapAlignment.center,
-            children: [
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  minimumSize: const Size(44, 36),
-                  textStyle: const TextStyle(fontSize: 11),
-                ),
-                onPressed: saving || pickingPhoto ? null : _pickPhoto,
-                child: Text(
-                  pickingPhoto
-                      ? '正在选择…'
-                      : hasPhoto
-                      ? '更换头像'
-                      : '上传头像',
-                ),
-              ),
-              if (hasPhoto)
-                TextButton(
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    minimumSize: const Size(44, 36),
-                    textStyle: const TextStyle(fontSize: 11),
+                    ),
+                  )
+                : ColoredBox(
+                    color: context.isDark
+                        ? context.colors.inset
+                        : const Color(0xFFF0F2F4),
+                    child: Center(
+                      child: AppIcon(
+                        AppIcons.portrait,
+                        size: 42,
+                        color: context.colors.muted.withValues(alpha: .5),
+                      ),
+                    ),
                   ),
-                  onPressed: saving
-                      ? null
-                      : () => setState(() {
-                          unawaited(discardResumePhotoCrop(selectedPhoto));
-                          selectedPhoto = null;
-                          photoRemoved = true;
-                        }),
-                  child: const Text('移除'),
-                ),
-              if (photoError != null)
-                TextButton(
-                  onPressed: saving ? null : _loadPhoto,
-                  child: const Text('重试'),
-                ),
-            ],
           ),
-          if (photoError != null)
-            Text(
-              photoError!,
-              style: const TextStyle(color: Colors.redAccent, fontSize: 10),
-              textAlign: TextAlign.center,
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -865,6 +874,10 @@ class _ResumeEditorState extends State<ResumeEditor> {
 
   @override
   void dispose() {
+    _sectionRevision.dispose();
+    if (!identical(_retainedSectionPhoto, selectedPhoto)) {
+      unawaited(discardResumePhotoCrop(_retainedSectionPhoto));
+    }
     if (!saving) unawaited(discardResumePhotoCrop(selectedPhoto));
     for (final c in fields.values) {
       c.dispose();
@@ -883,8 +896,6 @@ class _ResumeEditorState extends State<ResumeEditor> {
     super.dispose();
   }
 
-  final sectionKeys = List.generate(8, (_) => GlobalKey());
-  int activeSection = 0;
   final sectionNames = [
     '基本信息',
     '求职意向',
@@ -896,18 +907,117 @@ class _ResumeEditorState extends State<ResumeEditor> {
     '证书',
   ];
 
-  void _jump(int index) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => activeSection = index);
-    final target = sectionKeys[index].currentContext;
-    if (target != null) {
-      Scrollable.ensureVisible(
-        target,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOutCubic,
-      );
+  Future<void> _openSection(int index, {bool showErrors = false}) async {
+    if (saving || pickingPhoto || _editingSection != null) return;
+    dismissKeyboard();
+    final originalFields = {
+      for (final entry in fields.entries) entry.key: entry.value.text,
+    };
+    final originalGender = gender;
+    final originalBirthMode = birthMode;
+    final originalPhoto = selectedPhoto;
+    final originalRemoved = photoRemoved;
+    final originalPhotoError = photoError;
+    final originalWork = [for (final entry in workEntries) entry.toJson()];
+    final originalEducation = [
+      for (final entry in educationEntries) entry.toJson(),
+    ];
+    final originalAdditional = {
+      for (final entry in additionalEntries.entries)
+        entry.key: [for (final row in entry.value) row.toJson()],
+    };
+    _editingSection = index;
+    _sectionSession++;
+    if (index == 0) _retainedSectionPhoto = originalPhoto;
+    final route = MaterialPageRoute<bool>(
+      builder: (_) => ResumeSectionEditorPage(
+        title: sectionNames[index],
+        changes: _sectionRevision,
+        isBusy: () => saving || pickingPhoto,
+        fields: () => _sectionFields(index),
+        showErrors: showErrors,
+      ),
+    );
+    final accepted = await Navigator.of(context).push(route);
+    await route.completed;
+    _sectionSession++;
+    if (!mounted) return;
+    if (accepted != true) {
+      for (final entry in originalFields.entries) {
+        fields[entry.key]!.text = entry.value;
+      }
+      gender = originalGender;
+      birthMode = originalBirthMode;
+      if (index == 0) {
+        if (!identical(selectedPhoto, originalPhoto)) {
+          await discardResumePhotoCrop(selectedPhoto);
+        }
+        selectedPhoto = originalPhoto;
+        photoRemoved = originalRemoved;
+        photoError = originalPhotoError;
+      } else if (index == 3) {
+        for (final entry in workEntries) {
+          entry.dispose();
+        }
+        workEntries
+          ..clear()
+          ..addAll(originalWork.map(WorkExperienceFields.new));
+      } else if (index == 5) {
+        for (final entry in educationEntries) {
+          entry.dispose();
+        }
+        educationEntries
+          ..clear()
+          ..addAll(originalEducation.map(EducationFields.new));
+      } else if (index == 4 || index == 6 || index == 7) {
+        final key = {4: 'projects', 6: 'skills', 7: 'certifications'}[index]!;
+        for (final entry in additionalEntries[key]!) {
+          entry.dispose();
+        }
+        additionalEntries[key]!
+          ..clear()
+          ..addAll(
+            originalAdditional[key]!.map((entry) => _newEntry(key, entry)),
+          );
+      }
+    } else if (index == 0 && !identical(originalPhoto, selectedPhoto)) {
+      await discardResumePhotoCrop(originalPhoto);
+    }
+    _retainedSectionPhoto = null;
+    _editingSection = null;
+    _update(() {});
+    if (accepted == true && mounted) {
+      toast(context, '已更新，保存简历后生效');
     }
   }
+
+  List<Widget> _sectionFields(int index) => switch (index) {
+    0 => [_basicInformation()],
+    1 => [
+      _field('position', '意向职位'),
+      _field('city', '意向城市'),
+      _field('industry', '期望行业'),
+      _field('salary', '期望薪资'),
+    ],
+    2 => [_field('summary', '自我评价与求职偏好', lines: 8, hint: '填写你的专业方向、经验和优势')],
+    3 => [
+      for (var i = 0; i < workEntries.length; i++) _workEntry(i),
+      _addEntryButton(
+        '添加工作经历',
+        () => _update(() => workEntries.add(WorkExperienceFields({}))),
+      ),
+    ],
+    4 => _additionalSection('projects', '项目经历'),
+    5 => [
+      for (var i = 0; i < educationEntries.length; i++) _educationEntry(i),
+      _addEntryButton(
+        '添加教育经历',
+        () => _update(() => educationEntries.add(EducationFields({}))),
+      ),
+    ],
+    6 => _additionalSection('skills', '技能'),
+    _ => _additionalSection('certifications', '证书'),
+  };
 
   Iterable<TextEditingController> get _allEditorFields sync* {
     yield* fields.values;
@@ -928,82 +1038,96 @@ class _ResumeEditorState extends State<ResumeEditor> {
     listenable: Listenable.merge(_allEditorFields.toList()),
     builder: (context, _) {
       final progress = resumeEditorProgress(
-        fields: fields.map((key, controller) => MapEntry(key, controller.text)),
-        work: workEntries.map((entry) => entry.toJson()),
-        projects: additionalEntries['projects']!.map((entry) => entry.toJson()),
-        education: educationEntries.map((entry) => entry.toJson()),
-        skills: additionalEntries['skills']!.map((entry) => entry.toJson()),
+        fields: fields.map((key, c) => MapEntry(key, c.text)),
+        work: workEntries.map((e) => e.toJson()),
+        projects: additionalEntries['projects']!.map((e) => e.toJson()),
+        education: educationEntries.map((e) => e.toJson()),
+        skills: additionalEntries['skills']!.map((e) => e.toJson()),
       );
-      return Container(
-        key: const ValueKey('resume-editor-completeness'),
-        margin: const EdgeInsets.only(bottom: 18),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    '简历完整度',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      return Semantics(
+        label: '已填写 ${progress.filled}/${progress.total} 项基础内容',
+        child: Container(
+          key: const ValueKey('resume-editor-completeness'),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: context.colors.surface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '简历完整度',
+                      style: ResumeEditorTypography.entryTitle,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${progress.percent}%',
-                  key: const ValueKey('resume-editor-completeness-percent'),
-                  style: TextStyle(
-                    color: context.colors.accent,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
+                  Text(
+                    '${progress.percent}%',
+                    key: const ValueKey('resume-editor-completeness-percent'),
+                    style: ResumeEditorTypography.body.copyWith(
+                      color: context.colors.accent,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(
-                value: progress.fraction,
-                minHeight: 7,
-                color: context.colors.accent,
-                backgroundColor: context.colors.accentSoft,
+                ],
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '已填写 ${progress.filled}/${progress.total} 项基础内容',
-              style: TextStyle(color: context.colors.muted, fontSize: 11),
-            ),
-          ],
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: progress.fraction,
+                  minHeight: 4,
+                  color: context.colors.accent,
+                  backgroundColor: context.colors.accentSoft,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     },
   );
 
   Widget _basicInformation() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              children: [
-                _field('name', '姓名'),
-                _field('phone', '手机号码', keyboard: TextInputType.phone),
-                _field('email', '邮箱', keyboard: TextInputType.emailAddress),
-              ],
+      InkWell(
+        key: const ValueKey('resume-photo-entry'),
+        onTap: saving || pickingPhoto ? null : _showPhotoActions,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '头像',
+                  style: ResumeEditorTypography.caption.copyWith(
+                    color: context.colors.muted,
+                  ),
+                ),
+              ),
+              _photoField(),
+            ],
+          ),
+        ),
+      ),
+      if (photoError != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            photoError!,
+            style: ResumeEditorTypography.caption.copyWith(
+              color: Theme.of(context).colorScheme.error,
             ),
           ),
-          const SizedBox(width: 20),
-          _photoField(),
-        ],
-      ),
+        ),
+      Divider(height: 24, color: context.colors.border),
+      _field('name', '姓名'),
+      _field('phone', '手机号码', keyboard: TextInputType.phone),
+      _field('email', '邮箱', keyboard: TextInputType.emailAddress),
       _field('title', '简历名称'),
       ExpansionTile(
         key: const ValueKey('resume-editor-more-personal'),
@@ -1016,216 +1140,207 @@ class _ResumeEditorState extends State<ResumeEditor> {
         textColor: context.colors.ink,
         iconColor: context.colors.muted,
         collapsedIconColor: context.colors.muted,
-        title: const Text('更多基本信息', style: TextStyle(fontSize: 13)),
+        title: const Text('更多基本信息', style: ResumeEditorTypography.action),
         children: [_personalFields()],
       ),
     ],
   );
 
-  bool get _compactEditing =>
-      MediaQuery.sizeOf(context).height -
-          MediaQuery.viewInsetsOf(context).bottom <
-      280;
+  Widget _overviewText(String text, {bool muted = false}) => Text(
+    text,
+    style: ResumeEditorTypography.body.copyWith(
+      color: muted ? context.colors.muted : context.colors.ink,
+    ),
+  );
+
+  Widget _basicSummary() {
+    final otherCount = [
+      if (gender != 'undisclosed') gender,
+      fields['birth_date']!.text,
+      fields['title']!.text,
+    ].where((value) => value.trim().isNotEmpty).length;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                fields['name']!.text.trim().isEmpty
+                    ? '填写姓名'
+                    : fields['name']!.text,
+                style: ResumeEditorTypography.title,
+              ),
+              const SizedBox(height: 12),
+              _overviewText(
+                fields['phone']!.text.trim().isEmpty
+                    ? '添加电话'
+                    : '电话：${fields['phone']!.text}',
+                muted: fields['phone']!.text.trim().isEmpty,
+              ),
+              const SizedBox(height: 4),
+              _overviewText(
+                fields['email']!.text.trim().isEmpty
+                    ? '添加邮箱'
+                    : '邮箱：${fields['email']!.text}',
+                muted: fields['email']!.text.trim().isEmpty,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                otherCount == 0 ? '完善基本信息' : '还有 $otherCount 项基本信息',
+                style: ResumeEditorTypography.caption.copyWith(
+                  color: context.colors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        _photoField(compact: true),
+      ],
+    );
+  }
+
+  Widget _overviewContent(int index) {
+    if (index == 0) return _basicSummary();
+    if (index == 1) {
+      final position = fields['position']!.text.trim();
+      final city = fields['city']!.text.trim();
+      final salary = fields['salary']!.text.trim();
+      final industry = fields['industry']!.text.trim();
+      return ResumeOverviewEntry(
+        title: position.isEmpty ? '填写意向职位' : position,
+        description: [
+          if (city.isNotEmpty) '意向城市：$city',
+          if (salary.isNotEmpty) '期望薪资：$salary',
+          if (industry.isNotEmpty) '期望行业：$industry',
+          if (city.isEmpty && salary.isEmpty && industry.isEmpty)
+            '添加城市、行业与期望薪资',
+        ].join('\n'),
+      );
+    }
+    if (index == 2) {
+      final summary = fields['summary']!.text.trim();
+      return _overviewText(
+        summary.isEmpty ? '介绍你的专业方向、经验和优势' : summary,
+        muted: summary.isEmpty,
+      );
+    }
+    final List<Map<String, dynamic>> entries;
+    final String titleKey;
+    final List<String> metaKeys;
+    final List<String> descriptionKeys;
+    switch (index) {
+      case 3:
+        entries = workEntries.map((e) => e.toJson()).toList();
+        titleKey = 'company';
+        metaKeys = ['position'];
+        descriptionKeys = ['description'];
+      case 5:
+        entries = educationEntries.map((e) => e.toJson()).toList();
+        titleKey = 'institution';
+        metaKeys = ['degree', 'field_of_study'];
+        descriptionKeys = [
+          'campus_experience',
+          'thesis_title',
+          'thesis_description',
+        ];
+      default:
+        final key = {4: 'projects', 6: 'skills', 7: 'certifications'}[index]!;
+        entries = additionalEntries[key]!.map((e) => e.toJson()).toList();
+        titleKey = 'name';
+        metaKeys = index == 4 ? ['role'] : ['issuer'];
+        descriptionKeys = ['description', 'achievements'];
+    }
+    if (entries.isEmpty) {
+      return _overviewText('添加${sectionNames[index]}', muted: true);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < entries.length; i++) ...[
+          if (i > 0) Divider(height: 24, color: context.colors.border),
+          ResumeOverviewEntry(
+            title: entries[i][titleKey]?.toString().trim() ?? '',
+            meta: [
+              for (final key in metaKeys)
+                entries[i][key]?.toString().trim() ?? '',
+              [
+                entries[i]['start_date'] ?? '',
+                entries[i]['current'] == true
+                    ? '至今'
+                    : entries[i]['end_date'] ?? '',
+              ].where((v) => v.toString().trim().isNotEmpty).join(' – '),
+              entries[i]['date']?.toString().trim() ?? '',
+            ].where((v) => v.isNotEmpty).join(' · '),
+            description: [
+              for (final key in descriptionKeys)
+                entries[i][key]?.toString().trim() ?? '',
+            ].where((v) => v.isNotEmpty).join('\n'),
+          ),
+        ],
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: context.isDark
-        ? context.colors.canvas
-        : const Color(0xFFF3F5F8),
+    backgroundColor: context.colors.canvas,
     appBar: AppBar(
       title: Text(
         currentDraft.id == 0 ? '创建简历' : '编辑简历',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        style: ResumeEditorTypography.title,
       ),
       backgroundColor: context.colors.surface,
       surfaceTintColor: Colors.transparent,
-      actions: [
-        const DismissKeyboardButton(),
-        if (_compactEditing)
-          TextButton(
-            key: const ValueKey('resume-editor-save'),
-            onPressed: saving || pickingPhoto ? null : _save,
-            child: Text(
-              saving ? '保存中…' : '保存',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-      ],
     ),
-    bottomNavigationBar: _compactEditing
-        ? null
-        : Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.viewInsetsOf(context).bottom,
-            ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                border: Border(top: BorderSide(color: context.colors.border)),
-              ),
-              child: SafeArea(
-                top: false,
-                minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    key: const ValueKey('resume-editor-save'),
-                    onPressed: saving || pickingPhoto ? null : _save,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF2167E8),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ).withoutHover(),
-                    child: Text(
-                      saving ? '保存中…' : '保存',
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-    body: Form(
-      key: formKey,
-      child: Column(
-        children: [
-          if (!_compactEditing)
-            ColoredBox(
-              color: context.colors.surface,
-              child: SizedBox(
-                height: 38 + MediaQuery.textScalerOf(context).scale(12),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      for (var index = 0; index < sectionNames.length; index++)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(
-                              sectionNames[index],
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            selected: activeSection == index,
-                            showCheckmark: false,
-                            side: BorderSide.none,
-                            backgroundColor: context.colors.surface,
-                            selectedColor: context.colors.accentSoft,
-                            labelStyle: TextStyle(
-                              color: activeSection == index
-                                  ? context.colors.accent
-                                  : context.colors.muted,
-                            ),
-                            onSelected: (_) => _jump(index),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0, .36, 1],
-                  colors: context.isDark
-                      ? [
-                          context.colors.canvas,
-                          context.colors.canvas,
-                          context.colors.canvas,
-                        ]
-                      : [
-                          const Color(0xFFE8F1FF),
-                          const Color(0xFFF3F5F8),
-                          const Color(0xFFF3F5F8),
-                        ],
-                ),
-              ),
-              child: ListView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-                children: [
-                  Column(
-                    children: [
-                      _completionCard(),
-                      _section(0, AppIcons.personalInfo, [_basicInformation()]),
-                      _section(1, AppIcons.jobExpectation, [
-                        _pair(
-                          _field('position', '意向职位'),
-                          _field('city', '意向城市'),
-                        ),
-                        _pair(
-                          _field('industry', '期望行业'),
-                          _field('salary', '期望薪资'),
-                        ),
-                      ]),
-                      _section(2, AppIcons.profileEdit, [
-                        _field(
-                          'summary',
-                          '自我评价与求职偏好',
-                          lines: 4,
-                          hint: '填写你的专业方向、经验和优势',
-                        ),
-                      ]),
-                      _section(3, AppIcons.work, [
-                        for (var index = 0; index < workEntries.length; index++)
-                          _workEntry(index),
-                        _addEntryButton(
-                          '添加工作经历',
-                          () => setState(
-                            () => workEntries.add(WorkExperienceFields({})),
-                          ),
-                        ),
-                      ]),
-                      _section(
-                        4,
-                        AppIcons.projects,
-                        _additionalSection('projects', '项目经历'),
-                      ),
-                      _section(5, AppIcons.education, [
-                        for (
-                          var index = 0;
-                          index < educationEntries.length;
-                          index++
-                        )
-                          _educationEntry(index),
-                        _addEntryButton(
-                          '添加教育经历',
-                          () => setState(
-                            () => educationEntries.add(EducationFields({})),
-                          ),
-                        ),
-                      ]),
-                      _section(
-                        6,
-                        AppIcons.skills,
-                        _additionalSection('skills', '技能'),
-                      ),
-                      _section(
-                        7,
-                        AppIcons.certificate,
-                        _additionalSection('certifications', '证书'),
-                      ),
-                    ],
-                  ),
+    bottomNavigationBar: SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: FilledButton(
+        key: const ValueKey('resume-editor-save'),
+        onPressed: saving || pickingPhoto ? null : _save,
+        child: Text(
+          saving ? '保存中…' : '保存',
+          style: ResumeEditorTypography.action,
+        ),
+      ),
+    ),
+    body: DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          stops: const [0, .45, 1],
+          colors: context.isDark
+              ? [
+                  context.colors.canvas,
+                  context.colors.canvas,
+                  context.colors.canvas,
+                ]
+              : [
+                  const Color(0xFFE8F3FF),
+                  context.colors.canvas,
+                  context.colors.canvas,
                 ],
-              ),
-            ),
+        ),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
+        children: [
+          Column(
+            children: [
+              _completionCard(),
+              for (var index = 0; index < sectionNames.length; index++)
+                ResumeOverviewCard(
+                  key: ValueKey('resume-overview-section-$index'),
+                  label: '编辑${sectionNames[index]}',
+                  title: index == 0 ? null : sectionNames[index],
+                  onEdit: saving ? null : () => _openSection(index),
+                  child: _overviewContent(index),
+                ),
+            ],
           ),
         ],
       ),
@@ -1243,9 +1358,14 @@ class _ResumeEditorState extends State<ResumeEditor> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
         ),
         icon: const AppIcon(AppIcons.addCircle, size: 20),
-        label: Text(label, style: const TextStyle(fontSize: 14)),
+        label: Text(label, style: ResumeEditorTypography.action),
       ),
     ),
+  );
+
+  Widget _fieldTrailingIcon(AppIconData icon) => SizedBox.square(
+    dimension: _fieldActionExtent,
+    child: Center(child: AppIcon(icon, size: 18, color: context.colors.muted)),
   );
 
   Widget _choiceField(
@@ -1260,16 +1380,20 @@ class _ResumeEditorState extends State<ResumeEditor> {
       children: [
         Text(
           label,
-          style: TextStyle(fontSize: 12, color: context.colors.muted),
+          style: ResumeEditorTypography.caption.copyWith(
+            color: context.colors.muted,
+          ),
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: value,
           isExpanded: true,
-          icon: AppIcon(AppIcons.expand, size: 18, color: context.colors.muted),
+          icon: _fieldTrailingIcon(AppIcons.expand),
+          iconSize: 18,
           decoration: InputDecoration(
             filled: false,
-            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
             border: UnderlineInputBorder(
               borderSide: BorderSide(color: context.colors.border),
             ),
@@ -1280,7 +1404,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
               borderSide: BorderSide(color: context.colors.accent),
             ),
           ),
-          style: TextStyle(fontSize: 15, color: context.colors.ink),
+          style: ResumeEditorTypography.body.copyWith(
+            color: context.colors.ink,
+          ),
           items: [
             for (final option in options.entries)
               DropdownMenuItem(value: option.key, child: Text(option.value)),
@@ -1302,7 +1428,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
         'undisclosed': '不透露',
         'male': '男',
         'female': '女',
-      }, (value) => setState(() => gender = value)),
+      }, (value) => _update(() => gender = value)),
       _field(
         'birth_date',
         '出生日期',
@@ -1312,7 +1438,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
       _choiceField('简历中显示', birthMode, const {
         'date': '出生日期',
         'age': '年龄',
-      }, (value) => setState(() => birthMode = value)),
+      }, (value) => _update(() => birthMode = value)),
     ],
   );
 
@@ -1336,7 +1462,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
       lastDate: now,
     );
     if (!mounted || selected == null) return;
-    setState(
+    _update(
       () => fields['birth_date']!.text =
           '${selected.year}-${selected.month.toString().padLeft(2, '0')}-${selected.day.toString().padLeft(2, '0')}',
     );
@@ -1347,11 +1473,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
         valueListenable: controller,
         builder: (context, value, _) => Text(
           value.text.trim().isEmpty ? fallback : value.text.trim(),
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            height: 1.5,
-          ),
+          style: ResumeEditorTypography.entryTitle,
         ),
       );
 
@@ -1385,14 +1507,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               if (detail.isNotEmpty)
-                Text(detail, style: const TextStyle(fontSize: 13, height: 1.5)),
+                Text(detail, style: ResumeEditorTypography.caption),
               if (dates.isNotEmpty)
                 Text(
                   dates.replaceAll('-', '.'),
-                  style: TextStyle(
+                  style: ResumeEditorTypography.caption.copyWith(
                     color: context.colors.muted,
-                    fontSize: 11,
-                    height: 1.5,
                   ),
                 ),
             ],
@@ -1475,14 +1595,14 @@ class _ResumeEditorState extends State<ResumeEditor> {
         ),
       _addEntryButton(
         '添加$title',
-        () => setState(() => list.add(_newEntry(key, {}))),
+        () => _update(() => list.add(_newEntry(key, {}))),
       ),
     ];
   }
 
   void _moveAdditional(String key, int from, int to) {
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() {
+    _update(() {
       final list = additionalEntries[key]!;
       final entry = list.removeAt(from);
       list.insert(to, entry);
@@ -1503,7 +1623,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
     );
     if (!mounted || confirmed != true) return;
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => additionalEntries[key]!.remove(entry));
+    _update(() => additionalEntries[key]!.remove(entry));
     WidgetsBinding.instance.addPostFrameCallback((_) => entry.dispose());
   }
 
@@ -1519,39 +1639,6 @@ class _ResumeEditorState extends State<ResumeEditor> {
           )
         : Column(children: [first, second]),
   );
-
-  Widget _section(int index, AppIconData icon, List<Widget> children) =>
-      Container(
-        key: sectionKeys[index],
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                AppIcon(icon, size: 20, color: context.colors.ink),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    sectionNames[index],
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 22),
-            ...children,
-          ],
-        ),
-      );
 
   Widget _field(
     String key,
@@ -1577,10 +1664,8 @@ class _ResumeEditorState extends State<ResumeEditor> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: 12,
+              style: ResumeEditorTypography.caption.copyWith(
                 color: context.colors.muted,
-                fontWeight: FontWeight.w400,
               ),
             ),
           ),
@@ -1596,10 +1681,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
             textInputAction: lines == 1
                 ? TextInputAction.next
                 : TextInputAction.newline,
-            style: TextStyle(
-              fontSize: key == 'name' ? 22 : 15,
-              height: 1.65,
-              fontWeight: key == 'name' ? FontWeight.w600 : FontWeight.w400,
+            style: ResumeEditorTypography.body.copyWith(
               color: dateField ? context.colors.muted : context.colors.ink,
             ),
             decoration: InputDecoration(
@@ -1609,17 +1691,13 @@ class _ResumeEditorState extends State<ResumeEditor> {
                   : ValueListenableBuilder<TextEditingValue>(
                       valueListenable: fieldController!,
                       builder: (_, value, _) => value.text.isEmpty
-                          ? SizedBox(
-                              width: 48,
-                              child: Center(
-                                child: AppIcon(
-                                  AppIcons.date,
-                                  size: 18,
-                                  color: context.colors.muted,
-                                ),
-                              ),
-                            )
+                          ? _fieldTrailingIcon(AppIcons.date)
                           : IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                width: _fieldActionExtent,
+                                height: _fieldActionExtent,
+                              ),
                               tooltip: '清除$label',
                               onPressed: saving || !enabled
                                   ? null
@@ -1634,7 +1712,16 @@ class _ResumeEditorState extends State<ResumeEditor> {
                               ),
                             ),
                     ),
-              hintStyle: TextStyle(color: context.colors.muted, fontSize: 12),
+              suffixIconConstraints: const BoxConstraints.tightFor(
+                width: _fieldActionExtent,
+                height: _fieldActionExtent,
+              ),
+              hintStyle: ResumeEditorTypography.body.copyWith(
+                color: context.colors.muted,
+              ),
+              errorStyle: ResumeEditorTypography.caption.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
               filled: false,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -1686,7 +1773,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
 
   void _moveWork(int from, int to) {
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() {
+    _update(() {
       final entry = workEntries.removeAt(from);
       workEntries.insert(to, entry);
     });
@@ -1702,7 +1789,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
     );
     if (!mounted || confirmed != true) return;
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => workEntries.remove(entry));
+    _update(() => workEntries.remove(entry));
     // The keyed form fields must unmount before their controllers are disposed.
     WidgetsBinding.instance.addPostFrameCallback((_) => entry.dispose());
   }
@@ -1790,7 +1877,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
               borderRadius: BorderRadius.circular(8),
               onTap: saving
                   ? null
-                  : () => setState(() => entry.current = !entry.current),
+                  : () => _update(() => entry.current = !entry.current),
               child: Row(
                 children: [
                   Checkbox(
@@ -1798,10 +1885,10 @@ class _ResumeEditorState extends State<ResumeEditor> {
                     onChanged: saving
                         ? null
                         : (value) =>
-                              setState(() => entry.current = value ?? false),
+                              _update(() => entry.current = value ?? false),
                     visualDensity: VisualDensity.compact,
                   ),
-                  const Text('目前仍在职', style: TextStyle(fontSize: 13)),
+                  const Text('目前仍在职', style: ResumeEditorTypography.body),
                 ],
               ),
             ),
@@ -1814,7 +1901,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
 
   void _moveEducation(int from, int to) {
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() {
+    _update(() {
       final entry = educationEntries.removeAt(from);
       educationEntries.insert(to, entry);
     });
@@ -1830,7 +1917,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
     );
     if (!mounted || confirmed != true) return;
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => educationEntries.remove(entry));
+    _update(() => educationEntries.remove(entry));
     // The keyed form fields must unmount before their controllers are disposed.
     WidgetsBinding.instance.addPostFrameCallback((_) => entry.dispose());
   }
@@ -1913,7 +2000,14 @@ class _ResumeEditorState extends State<ResumeEditor> {
 
   Future<void> _save() async {
     if (saving || pickingPhoto) return;
-    if (!formKey.currentState!.validate()) return;
+    final missingBasic = [
+      'name',
+      'title',
+    ].any((key) => fields[key]!.text.trim().isEmpty);
+    if (missingBasic || fields['position']!.text.trim().isEmpty) {
+      await _openSection(missingBasic ? 0 : 1, showErrors: true);
+      return;
+    }
     final draft = currentDraft.copy();
     draft.title = fields['title']!.text.trim();
     draft.name = fields['name']!.text.trim();
@@ -1957,7 +2051,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
           draft.skills,
         ].where((value) => value.trim().isNotEmpty).length /
         8;
-    setState(() => saving = true);
+    _update(() => saving = true);
     final saved = await runRequest(context, () async {
       currentDraft = await widget.store.updateResume(draft);
       if (selectedPhoto != null) {
@@ -1994,7 +2088,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
         Navigator.pop(context);
       }
     } else {
-      setState(() => saving = false);
+      _update(() => saving = false);
     }
   }
 }

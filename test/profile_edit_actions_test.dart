@@ -13,8 +13,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 
 import 'support/fake_gateway.dart';
+
+class _GalleryPicker extends ImagePickerPlatform {
+  final result = Completer<XFile?>();
+  int requests = 0;
+
+  @override
+  Future<XFile?> getImageFromSource({
+    required ImageSource source,
+    ImagePickerOptions options = const ImagePickerOptions(),
+  }) {
+    expect(source, ImageSource.gallery);
+    expect(options.requestFullMetadata, isFalse);
+    requests++;
+    return result.future;
+  }
+}
 
 Future<AppStore> mount(
   WidgetTester tester,
@@ -335,17 +352,10 @@ void main() {
     testWidgets('Gallery cancel or stale result never writes ($expired)', (
       tester,
     ) async {
-      const selector = MethodChannel('plugins.flutter.io/file_selector');
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      final result = Completer<List<String>?>();
-      var requests = 0;
-      messenger.setMockMethodCallHandler(selector, (call) async {
-        expect(call.method, 'openFile');
-        requests++;
-        return result.future;
-      });
-      addTearDown(() => messenger.setMockMethodCallHandler(selector, null));
+      final previousPicker = ImagePickerPlatform.instance;
+      final picker = _GalleryPicker();
+      ImagePickerPlatform.instance = picker;
+      addTearDown(() => ImagePickerPlatform.instance = previousPicker);
       final api = FakeGateway();
       final store = await mount(tester, api);
       await openEditor(tester, ProfileEditAction.avatar);
@@ -353,10 +363,10 @@ void main() {
       await tester.tap(gallery);
       await tester.tap(gallery);
       await tester.pump();
-      expect(requests, 1);
+      expect(picker.requests, 1);
       expect(tester.widget<FilledButton>(gallery).onPressed, isNull);
       if (expired) store.epoch++;
-      result.complete(expired ? ['/not-read/stale.png'] : null);
+      picker.result.complete(expired ? XFile('/not-read/stale.png') : null);
       await tester.pumpAndSettle();
       expect(find.byType(ProfileAvatarEditorView), findsOneWidget);
       expect(tester.widget<FilledButton>(gallery).onPressed, isNotNull);

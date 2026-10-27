@@ -5,11 +5,27 @@ import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/resume_photo.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
+
+class _CancelledGallery extends ImagePickerPlatform {
+  int requests = 0;
+
+  @override
+  Future<XFile?> getImageFromSource({
+    required ImageSource source,
+    ImagePickerOptions options = const ImagePickerOptions(),
+  }) async {
+    expect(source, ImageSource.gallery);
+    expect(options.requestFullMetadata, isFalse);
+    requests++;
+    return null;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -125,19 +141,123 @@ void main() {
     expect(gateway.calls, isEmpty);
   });
 
-  testWidgets('New resume editor exposes an avatar upload control', (
+  testWidgets(
+    'Empty photo entry opens an add-only panel and closes unchanged',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ResumeEditor(
+            store: store,
+            draft: ResumeDraft(id: 0, title: '新的简历'),
+          ),
+        ),
+      );
+      await openResumeSection(tester, 0);
+      expect(find.text('简历头像'), findsNothing);
+      expect(find.text('上传头像'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('resume-photo-entry')));
+      await tester.pumpAndSettle();
+      expect(find.text('编辑照片'), findsOneWidget);
+      expect(find.text('添加照片'), findsOneWidget);
+      expect(find.text('删除照片'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('resume-photo-actions-close')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('resume-photo-actions-sheet')),
+        findsNothing,
+      );
+      expect(gateway.calls, isEmpty);
+    },
+  );
+
+  testWidgets('Panel deletion is local and section back restores the photo', (
     tester,
   ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: ResumeEditor(
           store: store,
-          draft: ResumeDraft(id: 0, title: '新的简历'),
+          draft: ResumeDraft(
+            id: 0,
+            title: '简历',
+            name: '测试',
+            position: '工程师',
+            photoFileID: 9,
+          ),
         ),
       ),
     );
-    expect(find.text('简历头像'), findsOneWidget);
-    expect(find.text('上传头像'), findsOneWidget);
+    await openResumeSection(tester, 0);
+    Future<void> openPanel() async {
+      await tester.tap(find.byKey(const ValueKey('resume-photo-entry')));
+      await tester.pumpAndSettle();
+    }
+
+    await openPanel();
+    expect(find.text('修改照片'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('resume-photo-action-delete')));
+    await tester.pumpAndSettle();
+    await openPanel();
+    expect(find.text('删除照片'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('resume-photo-actions-close')));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await openResumeSection(tester, 0);
+    await openPanel();
+    expect(find.text('删除照片'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('resume-photo-action-delete')));
+    await tester.pumpAndSettle();
+    await saveResumeSection(tester);
+    await openResumeSection(tester, 0);
+    await openPanel();
+    expect(find.text('删除照片'), findsNothing);
+    expect(find.text('添加照片'), findsOneWidget);
     expect(gateway.calls, isEmpty);
+    expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'Modify opens the gallery and cancelling keeps the existing photo',
+    (tester) async {
+      final previous = ImagePickerPlatform.instance;
+      final picker = _CancelledGallery();
+      ImagePickerPlatform.instance = picker;
+      addTearDown(() => ImagePickerPlatform.instance = previous);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ResumeEditor(
+            store: store,
+            draft: ResumeDraft(
+              id: 0,
+              title: '简历',
+              name: '测试',
+              position: '工程师',
+              photoFileID: 9,
+            ),
+          ),
+        ),
+      );
+      await openResumeSection(tester, 0);
+      await tester.tap(find.byKey(const ValueKey('resume-photo-entry')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('resume-photo-action-modify')),
+      );
+      await tester.pumpAndSettle();
+      expect(picker.requests, 1);
+      expect(
+        find.byKey(const ValueKey('resume-photo-actions-sheet')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const ValueKey('resume-photo-entry')));
+      await tester.pumpAndSettle();
+      expect(find.text('删除照片'), findsOneWidget);
+      expect(find.text('修改照片'), findsOneWidget);
+      expect(gateway.calls, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

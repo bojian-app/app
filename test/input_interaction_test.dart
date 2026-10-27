@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
 
 const articleTitle = '一页简历拿到 5 个面试，\n我删掉了这些内容';
 
@@ -139,12 +140,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
+    await openResumeSection(tester, 0);
     final field = find.byKey(const ValueKey('resume-name'));
     await tester.enterText(field, '小简');
     final focus = editable(tester, field).focusNode;
     await tester.drag(find.byType(ListView).first, const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(focus.hasFocus, isFalse);
+    await saveResumeSection(tester);
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(

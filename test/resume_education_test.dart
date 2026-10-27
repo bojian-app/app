@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
 
 void main() {
   test(
@@ -107,6 +108,7 @@ void main() {
       );
       await tester.tap(find.text('编辑'));
       await tester.pumpAndSettle();
+      await openResumeSection(tester, 5);
       final campusExperience = find.byKey(
         const ValueKey('resume-education-0-campus_experience'),
       );
@@ -140,6 +142,7 @@ void main() {
             .text,
         '修改第一段内容',
       );
+      await saveResumeSection(tester);
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
       final saved =
@@ -168,6 +171,7 @@ void main() {
         ),
       ),
     );
+    await openResumeSection(tester, 5);
     final add = find.text('添加教育经历');
     await tester.ensureVisible(add);
     await tester.pumpAndSettle();

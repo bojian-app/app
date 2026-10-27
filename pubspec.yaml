@@ -52,6 +52,8 @@ dependencies:
   flutter_quill: ^11.6.0
   fluwx_no_pay: ^6.0.6
   image_picker: ^1.2.4
+  image_picker_android: ^0.8.13+25
+  image_picker_platform_interface: ^2.11.0
   mobile_scanner: ^7.4.2
 
 dev_dependencies:

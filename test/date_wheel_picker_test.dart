@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
 
 void main() {
   testWidgets('Wheel changes commit only on confirmation and fit landscape', (
@@ -97,6 +98,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openResumeSection(tester, 0);
       await tester.ensureVisible(find.text('更多基本信息'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('更多基本信息'));
@@ -130,12 +132,14 @@ void main() {
         tester.widget<TextFormField>(birth).controller!.text,
         '2000-02-29',
       );
-      for (final key in [
-        'work-0-start_date',
-        'education-0-start_date',
-        'projects-0-start_date',
-        'certifications-0-date',
+      await saveResumeSection(tester);
+      for (final (key, section) in [
+        ('work-0-start_date', 3),
+        ('education-0-start_date', 5),
+        ('projects-0-start_date', 4),
+        ('certifications-0-date', 7),
       ]) {
+        await openResumeSection(tester, section);
         final field = find.byKey(ValueKey('resume-$key'));
         await tester.ensureVisible(field);
         await tester.pumpAndSettle();
@@ -157,6 +161,7 @@ void main() {
         await tester.tap(find.text('确定'));
         await tester.pumpAndSettle();
         expect(tester.widget<TextFormField>(field).controller!.text, '2023-07');
+        await saveResumeSection(tester);
       }
       expect(tester.takeException(), isNull);
     },

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'api/bojian_api.dart';
 import 'app_icons.dart';
+import 'app_photo_picker.dart';
 import 'design.dart';
 
 typedef CaptureAppPhoto = Future<XFile?> Function(ImageSource source);
@@ -43,7 +44,9 @@ Future<XFile?> pickAppPhoto(
 }
 
 Future<XFile?> _capturePhoto(ImageSource source) =>
-    ImagePicker().pickImage(source: source, requestFullMetadata: false);
+    source == ImageSource.gallery
+    ? pickAppGalleryPhoto()
+    : ImagePicker().pickImage(source: source, requestFullMetadata: false);
 
 class _PhotoSourceSheet extends StatelessWidget {
   const _PhotoSourceSheet();

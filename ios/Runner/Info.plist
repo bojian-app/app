@@ -29,7 +29,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>用于您主动扫描博简官网登录二维码、拍摄认证所需的证件照片，以及经您同意后进行本人活体人脸核验。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>用于您主动选择认证所需的证件照片，并在您同意后提交身份证识别。</string>
+	<string>用于您主动选择头像、简历照片及认证所需的证件照片；证件照片仅在您同意后提交身份证识别。</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>weixin</string>

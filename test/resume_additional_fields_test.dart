@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
 
 void main() {
   test('Age respects birthday, invalid dates and partial imported dates', () {
@@ -128,12 +129,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openResumeSection(tester, 0);
       await tester.ensureVisible(find.text('更多基本信息'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('更多基本信息'));
       await tester.pumpAndSettle();
       expect(find.text('性别'), findsOneWidget);
       expect(find.text('年龄：${resumeAge('2000-01-01')} 岁'), findsNothing);
+      await saveResumeSection(tester);
+      await openResumeSection(tester, 4);
       final project = find.byKey(
         const ValueKey('resume-projects-0-description'),
       );
@@ -147,11 +151,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(down);
       await tester.pumpAndSettle();
+      await saveResumeSection(tester);
+      await openResumeSection(tester, 1);
       final salary = find.byKey(const ValueKey('resume-salary'));
       await tester.ensureVisible(salary);
       await tester.pumpAndSettle();
       await tester.enterText(salary, '25K');
       FocusManager.instance.primaryFocus?.unfocus();
+      await saveResumeSection(tester);
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
       final content =

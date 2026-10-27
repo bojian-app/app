@@ -90,7 +90,7 @@ abstract final class AppIcons {
   static const templateMarket = HugeIcons.strokeRoundedStore01;
   static const templatePreview = HugeIcons.strokeRoundedLayout01;
   static const error = HugeIcons.strokeRoundedAlertCircle;
-  static const expand = HugeIcons.strokeRoundedArrowDown02;
+  static const expand = HugeIcons.strokeRoundedArrowDown01;
   static const date = HugeIcons.strokeRoundedCalendar03;
   static const attachment = HugeIcons.strokeRoundedAttachment01;
   static const profileEdit = HugeIcons.strokeRoundedUserEdit01;
