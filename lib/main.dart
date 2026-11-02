@@ -1,7 +1,10 @@
+import 'app_page_bar.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_shell.dart';
 import 'auth_page.dart';
@@ -9,7 +12,8 @@ import 'app_store.dart';
 import 'confirmation_dialog.dart';
 import 'phone_binding_dialog.dart';
 import 'design.dart';
-import 'startup_ads.dart';
+import 'banner_ads.dart';
+import 'startup_animation.dart';
 import 'resume_files.dart';
 import 'resume_pages.dart';
 
@@ -23,8 +27,14 @@ void main() {
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key, this.startupAdsEnabled = true, this.store});
-  final bool startupAdsEnabled;
+  const MyApp({
+    super.key,
+    this.startupAnimationEnabled = true,
+    this.bannerAdsEnabled = true,
+    this.store,
+  });
+  final bool startupAnimationEnabled;
+  final bool bannerAdsEnabled;
   final AppStore? store;
   @override
   State<MyApp> createState() => _MyAppState();
@@ -41,7 +51,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   int? phoneBindingPromptEpoch;
   bool showingPhoneBinding = false;
   bool preparingStartup = true;
-  bool startupInterrupted = false;
 
   @override
   void initState() {
@@ -57,22 +66,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> prepareStartup() async {
     try {
-      await store.initialize();
-      if (!mounted) return;
+      // Restore the session while the local animation plays; never request an ad.
+      final initialization = store.initialize();
       await WidgetsBinding.instance.endOfFrame;
-      // Only a restored login may request an ad at cold start. A fresh login,
-      // guest visit or return from another app must never trigger a late splash.
-      if (mounted &&
-          widget.startupAdsEnabled &&
-          store.isAuthenticated &&
-          !startupInterrupted &&
-          (WidgetsBinding.instance.lifecycleState == null ||
-              WidgetsBinding.instance.lifecycleState ==
-                  AppLifecycleState.resumed)) {
-        await StartupAds.showOnce();
-      }
+      final reduceMotion = WidgetsBinding
+          .instance
+          .platformDispatcher
+          .accessibilityFeatures
+          .disableAnimations;
+      await Future.wait([
+        initialization,
+        if (widget.startupAnimationEnabled && !reduceMotion)
+          Future<void>.delayed(const Duration(milliseconds: 1400)),
+      ]);
     } finally {
-      StartupAds.readyForBanner.value = mounted && widget.startupAdsEnabled;
+      BannerAds.ready.value = mounted && widget.bannerAdsEnabled;
       if (mounted) {
         setState(() => preparingStartup = false);
         maybeShowPhoneBinding();
@@ -82,10 +90,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void sessionChanged() {
-    if (preparingStartup && !store.restoring && !store.isAuthenticated) {
-      startupInterrupted = true;
-      if (widget.startupAdsEnabled) unawaited(StartupAds.cancel());
-    }
     final allowed = store.isAuthenticated || store.isGuest;
     final entryChanged = entryAllowed != allowed;
     if (entryChanged) {
@@ -176,7 +180,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               navigator.push(
                 MaterialPageRoute<void>(
                   builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('我的简历')),
+                    appBar: AppPageBar(title: const Text('我的简历')),
                     body: SafeArea(
                       child: ResumeLibrary(store: store, embedded: true),
                     ),
@@ -205,7 +209,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    if (widget.startupAdsEnabled) unawaited(StartupAds.cancel());
+    BannerAds.ready.value = false;
     WidgetsBinding.instance.removeObserver(this);
     store.removeListener(sessionChanged);
     files.incoming.removeListener(sharedFileChanged);
@@ -225,7 +229,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       store.setForeground(false);
-      startupInterrupted = true;
     }
   }
 
@@ -233,15 +236,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final home = Builder(
       builder: (context) {
-        // A missing session is inconclusive until secure storage has finished.
-        // Keep both auth and the app shell out of the first frame, including
-        // while the native splash is loading/showing, to avoid flashing either.
-        if (preparingStartup) {
-          return ColoredBox(
-            key: const ValueKey('startup-session-gate'),
-            color: context.colors.canvas,
-          );
-        }
         return AnimatedSwitcher(
           duration: MediaQuery.disableAnimationsOf(context)
               ? Duration.zero
@@ -266,7 +260,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               ?current,
             ],
           ),
-          child: entryAllowed
+          child: preparingStartup
+              ? StartupAnimation(
+                  key: const ValueKey('startup-session-gate'),
+                  animate: widget.startupAnimationEnabled,
+                )
+              : entryAllowed
               ? AppShell(key: shellKey, store: store)
               : AuthPage(key: const ValueKey('signed-out-home'), store: store),
         );
@@ -274,6 +273,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     );
     return MaterialApp(
       title: '博简',
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const [Locale('zh', 'CN')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: messengerKey,
       debugShowCheckedModeBanner: false,

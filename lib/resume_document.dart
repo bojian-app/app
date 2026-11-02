@@ -1,3 +1,7 @@
+import 'resume_module_order.dart';
+import 'resume_photo_image.dart';
+import 'resume_preview_trace.dart';
+
 import 'dart:convert';
 import 'dart:async';
 import 'dart:typed_data';
@@ -17,6 +21,7 @@ import 'guidance_help.dart';
 import 'resume_templates.dart';
 import 'resume_native_export.dart';
 import 'resume_additional_fields.dart';
+import 'resume_work_experience.dart';
 import 'api/bojian_api.dart';
 import 'resume_guidance_privacy.dart';
 
@@ -125,12 +130,17 @@ class ResumeInk {
     this.height, {
     this.sourceTop = 0,
     this.fieldPath,
+    this.wordLeft,
+    this.wordWidth,
+    this.wordAlignRight = false,
   });
   final String? fieldPath;
   final TextPainter text;
   final Offset position;
   final double height;
   final double sourceTop;
+  final double? wordLeft, wordWidth;
+  final bool wordAlignRight;
   bool get privacyMasked =>
       text.text!.toPlainText().contains(resumePrivacyMask);
   String get visibleText {
@@ -275,7 +285,7 @@ class ResumeReviewPlacement {
 class ResumeDocument {
   ResumeDocument(
     ResumeDraft resume, {
-    String? fontFamily,
+    this.fontFamily = resumeDocumentFontFamily,
     String photoURL = '',
     List<ResumeReviewChange> reviewChanges = const [],
     List<ResumeReviewNote> reviewNotes = const [],
@@ -284,7 +294,7 @@ class ResumeDocument {
        ) {
     final builder = _ResumeTypesetter(
       this,
-      fontFamily ?? resumeDocumentFontFamily,
+      fontFamily,
       reviewChanges,
       reviewNotes,
     );
@@ -295,9 +305,12 @@ class ResumeDocument {
           resume.source['app_privacy_photo'] == true,
     );
   }
+  final String? fontFamily;
   final ResumeLayout layout;
   final pages = <ResumeSheet>[];
   final painters = <TextPainter>[];
+  // TextPainter.width is the ink width for short text, not the column width.
+  final paragraphWidths = <TextPainter, double>{};
   final sectionTitles = <String>[];
   void dispose() {
     for (final painter in painters) {
@@ -345,6 +358,7 @@ class _ResumeTypesetter {
       textScaler: TextScaler.noScaling,
     )..layout(maxWidth: available);
     document.painters.add(painter);
+    document.paragraphWidths[painter] = available;
     return painter;
   }
 
@@ -662,12 +676,25 @@ class _ResumeTypesetter {
         leftWidth + rightWidth + 24 <= width) {
       final height = math.max(left.height, right.height);
       ensure(height);
-      page.ink.add(ResumeInk(left, Offset(resumePaperMargin, y), height));
+      // Give dates rounding/fallback-font room on their left while keeping
+      // their right edge and a clear gap from the supporting information.
+      final dateWidth = rightWidth + 12;
+      page.ink.add(
+        ResumeInk(
+          left,
+          Offset(resumePaperMargin, y),
+          height,
+          wordWidth: width - dateWidth - 12,
+        ),
+      );
       page.ink.add(
         ResumeInk(
           right,
           Offset(resumePaperMargin + width - rightWidth, y),
           height,
+          wordLeft: resumePaperMargin + width - dateWidth,
+          wordWidth: dateWidth,
+          wordAlignRight: true,
         ),
       );
       y += height + 8;
@@ -675,6 +702,79 @@ class _ResumeTypesetter {
       text(label, size: 9.5, color: const Color(0xFF555555));
       text(dates, size: 9.5, color: const Color(0xFF555555));
     }
+  }
+
+  // Keep a project together when its real typeset height fits a fresh page.
+  // Oversized projects retain normal flow instead of overflowing or looping.
+  double projectHeight(Map entry) {
+    double heightOf(InlineSpan span) {
+      final painter = TextPainter(
+        text: span,
+        textDirection: TextDirection.ltr,
+        textScaler: TextScaler.noScaling,
+      )..layout(maxWidth: width);
+      final height = painter.height;
+      painter.dispose();
+      return height;
+    }
+
+    var height =
+        heightOf(
+          TextSpan(text: value(entry, 'name'), style: style(13, bold: true)),
+        ) +
+        5;
+    final label = [
+      'role',
+      'url',
+    ].map((key) => value(entry, key)).where((v) => v.isNotEmpty).join('\u2002');
+    final dates = ['start_date', 'end_date']
+        .map((key) => formatResumeMonth(value(entry, key)))
+        .where((v) => v.isNotEmpty)
+        .join(' ~ ');
+    // Conservatively reserve separate metadata rows when the text is long.
+    final meta = style(9.5, color: const Color(0xFF555555));
+    final combined = heightOf(TextSpan(text: '$label    $dates', style: meta));
+    height += combined <= 13.5
+        ? combined + 8
+        : heightOf(TextSpan(text: label, style: meta)) +
+              heightOf(TextSpan(text: dates, style: meta)) +
+              14;
+    for (final key in ['description', 'achievements']) {
+      final rich = entry['${key}_rich'];
+      final blocks = rich is Map ? entries(rich['blocks']) : <Map>[];
+      if (blocks.isEmpty) {
+        final body = value(entry, key);
+        if (body.isNotEmpty) {
+          height += heightOf(TextSpan(text: body, style: style(10.5))) + 7;
+        }
+      } else {
+        var number = 0;
+        for (final block in blocks) {
+          final kind = block['kind'];
+          final prefix = kind == 'bullet'
+              ? '• '
+              : kind == 'numbered'
+              ? '${++number}. '
+              : '';
+          if (kind != 'numbered') number = 0;
+          final spans = richSpans(block);
+          if (spans.isNotEmpty) {
+            height +=
+                heightOf(
+                  TextSpan(
+                    style: style(10.5),
+                    children: [
+                      TextSpan(text: prefix),
+                      ...spans,
+                    ],
+                  ),
+                ) +
+                7;
+          }
+        }
+      }
+    }
+    return height + 5;
   }
 
   void entrySection(
@@ -696,22 +796,29 @@ class _ResumeTypesetter {
     }
     final distinguishEntries =
         key == 'work_experiences' || key == 'educations' || key == 'projects';
-    section(title);
     var renderedEntries = 0;
     for (var index = 0; index < values.length; index++) {
       final entry = values[index];
       if (!meaningful(entry)) continue;
+      if (key == 'projects' && reviewNotes.isEmpty && reviewChanges.isEmpty) {
+        final height = projectHeight(entry) + (renderedEntries == 0 ? 38 : 18);
+        if (height <= bottom - resumePaperMargin) ensure(height);
+      }
+      if (renderedEntries == 0) {
+        if (key == 'projects') ensure(118);
+        section(title);
+      }
       if (distinguishEntries && renderedEntries > 0) {
         final previousPage = page;
         ensure(80);
         // A page boundary already separates entries; keep rules off page tops.
-        if (identical(page, previousPage)) {
+        if (identical(page, previousPage) && y > resumePaperMargin) {
           y += 5;
           page.entryDividers.add(y);
           y += 13;
         }
       }
-      ensure(48);
+      ensure(key == 'projects' ? 80 : 48);
       text(
         value(entry, heading),
         size: distinguishEntries ? 13 : 11,
@@ -720,14 +827,18 @@ class _ResumeTypesetter {
         fieldPath: '$key.$index.$heading',
       );
       final dates = [
-        value(entry, key == 'certifications' ? 'date' : 'start_date'),
-        entry['current'] == true ? '至今' : value(entry, 'end_date'),
-      ].where((s) => s.isNotEmpty).join(' - ');
+        formatResumeMonth(
+          value(entry, key == 'certifications' ? 'date' : 'start_date'),
+        ),
+        entry['current'] == true
+            ? '至今'
+            : formatResumeMonth(value(entry, 'end_date')),
+      ].where((s) => s.isNotEmpty).join(' ~ ');
       metadata(
         supporting
             .map((key) => value(entry, key))
             .where((s) => s.isNotEmpty)
-            .join(' · '),
+            .join('\u2002'),
         dates,
       );
       for (final field in details) {
@@ -751,12 +862,22 @@ class _ResumeTypesetter {
       'female' || '女' => '女',
       _ => '',
     };
-    final contacts = [
-      resume.phone,
-      resume.email,
-      resumeBirthLabel(personal),
-      gender,
-    ].where((s) => s.isNotEmpty).join('   ·   ');
+    const metadataGap = '\u2003\u2003';
+    final birth = resumeBirthLabel(personal);
+    final birthPrefix =
+        personal['birth_date_display_mode'] == 'age' &&
+            resumeAge(value(personal, 'birth_date')) != null
+        ? '年龄'
+        : '出生日期';
+    final demographics = [
+      if (birth.isNotEmpty) '$birthPrefix: $birth',
+      if (gender.isNotEmpty) '性别: $gender',
+    ].join(metadataGap);
+    final personalDetails = [
+      if (resume.phone.isNotEmpty) '电话: ${resume.phone}',
+      if (resume.email.isNotEmpty) '邮箱: ${resume.email}',
+      if (demographics.isNotEmpty) demographics,
+    ];
     final header = [
       measure(
         TextSpan(
@@ -765,14 +886,9 @@ class _ResumeTypesetter {
         ),
         hasPhoto ? width - 100 : width,
       ),
-      if (resume.position.isNotEmpty)
+      for (final line in personalDetails)
         measure(
-          TextSpan(text: resume.position, style: style(11)),
-          hasPhoto ? width - 100 : width,
-        ),
-      if (contacts.isNotEmpty)
-        measure(
-          TextSpan(text: contacts, style: style(9.5)),
+          TextSpan(text: line, style: style(10.5)),
           hasPhoto ? width - 100 : width,
         ),
     ];
@@ -797,66 +913,88 @@ class _ResumeTypesetter {
         size: 25,
         bold: true,
       );
-      text(resume.position, size: 11);
-      text(contacts, size: 9.5);
+      for (final line in personalDetails) {
+        text(line);
+      }
     }
     final expectations = [
       if (resume.position.isNotEmpty) '期望职位: ${resume.position}',
       if (resume.city.isNotEmpty) '期望城市: ${resume.city}',
       if (value(job, 'industry').isNotEmpty) '期望行业: ${value(job, 'industry')}',
       if (value(job, 'salary').isNotEmpty) '期望薪资: ${value(job, 'salary')}',
-    ].join('   ·   ');
-    if (expectations.isNotEmpty ||
-        resume.summary.isNotEmpty ||
-        job['preference_rich'] is Map) {
-      section('求职期望');
-      text(expectations);
-      detail(
-        {...job, 'preference': resume.summary},
-        'preference',
-        fieldPath: 'job_expectation.preference',
-      );
-    }
-    entrySection(
-      source,
-      'educations',
-      '教育经历',
-      'institution',
-      ['degree', 'field_of_study'],
-      ['campus_experience', 'thesis_title', 'thesis_description'],
-      fallback: resume.education,
-    );
-    entrySection(
-      source,
-      'work_experiences',
-      '工作经历',
-      'company',
-      ['position', 'industry'],
-      ['description'],
-      fallback: resume.experience,
-    );
-    entrySection(
-      source,
-      'projects',
-      '项目经历',
-      'name',
-      ['role', 'url'],
-      ['description', 'achievements'],
-    );
-    final skills = entries(source['skills']);
-    if (skills.any(meaningful)) {
-      section('技能');
-      for (var index = 0; index < skills.length; index++) {
-        final skill = skills[index];
-        if (!meaningful(skill)) continue;
-        text(value(skill, 'name'), bold: true, fieldPath: 'skills.$index.name');
-        detail(skill, 'description', fieldPath: 'skills.$index.description');
+    ].join(metadataGap);
+    for (final module in resumeModuleOrder(source)) {
+      switch (module) {
+        case 'job_expectation':
+          if (expectations.isNotEmpty) {
+            section('求职期望');
+            text(expectations);
+          }
+        case 'self_evaluation':
+          if (resume.summary.isNotEmpty ||
+              meaningful({'rich': job['preference_rich']})) {
+            section('自我评价');
+            detail(
+              {...job, 'preference': resume.summary},
+              'preference',
+              fieldPath: 'job_expectation.preference',
+            );
+          }
+        case 'educations':
+          entrySection(
+            source,
+            'educations',
+            '教育经历',
+            'institution',
+            ['degree', 'field_of_study'],
+            ['campus_experience', 'thesis_title', 'thesis_description'],
+            fallback: resume.education,
+          );
+        case 'work_experiences':
+          entrySection(
+            source,
+            'work_experiences',
+            '工作经历',
+            'company',
+            ['position', 'industry'],
+            ['description'],
+            fallback: resume.experience,
+          );
+        case 'projects':
+          entrySection(
+            source,
+            'projects',
+            '项目经历',
+            'name',
+            ['role', 'url'],
+            ['description', 'achievements'],
+          );
+        case 'skills':
+          final skills = entries(source['skills']);
+          if (skills.any(meaningful)) {
+            section('技能');
+            for (var index = 0; index < skills.length; index++) {
+              final skill = skills[index];
+              if (!meaningful(skill)) continue;
+              text(
+                value(skill, 'name'),
+                bold: true,
+                fieldPath: 'skills.$index.name',
+              );
+              detail(
+                skill,
+                'description',
+                fieldPath: 'skills.$index.description',
+              );
+            }
+          } else if (resume.skills.isNotEmpty) {
+            section('技能');
+            text(resume.skills);
+          }
+        case 'certifications':
+          entrySection(source, 'certifications', '证书', 'name', ['issuer'], []);
       }
-    } else if (resume.skills.isNotEmpty) {
-      section('技能');
-      text(resume.skills);
     }
-    entrySection(source, 'certifications', '证书', 'name', ['issuer'], []);
     // Historical comments still belong to this review even if their entire
     // source entry has since been removed from the resume.
     for (final note in reviewNotes) {
@@ -1341,7 +1479,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       originalMark = mark;
       originalPreview = ResumeDocument(
         widget.resume,
-        fontFamily: resumeDocumentFontFamily,
+        fontFamily: null,
         photoURL: photoURL,
         reviewNotes: widget.reviewNotes,
         reviewChanges: [
@@ -1724,7 +1862,10 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
           throw const ApiFailure('简历照片暂不可用，请重试');
         }
         final ready = Completer<ui.Image>();
-        final stream = NetworkImage(url).resolve(ImageConfiguration.empty);
+        final stream = ResumePhotoImage(
+          url,
+          fileID: resume.photoFileID,
+        ).resolve(ImageConfiguration.empty);
         late ImageStreamListener listener;
         listener = ImageStreamListener(
           (info, _) {
@@ -1784,7 +1925,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         await Future<void>.delayed(Duration.zero);
       }
       check();
-      return ResumeExportLayout(pages);
+      return ResumeExportLayout(pages, requiresWordFlow: true);
     } finally {
       photo?.dispose();
       exportDocument?.dispose();
@@ -1828,7 +1969,10 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
           throw const ApiFailure('简历照片暂不可用，请重试');
         }
         final ready = Completer<ui.Image>();
-        final stream = NetworkImage(url).resolve(ImageConfiguration.empty);
+        final stream = ResumePhotoImage(
+          url,
+          fileID: resume.photoFileID,
+        ).resolve(ImageConfiguration.empty);
         late ImageStreamListener listener;
         listener = ImageStreamListener(
           (info, _) {
@@ -1900,7 +2044,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
   @override
   Widget build(BuildContext context) {
     final resume = widget.resume;
-    const font = resumeDocumentFontFamily;
+    const String? font = null;
     final key = jsonEncode([
       resume.source,
       resume.template,
@@ -1937,6 +2081,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
     if (key != cacheKey) {
       selectedRegion = null;
       document?.dispose();
+      final layoutTimer = Stopwatch()..start();
       document = ResumeDocument(
         resume,
         fontFamily: font,
@@ -1944,6 +2089,11 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         reviewChanges: widget.reviewChanges,
         reviewNotes: widget.reviewNotes,
       );
+      if (traceResumePreview) {
+        debugPrint(
+          'BOJIAN_RESUME id=${resume.id} stage=standard-layout elapsed_us=${layoutTimer.elapsedMicroseconds}',
+        );
+      }
       cacheKey = key;
     }
     final displayed = displayedDocument!;
@@ -1984,7 +2134,11 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
           );
     final badges = <int, List<(ResumeReviewHighlight, Rect)>>{};
     for (final mark in [
-      ...displayedHighlights.where((mark) => mark.commentCount > 0),
+      ...displayedHighlights.where(
+        (mark) =>
+            mark.commentCount > 0 &&
+            !widget.reviewNotes.any((note) => note.key == mark.key),
+      ),
       ...displayedHighlights.where((mark) => mark.statusLabel != null),
     ]) {
       for (var page = 0; page < paintedRegions.length; page++) {
@@ -2391,8 +2545,11 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                                               ),
                                             ),
                                           )
-                                        : Image.network(
-                                            photoURL,
+                                        : Image(
+                                            image: ResumePhotoImage(
+                                              photoURL,
+                                              fileID: widget.resume.photoFileID,
+                                            ),
                                             fit: BoxFit.cover,
                                             alignment: const Alignment(
                                               0,
@@ -2402,8 +2559,12 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                                             errorBuilder: (_, _, _) =>
                                                 TextButton(
                                                   onPressed: () {
-                                                    NetworkImage(photoURL)
-                                                        .evict();
+                                                    ResumePhotoImage(
+                                                      photoURL,
+                                                      fileID: widget
+                                                          .resume
+                                                          .photoFileID,
+                                                    ).evict();
                                                     loadPhoto();
                                                   },
                                                   child: const FittedBox(
@@ -2522,6 +2683,17 @@ ResumeExportPage resumeExportSheet(
             baseline: ink.position.dy + metric.baseline - ink.sourceTop,
             height: metric.height,
             spans: spans,
+            paragraphId:
+                'native-${document.painters.indexOf(painter)}-${text.substring(0, boundary.start).split('\n').length}',
+            paragraphLeft: ink.wordLeft ?? ink.position.dx,
+            paragraphWidth: math.min(
+              ink.wordWidth ?? document.paragraphWidths[painter]!,
+              resumePaperSize.width -
+                  resumePaperMargin -
+                  (ink.wordLeft ?? ink.position.dx),
+            ),
+            paragraphAlignRight: ink.wordAlignRight,
+            paragraphField: ink.fieldPath,
           ),
         );
       }
@@ -2530,8 +2702,8 @@ ResumeExportPage resumeExportSheet(
   final footer = TextPainter(
     text: TextSpan(
       text: '${index + 1}',
-      style: const TextStyle(
-        fontFamily: resumeDocumentFontFamily,
+      style: TextStyle(
+        fontFamily: document.fontFamily,
         fontSize: 9,
         color: Colors.grey,
       ),
@@ -2558,6 +2730,7 @@ ResumeExportPage resumeExportSheet(
   footer.dispose();
   final rect = sheet.photo;
   return ResumeExportPage(
+    wordFlow: true,
     lines: lines,
     rules: [
       for (final y in sheet.entryDividers)
@@ -2703,8 +2876,8 @@ void paintResumeSheet(
   final footer = TextPainter(
     text: TextSpan(
       text: '${index + 1}',
-      style: const TextStyle(
-        fontFamily: resumeDocumentFontFamily,
+      style: TextStyle(
+        fontFamily: document.fontFamily,
         fontSize: 9,
         color: Colors.grey,
       ),

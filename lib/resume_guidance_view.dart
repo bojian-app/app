@@ -1,3 +1,7 @@
+import 'guidance_hot_comment.dart';
+import 'article_owner_actions.dart';
+import 'api/bojian_api.dart';
+import 'app_page_bar.dart';
 import 'content_report.dart';
 
 import 'dart:async';
@@ -387,11 +391,20 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
           : guidanceReviewerKey(target);
       final id = integer(value['source_resume_id']);
       if (id > 0 && (!widget.fromNotification || targetReviewer != null)) {
-        final original = await widget.store.request(
-          'GetResumesId',
-          path: {'id': '$id'},
-        );
-        fullResume = decodeResume(original.data);
+        try {
+          final original = await widget.store.request(
+            'GetResumesId',
+            path: {'id': '$id'},
+          );
+          fullResume = decodeResume(original.data);
+        } on ApiFailure catch (failure) {
+          if (failure.code != 'RESUME_NOT_FOUND' &&
+              failure.code != 'NOT_FOUND') {
+            rethrow;
+          }
+          // The published snapshot and its owner actions outlive the source resume.
+          value = {...value, 'source_resume_id': null, 'owner_can_edit': false};
+        }
       }
     } else {
       value = privateGuidancePreview(value);
@@ -600,32 +613,51 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
     final scale = documentScale(context);
     final width = (resumePaperSize.width - resumePaperMargin * 2) * scale;
     return [
-      for (final record in visibleRecords.where(
-        (v) => '${v['replacement'] ?? ''}'.isNotEmpty,
-      ))
-        ResumeReviewNote(
-          key: guidanceRecordKey(record),
-          fieldPath: '${record['field_path'] ?? ''}',
-          selectedText: '${record['selected_text'] ?? ''}',
-          height: math.min(
-            guidanceNoteHeight(
-                  context,
-                  record,
-                  width,
-                  canDecide: ownerReview,
-                  paperScale: scale,
-                ) /
-                scale,
-            resumePaperSize.height - 100,
+      if (ownerReview)
+        for (final record in visibleRecords.where(
+          (v) => '${v['replacement'] ?? ''}'.isNotEmpty,
+        ))
+          ResumeReviewNote(
+            key: guidanceRecordKey(record),
+            fieldPath: '${record['field_path'] ?? ''}',
+            selectedText: '${record['selected_text'] ?? ''}',
+            height: math.min(
+              guidanceNoteHeight(
+                    context,
+                    record,
+                    width,
+                    canDecide: ownerReview,
+                    paperScale: scale,
+                  ) /
+                  scale,
+              resumePaperSize.height - 100,
+            ),
           ),
-        ),
+      if (!ownerDetail)
+        for (final group in commentGroups.entries)
+          if (popularGuidanceComment(group.value) case final record?)
+            ResumeReviewNote(
+              key: 'comments:${group.key}',
+              fieldPath: '${group.value.first['field_path'] ?? ''}',
+              selectedText: previewQuote(
+                '${group.value.first['field_path'] ?? ''}',
+                '${group.value.first['selected_text'] ?? ''}',
+              ),
+              height:
+                  guidanceHotCommentHeight(
+                    context,
+                    '${record['suggestion'] ?? ''}',
+                    width,
+                  ) /
+                  scale,
+            ),
     ];
   }
 
   Map<String, List<Map<String, dynamic>>> get commentGroups {
     final groups = <String, List<Map<String, dynamic>>>{};
     for (final record in records.where(
-      (v) => '${v['replacement'] ?? ''}'.isEmpty,
+      (v) => '${v['replacement'] ?? ''}'.isEmpty && contentVisible(v),
     )) {
       final key = jsonEncode([
         record['field_path'],
@@ -702,6 +734,71 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
         commentCount: group.value.length,
       ),
   ];
+
+  final likingComments = <int>{};
+
+  Future<void> likeComment(Map<String, dynamic> record) async {
+    final id = integer(record['id']);
+    if (record['legacy'] == true || likingComments.contains(id)) return;
+    final epoch = widget.store.epoch;
+    setState(() => likingComments.add(id));
+    try {
+      final scope = widget.notification ? 'Notifications' : 'Articles';
+      final verb = record['liked'] == true ? 'Delete' : 'Put';
+      final response = await widget.store.request(
+        '$verb${scope}IdGuidanceAnnotationsAnnotationIdLike',
+        path: {'id': '${widget.id}', 'annotation_id': '$id'},
+      );
+      if (!mounted || epoch != widget.store.epoch) return;
+      setState(() {
+        records = [
+          for (final row in records)
+            if (row['legacy'] != true && integer(row['id']) == id)
+              {
+                ...row,
+                'like_count': response.data['like_count'],
+                'liked': response.data['liked'],
+              }
+            else
+              row,
+        ];
+      });
+    } catch (error) {
+      if (mounted && epoch == widget.store.epoch) toast(context, '$error');
+    } finally {
+      if (mounted) setState(() => likingComments.remove(id));
+    }
+  }
+
+  Widget reviewNote(BuildContext context, String key) {
+    if (key.startsWith('comments:')) {
+      final group = commentGroups[key.substring('comments:'.length)] ?? [];
+      final record = popularGuidanceComment(group);
+      if (record == null) return const SizedBox.shrink();
+      return GuidanceHotComment(
+        key: ValueKey('hot-comment-$key'),
+        record: record,
+        busy: likingComments.contains(integer(record['id'])),
+        onOpen: () => openReviewMarks(
+          reviewHighlights.where((mark) => mark.key == key).toList(),
+        ),
+        onLike: record['legacy'] == true ? null : () => likeComment(record),
+      );
+    }
+    final record = reviewerRecords.firstWhere(
+      (v) => guidanceRecordKey(v) == key,
+    );
+    return GuidanceInlineNote(
+      key: ValueKey('guidance-inline-note-$key'),
+      record: record,
+      paperScale: documentScale(context),
+      canDecide: ownerReview,
+      busy: busyRecord == key,
+      disabled: busyRecord != null || saving,
+      active: activeRecord == key,
+      onDecide: (accept) => decideInline(record, accept),
+    );
+  }
 
   void syncComments(List<Map<String, dynamic>> comments) {
     if (!mounted) return;
@@ -808,7 +905,7 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
           ),
       ],
       child: Scaffold(
-        appBar: AppBar(
+        appBar: AppPageBar(
           title: Text(
             ownerDetail
                 ? '简历详情'
@@ -817,6 +914,10 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
                 : '简历指点',
           ),
           actions: [
+            if (!widget.notification &&
+                data?['is_owner'] == true &&
+                !ownerReview)
+              ArticleOwnerActions(store: widget.store, articleID: widget.id),
             if (!widget.notification &&
                 data != null &&
                 data?['is_owner'] != true)
@@ -916,29 +1017,8 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
                             onAnnotate: data!['is_owner'] == true
                                 ? null
                                 : annotate,
-                            reviewNotes: ownerReview
-                                ? inlineNotes(context)
-                                : const [],
-                            reviewNoteBuilder: ownerReview
-                                ? (context, key) {
-                                    final record = reviewerRecords.firstWhere(
-                                      (v) => guidanceRecordKey(v) == key,
-                                    );
-                                    return GuidanceInlineNote(
-                                      key: ValueKey(
-                                        'guidance-inline-note-$key',
-                                      ),
-                                      record: record,
-                                      paperScale: documentScale(context),
-                                      canDecide: ownerReview,
-                                      busy: busyRecord == key,
-                                      disabled: busyRecord != null || saving,
-                                      active: activeRecord == key,
-                                      onDecide: (accept) =>
-                                          decideInline(record, accept),
-                                    );
-                                  }
-                                : null,
+                            reviewNotes: inlineNotes(context),
+                            reviewNoteBuilder: reviewNote,
                             reviewHighlights: ownerDetail
                                 ? const []
                                 : reviewHighlights,

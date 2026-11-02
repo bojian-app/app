@@ -5,9 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'api/bojian_api.dart';
+import 'login_app_store.dart';
 
 abstract interface class DouyinAuthorizer {
-  /// Returns null when authorization is cancelled by the user.
+  /// Returns null when authorization is cancelled or installation is opened.
   Future<String?> authorize();
 }
 
@@ -66,6 +67,10 @@ class NativeDouyinAuthorizer implements DouyinAuthorizer {
       throw const ApiFailure('当前设备暂不支持抖音登录');
     } on PlatformException catch (error) {
       if (error.code == 'CANCELLED') return null;
+      if (error.code == 'NOT_INSTALLED') {
+        await openLoginAppStore(LoginApp.douyin);
+        return null;
+      }
       if (error.code == 'AUTH_FAILED') {
         final details = error.details;
         final providerCode = details is Map ? details['providerCode'] : null;
@@ -98,7 +103,6 @@ class NativeDouyinAuthorizer implements DouyinAuthorizer {
         );
       }
       throw ApiFailure(switch (error.code) {
-        'NOT_INSTALLED' => '请先安装抖音后再使用抖音登录',
         'TIMEOUT' => '抖音授权超时，请重试',
         'BUSY' => '正在等待抖音授权',
         'DENIED' => '您未同意抖音授权，请重试',

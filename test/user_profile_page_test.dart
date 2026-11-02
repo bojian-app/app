@@ -305,16 +305,23 @@ void main() {
       expect(tester.getSize(find.byType(ProfileHeader)).height, height);
       expect(store.name, '当前登录用户');
       expect(store.ipLocation, '广东省');
-      // Pulling the real shared header opens the same details and returns to rest.
+      // Pulling the header or feed no longer opens a full-screen profile.
       await tester.dragFrom(
         tester.getCenter(find.byKey(const ValueKey('profile-identity-name'))),
         const Offset(0, 180),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(ProfileDetailsPage), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('profile-details-close')));
-      await tester.pumpAndSettle();
+      expect(find.byType(ProfileDetailsPage), findsNothing);
       expect(tester.getSize(find.byType(ProfileHeader)).height, height);
+      api.calls.clear();
+      final tabs = tester.getRect(find.byType(ProfileContentTabs));
+      await tester.dragFrom(
+        Offset(tabs.center.dx, tabs.bottom + 35),
+        const Offset(0, 180),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ProfileDetailsPage), findsNothing);
+      expect(api.calls, isEmpty);
       expect(tester.takeException(), isNull);
     },
   );

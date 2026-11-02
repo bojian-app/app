@@ -1,3 +1,4 @@
+import 'app_page_bar.dart';
 import 'user_display_name.dart';
 
 import 'dart:io';
@@ -125,7 +126,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ? '${(imageCacheBytes / 1024).toStringAsFixed(1)} KB'
           : '${(imageCacheBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
       return Scaffold(
-        appBar: AppBar(title: const Text('隐私与设置')),
+        appBar: AppPageBar(title: const Text('隐私与设置')),
         body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680),
@@ -486,7 +487,7 @@ class _FeedbackPageState extends State<_FeedbackPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
+    appBar: AppPageBar(
       title: Text(widget.appeal ? '账号申诉' : '意见反馈'),
       actions: const [DismissKeyboardButton()],
     ),
@@ -660,12 +661,15 @@ class _SecurityPageState extends State<_SecurityPage> {
   Widget deviceRow(Map<String, dynamic> session) {
     final current = session['is_current'] == true;
     final desktop = ['MACOS', 'WINDOWS', 'WEB'].contains(session['platform']);
-    final reportedModel =
-        '${session['device_model'] ?? session['device_name'] ?? ''}'.trim();
-    final currentModel = widget.store.deviceMetadata.model.trim();
-    final title = current && currentModel.isNotEmpty
-        ? currentModel
-        : reportedModel;
+    final reportedName = '${session['device_name'] ?? ''}'.trim();
+    final reportedModel = '${session['device_model'] ?? ''}'.trim();
+    final title = reportedName.isNotEmpty
+        ? reportedName
+        : reportedModel.isNotEmpty
+        ? reportedModel
+        : current
+        ? widget.store.deviceMetadata.model.trim()
+        : '';
     final reportedOS = '${session['os_version'] ?? ''}'.trim();
     final osVersion = reportedOS.isNotEmpty
         ? reportedOS
@@ -753,7 +757,7 @@ class _SecurityPageState extends State<_SecurityPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('账号安全')),
+    appBar: AppPageBar(title: const Text('账号安全')),
     body: Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680),
@@ -789,16 +793,7 @@ class _SecurityPageState extends State<_SecurityPage> {
                     ),
                   )
                 else if (sessions.isEmpty)
-                  Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Text(
-                      '暂无登录设备',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: context.colors.muted,
-                      ),
-                    ),
-                  )
+                  const EmptyState('暂无登录设备', '', compact: true)
                 else
                   for (final session in sessions) deviceRow(session),
               ],

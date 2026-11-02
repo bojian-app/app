@@ -62,7 +62,13 @@ void main() {
   ) async {
     final authorizer = _Authorizer();
     final store = await testStore(douyinAuthorizer: authorizer);
-    await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+    await tester.pumpWidget(
+      MyApp(
+        startupAnimationEnabled: false,
+        bannerAdsEnabled: false,
+        store: store,
+      ),
+    );
     await tester.pumpAndSettle();
     final button = find.byKey(const ValueKey('auth-douyin'));
     await tester.ensureVisible(button);
@@ -89,7 +95,13 @@ void main() {
         gateway.documents['GetMe']!.remove('phone_masked');
       }
       final store = await testStore(api: gateway, douyinAuthorizer: authorizer);
-      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+      await tester.pumpWidget(
+        MyApp(
+          startupAnimationEnabled: false,
+          bannerAdsEnabled: false,
+          store: store,
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const ValueKey('auth-consent')));
       await tester.tap(find.byKey(const ValueKey('auth-consent')));
@@ -101,10 +113,12 @@ void main() {
       await tester.tap(button);
       await tester.pump();
       expect(authorizer.calls, 1);
-      expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+      expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
       expect(
         tester
-            .widget<FilledButton>(find.byKey(const ValueKey('auth-wechat')))
+            .widget<ButtonStyleButton>(
+              find.byKey(const ValueKey('auth-wechat')),
+            )
             .onPressed,
         isNull,
       );
@@ -138,12 +152,14 @@ void main() {
           expect(find.text('抖音授权失败，请重新登录'), findsOneWidget);
           expect(
             tester.getTopLeft(find.byKey(const ValueKey('auth-error'))).dy,
-            greaterThan(tester.getBottomLeft(button).dy),
+            greaterThan(
+              tester.getBottomLeft(find.byKey(const ValueKey('auth-code'))).dy,
+            ),
           );
         }
-        expect(tester.widget<OutlinedButton>(button).onPressed, isNotNull);
+        expect(tester.widget<ButtonStyleButton>(button).onPressed, isNotNull);
         expect(find.byKey(const ValueKey('auth-douyin')), findsOneWidget);
-        expect(find.byKey(const ValueKey('auth-submit')), findsNothing);
+        expect(find.byKey(const ValueKey('auth-submit')), findsOneWidget);
       }
       expect(tester.takeException(), isNull);
     });
@@ -206,7 +222,13 @@ void main() {
         addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
         final authorizer = _Authorizer();
         final store = await testStore(douyinAuthorizer: authorizer);
-        await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+        await tester.pumpWidget(
+          MyApp(
+            startupAnimationEnabled: false,
+            bannerAdsEnabled: false,
+            store: store,
+          ),
+        );
         await tester.pumpAndSettle();
         final consent = find.byKey(const ValueKey('auth-consent'));
         await tester.ensureVisible(consent);
@@ -217,13 +239,13 @@ void main() {
         await tester.pumpAndSettle();
         await tester.ensureVisible(button);
         await tester.pumpAndSettle();
-        expect(find.text('正在等待抖音授权…'), findsOneWidget);
+        expect(find.text('授权中…'), findsOneWidget);
         expect(tester.getRect(button).bottom, lessThanOrEqualTo(size.height));
-        expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+        expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
         expect(tester.takeException(), isNull);
         authorizer.result.complete(null);
         await tester.pumpAndSettle();
-        expect(tester.widget<OutlinedButton>(button).onPressed, isNotNull);
+        expect(tester.widget<ButtonStyleButton>(button).onPressed, isNotNull);
         expect(store.isAuthenticated, isFalse);
       },
     );

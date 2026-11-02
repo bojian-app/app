@@ -34,12 +34,16 @@ private class BannerAdView(context: Context, private val activity: Activity,
     private var requested = false
     private var ended = false
     private var rendered = false
+    private var sizeCheck: Runnable? = null
     private val deadline = Runnable { end("failed", "load_timeout") }
 
     init {
         channel.setMethodCallHandler { call, result ->
             if (call.method == "show") {
                 if (rendered && !ended) frame.visibility = View.VISIBLE
+                result.success(null)
+            } else if (call.method == "hide") {
+                frame.visibility = View.INVISIBLE
                 result.success(null)
             } else if (call.method != "load") {
                 result.notImplemented()
@@ -72,7 +76,7 @@ private class BannerAdView(context: Context, private val activity: Activity,
         }
         try {
             val slot = AdSlot.Builder().setCodeId(slotId)
-                .setExpressViewAcceptedSize(300f, 150f).setAdCount(1).build()
+                .setExpressViewAcceptedSize(300f, 0f).setAdCount(1).build()
             TTAdSdk.getAdManager().createAdNative(activity).loadBannerExpressAd(
                 slot, object : TTAdNative.NativeExpressAdListener {
                     override fun onError(code: Int, message: String?) {
@@ -129,10 +133,32 @@ private class BannerAdView(context: Context, private val activity: Activity,
                 return
             }
             (creative.parent as? ViewGroup)?.removeView(creative)
-            frame.addView(creative, FrameLayout.LayoutParams(-1, -1))
-            rendered = true
-            handler.removeCallbacks(deadline)
-            channel.invokeMethod("loaded", null)
+            val density = frame.resources.displayMetrics.density
+            val suppliedHeight = creative.layoutParams?.height ?: 0
+            frame.addView(creative, FrameLayout.LayoutParams(
+                -1, if (suppliedHeight > 0) suppliedHeight else ViewGroup.LayoutParams.WRAP_CONTENT,
+            ))
+            // The SDK callback precedes Android layout. A detached measurement
+            // can be zero even for a valid creative; keep it attached and hidden
+            // until its real dimensions are available, within the load deadline.
+            val check = object : Runnable {
+                override fun run() {
+                    if (ended || rendered) return
+                    val contentHeight = creative.height
+                    if (creative.width <= 0 || contentHeight <= 0) {
+                        handler.postDelayed(this, 50)
+                        return
+                    }
+                    creative.layoutParams = FrameLayout.LayoutParams(-1, contentHeight)
+                    rendered = true
+                    sizeCheck = null
+                    handler.removeCallbacks(deadline)
+                    Log.i(TAG, "Banner ready: 300 x ${contentHeight / density} dp")
+                    channel.invokeMethod("loaded", mapOf("height" to contentHeight / density))
+                }
+            }
+            sizeCheck = check
+            handler.post(check)
         } catch (error: Exception) {
             end("failed", "render_exception")
         } catch (error: LinkageError) {
@@ -154,6 +180,8 @@ private class BannerAdView(context: Context, private val activity: Activity,
     private fun release() {
         ended = true
         handler.removeCallbacks(deadline)
+        sizeCheck?.let { handler.removeCallbacks(it) }
+        sizeCheck = null
         frame.removeAllViews()
         ad?.let { destroy(it) }
         ad = null

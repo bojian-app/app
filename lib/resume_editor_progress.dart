@@ -1,5 +1,5 @@
-/// Counts the editor's seven core groups. Optional certificates, portraits,
-/// gender and birth dates do not prevent an otherwise complete resume.
+/// Six equally weighted groups; each group is either complete or incomplete.
+/// Empty entry placeholders and explicitly excluded fields never earn points.
 class ResumeEditorProgress {
   const ResumeEditorProgress(this.filled, this.total);
   final int filled, total;
@@ -33,21 +33,44 @@ ResumeEditorProgress resumeEditorProgress({
     }.contains(text);
   }
 
-  bool has(Map<String, dynamic> entry, List<String> keys) =>
-      keys.every((key) => present(entry[key]));
-  final phone = fields['phone']?.replaceAll(RegExp(r'\D'), '') ?? '';
-  final email = fields['email']?.trim() ?? '';
-  final checks = [
-    present(fields['name']),
-    present(fields['position']),
-    phone.length >= 7 || RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email),
-    present(fields['summary']),
-    work.any((entry) => has(entry, ['company', 'position', 'description'])) ||
-        projects.any((entry) => has(entry, ['name', 'description'])),
-    education.any((entry) => has(entry, ['institution', 'field_of_study'])),
-    skills.any(
-      (entry) => present(entry['name']) || present(entry['description']),
+  bool hasEntry(
+    Iterable<Map<String, dynamic>> entries,
+    List<String> keys, {
+    bool allowCurrent = false,
+  }) => entries.any(
+    (entry) => keys.every(
+      (key) =>
+          key == 'end_date' && allowCurrent && entry['current'] == true ||
+          present(entry[key]),
     ),
+  );
+  final checks = [
+    present(fields['name']) &&
+        (present(fields['phone']) || present(fields['email'])),
+    present(fields['position']) && present(fields['city']),
+    hasEntry(work, [
+      'company',
+      'position',
+      'start_date',
+      'end_date',
+      'description',
+    ], allowCurrent: true),
+    hasEntry(projects, [
+      'name',
+      'role',
+      'start_date',
+      'end_date',
+      'description',
+      'achievements',
+    ]),
+    hasEntry(education, [
+      'institution',
+      'field_of_study',
+      'start_date',
+      'end_date',
+      'campus_experience',
+    ]),
+    hasEntry(skills, ['name', 'description']),
   ];
   return ResumeEditorProgress(
     checks.where((filled) => filled).length,

@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:xml/xml.dart' as ox;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
@@ -11,6 +13,9 @@ import 'package:vector_math/vector_math_64.dart' as vm;
 import 'package:share_plus/share_plus.dart';
 
 import 'api/bojian_api.dart';
+
+part 'resume_word_flow.dart';
+part 'resume_word_structure.dart';
 
 const resumeDocumentFontFamily = 'ResumeDocument';
 const resumeDocumentTypeface = '阿里巴巴普惠体 3.0';
@@ -50,6 +55,9 @@ String resumeExportText(String text) {
 class ResumeExportSpan {
   const ResumeExportSpan({
     required this.text,
+    this.wordText,
+    this.wordTabStop,
+    this.wordTabRight = false,
     required this.x,
     required this.width,
     required this.size,
@@ -61,6 +69,11 @@ class ResumeExportSpan {
     this.strike = false,
   });
   final String text;
+  // Logical whitespace may have no painted width at a browser soft wrap.
+  final String? wordText;
+  // Absolute page X of a native inline field, expressed as a Word tab stop.
+  final double? wordTabStop;
+  final bool wordTabRight;
   final double x, width, size;
   final int color;
   final bool bold, italic, underline, strike;
@@ -74,9 +87,22 @@ class ResumeExportLine {
     required this.height,
     required this.baseline,
     required this.spans,
+    this.paragraphId,
+    this.paragraphLeft,
+    this.paragraphWidth,
+    this.paragraphAlignRight = false,
+    this.paragraphField,
+    this.paragraphBottom,
   });
   final double top, height, baseline;
   final List<ResumeExportSpan> spans;
+  // Word keeps source paragraphs together; PDF still paints measured lines.
+  // Unspecified metadata is supported for older/custom layout producers.
+  final String? paragraphId;
+  final double? paragraphLeft, paragraphWidth;
+  final bool paragraphAlignRight;
+  final String? paragraphField;
+  final double? paragraphBottom;
 }
 
 class ResumeExportRule {
@@ -110,12 +136,15 @@ class ResumeExportPage {
     this.rules = const [],
     this.pictures = const [],
     this.background,
+    this.wordFlow = false,
   });
   final List<ResumeExportLine> lines;
   final List<ResumeExportRule> rules;
   final List<ResumeExportPicture> pictures;
   // HTML's decorative paint layer only; all resume text stays native.
   final ResumeExportPicture? background;
+  // Native templates have a semantic reading order and can reflow in Word.
+  final bool wordFlow;
 }
 
 class ResumeExportLayout {
@@ -123,9 +152,20 @@ class ResumeExportLayout {
     this.pages, {
     this.width = 595.28,
     this.height = 841.89,
+    this.wordLayout,
+    this.requiresWordFlow = false,
+    this.nativeFlowGeometry = false,
+    this.wordStructure,
+    this.wordMargins = const {"top": 46, "right": 46, "bottom": 50, "left": 46},
   });
   final List<ResumeExportPage> pages;
   final double width, height;
+  final ResumeExportLayout? wordLayout;
+  // Required by native and V2 templates; never silently use positioned boxes.
+  final bool requiresWordFlow;
+  final bool nativeFlowGeometry;
+  final Map<String, dynamic>? wordStructure;
+  final Map<String, double> wordMargins;
 }
 
 typedef CaptureResumeLayout = Future<ResumeExportLayout> Function({
@@ -191,7 +231,20 @@ Future<Uint8List> encodeNativeResume(
   Uint8List? medium,
 }) async {
   if (format == 'PDF') return _pdf(layout, regular, bold, medium);
-  if (format == 'DOCX') return _word(layout, regular, bold, medium);
+  if (format == 'DOCX') {
+    final document = layout.wordLayout ?? layout;
+    final requiresFlow =
+        layout.requiresWordFlow ||
+        document.requiresWordFlow ||
+        document.pages.any((page) => page.wordFlow);
+    if (document.wordStructure == null &&
+        requiresFlow &&
+        (document.pages.isEmpty ||
+            document.pages.any((page) => !page.wordFlow))) {
+      throw const ApiFailure('模板的 Word 正文结构缺失，请刷新预览后重试');
+    }
+    return _word(document, regular, bold, medium);
+  }
   throw const ApiFailure('请选择 Word 或 PDF');
 }
 
@@ -403,6 +456,107 @@ Uint8List _obfuscated(Uint8List bytes, List<int> key) {
   return result;
 }
 
+List<ResumeExportSpan> _mergeWordSpans(List<ResumeExportSpan> spans) {
+  final result = <ResumeExportSpan>[];
+  for (final original in spans) {
+    final span = original.wordText == null
+        ? original
+        : ResumeExportSpan(
+            text: original.wordText!,
+            wordTabStop: original.wordTabStop,
+            wordTabRight: original.wordTabRight,
+            x: original.x,
+            width: original.width,
+            size: original.size,
+            weight: original.fontWeight,
+            color: original.color,
+            italic: original.italic,
+            underline: original.underline,
+            strike: original.strike,
+          );
+    final previous = result.isEmpty ? null : result.last;
+    if (previous != null &&
+        previous.wordTabStop == null &&
+        span.wordTabStop == null &&
+        previous.size == span.size &&
+        previous.fontWeight == span.fontWeight &&
+        previous.color == span.color &&
+        previous.italic == span.italic &&
+        previous.underline == span.underline &&
+        previous.strike == span.strike) {
+      result[result.length - 1] = ResumeExportSpan(
+        text: previous.text + span.text,
+        x: previous.x,
+        width: previous.width + span.width,
+        size: span.size,
+        weight: span.fontWeight,
+        color: span.color,
+        italic: span.italic,
+        underline: span.underline,
+        strike: span.strike,
+      );
+    } else {
+      result.add(span);
+    }
+  }
+  return result;
+}
+
+double _wordRuleHeight(ResumeExportRule rule) =>
+    math.max(2.0, rule.height > 0 ? rule.height : rule.thickness);
+
+// Some readers discard paragraph borders and round sub-point image heights
+// down to zero. A transparent strip keeps the visible rule at its original
+// thickness while giving the inline image a safe, nonzero display height.
+Uint8List _wordRuleImage(int color, double thickness, double spaceBefore) {
+  final lineHeight = math.max(2.0, thickness);
+  final height = spaceBefore + lineHeight;
+  final rows = (height * 100).ceil();
+  final top = (spaceBefore + (lineHeight - thickness) / 2) / height * rows;
+  final bottom = top + thickness / height * rows;
+  final pixels = <int>[];
+  for (var row = 0; row < rows; row++) {
+    final coverage =
+        (math.min(row + 1.0, bottom) - math.max(row.toDouble(), top)).clamp(
+          0.0,
+          1.0,
+        );
+    pixels.addAll([
+      0, // PNG scanline filter: none.
+      (color >> 16) & 255,
+      (color >> 8) & 255,
+      color & 255,
+      (((color >> 24) & 255) * coverage).round(),
+    ]);
+  }
+  final bytes = BytesBuilder()..add([137, 80, 78, 71, 13, 10, 26, 10]);
+  void chunk(String type, List<int> data) {
+    final payload = [...ascii.encode(type), ...data];
+    bytes
+      ..add((ByteData(4)..setUint32(0, data.length)).buffer.asUint8List())
+      ..add(payload)
+      ..add(
+        (ByteData(4)..setUint32(0, getCrc32(payload))).buffer.asUint8List(),
+      );
+  }
+
+  chunk('IHDR', [
+    0,
+    0,
+    0,
+    1,
+    ...(ByteData(4)..setUint32(0, rows)).buffer.asUint8List(),
+    8,
+    6,
+    0,
+    0,
+    0,
+  ]);
+  chunk('IDAT', zlib.encode(pixels));
+  chunk('IEND', []);
+  return bytes.takeBytes();
+}
+
 Uint8List _word(
   ResumeExportLayout layout,
   Uint8List regular,
@@ -447,11 +601,12 @@ Uint8List _word(
     double height, {
     int? fill,
     String? textContent,
+    bool wrap = false,
   }) {
     final current = id++;
     final background = textContent == null;
     final shape =
-        '<wps:wsp><wps:cNvSpPr${background ? '' : ' txBox="1"'}/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(width)}" cy="${emu(height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fill == null ? '<a:noFill/>' : '<a:solidFill><a:srgbClr val="${_rgb(fill)}"/></a:solidFill>'}<a:ln><a:noFill/></a:ln></wps:spPr>${textContent == null ? '' : '<wps:txbx>$textContent</wps:txbx>'}<wps:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" vertOverflow="overflow" horzOverflow="overflow"><a:spAutoFit/></wps:bodyPr></wps:wsp>';
+        '<wps:wsp><wps:cNvSpPr${background ? '' : ' txBox="1"'}/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(width)}" cy="${emu(height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fill == null ? '<a:noFill/>' : '<a:solidFill><a:srgbClr val="${_rgb(fill)}"/></a:solidFill>'}<a:ln><a:noFill/></a:ln></wps:spPr>${textContent == null ? '' : '<wps:txbx>$textContent</wps:txbx>'}<wps:bodyPr wrap="${wrap ? 'square' : 'none'}" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" vertOverflow="overflow" horzOverflow="overflow"><a:spAutoFit/></wps:bodyPr></wps:wsp>';
     final drawing = anchor(
       current,
       shape,
@@ -463,26 +618,99 @@ Uint8List _word(
       background: background,
     );
     final legacy =
-        '<w:pict><v:rect id="ResumeObject$current" o:spid="_x0000_s${1024 + current}" style="position:absolute;margin-left:${x.toStringAsFixed(3)}pt;margin-top:${y.toStringAsFixed(3)}pt;width:${width.toStringAsFixed(3)}pt;height:${height.toStringAsFixed(3)}pt;z-index:${background ? current - 100000 : current};mso-position-horizontal-relative:page;mso-position-vertical-relative:page;mso-wrap-style:none" filled="${fill == null ? 'f' : 't'}"${fill == null ? '' : ' fillcolor="#${_rgb(fill)}"'} stroked="f" o:allowincell="f">${textContent == null ? '' : '<v:textbox inset="0,0,0,0" style="mso-wrap-style:none;mso-fit-shape-to-text:t">$textContent</v:textbox>'}<w10:wrap type="none" anchorx="page" anchory="page"/></v:rect></w:pict>';
+        '<w:pict><v:rect id="ResumeObject$current" o:spid="_x0000_s${1024 + current}" style="position:absolute;margin-left:${x.toStringAsFixed(3)}pt;margin-top:${y.toStringAsFixed(3)}pt;width:${width.toStringAsFixed(3)}pt;height:${height.toStringAsFixed(3)}pt;z-index:${background ? current - 100000 : current};mso-position-horizontal-relative:page;mso-position-vertical-relative:page;mso-wrap-style:${wrap ? 'square' : 'none'}" filled="${fill == null ? 'f' : 't'}"${fill == null ? '' : ' fillcolor="#${_rgb(fill)}"'} stroked="f" o:allowincell="f">${textContent == null ? '' : '<v:textbox inset="0,0,0,0" style="mso-wrap-style:${wrap ? 'square' : 'none'};mso-fit-shape-to-text:t">$textContent</v:textbox>'}<w10:wrap type="none" anchorx="page" anchory="page"/></v:rect></w:pict>';
     return '<w:r><mc:AlternateContent><mc:Choice Requires="wps">$drawing</mc:Choice><mc:Fallback>$legacy</mc:Fallback></mc:AlternateContent></w:r>';
   }
 
-  // Do not rely on fitText alone: a substituted font can be wider in readers
-  // that ignore it. Give each transparent box spare horizontal room, disable
-  // wrapping and allow it to grow vertically instead of clipping the text.
+  // Font metrics align the text boxes to the captured baselines. Paragraphs
+  // use their available column widths, rather than tightly fitting the ink.
   final metricDocument = PdfDocument();
   final metrics = [
     PdfTtfFont(metricDocument, ByteData.sublistView(regular)),
     PdfTtfFont(metricDocument, ByteData.sublistView(medium ?? regular)),
     PdfTtfFont(metricDocument, ByteData.sublistView(bold)),
   ];
-  for (var page = 0; page < layout.pages.length; page++) {
+  final structured = layout.wordStructure;
+  final flowing =
+      structured != null ||
+      (layout.pages.isNotEmpty && layout.pages.every((p) => p.wordFlow));
+  String structuredPicture(
+    String asset,
+    double width,
+    double height, {
+    bool header = false,
+    bool behindParagraph = false,
+  }) {
+    final bytes = (structured!['images'] as Map)[asset] as Uint8List?;
+    if (bytes == null) throw const ApiFailure('模板导出素材缺失');
+    final name = 'structure${id++}';
+    add('word/media/$name.png', bytes);
+    relations.write(
+      '<Relationship Id="$name" Type="${rel}image" Target="media/$name.png"/>',
+    );
+    final current = id++;
+    final content =
+        '<pic:pic><pic:nvPicPr><pic:cNvPr id="$current" name="模板素材"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="$name"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(width)}" cy="${emu(height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>';
+    if (behindParagraph) {
+      final drawing =
+          anchor(
+                current,
+                content,
+                '${ns}drawingml/2006/picture',
+                0,
+                0,
+                width,
+                height,
+                background: true,
+              )
+              .replaceFirst('relativeFrom="page"', 'relativeFrom="column"')
+              .replaceFirst(
+                '<wp:positionV relativeFrom="page">',
+                '<wp:positionV relativeFrom="paragraph">',
+              );
+      return '<w:r>$drawing</w:r>';
+    }
+    if (header) {
+      return '<w:r>${anchor(current, content, '${ns}drawingml/2006/picture', 0, 0, width, height, background: true)}</w:r>';
+    }
+    return '<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${emu(width)}" cy="${emu(height)}"/><wp:docPr id="$current" name="模板素材"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="${ns}drawingml/2006/picture">$content</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+  }
+
+  if (structured != null) {
+    final background =
+        ((structured['layout'] as Map)['page'] as Map)['background'] as Map;
+    final art = background['asset'] == null
+        ? ''
+        : structuredPicture(
+            background['asset'] as String,
+            layout.width,
+            layout.height,
+            header: true,
+          );
+    // Header owns its own image relationships and repeats on every actual Word page.
+    final headerRelations = relations.toString().replaceFirst(
+      'Target="fontTable.xml"',
+      'Target="fontTable.xml"',
+    );
+    text(
+      'word/header.xml',
+      '<?xml version="1.0"?><w:hdr xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships" xmlns:wp="${ns}drawingml/2006/wordprocessingDrawing" xmlns:a="${ns}drawingml/2006/main" xmlns:pic="${ns}drawingml/2006/picture"><w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/></w:pPr>$art</w:p></w:hdr>',
+    );
+    text('word/_rels/header.xml.rels', '$headerRelations</Relationships>');
+    relations.write(
+      '<Relationship Id="header" Type="${rel}header" Target="header.xml"/>',
+    );
+  }
+  final flowPictures = <String>[];
+  for (var page = 0; structured == null && page < layout.pages.length; page++) {
     final sheet = layout.pages[page];
     // A page has one small anchor paragraph. Every text fragment retains its
     // own page coordinates, so independent columns never advance each other.
     final drawings = StringBuffer();
     for (final rule
-        in sheet.background == null ? sheet.rules : <ResumeExportRule>[]) {
+        in !flowing && sheet.background == null
+            ? sheet.rules
+            : <ResumeExportRule>[]) {
       final height = rule.height > 0
           ? rule.height
           : math.max(rule.thickness, .1);
@@ -518,11 +746,16 @@ Uint8List _word(
           picture.y,
           picture.width,
           picture.height,
+          background: flowing && identical(picture, sheet.background),
           // All text is floating above this first image by relativeHeight.
           // behindDoc would turn page art into a faded watermark in QuickLook.
         ),
       );
       drawings.write('</w:r>');
+    }
+    if (flowing) {
+      flowPictures.add(drawings.toString());
+      continue;
     }
     if (page > 0) {
       body.write(
@@ -533,45 +766,173 @@ Uint8List _word(
       '<w:p><w:pPr><w:widowControl w:val="0"/><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr>',
     );
     body.write(drawings);
-    for (final line in sheet.lines) {
-      for (final span in line.spans) {
-        if (span.text.isEmpty || (span.color >> 24) == 0) continue;
-        final weight = span.fontWeight;
-        final isBold = weight >= 700;
-        final isMedium = weight >= 500 && !isBold && medium != null;
-        final family = isMedium
+    final paragraphs = <String, List<ResumeExportLine>>{};
+    for (var index = 0; index < sheet.lines.length; index++) {
+      final line = sheet.lines[index];
+      (paragraphs[line.paragraphId ?? 'legacy-$index'] ??= []).add(line);
+    }
+    for (final paragraph in paragraphs.values) {
+      if (paragraph.first.paragraphId != null) {
+        paragraph.sort((a, b) {
+          final baseline = a.baseline - b.baseline;
+          return baseline.abs() > .5
+              ? baseline.sign.toInt()
+              : a.spans.first.x.compareTo(b.spans.first.x);
+        });
+        final first = paragraph.first;
+        final spans = paragraph
+            .expand((line) => line.spans)
+            .where((span) => span.text.isNotEmpty && (span.color >> 24) != 0)
+            .toList();
+        if (spans.isEmpty) continue;
+        final leading = spans.first;
+        final face =
+            metrics[leading.fontWeight >= 700
+                ? 2
+                : (leading.fontWeight >= 500 && medium != null ? 1 : 0)];
+        final top =
+            first.baseline - (leading.size * 2).round() / 2 * face.ascent;
+        final left =
+            first.paragraphLeft ?? spans.map((s) => s.x).reduce(math.min);
+        final measuredWidth = first.paragraphWidth ?? layout.width - left;
+        final width = math.max(
+          1.0,
+          math.min(layout.width - left, measuredWidth),
+        );
+        final height = math.max(
+          first.height,
+          paragraph.map((line) => line.top + line.height).reduce(math.max) -
+              top,
+        );
+        final runs = StringBuffer();
+        // These are formatting runs within ONE paragraph, never text boxes or
+        // forced breaks for each visual line. Word can reflow edited text.
+        final groups = [_mergeWordSpans(spans)];
+        for (var lineIndex = 0; lineIndex < groups.length; lineIndex++) {
+          if (lineIndex > 0) runs.write('<w:r><w:br/></w:r>');
+          for (final span in groups[lineIndex]) {
+            final isBold = span.fontWeight >= 700;
+            final family = span.fontWeight >= 500 && !isBold && medium != null
+                ? resumeWordMediumTypeface
+                : resumeWordRegularTypeface;
+            final size = (span.size * 2).round();
+            runs.write(
+              '<w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${isBold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.underline ? '<w:u w:val="single"/>' : ''}<w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${_xml(resumeExportText(span.text))}</w:t></w:r>',
+            );
+          }
+        }
+        final paragraphFamily =
+            leading.fontWeight >= 500 &&
+                leading.fontWeight < 700 &&
+                medium != null
             ? resumeWordMediumTypeface
             : resumeWordRegularTypeface;
-        final text = resumeExportText(span.text);
-        final size = (span.size * 2).round();
-        final face = metrics[isBold ? 2 : (isMedium ? 1 : 0)];
-        final height = math.max(line.height, size / 2 * 1.5);
-        final width = math.max(
-          .1,
-          math.min(
-            layout.width - span.x,
-            math.max(span.width * 1.15, span.width + span.size * 2),
-          ),
-        );
-        // Use the measured baseline and font ascender, rather than the DOM ink
-        // box, for vertical placement (all packaged faces have a 1.06 em ascent).
-        final top = line.baseline - size / 2 * face.ascent;
         final content =
-            '<w:txbxContent><w:p><w:pPr><w:widowControl w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/><w:sz w:val="$size"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${isBold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.underline ? '<w:u w:val="single"/>' : ''}<w:fitText w:val="${math.max(1, _twip(span.width))}" w:id="$id"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${_xml(text)}</w:t></w:r></w:p></w:txbxContent>';
-        body.write(rectangle(span.x, top, width, height, textContent: content));
+            '<w:txbxContent><w:p><w:pPr><w:widowControl w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="${_twip(first.height)}" w:lineRule="atLeast"/>${first.paragraphAlignRight ? '<w:jc w:val="right"/>' : ''}<w:rPr><w:rFonts w:ascii="$paragraphFamily" w:hAnsi="$paragraphFamily" w:eastAsia="$paragraphFamily" w:cs="$paragraphFamily"/><w:sz w:val="${(leading.size * 2).round()}"/></w:rPr></w:pPr>$runs</w:p></w:txbxContent>';
+        body.write(
+          rectangle(left, top, width, height, textContent: content, wrap: true),
+        );
+        continue;
+      }
+      for (final line in paragraph) {
+        for (final span in line.spans) {
+          if (span.text.isEmpty || (span.color >> 24) == 0) continue;
+          final weight = span.fontWeight;
+          final isBold = weight >= 700;
+          final isMedium = weight >= 500 && !isBold && medium != null;
+          final family = isMedium
+              ? resumeWordMediumTypeface
+              : resumeWordRegularTypeface;
+          final text = resumeExportText(span.text);
+          final size = (span.size * 2).round();
+          final face = metrics[isBold ? 2 : (isMedium ? 1 : 0)];
+          final height = math.max(line.height, size / 2 * 1.5);
+          final width = math.max(
+            .1,
+            math.min(
+              layout.width - span.x,
+              math.max(span.width * 1.15, span.width + span.size * 2),
+            ),
+          );
+          // Use the measured baseline and font ascender, rather than the DOM ink
+          // box, for vertical placement (all packaged faces have a 1.06 em ascent).
+          final top = line.baseline - size / 2 * face.ascent;
+          final content =
+              '<w:txbxContent><w:p><w:pPr><w:widowControl w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/><w:sz w:val="$size"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${isBold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.underline ? '<w:u w:val="single"/>' : ''}<w:fitText w:val="${math.max(1, _twip(span.width))}" w:id="$id"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${_xml(text)}</w:t></w:r></w:p></w:txbxContent>';
+          body.write(
+            rectangle(span.x, top, width, height, textContent: content),
+          );
+        }
       }
     }
     body.write('</w:p>');
   }
+  if (flowing) {
+    final ruleImages = <(int, double, double), String>{};
+    String inlineRule(ResumeExportRule rule, double spaceBefore) {
+      final thickness = rule.height > 0 ? rule.height : rule.thickness;
+      final imageId = ruleImages.putIfAbsent((rule.color, thickness, spaceBefore), () {
+        final name = 'rule${id++}';
+        add(
+          'word/media/$name.png',
+          _wordRuleImage(rule.color, thickness, spaceBefore),
+        );
+        relations.write(
+          '<Relationship Id="$name" Type="${rel}image" Target="media/$name.png"/>',
+        );
+        return name;
+      });
+      final current = id++;
+      final width = emu(rule.width);
+      final height = emu(spaceBefore + _wordRuleHeight(rule));
+      return '<w:r><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="$width" cy="$height"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$current" name="模板装饰线 $current"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="${ns}drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="$current" name="模板装饰线"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="$imageId"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$width" cy="$height"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+    }
+
+    body.write(
+      structured == null
+          ? _flowWord(layout, flowPictures, medium != null, inlineRule)
+          : _StructuredWord(
+              structured,
+              (asset, width, height, {bool behindParagraph = false}) =>
+                  structuredPicture(
+                    asset,
+                    width,
+                    height,
+                    behindParagraph: behindParagraph,
+                  ),
+              (value, style) {
+                final weight = (style['fontWeight'] as num? ?? 400).toDouble();
+                final face =
+                    metrics[weight >= 700
+                        ? 2
+                        : weight >= 500
+                        ? 1
+                        : 0];
+                final size = (style['fontSizePt'] as num? ?? 8.5).toDouble();
+                final spacing = (style['letterSpacing'] as num? ?? 0)
+                    .toDouble();
+                return face.stringMetrics(value).advanceWidth * size / .75 +
+                    math.max(0, value.runes.length - 1) * spacing;
+              },
+            ).build(),
+    );
+    relations.write(
+      '<Relationship Id="footer" Type="${rel}footer" Target="footer.xml"/>',
+    );
+    text(
+      'word/footer.xml',
+      '<?xml version="1.0" encoding="UTF-8"?><w:ftr xmlns:w="${ns}wordprocessingml/2006/main"><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:color w:val="999999"/><w:sz w:val="18"/></w:rPr></w:pPr><w:fldSimple w:instr=" PAGE "><w:r><w:rPr><w:color w:val="999999"/><w:sz w:val="18"/></w:rPr><w:t>1</w:t></w:r></w:fldSimple></w:p></w:ftr>',
+    );
+  }
   body.write(
-    '<w:sectPr><w:pgSz w:w="${_twip(layout.width)}" w:h="${_twip(layout.height)}"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>',
+    '<w:sectPr>${structured != null ? '<w:headerReference w:type="default" r:id="header"/>' : ''}${flowing ? '<w:footerReference w:type="default" r:id="footer"/>' : ''}<w:pgSz w:w="${_twip(layout.width)}" w:h="${_twip(layout.height)}"/><w:pgMar w:top="${flowing ? _twip(layout.wordMargins["top"]!) : 0}" w:right="${flowing ? _twip(layout.wordMargins["right"]!) : 0}" w:bottom="${flowing ? _twip(layout.wordMargins["bottom"]!) : 0}" w:left="${flowing ? _twip(layout.wordMargins["left"]!) : 0}" w:header="0" w:footer="${flowing ? 480 : 0}" w:gutter="0"/></w:sectPr></w:body></w:document>',
   );
   relations.write('</Relationships>');
   text('word/document.xml', body.toString());
   text('word/_rels/document.xml.rels', relations.toString());
   text(
     '[Content_Types].xml',
-    '<?xml version="1.0"?><Types xmlns="${ns}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/></Types>',
+    '<?xml version="1.0"?><Types xmlns="${ns}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>${structured != null ? '<Override PartName="/word/header.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${flowing ? '<Override PartName="/word/footer.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : ''}</Types>',
   );
   text(
     '_rels/.rels',

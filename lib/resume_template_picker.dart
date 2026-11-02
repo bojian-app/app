@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'api/bojian_api.dart';
@@ -6,15 +8,18 @@ import 'app_store.dart';
 import 'design.dart';
 import 'resume_document.dart';
 import 'resume_templates.dart';
+import 'resume_thumbnail.dart';
 
 class ResumeTemplatePicker extends StatefulWidget {
   const ResumeTemplatePicker({
     super.key,
     required this.store,
     required this.resume,
+    this.heightFactor = .88,
   });
   final AppStore store;
   final ResumeDraft resume;
+  final double heightFactor;
   @override
   State<ResumeTemplatePicker> createState() => _ResumeTemplatePickerState();
 }
@@ -88,7 +93,7 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
     final available = choices.any((row) => integer(row['id']) == selected);
     return SafeArea(
       child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * .88,
+        height: MediaQuery.sizeOf(context).height * widget.heightFactor,
         child: Column(
           children: [
             Padding(
@@ -116,10 +121,10 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final columns = constraints.maxWidth >= 900
-                      ? 4
+                      ? 6
                       : constraints.maxWidth >= 600
-                      ? 3
-                      : 2;
+                      ? 5
+                      : 3;
                   return CustomScrollView(
                     slivers: [
                       SliverPadding(
@@ -130,7 +135,7 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
                                 crossAxisCount: columns,
                                 crossAxisSpacing: 14,
                                 mainAxisSpacing: 16,
-                                childAspectRatio: .62,
+                                childAspectRatio: resumePaperSize.aspectRatio,
                                 mainAxisExtent: constraints.maxHeight < 260
                                     ? (constraints.maxHeight - 16).clamp(
                                         120.0,
@@ -139,10 +144,7 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
                                     : null,
                               ),
                           delegate: SliverChildBuilderDelegate(
-                            (context, index) => tile(
-                              choices[index],
-                              compact: constraints.maxHeight < 260,
-                            ),
+                            (context, index) => tile(choices[index]),
                             childCount: choices.length,
                           ),
                         ),
@@ -174,14 +176,6 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
                                       child: const Text('重新加载'),
                                     ),
                                   ],
-                                )
-                              : purchased.isEmpty
-                              ? Text(
-                                  '暂无已购买模板',
-                                  style: TextStyle(
-                                    color: context.colors.muted,
-                                    fontSize: 12,
-                                  ),
                                 )
                               : const SizedBox.shrink(),
                         ),
@@ -227,90 +221,17 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
     );
   }
 
-  Widget tile(Map<String, dynamic> design, {bool compact = false}) {
+  Widget tile(Map<String, dynamic> design) {
     final id = integer(design['id']);
     final active = id == selected;
     final current = id == widget.resume.marketTemplateID;
-    final artwork = Center(
-      child: AspectRatio(
-        aspectRatio: resumePaperSize.aspectRatio,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: ColoredBox(
-            color: Colors.white,
-            child: id == 0
-                ? _StandardThumbnail(resume: widget.resume)
-                : _MarketThumbnail(
-                    url: design['thumbnail_url'] as String? ?? '',
-                  ),
-          ),
-        ),
-      ),
-    );
-    final details = Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${design['name']}',
-          maxLines: compact ? 2 : 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                current
-                    ? '当前使用'
-                    : id == 0
-                    ? '系统模板'
-                    : '已购买',
-                style: TextStyle(color: context.colors.muted, fontSize: 11),
-              ),
-            ),
-            Container(
-              width: 18,
-              height: 18,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: active ? blue : Colors.transparent,
-                border: Border.all(
-                  color: active ? blue : context.colors.border,
-                ),
-              ),
-              child: active
-                  ? const Center(
-                      child: AppIcon(
-                        AppIcons.confirm,
-                        size: 12,
-                        color: Colors.white,
-                      ),
-                    )
-                  : null,
-            ),
-          ],
-        ),
-      ],
-    );
     return Semantics(
       selected: active,
       button: true,
-      label: '${design['name']}',
+      label: '${design['name']}${current ? '，使用中' : ''}',
       child: Material(
-        color: active
-            ? (context.isDark
-                  ? context.colors.accentSoft
-                  : const Color(0xFFF0F5FF))
-            : context.colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(
-            color: active ? blue : context.colors.border,
-            width: active ? 1.5 : 1,
-          ),
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: saving
@@ -319,117 +240,70 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
                   selected = id;
                   error = null;
                 }),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: compact
-                ? Row(
-                    children: [
-                      Expanded(flex: 4, child: artwork),
-                      const SizedBox(width: 10),
-                      Expanded(flex: 5, child: details),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: artwork),
-                      const SizedBox(height: 10),
-                      details,
-                    ],
+          child: DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: active ? blue : context.colors.border,
+                width: active ? 1.5 : 1,
+              ),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: resumePaperSize.aspectRatio,
+                      child: id == 0
+                          ? StandardResumeThumbnail(resume: widget.resume)
+                          : MarketResumeThumbnail(
+                              url: design['thumbnail_url'] as String? ?? '',
+                            ),
+                    ),
                   ),
+                ),
+                if (current)
+                  Positioned(
+                    top: 12,
+                    right: -23,
+                    child: IgnorePointer(
+                      child: Transform.rotate(
+                        angle: math.pi / 4,
+                        child: Container(
+                          width: 90,
+                          height: 20,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: blue,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Color(0x26000000),
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Text(
+                            '使用中',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-}
-
-class _MarketThumbnail extends StatelessWidget {
-  const _MarketThumbnail({required this.url});
-  final String url;
-  @override
-  Widget build(BuildContext context) {
-    final placeholder = Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AppIcon(AppIcons.templates, size: 28, color: context.colors.muted),
-          const SizedBox(height: 8),
-          Text(
-            '预览暂不可用',
-            style: TextStyle(color: context.colors.muted, fontSize: 10),
-          ),
-        ],
-      ),
-    );
-    return url.isEmpty
-        ? placeholder
-        : Image.network(
-            url,
-            cacheWidth: 720,
-            fit: BoxFit.contain,
-            errorBuilder: (_, _, _) => placeholder,
-          );
-  }
-}
-
-class _StandardThumbnail extends StatefulWidget {
-  const _StandardThumbnail({required this.resume});
-  final ResumeDraft resume;
-  @override
-  State<_StandardThumbnail> createState() => _StandardThumbnailState();
-}
-
-class _StandardThumbnailState extends State<_StandardThumbnail> {
-  late final document = ResumeDocument(widget.resume);
-  @override
-  void dispose() {
-    document.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final rect = document.pages.first.photo;
-      final scale = constraints.maxWidth / resumePaperSize.width;
-      return Stack(
-        children: [
-          Positioned.fill(
-            child: CustomPaint(painter: _ThumbnailPainter(document)),
-          ),
-          if (rect != null && widget.resume.photoURL.isNotEmpty)
-            Positioned(
-              left: rect.left * scale,
-              top: rect.top * scale,
-              width: rect.width * scale,
-              height: rect.height * scale,
-              child: Image.network(
-                widget.resume.photoURL,
-                cacheWidth: 240,
-                fit: BoxFit.cover,
-                alignment: const Alignment(0, -.35),
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
-              ),
-            ),
-        ],
-      );
-    },
-  );
-}
-
-class _ThumbnailPainter extends CustomPainter {
-  const _ThumbnailPainter(this.document);
-  final ResumeDocument document;
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.scale(size.width / resumePaperSize.width);
-    paintResumeSheet(canvas, document, 0);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_ThumbnailPainter oldDelegate) =>
-      oldDelegate.document != document;
 }

@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
 
 class CreationGateway extends FakeGateway {
   final submissions = <Map<String, dynamic>>[];
@@ -139,7 +140,16 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: appTheme,
-          home: Scaffold(body: ResumeLibrary(store: store, embedded: true)),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                key: const ValueKey('profile-add-resume'),
+                onPressed: () =>
+                    ResumeLibrary(store: store).showAddOptions(context),
+                child: const Text('添加简历'),
+              ),
+            ),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -199,7 +209,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ResumeDocumentView), findsOneWidget);
       expect(find.text('编辑简历'), findsOneWidget);
-      expect(find.text('岗位示例已保存，请按真实经历修改后使用'), findsOneWidget);
+      expect(find.text('已保存到我的简历，请核对个人信息和经历后使用'), findsOneWidget);
       expect(api.submissions, hasLength(2));
       expect(
         api.submissions[0]['request_key'],
@@ -224,6 +234,14 @@ void main() {
         ),
       );
       Future<void> tapText(String text) async {
+        if (text == '新媒体运营') {
+          final search = find.byKey(const ValueKey('resume-position-search'));
+          await tester.ensureVisible(search);
+          await tester.tap(search);
+          await tester.pumpAndSettle();
+          await enterJobTitleChoice(tester, text);
+          return;
+        }
         final target = find.text(text).last;
         await tester.ensureVisible(target);
         await tester.pumpAndSettle();
@@ -342,9 +360,12 @@ void main() {
       expect(brief.runes.length, lessThanOrEqualTo(5000));
       expect(brief, isNot(contains('学校：')));
       expect(brief, isNot(contains('资格证书：')));
-      expect(brief, contains('优先融入本人补充或参考文件中的真实经历'));
-      expect(brief, contains('生成完整、具体、可编辑的岗位示例'));
-      expect(brief, contains('未知的个人资料、公司、学校、日期及量化指标保持空白'));
+      expect(brief, contains('优先融入本人补充或参考文件中的经历'));
+      expect(brief, contains('生成公司、职位、起止时间和工作内容'));
+      expect(brief, contains('学校、专业、入学与毕业时间及在校经历'));
+      expect(brief, contains('好名字'));
+      expect(brief, contains('example@bojian.com'));
+      expect(brief, contains('所有字段只输出正文'));
       expect(brief, isNot(contains('待本人补充')));
     },
   );
@@ -540,14 +561,14 @@ void main() {
       await tester.enterText(find.byType(TextField).last, '数据产品经理');
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.text('使用“数据产品经理”'),
+        find.byKey(const ValueKey('job-title-custom')),
         80,
         scrollable: find.ancestor(
-          of: find.text('选择意向岗位'),
+          of: find.byKey(const ValueKey('job-title-search')),
           matching: find.byType(Scrollable),
         ),
       );
-      await pick(find.text('使用“数据产品经理”'));
+      await pick(find.byKey(const ValueKey('job-title-custom')));
       expect(find.text('我想要找数据产品经理方向相关的工作'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -567,6 +588,14 @@ void main() {
           ),
         );
         Future<void> pick(String text) async {
+          if (text == '新媒体运营') {
+            final search = find.byKey(const ValueKey('resume-position-search'));
+            await tester.ensureVisible(search);
+            await tester.tap(search);
+            await tester.pumpAndSettle();
+            await enterJobTitleChoice(tester, text);
+            return;
+          }
           final target = find.text(text).last;
           await tester.ensureVisible(target);
           await tester.pumpAndSettle();
@@ -609,7 +638,7 @@ void main() {
         expect(brief, contains(student ? '校园活动标签：学生会' : '参与项目类别：产品推广方案'));
         expect(
           brief,
-          contains('选中的${student ? '校园活动' : '项目'}主题，可结合目标岗位生成完整示例'),
+          contains(student ? '结合专业和目标岗位生成完整在校经历' : '结合目标岗位生成完整项目经历'),
         );
         expect(brief, isNot(contains('待本人补充')));
         expect(brief, contains(student ? '性格特征：责任感强' : '软技能：学习能力'));

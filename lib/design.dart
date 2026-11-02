@@ -8,6 +8,9 @@ import 'api/bojian_api.dart';
 import 'app_theme.dart';
 
 export 'app_theme.dart';
+export 'empty_state.dart';
+
+import 'empty_state.dart';
 
 const blue = Color(0xFF2867EE);
 const ink = Color(0xFF202C41);
@@ -73,12 +76,10 @@ class DataStatus extends StatelessWidget {
     required this.empty,
     this.title = '这里还没有内容',
     this.subtitle = '下拉刷新，查看最新内容。',
-    this.illustration,
   });
   final AppStore store;
   final String section, title, subtitle;
   final bool empty;
-  final Widget? illustration;
   @override
   Widget build(BuildContext context) {
     if (store.loading.contains(section)) {
@@ -119,9 +120,7 @@ class DataStatus extends StatelessWidget {
         ),
       );
     }
-    return empty
-        ? EmptyState(title, subtitle, illustration: illustration)
-        : const SizedBox.shrink();
+    return empty ? EmptyState(title, subtitle) : const SizedBox.shrink();
   }
 }
 
@@ -332,32 +331,4 @@ class _DocumentPainter extends CustomPainter {
   @override
   bool shouldRepaint(_DocumentPainter oldDelegate) =>
       variant != oldDelegate.variant;
-}
-
-class EmptyState extends StatelessWidget {
-  const EmptyState(this.title, this.detail, {super.key, this.illustration});
-  final String title, detail;
-  final Widget? illustration;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 54, horizontal: 24),
-    child: Column(
-      children: [
-        illustration ?? Image.asset('assets/branding/app_icon.png', width: 80),
-        const SizedBox(height: 18),
-        Text(
-          title,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-        ),
-        if (detail.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            detail,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: context.colors.muted, fontSize: 13),
-          ),
-        ],
-      ],
-    ),
-  );
 }

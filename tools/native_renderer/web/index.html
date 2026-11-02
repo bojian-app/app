@@ -1,0 +1,7 @@
+<!doctype html><html><head><base href="/"/><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><style>
+html,body{margin:0;padding:0}#pages>img{display:block;width:210mm;height:297mm;break-after:page}#pages>img:last-child{break-after:auto}@page{size:A4;margin:0}@media print{flutter-view,flt-glass-pane{display:none!important}}
+</style></head><body><div id="pages"></div><pre id="render-result" style="display:none"></pre>
+<script src="payload.js"></script><script>
+window.bojianComplete=function(raw){const result=JSON.parse(raw); const pages=document.getElementById('pages');let pending=[];for(const data of result.pages){const img=new Image();img.src='data:image/png;base64,'+data;pages.append(img);pending.push(img.decode());}Promise.all(pending).then(()=>{document.getElementById('render-result').textContent=JSON.stringify({type:'ready',count:result.count,renderer:result.renderer});}).catch(e=>window.bojianFailure(String(e)));};
+window.bojianFailure=function(message){document.getElementById('render-result').textContent=JSON.stringify({type:'error',message});};
+</script><script src="flutter_bootstrap.js" async></script></body></html>

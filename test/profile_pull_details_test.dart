@@ -39,7 +39,11 @@ Future<AppStore> mount(
     RepaintBoundary(
       key: surface,
       child: realApp
-          ? MyApp(startupAdsEnabled: false, store: store)
+          ? MyApp(
+              startupAnimationEnabled: false,
+              bannerAdsEnabled: false,
+              store: store,
+            )
           : MaterialApp(
               debugShowCheckedModeBanner: false,
               theme: (dark ? appDarkTheme : appTheme).copyWith(
@@ -103,6 +107,11 @@ Future<void> pull(WidgetTester tester, double amount) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> openDetails(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('profile-about-summary')));
+  await tester.pumpAndSettle();
+}
+
 ScrollPosition position(WidgetTester tester) => tester
     .state<NestedScrollViewState>(find.byKey(const ValueKey('profile-scroll')))
     .outerController
@@ -154,7 +163,7 @@ void main() {
     await mount(tester, api);
     expect(copied, isEmpty);
     expect(find.byTooltip('复制用户 ID'), findsNothing);
-    await pull(tester, 220);
+    await openDetails(tester);
     expect(find.byType(ProfileDetailsPage), findsOneWidget);
     expect(copied, isEmpty);
     await tester.tap(find.byTooltip('复制用户 ID'));
@@ -307,7 +316,7 @@ void main() {
         scrolling.jumpTo(0);
         await tester.pumpAndSettle();
         expect(compact, findsNothing);
-        await pull(tester, 220);
+        await openDetails(tester);
         expect(find.byType(ProfileDetailsPage), findsOneWidget);
         await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
@@ -323,99 +332,89 @@ void main() {
     );
   }
 
-  testWidgets(
-    'Details grow continuously from the pulled header and shrink back',
-    (tester) async {
-      await mount(tester, gateway());
-      final handle = find.byKey(const ValueKey('profile-drag-handle'));
-      final edge = find.byKey(const ValueKey('profile-curved-edge'));
-      expect(handle, findsOneWidget);
-      expect(tester.getSize(handle), const Size(44, 4));
-      expect(tester.getCenter(handle).dx, tester.getCenter(edge).dx);
-      final gesture = await beginPull(tester, 220);
-      final start = tester.getRect(
-        find.byKey(const ValueKey('profile-header')),
-      );
-      final startAvatar = tester.getRect(
-        find.byKey(const ValueKey('profile-identity-avatar')),
-      );
-      await gesture.up();
-      await tester.pump();
-      await tester.pump();
-      final region = find.byKey(const ValueKey('profile-expansion-region'));
-      for (var i = 0; i < 20 && region.evaluate().isEmpty; i++) {
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-      expect(tester.getRect(region).height, closeTo(start.height, 3));
-      await tester.pump(const Duration(milliseconds: 140));
-      final middle = tester.getRect(region);
-      expect(middle.height, greaterThan(start.height));
-      expect(middle.height, lessThan(844));
-      final flyingAvatar = tester.getRect(
-        find.byKey(const ValueKey('profile-avatar-flight')),
-      );
-      expect(flyingAvatar.center.dx, greaterThan(startAvatar.center.dx));
-      expect(flyingAvatar.width, lessThan(startAvatar.width));
-      expect(find.byKey(const ValueKey('profile-details-name')), findsNothing);
-      await capture(tester, 'profile-expansion-middle');
-      await tester.pumpAndSettle();
-      final finalAvatar = tester.getRect(
-        find.byKey(const ValueKey('profile-details-avatar')),
-      );
-      expect(finalAvatar.center.dx, greaterThan(flyingAvatar.center.dx));
-      expect(finalAvatar.width, lessThan(flyingAvatar.width));
-      expect(find.text('IP属地：广东省'), findsOneWidget);
-      expect(tester.getRect(region).height, 844);
-      await tester.tap(find.byKey(const ValueKey('profile-details-close')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 140));
-      expect(tester.getRect(region).height, lessThan(844));
-      expect(tester.getRect(region).height, greaterThan(start.height));
-      final returningAvatar = tester.getRect(
-        find.byKey(const ValueKey('profile-avatar-flight')),
-      );
-      expect(returningAvatar.width, greaterThan(finalAvatar.width));
-      expect(returningAvatar.width, lessThan(startAvatar.width));
-      await tester.pumpAndSettle();
-      expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(handle, findsOneWidget);
-      expect(position(tester).pixels, 0);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('Details opened from About grow continuously and shrink back', (
+    tester,
+  ) async {
+    await mount(tester, gateway());
+    final handle = find.byKey(const ValueKey('profile-drag-handle'));
+    expect(handle, findsNothing);
+    final start = tester.getRect(find.byKey(const ValueKey('profile-header')));
+    final startAvatar = tester.getRect(
+      find.byKey(const ValueKey('profile-identity-avatar')),
+    );
+    await tester.tap(find.byKey(const ValueKey('profile-about-summary')));
+    await tester.pump();
+    await tester.pump();
+    final region = find.byKey(const ValueKey('profile-expansion-region'));
+    for (var i = 0; i < 20 && region.evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(tester.getRect(region).height, closeTo(start.height, 3));
+    await tester.pump(const Duration(milliseconds: 140));
+    final middle = tester.getRect(region);
+    expect(middle.height, greaterThan(start.height));
+    expect(middle.height, lessThan(844));
+    final flyingAvatar = tester.getRect(
+      find.byKey(const ValueKey('profile-avatar-flight')),
+    );
+    expect(flyingAvatar.center.dx, greaterThan(startAvatar.center.dx));
+    expect(flyingAvatar.width, lessThan(startAvatar.width));
+    expect(find.byKey(const ValueKey('profile-details-name')), findsNothing);
+    await capture(tester, 'profile-expansion-middle');
+    await tester.pumpAndSettle();
+    final finalAvatar = tester.getRect(
+      find.byKey(const ValueKey('profile-details-avatar')),
+    );
+    expect(finalAvatar.center.dx, greaterThan(flyingAvatar.center.dx));
+    expect(finalAvatar.width, lessThan(flyingAvatar.width));
+    expect(find.text('IP属地：广东省'), findsOneWidget);
+    expect(tester.getRect(region).height, 844);
+    await tester.tap(find.byKey(const ValueKey('profile-details-close')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 140));
+    expect(tester.getRect(region).height, lessThan(844));
+    expect(tester.getRect(region).height, greaterThan(start.height));
+    final returningAvatar = tester.getRect(
+      find.byKey(const ValueKey('profile-avatar-flight')),
+    );
+    expect(returningAvatar.width, greaterThan(finalAvatar.width));
+    expect(returningAvatar.width, lessThan(startAvatar.width));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfileDetailsPage), findsNothing);
+    expect(handle, findsNothing);
+    expect(position(tester).pixels, 0);
+    expect(tester.takeException(), isNull);
+  });
 
-  testWidgets(
-    'Pulled details return to the actual resting header without a jump',
-    (tester) async {
-      await mount(tester, gateway(), realApp: true);
-      final source = find.descendant(
-        of: find.byType(ProfilePage, skipOffstage: false),
-        matching: find.byKey(
-          const ValueKey('profile-header'),
-          skipOffstage: false,
-        ),
-      );
-      final resting = tester.getRect(source);
-      final gesture = await beginPull(tester, 220);
-      expect(tester.getRect(source).height, greaterThan(resting.height + 30));
-      await gesture.up();
-      await tester.pumpAndSettle();
-      expect(find.text('IP属地：广东省'), findsOneWidget);
-      expect(tester.getRect(source).height, closeTo(resting.height, .1));
-      await tester.tap(find.byKey(const ValueKey('profile-details-close')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 316));
-      final returning = tester.getRect(
-        find.byKey(const ValueKey('profile-expansion-region')),
-      );
-      expect(returning.bottom, closeTo(tester.getRect(source).bottom, 2));
-      await tester.pumpAndSettle();
-      expect(tester.getRect(source).height, closeTo(resting.height, .1));
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('About details return to the resting header without a jump', (
+    tester,
+  ) async {
+    await mount(tester, gateway(), realApp: true);
+    final source = find.descendant(
+      of: find.byType(ProfilePage, skipOffstage: false),
+      matching: find.byKey(
+        const ValueKey('profile-header'),
+        skipOffstage: false,
+      ),
+    );
+    final resting = tester.getRect(source);
+    await tester.tap(find.byKey(const ValueKey('profile-about-summary')));
+    await tester.pumpAndSettle();
+    expect(find.text('IP属地：广东省'), findsOneWidget);
+    expect(tester.getRect(source).height, closeTo(resting.height, .1));
+    await tester.tap(find.byKey(const ValueKey('profile-details-close')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 316));
+    final returning = tester.getRect(
+      find.byKey(const ValueKey('profile-expansion-region')),
+    );
+    expect(returning.bottom, closeTo(tester.getRect(source).bottom, 2));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(source).height, closeTo(resting.height, .1));
+    expect(tester.takeException(), isNull);
+  });
 
-  for (final scenario in ['resting', 'scrolled', 'pulled', 'app']) {
+  for (final scenario in ['resting', 'scrolled', 'app']) {
     testWidgets(
       'Photo crop and brightness stay continuous through $scenario details',
       (tester) async {
@@ -424,9 +423,6 @@ void main() {
           position(tester).jumpTo(60);
           await tester.pumpAndSettle();
         }
-        final gesture = scenario == 'pulled'
-            ? await beginPull(tester, 220)
-            : null;
         final header = tester.getRect(
           find.byKey(const ValueKey('profile-header')),
         );
@@ -474,11 +470,7 @@ void main() {
           }
         }
         photo.dispose();
-        if (gesture != null) {
-          await gesture.up();
-        } else {
-          await tester.tap(find.byKey(const ValueKey('profile-about-summary')));
-        }
+        await tester.tap(find.byKey(const ValueKey('profile-about-summary')));
         await tester.pump();
         final region = find.byKey(const ValueKey('profile-expansion-region'));
         for (var i = 0; i < 20 && region.evaluate().isEmpty; i++) {
@@ -525,52 +517,26 @@ void main() {
   }
 
   testWidgets(
-    'A deep pull reveals real details once; close and back preserve the profile',
+    'Deep pulls leave the header unchanged and never open full-screen details',
     (tester) async {
       final api = gateway();
-      final store = await mount(tester, api);
-      final original = tester.getRect(
-        find.byKey(const ValueKey('profile-curved-edge')),
-      );
+      await mount(tester, api);
+      final header = find.byKey(const ValueKey('profile-header'));
+      final resting = tester.getRect(header);
+      expect(find.byKey(const ValueKey('profile-drag-handle')), findsNothing);
+      expect(find.byKey(const ValueKey('profile-curved-edge')), findsNothing);
       final gesture = await beginPull(tester, 220);
-      expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(
-        tester.getTopLeft(find.byKey(const ValueKey('profile-curved-edge'))).dy,
-        greaterThan(original.top),
-      );
+      expect(tester.getRect(header), resting);
       await gesture.up();
       await tester.pumpAndSettle();
-      expect(find.byType(ProfileDetailsPage), findsOneWidget);
-      expect(find.text(store.name), findsOneWidget);
-      expect(find.text('用户 ID：${store.publicID}'), findsOneWidget);
-      expect(find.text(bio), findsOneWidget);
-      expect(api.calls.where((call) => call == 'GetMe'), hasLength(1));
-      expect(
-        api.calls.where(
-          (call) => call.startsWith('Post') || call.startsWith('Patch'),
-        ),
-        isEmpty,
-      );
-      await capture(tester, 'profile-pull-details');
-      await tester.tap(find.byKey(const ValueKey('profile-details-close')));
-      await tester.pumpAndSettle();
       expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(position(tester).pixels, 0);
-      expect(
-        tester.getRect(find.byKey(const ValueKey('profile-curved-edge'))),
-        original,
-      );
-      await pull(tester, 220);
-      expect(find.byType(ProfileDetailsPage), findsOneWidget);
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(position(tester).pixels, 0);
+      expect(tester.getRect(header), resting);
+      expect(api.calls, isEmpty);
       expect(tester.takeException(), isNull);
     },
   );
 
-  for (final scenario in ['tiny', 'refresh', 'reverse', 'cancel', 'scrolled']) {
+  for (final scenario in ['tiny', 'reverse', 'cancel', 'scrolled']) {
     testWidgets('Pull boundaries keep normal behavior ($scenario)', (
       tester,
     ) async {
@@ -582,7 +548,6 @@ void main() {
       }
       final gesture = await beginPull(tester, switch (scenario) {
         'tiny' => 35,
-        'refresh' => 90,
         _ => 220,
       });
       if (scenario == 'reverse') {
@@ -596,62 +561,41 @@ void main() {
       }
       await tester.pumpAndSettle();
       expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(
-        api.calls.where((call) => call == 'GetMe'),
-        hasLength(scenario == 'refresh' ? 1 : 0),
-      );
+      expect(api.calls.where((call) => call == 'GetMe'), isEmpty);
       expect(tester.takeException(), isNull);
     });
   }
 
   for (final dark in [false, true]) {
     testWidgets(
-      'Rounded corners reveal one continuous photo background (dark=$dark)',
+      'Profile tabs follow the header without a drag strip, dark=$dark',
       (tester) async {
         await mount(tester, gateway(), dark: dark);
-        final edge = tester.getRect(
-          find.byKey(const ValueKey('profile-curved-edge')),
+        expect(find.byKey(const ValueKey('profile-drag-handle')), findsNothing);
+        expect(find.byKey(const ValueKey('profile-curved-edge')), findsNothing);
+        final header = tester.getRect(
+          find.byKey(const ValueKey('profile-header')),
         );
-        final image = await render(tester);
-        final bytes = await tester.runAsync(
-          () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
-        );
-        int channel(int x, int y, int c) =>
-            bytes!.getUint8((y * image.width + x) * 4 + c);
-        final top = (edge.top * 2).round();
-        for (final x in [1, image.width - 2]) {
-          for (var c = 0; c < 3; c++) {
-            expect(
-              (channel(x, top - 2, c) - channel(x, top + 2, c)).abs(),
-              lessThan(12),
-            );
-          }
-        }
-        image.dispose();
-        await capture(tester, 'profile-corners-${dark ? 'dark' : 'light'}');
+        final tabs = tester.getRect(find.byType(ProfileContentTabs));
+        expect(tabs.top, closeTo(header.bottom, 1));
         expect(tester.takeException(), isNull);
       },
     );
   }
 
-  testWidgets(
-    'A failed short refresh can retry without losing the stored profile',
-    (tester) async {
-      final api = gateway();
-      final store = await mount(tester, api);
-      api.failing = 'GetMe';
-      await pull(tester, 90);
-      expect(store.errors['profile'], isNotNull);
-      expect(find.text(store.name), findsOneWidget);
-      expect(find.byType(ProfileDetailsPage), findsNothing);
-      api.failing = null;
-      await pull(tester, 220);
-      expect(store.errors['profile'], isNull);
-      expect(find.byType(ProfileDetailsPage), findsOneWidget);
-      expect(api.calls.where((call) => call == 'GetMe'), hasLength(2));
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('A normal pull neither opens details nor refreshes the profile', (
+    tester,
+  ) async {
+    final api = gateway();
+    final store = await mount(tester, api);
+    api.failing = 'GetMe';
+    await pull(tester, 110);
+    expect(find.byType(ProfileDetailsPage), findsNothing);
+    expect(find.text(store.name), findsOneWidget);
+    expect(api.calls, isEmpty);
+    expect(store.errors['profile'], isNull);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'Disposing during a deep pull cannot refresh or open a late route',
@@ -681,7 +625,7 @@ void main() {
           dark: true,
           reduced: true,
         );
-        await pull(tester, 220);
+        await openDetails(tester);
         expect(find.byType(ProfileDetailsPage), findsOneWidget);
         final route = ModalRoute.of(
           tester.element(find.byType(ProfileDetailsPage)),
@@ -717,7 +661,7 @@ void main() {
     (tester) async {
       final api = gateway();
       final store = await mount(tester, api);
-      await pull(tester, 220);
+      await openDetails(tester);
       await tester.tap(find.byKey(const ValueKey('profile-details-edit')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('profile-edit-settings')));
@@ -749,7 +693,7 @@ void main() {
     (tester) async {
       final api = gateway();
       final store = await mount(tester, api, realApp: true);
-      await pull(tester, 220);
+      await openDetails(tester);
       expect(find.byType(ProfileDetailsPage), findsOneWidget);
       await store.endSession(remote: false);
       await tester.pumpAndSettle();

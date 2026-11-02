@@ -63,6 +63,87 @@ void main() {
     }
   });
 
+  test('Projects that fit one page keep title description and achievements together', () {
+    final draft = decodeResume({
+      'content': {
+        'personal_info': {'full_name': '分页测试'},
+        'work_experiences': [
+          {
+            'company': '前置工作',
+            'description': List.filled(28, '前置工作正文').join('\n'),
+          },
+        ],
+        'projects': [
+          {
+            'name': '完整项目',
+            'role': '开发',
+            'start_date': '2022-03',
+            'end_date': '2023-12',
+            'description': List.filled(5, '项目业务场景与建设目标').join('\n'),
+            'achievements': List.filled(7, '项目成果正文').join('\n'),
+          },
+        ],
+      },
+    });
+    final document = ResumeDocument(draft);
+    addTearDown(document.dispose);
+    final pages = <int>{};
+    for (var i = 0; i < document.pages.length; i++) {
+      for (final ink in document.pages[i].ink) {
+        if (ink.fieldPath?.startsWith('projects.0.') ?? false) pages.add(i);
+      }
+    }
+    expect(pages, hasLength(1));
+    expect(pages.single, greaterThan(0));
+    expect(
+      document.pages[pages.single].ink.any(
+        (ink) => ink.text.text!.toPlainText() == '项目经历',
+      ),
+      isTrue,
+    );
+    expect(document.pages[pages.single].entryDividers, isEmpty);
+  });
+
+  test(
+    'Projects taller than a page continue without losing text or overflowing',
+    () {
+      final body = List.generate(160, (i) => '第$i行超长项目正文').join('\n');
+      final document = ResumeDocument(
+        decodeResume({
+          'content': {
+            'personal_info': {'full_name': '分页测试'},
+            'projects': [
+              {'name': '超长项目', 'description': body, 'achievements': '结尾成果'},
+            ],
+          },
+        }),
+      );
+      addTearDown(document.dispose);
+      expect(document.pages.length, greaterThan(2));
+      final runs = document.pages
+          .expand((p) => p.ink)
+          .where((ink) => ink.fieldPath == 'projects.0.description')
+          .toList();
+      expect(runs.first.sourceTop, 0);
+      for (var i = 1; i < runs.length; i++) {
+        expect(
+          runs[i].sourceTop,
+          closeTo(runs[i - 1].sourceTop + runs[i - 1].height, .01),
+        );
+      }
+      expect(
+        runs.fold<double>(0, (sum, ink) => sum + ink.height),
+        closeTo(runs.first.text.height, .1),
+      );
+      expect(
+        document.pages.last.ink.any(
+          (ink) => ink.text.text!.toPlainText() == '结尾成果',
+        ),
+        isTrue,
+      );
+    },
+  );
+
   test('Stored photo keeps its A4 slot while its URL is being refreshed', () {
     final draft = decodeResume({
       'id': 1,
@@ -174,9 +255,9 @@ void main() {
       addTearDown(document.dispose);
       expect(document.sectionTitles, [
         '求职期望',
-        '教育经历',
         '工作经历',
         '项目经历',
+        '教育经历',
         '技能',
         '证书',
       ]);
@@ -186,14 +267,14 @@ void main() {
           .join('\n');
       for (final text in [
         '测试大学',
-        '2014.09 - 2018.06',
+        '2014/09 ~ 2018/06',
         '至今',
         '• 富文本贡献',
         '项目职责',
         '项目成果',
         'Flutter',
         '测试证书',
-        '2024.01',
+        '2024/01',
       ]) {
         expect(painted, contains(text));
       }
@@ -222,6 +303,6 @@ void main() {
     );
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
-    expect(find.text('编辑简历'), findsOneWidget);
+    expect(find.byType(ResumeEditor), findsOneWidget);
   });
 }

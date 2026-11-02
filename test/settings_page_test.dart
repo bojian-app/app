@@ -132,7 +132,7 @@ void main() {
 
   for (final localModel in ['', '一加 12']) {
     testWidgets(
-      'Security uses current device name with session fallback ($localModel)',
+      'Security uses server names instead of local models ($localModel)',
       (tester) async {
         final api = SettingsGateway();
         api.documents['GetMeSessions'] = {
@@ -140,14 +140,16 @@ void main() {
             {
               'id': 1,
               'platform': 'ANDROID',
-              'device_model': 'OPPO PJD110',
+              'device_model': 'PJD110',
+              'device_name': '一加 12',
               'os_version': '15',
               'is_current': true,
             },
             {
               'id': 2,
               'platform': 'IOS',
-              'device_model': 'Apple iPhone (iPhone17,1)',
+              'device_model': 'iPhone17,1',
+              'device_name': 'iPhone 16 Pro',
               'os_version': '18.2',
               'is_current': false,
             },
@@ -166,15 +168,10 @@ void main() {
           ),
         );
         await tapText(tester, '账号安全');
-        expect(
-          find.text(localModel.isEmpty ? 'OPPO PJD110' : localModel),
-          findsOneWidget,
-        );
-        if (localModel.isNotEmpty) {
-          expect(find.text('OPPO PJD110'), findsNothing);
-        }
+        expect(find.text('一加 12'), findsOneWidget);
+        expect(find.text('PJD110'), findsNothing);
         expect(find.text('系统：Android 15'), findsOneWidget);
-        expect(find.text('Apple iPhone (iPhone17,1)'), findsOneWidget);
+        expect(find.text('iPhone 16 Pro'), findsOneWidget);
         expect(find.text('系统：iOS 18.2'), findsOneWidget);
       },
     );

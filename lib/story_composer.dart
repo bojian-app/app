@@ -1,3 +1,4 @@
+import 'app_page_bar.dart';
 import 'content_moderation.dart';
 
 import 'dart:convert';
@@ -223,8 +224,7 @@ class _StoryComposerState extends State<StoryComposer> {
       },
       child: Scaffold(
         backgroundColor: context.colors.surface,
-        appBar: AppBar(
-          backgroundColor: context.colors.surface,
+        appBar: AppPageBar(
           leading: IconButton(
             tooltip: '关闭',
             onPressed: publishing ? null : exit,

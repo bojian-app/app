@@ -24,6 +24,7 @@ target 'Runner' do
   use_frameworks! :linkage => :static
   pod 'DouyinOpenSDK', '4.2.5'
   pod 'BojianBaiduFaceSDK', :path => 'BaiduFace'
+  pod 'BojianPangleAds', :path => 'Pangle'
   # Plugins already integrated with Swift Package Manager are skipped by this helper.
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

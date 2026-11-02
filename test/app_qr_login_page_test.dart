@@ -11,6 +11,13 @@ import 'support/fake_gateway.dart';
 import 'app_qr_login_test.dart' show QRGateway, qrContent, qrResponse;
 
 void main() {
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    // Keep flow tests deterministic while the production scan band animates.
+    binding.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(binding.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  });
   for (final expiry in [
     'scan response',
     'scan error',

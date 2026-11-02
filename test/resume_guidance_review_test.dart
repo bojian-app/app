@@ -65,6 +65,83 @@ FakeGateway gateway() {
 
 void main() {
   testWidgets(
+    'Inline popular comment follows persisted likes from any comment in its region',
+    (tester) async {
+      final api = gateway();
+      final first = {
+        ...advice(7, 2, comment: '补充指标'),
+        'like_count': 1,
+        'liked': false,
+      };
+      final second = {
+        ...advice(9, 3, comment: '突出职责'),
+        'like_count': 1,
+        'liked': false,
+      };
+      api.documents['GetArticlesIdGuidanceAnnotations'] = {
+        'items': [first, second],
+      };
+      api.documents['PutArticlesIdGuidanceAnnotationsAnnotationIdLike'] = {
+        'id': 9,
+        'like_count': 2,
+        'liked': true,
+      };
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: ResumeGuidanceView(
+            store: store,
+            id: 20,
+            initialData: owner(),
+            fromNotification: true,
+            reviewerKey: 'user:2',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('热门评论：补充指标'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w.key.toString().contains('comment-badge-'),
+        ),
+        findsNothing,
+      );
+      await tester.tap(find.text('热门评论：补充指标'));
+      await tester.pumpAndSettle();
+      api.documents['GetArticlesIdGuidanceAnnotations'] = {
+        'items': [
+          first,
+          {...second, 'like_count': 2, 'liked': true},
+        ],
+      };
+      await tester.tap(find.byKey(const ValueKey('region-comment-like-9')));
+      await tester.pumpAndSettle();
+      expect(
+        api.calls,
+        contains('PutArticlesIdGuidanceAnnotationsAnnotationIdLike'),
+      );
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(find.text('热门评论：突出职责'), findsOneWidget);
+      api.documents['DeleteArticlesIdGuidanceAnnotationsAnnotationIdLike'] = {
+        'id': 9,
+        'like_count': 1,
+        'liked': false,
+      };
+      await tester.tap(find.byKey(const ValueKey('hot-comment-like-9')));
+      await tester.pumpAndSettle();
+      expect(
+        api.calls,
+        contains('DeleteArticlesIdGuidanceAnnotationsAnnotationIdLike'),
+      );
+      expect(find.text('热门评论：补充指标'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'Closing comments preserves review state and replies update only comment counts',
     (tester) async {
       final api = gateway();
@@ -104,7 +181,7 @@ void main() {
       final offset = state.pageScroll.offset;
       Finder badge() => find.byKey(
         ValueKey(
-          'comment-badge-${tester.widget<ResumeDocumentView>(find.byType(ResumeDocumentView)).reviewHighlights.singleWhere((mark) => mark.commentCount > 0).key}',
+          'hot-comment-${tester.widget<ResumeDocumentView>(find.byType(ResumeDocumentView)).reviewHighlights.singleWhere((mark) => mark.commentCount > 0).key}',
         ),
       );
       await tester.tap(badge());
@@ -130,10 +207,16 @@ void main() {
           {...advice(9, 1, comment: '已补充'), 'parent_id': 7},
         ],
       };
+      api.documents['PostArticlesIdGuidanceAnnotations'] = {
+        'id': 9,
+        'moderation_status': 'QUEUED',
+      };
       final resumeReads = api.calls
           .where((call) => call == 'GetResumesId')
           .length;
       await tester.tap(find.text('发送'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 3));
       await tester.pumpAndSettle();
       expect(find.text('评论（2）'), findsOneWidget);
       final callsAfterReply = List<String>.from(api.calls);
@@ -348,9 +431,7 @@ void main() {
         image.dispose();
       });
       expect(find.text('可以补充具体指标'), findsNothing);
-      await tester.tap(
-        find.byKey(ValueKey('comment-badge-${commentMark.key}')),
-      );
+      await tester.tap(find.byKey(ValueKey('hot-comment-${commentMark.key}')));
       await tester.pumpAndSettle();
       expect(find.text('可以补充具体指标'), findsOneWidget);
       expect(find.text('另一位用户的建议'), findsNothing);
@@ -366,7 +447,7 @@ void main() {
           .map((v) => v.text.text!.toPlainText())
           .join('\n');
       expect(content, contains('性能优化'));
-      expect(document.pages.expand((p) => p.reviewNotes).length, 1);
+      expect(document.pages.expand((p) => p.reviewNotes).length, 3);
       expect(find.byType(GuidanceInlineNote), findsOneWidget);
 
       final replacementNote = find.widgetWithText(
@@ -404,6 +485,7 @@ void main() {
     data['suggestions'] = [
       advice(99, 2, selected: '', comment: '补充项目指标')..remove('selected_text'),
     ];
+    api.documents['GetArticlesIdGuidance'] = data;
     final store = await testStore(authenticated: true, api: api);
     addTearDown(store.dispose);
     await tester.pumpWidget(
@@ -431,12 +513,9 @@ void main() {
     ).expand((page) => page).toList();
     expect(marks, isNotEmpty);
     expect(marks.every((mark) => mark.waveRects.isNotEmpty), isTrue);
-    expect(doc.pages.expand((page) => page.reviewNotes), isEmpty);
+    expect(doc.pages.expand((page) => page.reviewNotes).length, 1);
     expect(find.text('补充项目指标'), findsNothing);
-    final comment = view.reviewHighlights.singleWhere(
-      (v) => v.commentCount > 0,
-    );
-    await tester.tap(find.byKey(ValueKey('comment-badge-${comment.key}')));
+    await tester.tap(find.text('热门评论：补充项目指标'));
     await tester.pumpAndSettle();
     expect(find.text('补充项目指标'), findsOneWidget);
     expect(tester.takeException(), isNull);

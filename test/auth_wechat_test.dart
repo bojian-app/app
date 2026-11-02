@@ -54,7 +54,13 @@ void main() {
   ) async {
     final authorizer = _Authorizer();
     final store = await testStore(weChatAuthorizer: authorizer);
-    await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+    await tester.pumpWidget(
+      MyApp(
+        startupAnimationEnabled: false,
+        bannerAdsEnabled: false,
+        store: store,
+      ),
+    );
     await tester.pumpAndSettle();
     final button = find.byKey(const ValueKey('auth-wechat'));
     await tester.ensureVisible(button);
@@ -78,7 +84,13 @@ void main() {
         gateway.failure = const ApiFailure('微信授权失败，请重新登录');
       }
       final store = await testStore(api: gateway, weChatAuthorizer: authorizer);
-      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+      await tester.pumpWidget(
+        MyApp(
+          startupAnimationEnabled: false,
+          bannerAdsEnabled: false,
+          store: store,
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const ValueKey('auth-consent')));
       await tester.tap(find.byKey(const ValueKey('auth-consent')));
@@ -90,7 +102,7 @@ void main() {
       await tester.tap(button);
       await tester.pump();
       expect(authorizer.calls, 1);
-      expect(tester.widget<FilledButton>(button).onPressed, isNull);
+      expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
       authorizer.result.complete(result == 'cancel' ? null : 'wx-code');
       await tester.pumpAndSettle();
       expect(store.isAuthenticated, result == 'success');
@@ -117,15 +129,13 @@ void main() {
           expect(
             tester.getTopLeft(feedback).dy,
             greaterThan(
-              tester
-                  .getBottomLeft(find.byKey(const ValueKey('auth-douyin')))
-                  .dy,
+              tester.getBottomLeft(find.byKey(const ValueKey('auth-code'))).dy,
             ),
           );
         }
-        expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
+        expect(tester.widget<ButtonStyleButton>(button).onPressed, isNotNull);
         expect(find.byKey(const ValueKey('auth-wechat')), findsOneWidget);
-        expect(find.byKey(const ValueKey('auth-submit')), findsNothing);
+        expect(find.byKey(const ValueKey('auth-submit')), findsOneWidget);
       }
       expect(tester.takeException(), isNull);
     });
@@ -158,7 +168,7 @@ void main() {
   for (final size in [const Size(320, 400), const Size(844, 360)]) {
     for (final brightness in Brightness.values) {
       testWidgets(
-        'Login error is readable below buttons at $size/$brightness',
+        'Login error is readable below phone fields at $size/$brightness',
         (tester) async {
           tester.view.physicalSize = size;
           tester.view.devicePixelRatio = 1;
@@ -177,7 +187,13 @@ void main() {
             api: gateway,
             weChatAuthorizer: authorizer,
           );
-          await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+          await tester.pumpWidget(
+            MyApp(
+              startupAnimationEnabled: false,
+              bannerAdsEnabled: false,
+              store: store,
+            ),
+          );
           await tester.pumpAndSettle();
           final consent = find.byKey(const ValueKey('auth-consent'));
           await tester.ensureVisible(consent);
@@ -192,9 +208,7 @@ void main() {
           expect(
             tester.getTopLeft(feedback).dy,
             greaterThan(
-              tester
-                  .getBottomLeft(find.byKey(const ValueKey('auth-douyin')))
-                  .dy,
+              tester.getBottomLeft(find.byKey(const ValueKey('auth-code'))).dy,
             ),
           );
           expect(

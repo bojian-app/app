@@ -1,4 +1,5 @@
 import 'app_bottom_navigation.dart';
+import 'route_transition_snapshot.dart';
 
 import 'package:flutter/material.dart';
 
@@ -78,42 +79,44 @@ class AppShellState extends State<AppShell>
     _ => ProfilePage(store: widget.store),
   };
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      top: false,
-      bottom: false,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 680),
-          child: Stack(
-            clipBehavior: Clip.hardEdge,
-            fit: StackFit.expand,
-            children: [
-              // Keep every page in the same keyed tree, painting the new page last.
-              for (final index in [
-                ...visited.where((index) => index != selected),
-                selected,
-              ])
-                _RetainedTab(
-                  key: ValueKey(index),
-                  store: widget.store,
-                  index: index,
-                  active: selected == index,
-                  visible: selected == index || previous == index,
-                  motion: selected == index
-                      ? progress
-                      : const AlwaysStoppedAnimation(1.0),
-                  direction: direction,
-                  builder: () => page(index),
-                ),
-            ],
+  Widget build(BuildContext context) => RouteTransitionSnapshot(
+    child: Scaffold(
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: Stack(
+              clipBehavior: Clip.hardEdge,
+              fit: StackFit.expand,
+              children: [
+                // Keep every page in the same keyed tree, painting the new page last.
+                for (final index in [
+                  ...visited.where((index) => index != selected),
+                  selected,
+                ])
+                  _RetainedTab(
+                    key: ValueKey(index),
+                    store: widget.store,
+                    index: index,
+                    active: selected == index,
+                    visible: selected == index || previous == index,
+                    motion: selected == index
+                        ? progress
+                        : const AlwaysStoppedAnimation(1.0),
+                    direction: direction,
+                    builder: () => page(index),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
+      bottomNavigationBar: MediaQuery.viewInsetsOf(context).bottom > 0
+          ? null
+          : AppBottomNavigation(selectedIndex: selected, onSelected: select),
     ),
-    bottomNavigationBar: MediaQuery.viewInsetsOf(context).bottom > 0
-        ? null
-        : AppBottomNavigation(selectedIndex: selected, onSelected: select),
   );
 }
 

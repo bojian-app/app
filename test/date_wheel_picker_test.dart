@@ -156,11 +156,19 @@ void main() {
         final picker = tester.widget<CupertinoDatePicker>(
           find.byType(CupertinoDatePicker),
         );
-        expect(picker.mode, CupertinoDatePickerMode.monthYear);
+        expect(
+          picker.mode,
+          section == 3
+              ? CupertinoDatePickerMode.date
+              : CupertinoDatePickerMode.monthYear,
+        );
         picker.onDateTimeChanged(DateTime(2023, 7));
         await tester.tap(find.text('确定'));
         await tester.pumpAndSettle();
-        expect(tester.widget<TextFormField>(field).controller!.text, '2023-07');
+        expect(
+          tester.widget<TextFormField>(field).controller!.text,
+          section == 3 ? '2023-07-01' : '2023-07',
+        );
         await saveResumeSection(tester);
       }
       expect(tester.takeException(), isNull);

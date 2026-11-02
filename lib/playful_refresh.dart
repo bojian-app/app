@@ -6,6 +6,27 @@ import 'package:flutter/services.dart';
 
 import 'design.dart';
 
+/// Lets a parent page reserve the downward gesture for its own interaction.
+class PlayfulRefreshScope extends InheritedWidget {
+  const PlayfulRefreshScope({
+    super.key,
+    required this.enabled,
+    required super.child,
+  });
+
+  final bool enabled;
+
+  static bool isEnabled(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<PlayfulRefreshScope>()
+          ?.enabled ??
+      true;
+
+  @override
+  bool updateShouldNotify(PlayfulRefreshScope oldWidget) =>
+      enabled != oldWidget.enabled;
+}
+
 /// Keeps Flutter's edge detection and refresh gestures, with a small paper flight.
 class PlayfulRefresh extends StatefulWidget {
   const PlayfulRefresh({
@@ -186,56 +207,65 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
   };
 
   @override
-  Widget build(BuildContext context) => Listener(
-    behavior: HitTestBehavior.translucent,
-    onPointerDown: (event) => _pointer ??= event.pointer,
-    onPointerUp: _endPointer,
-    onPointerCancel: _endPointer,
-    child: NotificationListener<ScrollNotification>(
-      onNotification: _scroll,
-      child: RefreshIndicator.noSpinner(
-        onRefresh: _refresh,
-        onStatusChange: _change,
-        semanticsLabel: '刷新内容',
-        notificationPredicate: _accept,
-        child: Stack(
-          fit: StackFit.passthrough,
-          clipBehavior: Clip.hardEdge,
-          children: [
-            Flow(
-              delegate: _RefreshContentFlow(_reveal),
-              children: [RepaintBoundary(child: widget.child)],
-            ),
-            if (_visible)
-              Positioned(
-                top: 8,
-                left: 0,
-                right: 0,
-                child: IgnorePointer(
-                  child: Center(
-                    child: RepaintBoundary(
-                      child: FadeTransition(
-                        opacity: _reveal,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0, -.3),
-                            end: Offset.zero,
-                          ).animate(_reveal),
-                          child: Semantics(
-                            liveRegion: _status == RefreshIndicatorStatus.done,
-                            label: _label,
-                            child: ExcludeSemantics(
-                              child: CustomPaint(
-                                size: const Size(120, 46),
-                                painter: _PaperFlight(
-                                  _flight,
-                                  _reveal,
-                                  _landing,
-                                  flying:
-                                      _status == RefreshIndicatorStatus.refresh,
-                                  done: _status == RefreshIndicatorStatus.done,
-                                  failed: _failed,
-                                  reduceMotion: _reduceMotion,
+  Widget build(BuildContext context) => !PlayfulRefreshScope.isEnabled(context)
+      ? widget.child
+      : Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (event) => _pointer ??= event.pointer,
+          onPointerUp: _endPointer,
+          onPointerCancel: _endPointer,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _scroll,
+            child: RefreshIndicator.noSpinner(
+              onRefresh: _refresh,
+              onStatusChange: _change,
+              semanticsLabel: '刷新内容',
+              notificationPredicate: _accept,
+              child: Stack(
+                fit: StackFit.passthrough,
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  Flow(
+                    delegate: _RefreshContentFlow(_reveal),
+                    children: [RepaintBoundary(child: widget.child)],
+                  ),
+                  if (_visible)
+                    Positioned(
+                      top: 8,
+                      left: 0,
+                      right: 0,
+                      child: IgnorePointer(
+                        child: Center(
+                          child: RepaintBoundary(
+                            child: FadeTransition(
+                              opacity: _reveal,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, -.3),
+                                  end: Offset.zero,
+                                ).animate(_reveal),
+                                child: Semantics(
+                                  liveRegion:
+                                      _status == RefreshIndicatorStatus.done,
+                                  label: _label,
+                                  child: ExcludeSemantics(
+                                    child: CustomPaint(
+                                      size: const Size(120, 46),
+                                      painter: _PaperFlight(
+                                        _flight,
+                                        _reveal,
+                                        _landing,
+                                        flying:
+                                            _status ==
+                                            RefreshIndicatorStatus.refresh,
+                                        done:
+                                            _status ==
+                                            RefreshIndicatorStatus.done,
+                                        failed: _failed,
+                                        reduceMotion: _reduceMotion,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -243,14 +273,11 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
                         ),
                       ),
                     ),
-                  ),
-                ),
+                ],
               ),
-          ],
-        ),
-      ),
-    ),
-  );
+            ),
+          ),
+        );
 }
 
 /// Moves the cached list display layer in paint, without rebuilding or

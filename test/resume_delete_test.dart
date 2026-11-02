@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_pages.dart';
+import 'package:bojian_mobile/resume_delete.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,7 +43,25 @@ Future<void> showLibrary(WidgetTester tester, AppStore store) async {
     MaterialApp(
       home: AnimatedBuilder(
         animation: store,
-        builder: (_, _) => Scaffold(body: ResumeLibrary(store: store)),
+        builder: (context, _) => Scaffold(
+          body: Column(
+            children: [
+              Expanded(child: ResumeLibrary(store: store)),
+              if (store.resumes.any((resume) => resume.id == 42))
+                TextButton(
+                  key: const ValueKey('resume-delete-42'),
+                  onPressed: () => confirmResumeDeletion(
+                    context,
+                    store: store,
+                    resume: store.resumes.firstWhere(
+                      (resume) => resume.id == 42,
+                    ),
+                  ),
+                  child: const Text('删除测试简历'),
+                ),
+            ],
+          ),
+        ),
       ),
     ),
   );

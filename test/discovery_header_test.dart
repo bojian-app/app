@@ -3,12 +3,80 @@ import 'package:bojian_mobile/discovery.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/profile_identity.dart';
 import 'package:bojian_mobile/messages_button.dart';
+import 'package:bojian_mobile/messages_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
 
 void main() {
+  for (final width in [320.0, 390.0]) {
+    testWidgets('Collapsed discovery keeps menu and messages usable ($width)', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = await testStore(authenticated: true, seeded: true);
+      addTearDown(store.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: Scaffold(body: DiscoveryPage(store: store)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final menu = find.byKey(const ValueKey('discovery-menu'));
+      final messages = find.byKey(const ValueKey('discovery-messages'));
+      final messagesState = tester.state(messages);
+      final scroll = tester
+          .state<NestedScrollViewState>(find.byType(NestedScrollView))
+          .outerController;
+      scroll.jumpTo(scroll.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      for (final button in [menu, messages]) {
+        expect(button.hitTestable(), findsOneWidget);
+        expect(tester.getRect(button).top, greaterThanOrEqualTo(0));
+        expect(tester.getRect(button).right, lessThanOrEqualTo(width));
+      }
+      expect(tester.state(messages), same(messagesState));
+      final tabs = tester.getRect(find.byKey(const ValueKey('discovery-tabs')));
+      expect(tabs.left, greaterThanOrEqualTo(tester.getRect(menu).right));
+      expect(tabs.right, lessThanOrEqualTo(tester.getRect(messages).left));
+      expect(
+        find.byKey(const ValueKey('discovery-search')).hitTestable(),
+        findsNothing,
+      );
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
+      await tester.pumpAndSettle();
+      await tester.tap(messages);
+      await tester.pumpAndSettle();
+      expect(find.byType(MessagesPage), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      final experience = find.text('经验分享');
+      await tester.ensureVisible(experience);
+      await tester.pumpAndSettle();
+      await tester.tap(experience);
+      await tester.pumpAndSettle();
+      expect(
+        DefaultTabController.of(tester.element(find.byType(TabBar))).index,
+        2,
+      );
+      scroll.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('discovery-search')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final config in [
     (size: const Size(320, 720), scale: 1.0, dark: false),
     (size: const Size(390, 720), scale: 1.3, dark: true),
@@ -37,16 +105,10 @@ void main() {
         await tester.pumpAndSettle();
         final search = find.byKey(const ValueKey('discovery-search'));
         final messages = find.byKey(const ValueKey('discovery-messages'));
-        final create = find.byKey(const ValueKey('discovery-create'));
         final initialRect = tester.getRect(search);
-        expect(tester.getSize(create), const Size.square(44));
-        expect(
-          tester.getRect(create).right,
-          lessThanOrEqualTo(tester.getRect(messages).left),
-        );
         expect(
           initialRect.right,
-          lessThanOrEqualTo(tester.getRect(create).left),
+          lessThanOrEqualTo(tester.getRect(messages).left),
         );
         void expectAligned() {
           final searchRect = tester.getRect(search);
@@ -98,7 +160,7 @@ void main() {
   }
 
   testWidgets(
-    'Search stays in discovery; tabs respond to swipes and taps; header keeps the compact publish shortcut',
+    'Search stays in discovery; tabs respond to swipes and taps; header omits the publish shortcut',
     (tester) async {
       tester.view.physicalSize = const Size(320, 720);
       tester.view.devicePixelRatio = 1;
@@ -125,7 +187,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('发现'), findsNothing);
       expect(find.text('开始创作'), findsNothing);
-      expect(find.byKey(const ValueKey('discovery-create')), findsOneWidget);
+      expect(find.byKey(const ValueKey('discovery-create')), findsNothing);
       final search = find.byKey(const ValueKey('discovery-search'));
       await tester.tap(search);
       await tester.enterText(search, '不存在的关键词');
@@ -159,58 +221,6 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       store.dispose();
-    },
-  );
-  testWidgets(
-    'Compact publish opens one editor and returns with search/category intact',
-    (tester) async {
-      final semantics = tester.ensureSemantics();
-      final api = FakeGateway(seeded: true);
-      final store = await testStore(authenticated: true, api: api);
-      addTearDown(store.dispose);
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: appTheme,
-          builder: (context, child) =>
-              TooltipVisibility(visible: false, child: child!),
-          home: Scaffold(body: DiscoveryPage(store: store)),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.bySemanticsLabel('发布动态'), findsOneWidget);
-      final search = find.byKey(const ValueKey('discovery-search'));
-      await tester.enterText(search, '保留关键词');
-      await tester.pumpAndSettle();
-      FocusManager.instance.primaryFocus?.unfocus();
-      await tester.tap(find.text('经验分享'));
-      await tester.pumpAndSettle();
-      final action = tester
-          .widget<IconButton>(find.byKey(const ValueKey('discovery-create')))
-          .onPressed!;
-      action();
-      action();
-      await tester.pumpAndSettle();
-      expect(find.byType(StoryComposer), findsOneWidget);
-      await tester.tap(
-        find.byWidgetPredicate(
-          (widget) => widget is IconButton && widget.tooltip == '关闭',
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(StoryComposer), findsNothing);
-      expect(tester.widget<TextField>(search).controller!.text, '保留关键词');
-      expect(
-        DefaultTabController.of(tester.element(find.byType(TabBar))).index,
-        2,
-      );
-      expect(
-        find.byKey(const ValueKey('discovery-create')).hitTestable(),
-        findsOneWidget,
-      );
-      expect(api.calls, isNot(contains('PostArticles')));
-      expect(api.calls, isNot(contains('PostArticlesIdPublish')));
-      expect(tester.takeException(), isNull);
-      semantics.dispose();
     },
   );
 }

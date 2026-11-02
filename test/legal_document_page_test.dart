@@ -144,8 +144,9 @@ void main() {
       expect(tables.first.plainText, contains('同意后用于身份证识别'));
       expect(tables.first.plainText, contains('相册仅访问您选中的照片'));
       expect(tables.last.headers, ['第三方', '数据与用途', '备注']);
-      expect(tables.last.rows, hasLength(6));
+      expect(tables.last.rows, hasLength(7));
       expect(tables.last.rows.map((row) => row.first), [
+        '穿山甲 GroMore SDK（北京巨量引擎网络技术有限公司）',
         '百度智能云（百度）',
         '七牛对象存储',
         '短信服务提供方【腾讯云/配置网关，待确认】',

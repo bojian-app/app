@@ -84,7 +84,7 @@ void main() {
   });
 
   testWidgets(
-    'Editor saves missing Mac fields and reordered structured entries',
+    'Editor saves structured project edits without reordering entries',
     (tester) async {
       final api = FakeGateway();
       final store = await testStore(authenticated: true, api: api);
@@ -146,11 +146,16 @@ void main() {
       await tester.enterText(project, '修改项目描述');
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pumpAndSettle();
-      final down = find.byTooltip('下移项目经历').first;
-      await Scrollable.ensureVisible(tester.element(down), alignment: .3);
+      expect(find.byTooltip('下移项目经历'), findsNothing);
+      final next = find.byKey(const ValueKey('project-next-0'));
+      await tester.ensureVisible(next);
       await tester.pumpAndSettle();
-      await tester.tap(down);
+      await tester.tap(next);
       await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('resume-projects-1-name')),
+        findsOneWidget,
+      );
       await saveResumeSection(tester);
       await openResumeSection(tester, 1);
       final salary = find.byKey(const ValueKey('resume-salary'));
@@ -159,8 +164,6 @@ void main() {
       await tester.enterText(salary, '25K');
       FocusManager.instance.primaryFocus?.unfocus();
       await saveResumeSection(tester);
-      await tester.tap(find.text('保存'));
-      await tester.pumpAndSettle();
       final content =
           api.documents['GetResumes']!['items'][0]['content'] as Map;
       expect(content['personal_info']['gender'], 'female');
@@ -169,12 +172,12 @@ void main() {
       expect(content['job_expectation']['salary'], '25K');
       expect(content['job_expectation']['industry'], '互联网');
       expect((content['projects'] as List).map((row) => row['name']), [
-        '项目二',
         '项目一',
+        '项目二',
       ]);
-      expect(content['projects'][1]['description'], '修改项目描述');
-      expect(content['projects'][1]['description_rich'], isNull);
-      expect(content['projects'][1]['achievements_rich'], isNotNull);
+      expect(content['projects'][0]['description'], '修改项目描述');
+      expect(content['projects'][0]['description_rich'], isNull);
+      expect(content['projects'][0]['achievements_rich'], isNotNull);
       expect((content['skills'] as List).length, 2);
       expect(content['skills'][1]['name'], 'Dart');
       expect(content['certifications'][0]['issuer'], '机构');

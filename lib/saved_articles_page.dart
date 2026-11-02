@@ -1,3 +1,4 @@
+import 'app_page_bar.dart';
 import 'playful_refresh.dart';
 
 import 'package:flutter/material.dart';
@@ -257,47 +258,9 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                         );
                       }
                       if (visible.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 64),
-                          child: Column(
-                            children: [
-                              Container(
-                                width: 64,
-                                height: 64,
-                                decoration: BoxDecoration(
-                                  color: blue.withValues(alpha: .07),
-                                  borderRadius: BorderRadius.circular(22),
-                                ),
-                                child: Center(
-                                  child: AppIcon(
-                                    AppIcons.bookmark,
-                                    size: 28,
-                                    color: context.colors.accent,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              Text(
-                                query.isEmpty ? '还没有收藏的文章' : '没有找到这篇收藏',
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                query.isEmpty
-                                    ? '文章中的书签按钮，可以把内容留在这里。'
-                                    : '试试其他标题关键词',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  height: 1.7,
-                                  color: context.colors.muted,
-                                ),
-                              ),
-                            ],
-                          ),
+                        return EmptyState(
+                          query.isEmpty ? '还没有收藏的文章' : '没有找到这篇收藏',
+                          query.isEmpty ? '文章中的书签按钮，可以把内容留在这里。' : '试试其他标题关键词',
                         );
                       }
                       if (index == 0) {
@@ -336,7 +299,7 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
     );
     if (widget.embedded) return body;
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppPageBar(
         title: const Text('我的收藏'),
         actions: const [DismissKeyboardButton(), SizedBox(width: 8)],
       ),

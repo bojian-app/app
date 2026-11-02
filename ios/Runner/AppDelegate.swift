@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import DouyinOpenSDK
 import BojianBaiduFaceSDK
+import BojianPangleAds
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -16,6 +17,9 @@ import BojianBaiduFaceSDK
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianBannerAds") {
+      registrar.register(BojianBannerFactory(messenger: registrar.messenger()), withId: "cn.kelance.bojian/banner")
+    }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianDouyinLogin") {
       douyinLogin = BojianDouyinLogin(messenger: registrar.messenger())
     }
@@ -34,7 +38,7 @@ import BojianBaiduFaceSDK
         let identifier = withUnsafePointer(to: &system.machine) {
           $0.withMemoryRebound(to: CChar.self, capacity: 1) { String(cString: $0) }
         }
-        result(["model": "Apple \(UIDevice.current.model) (\(identifier))",
+        result(["model": identifier,
                 "os_version": UIDevice.current.systemVersion])
       }
   }

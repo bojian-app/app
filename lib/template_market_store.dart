@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api/bojian_api.dart';
 import 'app_store.dart';
+import 'template_preview_cache.dart';
 
 enum TemplateMarketFilter {
   all('全部', ''),
@@ -195,6 +196,8 @@ class TemplateMarketStore extends ChangeNotifier {
     if (!valid) throw const ApiFailure('登录状态已变化，请重试');
     if (ownedError != null) throw ApiFailure(ownedError!);
     if (ownedIDs.contains(id)) {
+      final template = owned.firstWhere((row) => integer(row['id']) == id);
+      unawaited(predownloadAcquiredTemplate(store, id, integer(template['version'])));
       if (quotedPrice > 0 && !authored.contains(id)) await syncWallet();
       return;
     }
@@ -241,6 +244,7 @@ class TemplateMarketStore extends ChangeNotifier {
       }
     }
     if (!valid) return;
+    unawaited(predownloadAcquiredTemplate(store, id, integer(detail.data['version'])));
     await loadOwned();
   }
 

@@ -27,6 +27,69 @@ void main() {
         .load();
   });
 
+  test(
+    'Word rules carry template spacing inside the drawing across pages',
+    () async {
+      const rules = [
+        ResumeExportRule(46, 80, 503.28, 1.5, 0xFF245EA8),
+        ResumeExportRule(70, 120, 300, .6, 0xFFDFE5EE),
+        ResumeExportRule(46, 60, 503.28, .6, 0xFFDFE5EE),
+      ];
+      final bytes = await encodeNativeResume(
+        ResumeExportLayout([
+          ResumeExportPage(wordFlow: true, rules: [rules[0], rules[1]]),
+          ResumeExportPage(wordFlow: true, rules: [rules[2]]),
+        ]),
+        'DOCX',
+        regular,
+        bold,
+      );
+      final zip = ZipDecoder().decodeBytes(bytes);
+      final xml = utf8.decode(zip.findFile('word/document.xml')!.content);
+      expect(xml, isNot(contains('<w:pBdr>')));
+      expect(RegExp('<wp:inline ').allMatches(xml), hasLength(3));
+      // Source gaps: 79 - 46 = 33pt, then 119 - 81 = 38pt.
+      // The following page keeps its 13pt gap from the top margin.
+      expect(xml, contains('<wp:extent cx="6391656" cy="444500"/>'));
+      expect(xml, contains('<wp:extent cx="3810000" cy="508000"/>'));
+      expect(xml, contains('<wp:extent cx="6391656" cy="190500"/>'));
+      expect(xml, contains('<w:pageBreakBefore/>'));
+      expect(RegExp('w:before="0" w:after="0"').allMatches(xml), hasLength(3));
+      expect(xml, contains('<w:ind w:left="480" w:right="3586"/>'));
+      final pixels = zip.files
+          .where((file) => file.name.startsWith('word/media/'))
+          .toList();
+      expect(pixels, hasLength(3));
+      for (var index = 0; index < pixels.length; index++) {
+        final codec = await ui.instantiateImageCodec(
+          Uint8List.fromList(pixels[index].content),
+        );
+        final frame = await codec.getNextFrame();
+        final rgba = await frame.image.toByteData();
+        expect(frame.image.width, 1);
+        expect(frame.image.height, [3500, 4000, 1500][index]);
+        final data = rgba!.buffer.asUint8List();
+        final lineCenter = [3400, 3900, 1400][index] * 4;
+        expect(
+          data.sublist(lineCenter, lineCenter + 4),
+          index == 0 ? [36, 94, 168, 255] : [223, 229, 238, 255],
+        );
+        expect(data[3], 0);
+        final firstPaintedRow = [
+          for (var i = 3; i < data.length; i += 4) data[i],
+        ].indexWhere((alpha) => alpha > 0);
+        expect(firstPaintedRow, [3325, 3870, 1370][index]);
+        final paintedRows =
+            [for (var i = 3; i < data.length; i += 4) data[i]]
+                .fold<int>(0, (sum, value) => sum + value) /
+            255;
+        expect(paintedRows, index == 0 ? 150 : 60);
+        frame.image.dispose();
+        codec.dispose();
+      }
+    },
+  );
+
   test('Word mobile branches retain white text, its background and an unclipped line', () async {
     final bytes = await encodeNativeResume(
       const ResumeExportLayout([
@@ -294,11 +357,17 @@ void main() {
     expect(xml, contains('<w:t xml:space="preserve">林知远</w:t>'));
     expect(xml, contains('<w:i/>'));
     expect(xml, contains('<w:u w:val="single"/>'));
+    expect(RegExp('<w:br w:type="page"/>').allMatches(xml).length, 0);
+    expect(xml, isNot(contains('<wps:txbx>')));
+    expect(zip.findFile('word/footer.xml'), isNotNull);
     expect(
-      RegExp('<w:br w:type="page"/>').allMatches(xml).length,
-      layout.pages.length - 1,
+      zip.files.where((f) => f.name.startsWith('word/media/image')).length,
+      1,
     );
-    expect(zip.files.where((f) => f.name.startsWith('word/media/')).length, 1);
+    expect(
+      RegExp('<wp:inline ').allMatches(xml).length,
+      layout.pages.expand((page) => page.rules).length,
+    );
     expect(
       zip.files.any((f) => RegExp(r'page\d+\.png').hasMatch(f.name)),
       isFalse,
@@ -409,28 +478,38 @@ void main() {
     }
   });
 
-  test('A text-only resume has no image parts in editable Word', () async {
-    final doc = ResumeDocument(
-      decodeResume({
-        'content': {
-          'personal_info': {'full_name': 'Text only'},
-        },
-      }),
-    );
-    addTearDown(doc.dispose);
-    final word = await encodeNativeResume(
-      ResumeExportLayout([resumeExportSheet(doc, 0)]),
-      'DOCX',
-      regular,
-      bold,
-    );
-    final zip = ZipDecoder().decodeBytes(word);
-    expect(zip.files.where((f) => f.name.startsWith('word/media/')), isEmpty);
-    expect(
-      utf8.decode(zip.findFile('word/document.xml')!.content),
-      contains('Text only'),
-    );
-  });
+  test(
+    'A text-only resume keeps text editable and only embeds decorative strips',
+    () async {
+      final doc = ResumeDocument(
+        decodeResume({
+          'content': {
+            'personal_info': {'full_name': 'Text only'},
+          },
+        }),
+      );
+      addTearDown(doc.dispose);
+      final word = await encodeNativeResume(
+        ResumeExportLayout([resumeExportSheet(doc, 0)]),
+        'DOCX',
+        regular,
+        bold,
+      );
+      final zip = ZipDecoder().decodeBytes(word);
+      final media = zip.files.where((f) => f.name.startsWith('word/media/'));
+      expect(media, isNotEmpty);
+      for (final file in media) {
+        expect(file.name, startsWith('word/media/rule'));
+        final data = ByteData.sublistView(Uint8List.fromList(file.content));
+        expect(data.getUint32(16), 1);
+        expect(data.getUint32(20), greaterThanOrEqualTo(200));
+      }
+      expect(
+        utf8.decode(zip.findFile('word/document.xml')!.content),
+        contains('Text only'),
+      );
+    },
+  );
   test(
     'Marketplace DOM layout exports native text and inline images',
     () async {

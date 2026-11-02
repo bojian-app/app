@@ -26,6 +26,25 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Match dependency JNI libraries to the architectures compiled by Flutter.
+        // --target-platform alone otherwise leaves other ABIs' SDK libraries in the APK.
+        // ABI splits manage their own filters and must not be combined with these.
+        if (project.findProperty("split-per-abi")?.toString()?.toBoolean() != true) {
+            val abiByTarget = mapOf(
+                "android-arm" to "armeabi-v7a",
+                "android-arm64" to "arm64-v8a",
+                "android-x64" to "x86_64",
+            )
+            val targets = project.findProperty("target-platform")?.toString()
+                ?.split(",") ?: abiByTarget.keys.toList()
+            ndk {
+                abiFilters.clear()
+                abiFilters.addAll(targets.map { target ->
+                    abiByTarget[target] ?: error("Unsupported Flutter target: $target")
+                })
+            }
+        }
     }
 
     buildTypes {

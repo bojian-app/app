@@ -1,3 +1,6 @@
+import 'app_page_bar.dart';
+import 'playful_refresh.dart';
+
 import 'dart:async';
 
 import 'user_display_name.dart';
@@ -18,8 +21,10 @@ import 'design.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
 import 'resume_pages.dart';
+import 'story_composer.dart';
 import 'profile_avatar.dart';
 import 'profile_identity.dart';
+import 'profile_snap_scroll_physics.dart';
 import 'profile_edit_actions.dart';
 import 'points_page.dart';
 import 'profile_editor_views.dart';
@@ -99,7 +104,7 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
         if (error != null)
           Text(error!, style: TextStyle(color: context.colors.muted)),
         if (searched && results.isEmpty && error == null)
-          Text('没有找到匹配的用户。', style: TextStyle(color: context.colors.muted)),
+          const EmptyState('没有找到匹配的用户。', '试试其他昵称或博简 ID', compact: true),
         for (final user in results)
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -173,28 +178,21 @@ Future<void> _editProfile(
   await openPage(context, ProfileEditor(store: store, action: action));
 }
 
-class _ProfilePageState extends State<ProfilePage>
-    with SingleTickerProviderStateMixin {
+class _ProfilePageState extends State<ProfilePage> {
   final scroll = ScrollController();
   final nameMarker = GlobalKey();
   final headerMarker = GlobalKey();
   final headerSurfaceMarker = GlobalKey();
-  bool openingMenu = false;
+  bool openingMenu = false, openingCreation = false;
   final viewportMarker = GlobalKey();
   final headerOverlap = SliverOverlapAbsorberHandle();
-  late final pull = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 220),
-  );
   AppStore get store => widget.store;
-  double pullDistance = 0;
-  bool pullingFromTop = false, openingDetails = false;
+  bool openingDetails = false;
   bool compactHeader = false, measuringName = false;
   double? nameContentTop;
   double headerHeight = 400;
-  int pullGeneration = 0;
-  int? headerPointer;
-  static const detailsThreshold = 120.0, refreshThreshold = 48.0;
+  int? profilePointer;
+  double headerDragDirection = 0;
 
   @override
   void initState() {
@@ -232,8 +230,7 @@ class _ProfilePageState extends State<ProfilePage>
       if (!mounted || !scroll.hasClients) return;
       final headerBox = headerMarker.currentContext?.findRenderObject();
       if (headerBox is RenderBox && headerBox.hasSize) {
-        final restingHeight =
-            headerBox.size.height - pull.value * ProfileHeader.pullExtent;
+        final restingHeight = headerBox.size.height;
         if ((restingHeight - headerHeight).abs() > .1) {
           setState(() => headerHeight = restingHeight);
         }
@@ -255,53 +252,9 @@ class _ProfilePageState extends State<ProfilePage>
 
   @override
   void dispose() {
-    pull.dispose();
     scroll.dispose();
     headerOverlap.dispose();
     super.dispose();
-  }
-
-  void settlePull() {
-    pull.animateBack(
-      0,
-      duration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  void cancelPull() {
-    if (!mounted) return;
-    pullGeneration++;
-    pullingFromTop = false;
-    pullDistance = 0;
-    settlePull();
-  }
-
-  void releasePull() {
-    if (!pullingFromTop && pull.value == 0) return;
-    final generation = pullGeneration;
-    final epoch = store.epoch;
-    final expand = pullingFromTop && pullDistance >= detailsThreshold;
-    final refresh = pullingFromTop && pullDistance >= refreshThreshold;
-    pullingFromTop = false;
-    pullDistance = 0;
-    if (!expand) settlePull();
-    if (!refresh || !store.isAuthenticated) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          generation != pullGeneration ||
-          epoch != store.epoch ||
-          !store.isAuthenticated ||
-          ModalRoute.of(context)?.isCurrent != true ||
-          !TickerMode.valuesOf(context).enabled) {
-        if (mounted && generation == pullGeneration) settlePull();
-        return;
-      }
-      unawaited(store.load('profile'));
-      if (expand) unawaited(showDetails());
-    });
   }
 
   bool onScroll(ScrollNotification notification) {
@@ -319,38 +272,14 @@ class _ProfilePageState extends State<ProfilePage>
             !TickerMode.valuesOf(source).enabled)) {
       return false;
     }
-    if (notification is ScrollStartNotification &&
-        notification.depth == 0 &&
-        notification.dragDetails != null) {
-      pullGeneration++;
-      pullingFromTop =
-          headerPointer != null &&
-          store.isAuthenticated &&
-          !openingDetails &&
-          scroll.hasClients &&
-          scroll.offset <= scroll.position.minScrollExtent + .5 &&
-          notification.metrics.pixels <=
-              notification.metrics.minScrollExtent + .5;
-      pullDistance = 0;
-    } else if (pullingFromTop &&
-        notification is OverscrollNotification &&
-        notification.dragDetails != null &&
-        notification.overscroll < 0) {
-      final wasArmed = pullDistance >= detailsThreshold;
-      pullDistance = (pullDistance - notification.overscroll)
-          .clamp(0.0, 240.0)
-          .toDouble();
-      pull.value = (pullDistance / detailsThreshold).clamp(0.0, 1.0);
-      if (!wasArmed && pullDistance >= detailsThreshold) {
-        HapticFeedback.selectionClick();
+    if (notification.depth == 0) {
+      if (notification is ScrollUpdateNotification &&
+          notification.dragDetails != null &&
+          (notification.scrollDelta ?? 0).abs() > .01) {
+        headerDragDirection = notification.scrollDelta!.sign;
+      } else if (notification is ScrollEndNotification) {
+        headerDragDirection = 0;
       }
-    } else if (pullingFromTop &&
-        notification is ScrollUpdateNotification &&
-        notification.metrics.pixels >
-            notification.metrics.minScrollExtent + .5) {
-      cancelPull();
-    } else if (notification is ScrollEndNotification) {
-      releasePull();
     }
     return false;
   }
@@ -369,13 +298,11 @@ class _ProfilePageState extends State<ProfilePage>
     final navigatorBox = Navigator.of(context).context.findRenderObject();
     if (box is! RenderBox || navigatorBox is! RenderBox) {
       openingDetails = false;
-      settlePull();
       return;
     }
-    pull.stop();
     final origin =
         box.localToGlobal(Offset.zero, ancestor: navigatorBox) & box.size;
-    final initialPull = pull.value;
+    const initialPull = 0.0;
     final initialScrollOffset = scroll.offset;
     final initialCollapse = Curves.easeInOutCubic.transform(
       (initialScrollOffset / (nameContentTop ?? 174)).clamp(0, 1),
@@ -417,27 +344,14 @@ class _ProfilePageState extends State<ProfilePage>
       transitionsBuilder: (context, animation, secondaryAnimation, child) =>
           child,
     );
-    void prepareRestingHeader(AnimationStatus status) {
-      if (status == AnimationStatus.completed && mounted) {
-        // The opaque details now cover the source. Restore its layout before
-        // the return Hero measures it, rather than springing back after pop.
-        pull.value = 0;
-      }
-    }
-
     final navigation = Navigator.of(context).push<void>(route);
-    final animation = route.animation!;
-    animation.addStatusListener(prepareRestingHeader);
-    prepareRestingHeader(animation.status);
     try {
       await navigation;
       // push() completes at the start of pop; keep the source stable and block
       // another open until the reverse transition actually removes its overlay.
       await route.completed;
     } finally {
-      animation.removeStatusListener(prepareRestingHeader);
       openingDetails = false;
-      if (mounted && pull.value > 0) settlePull();
     }
   }
 
@@ -449,8 +363,25 @@ class _ProfilePageState extends State<ProfilePage>
         !TickerMode.valuesOf(context).enabled) {
       return;
     }
-    cancelPull();
     await _editProfile(context, store, directAction: ProfileEditAction.avatar);
+  }
+
+  Future<void> openCreation(bool resume) async {
+    if (openingCreation ||
+        !store.isAuthenticated ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    setState(() => openingCreation = true);
+    try {
+      if (resume) {
+        await ResumeLibrary(store: store).showAddOptions(context);
+      } else {
+        await openPage(context, StoryComposer(store: store));
+      }
+    } finally {
+      if (mounted) setState(() => openingCreation = false);
+    }
   }
 
   Future<void> openMenu() async {
@@ -460,225 +391,9 @@ class _ProfilePageState extends State<ProfilePage>
         !TickerMode.valuesOf(context).enabled) {
       return;
     }
-    cancelPull();
     openingMenu = true;
-    unawaited(store.load('identity'));
-    final epoch = store.epoch;
-    final reduced = MediaQuery.disableAnimationsOf(context);
-    bool closing = false, openingDestination = false;
-    Future<void> openDestination(
-      BuildContext menuContext,
-      _ProfileMenuPage destination,
-    ) async {
-      if (openingDestination ||
-          !menuContext.mounted ||
-          !store.isAuthenticated ||
-          store.epoch != epoch ||
-          ModalRoute.of(menuContext)?.isCurrent != true) {
-        return;
-      }
-      openingDestination = true;
-      try {
-        await openPage<void>(menuContext, switch (destination) {
-          _ProfileMenuPage.drafts => MyArticlesPage(
-            store: store,
-            draftsOnly: true,
-          ),
-          _ProfileMenuPage.settings => SettingsPage(store: store),
-          _ProfileMenuPage.scan => AppQRLoginPage(store: store),
-          _ProfileMenuPage.developerVerification => DeveloperVerificationPage(
-            store: store,
-          ),
-          _ProfileMenuPage.points => Scaffold(
-            appBar: AppBar(title: const Text('我的积分')),
-            body: PointsPage(store: store),
-          ),
-        });
-      } finally {
-        openingDestination = false;
-      }
-    }
-
     try {
-      await showGeneralDialog<void>(
-        context: context,
-        barrierDismissible: true,
-        barrierLabel: MaterialLocalizations.of(context)
-            .modalBarrierDismissLabel,
-        transitionDuration: reduced
-            ? Duration.zero
-            : const Duration(milliseconds: 240),
-        pageBuilder: (menuContext, animation, secondaryAnimation) =>
-            ListenableBuilder(
-              listenable: store,
-              builder: (context, _) {
-                if (!store.isAuthenticated || store.epoch != epoch) {
-                  if (!closing) {
-                    closing = true;
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!menuContext.mounted) return;
-                      final route = ModalRoute.of(menuContext);
-                      if (route == null || !route.isActive) return;
-                      final navigator = Navigator.of(menuContext);
-                      if (route.isCurrent) {
-                        navigator.pop();
-                      } else {
-                        navigator.removeRoute(route);
-                      }
-                    });
-                  }
-                  return const SizedBox.shrink();
-                }
-                return AnnotatedRegion<SystemUiOverlayStyle>(
-                  value: appSystemUiStyle(context),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Drawer(
-                      key: const ValueKey('profile-drawer'),
-                      width: (MediaQuery.sizeOf(context).width * .8).clamp(
-                        0.0,
-                        280.0,
-                      ),
-                      backgroundColor: context.colors.surface,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadiusDirectional.horizontal(
-                          end: Radius.circular(12),
-                        ),
-                      ),
-                      child: SafeArea(
-                        child: Column(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                              child: Row(
-                                children: [
-                                  Semantics(
-                                    label: '关闭菜单',
-                                    button: true,
-                                    excludeSemantics: true,
-                                    onTap: () =>
-                                        Navigator.of(menuContext).pop(),
-                                    child: IconButton(
-                                      key: const ValueKey('profile-menu-close'),
-                                      tooltip: '关闭菜单',
-                                      style: IconButton.styleFrom(
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      constraints:
-                                          const BoxConstraints.tightFor(
-                                            width: 44,
-                                            height: 44,
-                                          ),
-                                      onPressed: () =>
-                                          Navigator.of(menuContext).pop(),
-                                      icon: const AppIcon(
-                                        AppIcons.close,
-                                        size: 18,
-                                      ),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Semantics(
-                                    label: '扫一扫',
-                                    button: true,
-                                    enabled: true,
-                                    excludeSemantics: true,
-                                    onTap: () => openDestination(
-                                      menuContext,
-                                      _ProfileMenuPage.scan,
-                                    ),
-                                    child: IconButton(
-                                      key: const ValueKey('profile-menu-scan'),
-                                      style: IconButton.styleFrom(
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      constraints:
-                                          const BoxConstraints.tightFor(
-                                            width: 44,
-                                            height: 44,
-                                          ),
-                                      onPressed: () => openDestination(
-                                        menuContext,
-                                        _ProfileMenuPage.scan,
-                                      ),
-                                      icon: const AppIcon(
-                                        AppIcons.scan,
-                                        size: 20,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: ListView(
-                                padding: const EdgeInsets.fromLTRB(
-                                  12,
-                                  4,
-                                  12,
-                                  12,
-                                ),
-                                children: [
-                                  _ProfileMenuIdentity(
-                                    store: store,
-                                    onPoints: () => openDestination(
-                                      menuContext,
-                                      _ProfileMenuPage.points,
-                                    ),
-                                  ),
-                                  _menu(
-                                    context,
-                                    '草稿箱',
-                                    AppIcons.folder,
-                                    () => openDestination(
-                                      menuContext,
-                                      _ProfileMenuPage.drafts,
-                                    ),
-                                  ),
-                                  _menu(
-                                    context,
-                                    '隐私与设置',
-                                    AppIcons.settings,
-                                    () => openDestination(
-                                      menuContext,
-                                      _ProfileMenuPage.settings,
-                                    ),
-                                  ),
-                                  if (store.canApplyDeveloperVerification)
-                                    _menu(
-                                      context,
-                                      '申请开发者认证',
-                                      AppIcons.identityVerification,
-                                      () => openDestination(
-                                        menuContext,
-                                        _ProfileMenuPage.developerVerification,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                              child: _SignOutButton(store: store),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-        transitionBuilder: (context, animation, secondaryAnimation, child) =>
-            SlideTransition(
-              position: Tween(begin: const Offset(-1, 0), end: Offset.zero)
-                  .chain(CurveTween(curve: Curves.easeOutCubic))
-                  .animate(animation),
-              child: child,
-            ),
-      );
+      await showAccountMenu(context, store);
     } finally {
       openingMenu = false;
     }
@@ -689,7 +404,73 @@ class _ProfilePageState extends State<ProfilePage>
     listenable: store,
     builder: (context, _) {
       scheduleNameMeasurement();
-      const contentTabs = ProfileContentTabs();
+      final contentTabs = ProfileContentTabs(
+        trailing: Builder(
+          builder: (context) {
+            final controller = DefaultTabController.of(context);
+            return ListenableBuilder(
+              listenable: Listenable.merge([controller, controller.animation]),
+              builder: (context, _) {
+                // Taps set the destination immediately; swipes only commit
+                // controller.index at scroll end, so follow the visible page.
+                final index = controller.indexIsChanging
+                    ? controller.index
+                    : controller.animation!.value.round().clamp(
+                        0,
+                        controller.length - 1,
+                      );
+                final isResume = index == 2;
+                return Visibility(
+                  visible: index != 1,
+                  maintainSize: true,
+                  maintainState: true,
+                  maintainAnimation: true,
+                  child: InkWell(
+                    key: ValueKey(
+                      isResume
+                          ? 'profile-add-resume'
+                          : 'profile-publish-article',
+                    ),
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: openingCreation
+                        ? null
+                        : () => openCreation(isResume),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AppIcon(
+                              AppIcons.add,
+                              size: 12,
+                              color: context.colors.accent,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isResume ? '添加简历' : '发表动态',
+                              style: TextStyle(
+                                fontSize: 11,
+                                height: 1.2,
+                                fontWeight: FontWeight.w500,
+                                color: context.colors.accent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      );
 
       final collapsedHeight =
           ProfileHeader.toolbarHeight(context) +
@@ -716,126 +497,122 @@ class _ProfilePageState extends State<ProfilePage>
                 )
               : DefaultTabController(
                   length: 3,
-                  child: Listener(
-                    onPointerUp: (event) {
-                      if (headerPointer == event.pointer) headerPointer = null;
-                    },
-                    onPointerCancel: (event) {
-                      if (headerPointer == event.pointer) headerPointer = null;
-                      cancelPull();
-                    },
-                    child: NotificationListener<ScrollNotification>(
-                      onNotification: onScroll,
-                      child: ScrollConfiguration(
-                        behavior: ScrollConfiguration.of(context)
-                            .copyWith(overscroll: false),
-                        child: SizedBox.expand(
-                          key: viewportMarker,
-                          child: NestedScrollView(
-                            key: const ValueKey('profile-scroll'),
-                            controller: scroll,
-                            physics: const ClampingScrollPhysics(
-                              parent: AlwaysScrollableScrollPhysics(),
-                            ),
-                            headerSliverBuilder: (context, innerScrolled) => [
-                              SliverOverlapAbsorber(
-                                handle: headerOverlap,
-                                sliver: AnimatedBuilder(
-                                  animation: pull,
-                                  builder: (context, _) {
-                                    scheduleNameMeasurement();
-                                    return SliverPersistentHeader(
-                                      pinned: true,
-                                      delegate: ProfileHeaderSliver(
-                                        expandedHeight:
-                                            headerHeight +
-                                            pull.value *
-                                                ProfileHeader.pullExtent,
-                                        collapsedHeight: collapsedHeight,
-                                        collapseExtent: nameContentTop ?? 174,
-                                        headerBuilder: (offset, progress) =>
-                                            Listener(
-                                              behavior:
-                                                  HitTestBehavior.translucent,
-                                              onPointerDown: (event) =>
-                                                  headerPointer ??=
-                                                      event.pointer,
-                                              child: ProfileHeader(
-                                                key: headerMarker,
-                                                store: store,
-                                                nameKey: nameMarker,
-                                                surfaceKey: headerSurfaceMarker,
-                                                pullProgress: pull.value,
-                                                scrollOffset: offset,
-                                                collapseProgress: progress,
-                                                onEdit: () => _editProfile(
-                                                  context,
-                                                  store,
-                                                ),
-                                                onAvatar: editAvatar,
-                                                onMenu: openMenu,
-                                                onDetails: () {
-                                                  cancelPull();
-                                                  unawaited(showDetails());
-                                                },
-                                              ),
-                                            ),
+                  child: PlayfulRefreshScope(
+                    enabled: true,
+                    child: Listener(
+                      onPointerDown: (event) {
+                        if (profilePointer != null) return;
+                        profilePointer = event.pointer;
+                        headerDragDirection = 0;
+                      },
+                      onPointerUp: (event) {
+                        if (profilePointer == event.pointer) {
+                          profilePointer = null;
+                        }
+                      },
+                      onPointerCancel: (event) {
+                        if (profilePointer == event.pointer) {
+                          profilePointer = null;
+                        }
+                      },
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: onScroll,
+                        child: ScrollConfiguration(
+                          behavior: ScrollConfiguration.of(context).copyWith(
+                            overscroll: false,
+                            physics: const ClampingScrollPhysics(),
+                          ),
+                          child: SizedBox.expand(
+                            key: viewportMarker,
+                            child: NestedScrollView(
+                              key: const ValueKey('profile-scroll'),
+                              controller: scroll,
+                              physics: ProfileSnapScrollPhysics(
+                                headerExtent: () => scroll.hasClients
+                                    ? scroll.position.maxScrollExtent
+                                    : 0,
+                                dragDirection: () => headerDragDirection,
+                                parent: const AlwaysScrollableScrollPhysics(),
+                              ),
+                              headerSliverBuilder: (context, innerScrolled) => [
+                                SliverOverlapAbsorber(
+                                  handle: headerOverlap,
+                                  sliver: SliverPersistentHeader(
+                                    pinned: true,
+                                    delegate: ProfileHeaderSliver(
+                                      expandedHeight: headerHeight,
+                                      collapsedHeight: collapsedHeight,
+                                      collapseExtent: nameContentTop ?? 174,
+                                      headerBuilder: (offset, progress) =>
+                                          ProfileHeader(
+                                            key: headerMarker,
+                                            store: store,
+                                            nameKey: nameMarker,
+                                            surfaceKey: headerSurfaceMarker,
+                                            scrollOffset: offset,
+                                            collapseProgress: progress,
+                                            onEdit: () =>
+                                                _editProfile(context, store),
+                                            onAvatar: editAvatar,
+                                            onMenu: openMenu,
+                                            onDetails: () =>
+                                                unawaited(showDetails()),
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                                SliverOverlapAbsorber(
+                                  handle:
+                                      NestedScrollView.sliverOverlapAbsorberHandleFor(
+                                        context,
                                       ),
-                                    );
-                                  },
+                                  sliver: SliverAppBar(
+                                    primary: false,
+                                    pinned: true,
+                                    toolbarHeight: 0,
+                                    automaticallyImplyLeading: false,
+                                    backgroundColor: context.colors.surface,
+                                    elevation: 0,
+                                    scrolledUnderElevation: 0,
+                                    surfaceTintColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
+                                    bottom: contentTabs,
+                                  ),
                                 ),
-                              ),
-                              SliverOverlapAbsorber(
-                                handle:
-                                    NestedScrollView.sliverOverlapAbsorberHandleFor(
-                                      context,
-                                    ),
-                                sliver: SliverAppBar(
-                                  primary: false,
-                                  pinned: true,
-                                  toolbarHeight: 0,
-                                  automaticallyImplyLeading: false,
-                                  backgroundColor: context.colors.surface,
-                                  elevation: 0,
-                                  scrolledUnderElevation: 0,
-                                  surfaceTintColor: Colors.transparent,
-                                  shadowColor: Colors.transparent,
-                                  bottom: contentTabs,
+                              ],
+                              body: Padding(
+                                padding: EdgeInsets.only(
+                                  top:
+                                      collapsedHeight +
+                                      contentTabs.preferredSize.height,
                                 ),
-                              ),
-                            ],
-                            body: Padding(
-                              padding: EdgeInsets.only(
-                                top:
-                                    collapsedHeight +
-                                    contentTabs.preferredSize.height,
-                              ),
-                              child: TabBarView(
-                                key: const ValueKey('profile-pages'),
-                                children: [
-                                  _ProfileContentTab(
-                                    index: 0,
-                                    child: MyArticlesPage(
-                                      store: store,
-                                      embedded: true,
-                                      publishedOnly: true,
+                                child: TabBarView(
+                                  key: const ValueKey('profile-pages'),
+                                  children: [
+                                    _ProfileContentTab(
+                                      index: 0,
+                                      child: MyArticlesPage(
+                                        store: store,
+                                        embedded: true,
+                                        publishedOnly: true,
+                                      ),
                                     ),
-                                  ),
-                                  _ProfileContentTab(
-                                    index: 1,
-                                    child: SavedArticlesPage(
-                                      store: store,
-                                      embedded: true,
+                                    _ProfileContentTab(
+                                      index: 1,
+                                      child: SavedArticlesPage(
+                                        store: store,
+                                        embedded: true,
+                                      ),
                                     ),
-                                  ),
-                                  _ProfileContentTab(
-                                    index: 2,
-                                    child: ResumeLibrary(
-                                      store: store,
-                                      embedded: true,
+                                    _ProfileContentTab(
+                                      index: 2,
+                                      child: ResumeLibrary(
+                                        store: store,
+                                        embedded: true,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -848,30 +625,237 @@ class _ProfilePageState extends State<ProfilePage>
       );
     },
   );
+}
 
-  Widget _menu(
-    BuildContext context,
-    String label,
-    AppIconData icon,
-    VoidCallback onTap,
-  ) => Material(
-    color: Colors.transparent,
-    child: ListTile(
-      minTileHeight: 48,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-      horizontalTitleGap: 12,
-      minLeadingWidth: 20,
-      leading: AppIcon(icon, size: 20, color: context.colors.ink),
-      title: Text(label, style: const TextStyle(fontSize: 13)),
-      trailing: AppIcon(
-        AppIcons.forward,
-        size: 14,
-        color: context.colors.muted,
-      ),
-      onTap: onTap,
-    ),
+Future<void> showAccountMenu(BuildContext context, AppStore store) async {
+  if (!store.isAuthenticated ||
+      ModalRoute.of(context)?.isCurrent != true ||
+      !TickerMode.valuesOf(context).enabled) {
+    return;
+  }
+  dismissKeyboard();
+  unawaited(store.load('identity'));
+  final epoch = store.epoch;
+  final reduced = MediaQuery.disableAnimationsOf(context);
+  bool closing = false, openingDestination = false;
+  Future<void> openDestination(
+    BuildContext menuContext,
+    _ProfileMenuPage destination,
+  ) async {
+    if (openingDestination ||
+        !menuContext.mounted ||
+        !store.isAuthenticated ||
+        store.epoch != epoch ||
+        ModalRoute.of(menuContext)?.isCurrent != true) {
+      return;
+    }
+    openingDestination = true;
+    try {
+      await openPage<void>(menuContext, switch (destination) {
+        _ProfileMenuPage.drafts => MyArticlesPage(
+          store: store,
+          draftsOnly: true,
+        ),
+        _ProfileMenuPage.settings => SettingsPage(store: store),
+        _ProfileMenuPage.scan => AppQRLoginPage(store: store),
+        _ProfileMenuPage.developerVerification => DeveloperVerificationPage(
+          store: store,
+        ),
+        _ProfileMenuPage.points => Scaffold(
+          appBar: AppPageBar(title: const Text('我的积分')),
+          body: PointsPage(store: store),
+        ),
+      });
+    } finally {
+      openingDestination = false;
+    }
+  }
+
+  await showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    transitionDuration: reduced
+        ? Duration.zero
+        : const Duration(milliseconds: 240),
+    pageBuilder: (menuContext, animation, secondaryAnimation) =>
+        ListenableBuilder(
+          listenable: store,
+          builder: (context, _) {
+            if (!store.isAuthenticated || store.epoch != epoch) {
+              if (!closing) {
+                closing = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!menuContext.mounted) return;
+                  final route = ModalRoute.of(menuContext);
+                  if (route == null || !route.isActive) return;
+                  final navigator = Navigator.of(menuContext);
+                  if (route.isCurrent) {
+                    navigator.pop();
+                  } else {
+                    navigator.removeRoute(route);
+                  }
+                });
+              }
+              return const SizedBox.shrink();
+            }
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: appSystemUiStyle(context),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Drawer(
+                  key: const ValueKey('profile-drawer'),
+                  width: (MediaQuery.sizeOf(context).width * .8).clamp(
+                    0.0,
+                    280.0,
+                  ),
+                  backgroundColor: context.colors.surface,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadiusDirectional.horizontal(
+                      end: Radius.circular(12),
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                          child: Row(
+                            children: [
+                              Semantics(
+                                label: '关闭菜单',
+                                button: true,
+                                excludeSemantics: true,
+                                onTap: () => Navigator.of(menuContext).pop(),
+                                child: IconButton(
+                                  key: const ValueKey('profile-menu-close'),
+                                  tooltip: '关闭菜单',
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  constraints: const BoxConstraints.tightFor(
+                                    width: 44,
+                                    height: 44,
+                                  ),
+                                  onPressed: () =>
+                                      Navigator.of(menuContext).pop(),
+                                  icon: const AppIcon(AppIcons.close, size: 18),
+                                ),
+                              ),
+                              const Spacer(),
+                              Semantics(
+                                label: '扫一扫',
+                                button: true,
+                                enabled: true,
+                                excludeSemantics: true,
+                                onTap: () => openDestination(
+                                  menuContext,
+                                  _ProfileMenuPage.scan,
+                                ),
+                                child: IconButton(
+                                  key: const ValueKey('profile-menu-scan'),
+                                  style: IconButton.styleFrom(
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  constraints: const BoxConstraints.tightFor(
+                                    width: 44,
+                                    height: 44,
+                                  ),
+                                  onPressed: () => openDestination(
+                                    menuContext,
+                                    _ProfileMenuPage.scan,
+                                  ),
+                                  icon: const AppIcon(AppIcons.scan, size: 20),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                            children: [
+                              _ProfileMenuIdentity(
+                                store: store,
+                                onPoints: () => openDestination(
+                                  menuContext,
+                                  _ProfileMenuPage.points,
+                                ),
+                              ),
+                              _menu(
+                                context,
+                                '草稿箱',
+                                AppIcons.folder,
+                                () => openDestination(
+                                  menuContext,
+                                  _ProfileMenuPage.drafts,
+                                ),
+                              ),
+                              _menu(
+                                context,
+                                '隐私与设置',
+                                AppIcons.settings,
+                                () => openDestination(
+                                  menuContext,
+                                  _ProfileMenuPage.settings,
+                                ),
+                              ),
+                              if (store.canApplyDeveloperVerification)
+                                _menu(
+                                  context,
+                                  '申请开发者认证',
+                                  AppIcons.identityVerification,
+                                  () => openDestination(
+                                    menuContext,
+                                    _ProfileMenuPage.developerVerification,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          child: _SignOutButton(store: store),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+    transitionBuilder: (context, animation, secondaryAnimation, child) =>
+        SlideTransition(
+          position: Tween(
+            begin: const Offset(-1, 0),
+            end: Offset.zero,
+          ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(animation),
+          child: child,
+        ),
   );
 }
+
+Widget _menu(
+  BuildContext context,
+  String label,
+  AppIconData icon,
+  VoidCallback onTap,
+) => Material(
+  color: Colors.transparent,
+  child: ListTile(
+    minTileHeight: 48,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+    horizontalTitleGap: 12,
+    minLeadingWidth: 20,
+    leading: AppIcon(icon, size: 20, color: context.colors.ink),
+    title: Text(label, style: const TextStyle(fontSize: 13)),
+    trailing: AppIcon(AppIcons.forward, size: 14, color: context.colors.muted),
+    onTap: onTap,
+  ),
+);
 
 class _ProfileMenuIdentity extends StatelessWidget {
   const _ProfileMenuIdentity({required this.store, required this.onPoints});
@@ -1481,7 +1465,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
     return PopScope(
       canPop: !saving,
       child: Scaffold(
-        appBar: AppBar(
+        appBar: AppPageBar(
           title: const Text('编辑个人资料'),
           actions: const [DismissKeyboardButton()],
         ),
@@ -1593,7 +1577,7 @@ class _VerificationPageState extends State<VerificationPage> {
       (await widget.store.request('GetMeIdentityVerification')).data;
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('身份认证')),
+    appBar: AppPageBar(title: const Text('身份认证')),
     body: FutureBuilder(
       future: result,
       builder: (context, snapshot) => ListView(

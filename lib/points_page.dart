@@ -5,7 +5,7 @@ import 'app_icons.dart';
 import 'app_store.dart';
 import 'design.dart';
 import 'resume_pages.dart';
-import 'resume_guidance_share.dart';
+import 'resume_user_share.dart';
 import 'story_composer.dart';
 
 const _blue = brandBlue;
@@ -244,7 +244,7 @@ class _PointsPageState extends State<PointsPage> {
         ),
         const SizedBox(width: 12),
         Image.asset(
-          'assets/points/rewards-transparent.png',
+          'assets/points/rewards-transparent.webp',
           width: 124,
           height: 96,
           fit: BoxFit.contain,
@@ -488,10 +488,7 @@ class _PointsPageState extends State<PointsPage> {
         ),
       );
       if (!mounted || epoch != store.epoch || resume == null) return;
-      await openPage(
-        context,
-        ResumeGuidanceShare(store: store, resume: resume),
-      );
+      await openPage(context, ResumeUserShare(store: store, resume: resume));
     } finally {
       choosingResume = false;
     }
@@ -619,7 +616,7 @@ class _PointsPageState extends State<PointsPage> {
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: Image.asset(
-            'assets/points/resume.png',
+            'assets/points/resume.webp',
             width: double.infinity,
             height: 180,
             fit: BoxFit.cover,

@@ -9,25 +9,47 @@ import 'support/fake_gateway.dart';
 import 'support/resume_editor_helpers.dart';
 
 void main() {
-  test('Missing name and school cannot produce a complete editor score', () {
+  test('All six groups are needed for a complete editor score', () {
     final fields = {
       'name': '姓名',
       'position': '开发工程师',
+      'city': '杭州',
       'phone': '13812345678',
       'summary': '负责前端模块开发和上线交付',
     };
     final projects = [
-      {'name': '订单流程改进', 'description': '负责结算流程与前端交付'},
+      {
+        'name': '订单流程改进',
+        'role': '开发',
+        'start_date': '2023-01',
+        'end_date': '2024-01',
+        'description': '负责结算流程与前端交付',
+        'achievements': '交付流程',
+      },
     ];
     final schools = [
-      {'institution': '学校名称', 'field_of_study': '计算机科学与技术'},
+      {
+        'institution': '学校名称',
+        'field_of_study': '计算机科学与技术',
+        'start_date': '2018-09',
+        'end_date': '2022-06',
+        'campus_experience': '课程实践',
+      },
     ];
     final skills = [
-      {'name': 'Flutter'},
+      {'name': 'Flutter', 'description': '应用开发'},
     ];
     ResumeEditorProgress evaluate() => resumeEditorProgress(
       fields: fields,
-      work: const [],
+      work: const [
+        {
+          'company': '测试公司',
+          'position': '开发',
+          'start_date': '2022-01',
+          'end_date': '2025-01',
+          'description': '开发工作',
+        },
+      ],
       projects: projects,
       education: schools,
       skills: skills,
@@ -58,7 +80,7 @@ void main() {
       expect(find.byType(TextFormField), findsNothing);
       expect(find.byType(ChoiceChip), findsNothing);
       expect(
-        find.byKey(const ValueKey('resume-overview-section-7')),
+        find.byKey(const ValueKey('resume-overview-section-0')),
         findsOneWidget,
       );
       expect(find.text('0%'), findsOneWidget);
@@ -72,20 +94,36 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('resume-name')), '李明');
       await saveResumeSection(tester);
       expect(find.text('李明'), findsOneWidget);
-      expect(find.text('14%'), findsOneWidget);
-      expect(api.calls, isNot(contains('PostResumes')));
+      expect(find.text('0%'), findsOneWidget);
+      expect(api.calls.where((c) => c == 'PostResumes'), hasLength(1));
       await openResumeSection(tester, 1);
-      await tester.enterText(
-        find.byKey(const ValueKey('resume-position')),
-        '工程师',
-      );
-      await tester.enterText(find.byKey(const ValueKey('resume-city')), '杭州');
-      await saveResumeSection(tester);
-      expect(find.textContaining('意向城市：杭州'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('resume-editor-save')));
+      await tester.tap(find.byKey(const ValueKey('resume-position')));
       await tester.pumpAndSettle();
+      await enterJobTitleChoice(tester, '工程师');
+      await tester.tap(find.byKey(const ValueKey('resume-city')));
+      await tester.pumpAndSettle();
+      await enterResumeOptionChoice(tester, '杭州', keyPrefix: 'city');
+      await saveResumeSection(tester);
+      expect(find.text('工程师'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('resume-editor-completeness-percent')),
+        -250,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('resume-modules')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('17%'), findsOneWidget);
+      expect(store.resumes.single.progress, closeTo(1 / 6, .0001));
+      expect(find.textContaining('意向城市：杭州'), findsNothing);
+      expect(api.calls.where((c) => c == 'PostResumes'), hasLength(1));
+      expect(api.calls, contains('PatchResumesId'));
       expect(saved, isTrue);
       expect(api.calls, contains('PostResumes'));
+      expect(api.lastMutationBody!['content']['job_expectation']['city'], '杭州');
       expect(tester.takeException(), isNull);
     },
   );
@@ -131,11 +169,7 @@ void main() {
     await tester.enterText(description, '未保存描述');
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
-    final remove = find.byTooltip('删除经历').first;
-    await Scrollable.ensureVisible(tester.element(remove), alignment: .3);
-    await tester.pumpAndSettle();
-    await tester.tap(remove);
-    await tester.pumpAndSettle();
+    await workMenuAction(tester, 'delete');
     await tester.tap(find.text('删除').last);
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
@@ -159,6 +193,12 @@ void main() {
           .text,
       '原描述',
     );
+    final pager = find.byKey(const ValueKey('resume-work-pager'));
+    await tester.dragFrom(
+      tester.getTopRight(pager) + const Offset(-12, 100),
+      const Offset(-600, 0),
+    );
+    await tester.pumpAndSettle();
     expect(
       tester
           .widget<TextFormField>(
@@ -169,8 +209,6 @@ void main() {
       '乙公司',
     );
     await saveResumeSection(tester);
-    await tester.tap(find.byKey(const ValueKey('resume-editor-save')));
-    await tester.pumpAndSettle();
     final work =
         api.documents['GetResumes']!['items'][0]['content']['work_experiences']
             as List;
@@ -179,31 +217,81 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Overview save opens the incomplete required section', (
-    tester,
-  ) async {
-    final api = FakeGateway();
-    final store = await testStore(authenticated: true, api: api);
-    addTearDown(store.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: appTheme,
-        home: ResumeEditor(
-          store: store,
-          draft: ResumeDraft(id: 0, title: '测试简历'),
-        ),
-      ),
-    );
-    await tester.tap(find.byKey(const ValueKey('resume-editor-save')));
-    await tester.pumpAndSettle();
-    expect(find.text('请填写姓名'), findsOneWidget);
-    await tester.enterText(find.byKey(const ValueKey('resume-name')), '李明');
-    await saveResumeSection(tester);
-    await tester.tap(find.byKey(const ValueKey('resume-editor-save')));
-    await tester.pumpAndSettle();
-    expect(find.text('请填写意向职位'), findsOneWidget);
-    expect(api.calls, isNot(contains('PostResumes')));
-  });
+  for (final id in [0, 7]) {
+    for (final (section, field, value) in [
+      (0, 'email', 'candidate@example.com'),
+      (1, 'city', '杭州'),
+      (3, 'work-0-description', '参与订单模块开发'),
+    ]) {
+      testWidgets(
+        'Partial section $section saves without name or position (id=$id)',
+        (tester) async {
+          final api = FakeGateway();
+          final store = await testStore(authenticated: true, api: api);
+          addTearDown(store.dispose);
+          var saved = false;
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: appTheme,
+              home: ResumeEditor(
+                store: store,
+                draft: ResumeDraft(
+                  id: id,
+                  revision: id == 0 ? 0 : 3,
+                  title: '',
+                ),
+                onSaved: () => saved = true,
+              ),
+            ),
+          );
+          await openResumeSection(tester, section);
+          if (section == 3) {
+            await workMenuAction(tester, 'add');
+          }
+          final input = find.byKey(ValueKey('resume-$field'));
+          await tester.ensureVisible(input);
+          if (field == 'city') {
+            await tester.tap(input);
+            await tester.pumpAndSettle();
+            await enterResumeOptionChoice(tester, value, keyPrefix: 'city');
+          } else {
+            await tester.enterText(input, value);
+          }
+          await saveResumeSection(tester);
+          expect(
+            find.byKey(const ValueKey('resume-section-save')),
+            findsNothing,
+          );
+          expect(find.text('请填写姓名'), findsNothing);
+          expect(find.text('请填写意向职位'), findsNothing);
+          final mutation = id == 0 ? 'PostResumes' : 'PatchResumesId';
+          expect(
+            find.byKey(const ValueKey('resume-editor-save')),
+            findsNothing,
+          );
+          expect(saved, isTrue);
+          expect(api.calls.where((call) => call == mutation), hasLength(1));
+          final row =
+              (api.documents['GetResumes']!['items'] as List).single as Map;
+          expect(row['title'], '未命名简历');
+          final content = row['content'] as Map;
+          expect(content['personal_info']['full_name'], isEmpty);
+          expect(content['job_expectation']['position'], isEmpty);
+          switch (section) {
+            case 0:
+              expect(content['personal_info']['email'], value);
+            case 1:
+              expect(content['job_expectation']['city'], value);
+            case 3:
+              final work = (content['work_experiences'] as List).single as Map;
+              expect(work['description'], value);
+              expect(work['company'], isEmpty);
+          }
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
 
   testWidgets(
     'Section toolbar save fits a short landscape above the keyboard',
@@ -240,7 +328,9 @@ void main() {
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(140));
       await tester.tap(save);
       await tester.pumpAndSettle();
-      expect(find.text('请填写姓名'), findsOneWidget);
+      expect(find.text('请填写姓名'), findsNothing);
+      expect(find.byKey(const ValueKey('resume-section-save')), findsNothing);
+      expect(find.byKey(const ValueKey('resume-editor-save')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

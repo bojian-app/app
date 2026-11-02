@@ -36,7 +36,13 @@ void main() {
     (tester) async {
       final api = FakeGateway();
       final store = await testStore(authenticated: false, api: api);
-      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+      await tester.pumpWidget(
+        MyApp(
+          startupAnimationEnabled: false,
+          bannerAdsEnabled: false,
+          store: store,
+        ),
+      );
       await tester.pumpAndSettle();
       expect(
         Theme.of(tester.element(find.byType(AuthPage))).brightness,
@@ -97,7 +103,13 @@ void main() {
         seeded: true,
         api: api,
       );
-      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+      await tester.pumpWidget(
+        MyApp(
+          startupAnimationEnabled: false,
+          bannerAdsEnabled: false,
+          store: store,
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('nav-3')));
       await tester.pumpAndSettle();
@@ -140,7 +152,13 @@ void main() {
     (tester) async {
       tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
       final store = await testStore(authenticated: true, seeded: true);
-      await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+      await tester.pumpWidget(
+        MyApp(
+          startupAnimationEnabled: false,
+          bannerAdsEnabled: false,
+          store: store,
+        ),
+      );
       await tester.pumpAndSettle();
       for (var index = 0; index < 4; index++) {
         await tester.tap(find.byKey(ValueKey('nav-$index')));

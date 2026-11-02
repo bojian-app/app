@@ -11,7 +11,7 @@ import com.bytedance.sdk.openadsdk.TTAdSdk
 import com.bytedance.sdk.openadsdk.TTCustomController
 import com.bytedance.sdk.openadsdk.mediation.init.MediationPrivacyConfig
 
-/** One SDK initialization shared by splash and banner; never holds an Activity. */
+/** SDK initialization for discovery banners; never holds an Activity. */
 object PangleSdk {
     private val handler = Handler(Looper.getMainLooper())
     private val waiters = mutableListOf<(String?) -> Unit>()

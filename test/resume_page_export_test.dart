@@ -65,7 +65,7 @@ void main() {
         final archive = ZipDecoder().decodeBytes(word);
         final xml = utf8.decode(archive.findFile('word/document.xml')!.content);
         expect(
-          RegExp('<w:pageBreakBefore/>').allMatches(xml).length,
+          RegExp('<w:br w:type="page"/>').allMatches(xml).length,
           pages.length - 1,
         );
         expect(xml, contains('w:top="0" w:right="0" w:bottom="0" w:left="0"'));

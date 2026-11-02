@@ -7,9 +7,10 @@ import 'package:flutter/widgets.dart';
 import 'package:fluwx_no_pay/fluwx_no_pay.dart';
 
 import 'api/bojian_api.dart';
+import 'login_app_store.dart';
 
 abstract interface class WeChatAuthorizer {
-  /// Returns null when the user cancels authorization.
+  /// Returns null when authorization is cancelled or installation is opened.
   Future<String?> authorize();
 }
 
@@ -38,7 +39,8 @@ class NativeWeChatAuthorizer implements WeChatAuthorizer {
         throw const ApiFailure('微信登录暂不可用，请稍后重试');
       }
       if (!await sdk.isWeChatInstalled) {
-        throw const ApiFailure('请先安装微信后再使用微信登录');
+        await openLoginAppStore(LoginApp.wechat);
+        return null;
       }
       final random = Random.secure();
       final state = List.generate(

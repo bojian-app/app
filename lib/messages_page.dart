@@ -1,3 +1,5 @@
+import 'app_page_bar.dart';
+
 import 'dart:async';
 
 import 'user_display_name.dart';
@@ -120,10 +122,7 @@ class _MessagesPageState extends State<MessagesPage> {
             if (empty &&
                 !store.loading.contains(section) &&
                 store.errors[section] == null)
-              _status(
-                chats ? AppIcons.messages : AppIcons.notification,
-                chats ? '暂无聊天记录' : '暂无系统通知',
-              ),
+              EmptyState(chats ? '暂无聊天记录' : '暂无系统通知', ''),
             if (!empty)
               Material(
                 color: context.colors.surface,
@@ -177,7 +176,7 @@ class _MessagesPageState extends State<MessagesPage> {
       );
       return widget.standalone
           ? Scaffold(
-              appBar: AppBar(
+              appBar: AppPageBar(
                 title: const Text('消息'),
                 actions: [if (!chats) _markAllReadButton(store)],
               ),
@@ -542,6 +541,7 @@ class _MessagesPageState extends State<MessagesPage> {
           context,
           item.type == 'ARTICLE_REJECTED'
               ? OwnArticlePreview(
+                  store: widget.store,
                   story: story,
                   row: {
                     ...result.data,
@@ -731,7 +731,7 @@ class _ChatPageState extends State<ChatPage> {
         : const {};
     final name = userDisplayName(peer['display_name']);
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppPageBar(
         title: Text(name),
         actions: [
           const DismissKeyboardButton(),
@@ -803,15 +803,7 @@ class _ChatPageState extends State<ChatPage> {
                       );
                     }
                     if (history.messages.isEmpty && history.error == null) {
-                      return Padding(
-                        padding: EdgeInsets.symmetric(vertical: 100),
-                        child: Center(
-                          child: Text(
-                            '暂无聊天记录',
-                            style: TextStyle(color: context.colors.muted),
-                          ),
-                        ),
-                      );
+                      return const EmptyState('暂无聊天记录', '', compact: true);
                     }
                     return const SizedBox.shrink();
                   },

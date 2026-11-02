@@ -1,3 +1,4 @@
+import 'app_page_bar.dart';
 import 'user_display_name.dart';
 import 'playful_refresh.dart';
 
@@ -12,7 +13,6 @@ import 'design.dart';
 import 'confirmation_dialog.dart';
 import 'template_market_store.dart';
 import 'template_live_preview.dart';
-import 'template_preview_resources.dart';
 import 'profile_avatar.dart';
 
 class TemplateMarketView extends StatefulWidget {
@@ -34,7 +34,6 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
   @override
   void initState() {
     super.initState();
-    unawaited(TemplatePreviewResources.warm());
     market.refresh();
   }
 
@@ -49,15 +48,7 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: market,
     builder: (context, _) => Scaffold(
-      appBar: AppBar(
-        title: const Text('模板市场'),
-        titleTextStyle: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-          color: context.colors.ink,
-        ),
-        centerTitle: false,
-      ),
+      appBar: AppPageBar(title: const Text('模板市场')),
       body: Column(
         children: [
           Padding(
@@ -319,49 +310,57 @@ class _MarketStatus extends StatelessWidget {
   final String title, subtitle;
   final VoidCallback retry;
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (loading)
-            const SizedBox(
-              width: 26,
-              height: 26,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else ...[
-            AppIcon(
-              AppIcons.templateMarket,
-              size: 32,
-              color: context.colors.muted,
+  Widget build(BuildContext context) => !loading && error == null
+      ? EmptyState(title, subtitle)
+      : Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (loading)
+                  const SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else ...[
+                  AppIcon(
+                    AppIcons.templateMarket,
+                    size: 32,
+                    color: context.colors.muted,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    error == null ? title : '模板加载失败',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    error ?? subtitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: context.colors.muted,
+                      fontSize: 12,
+                      height: 1.6,
+                    ),
+                  ),
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: TextButton(
+                        onPressed: retry,
+                        child: const Text('重新加载'),
+                      ),
+                    ),
+                ],
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              error == null ? title : '模板加载失败',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              error ?? subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: context.colors.muted,
-                fontSize: 12,
-                height: 1.6,
-              ),
-            ),
-            if (error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: TextButton(onPressed: retry, child: const Text('重新加载')),
-              ),
-          ],
-        ],
-      ),
-    ),
-  );
+          ),
+        );
 }
 
 class MarketTemplateArtwork extends StatelessWidget {
@@ -805,7 +804,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
       },
       child: Scaffold(
         backgroundColor: context.colors.surface,
-        appBar: AppBar(
+        appBar: AppPageBar(
           leading: IconButton(
             tooltip: previewOpen ? '返回模板详情' : '返回',
             onPressed: () {
@@ -821,15 +820,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
             '${design['name'] ?? '简历模板'}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-          ),
-          backgroundColor: context.colors.surface,
-          scrolledUnderElevation: 0,
-          centerTitle: false,
-          titleSpacing: 0,
-          titleTextStyle: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: context.colors.ink,
           ),
         ),
         body: IgnorePointer(

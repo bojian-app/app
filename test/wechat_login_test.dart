@@ -356,7 +356,13 @@ void main() {
           api: gateway,
           weChatAuthorizer: NativeWeChatAuthorizer(sdk),
         );
-        await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+        await tester.pumpWidget(
+          MyApp(
+            startupAnimationEnabled: false,
+            bannerAdsEnabled: false,
+            store: store,
+          ),
+        );
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.byKey(const ValueKey('auth-consent')));
         await tester.tap(find.byKey(const ValueKey('auth-consent')));

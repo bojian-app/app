@@ -1,3 +1,5 @@
+import 'app_page_bar.dart';
+
 import 'package:flutter/material.dart';
 
 import 'design.dart';
@@ -280,11 +282,7 @@ class _IdentityScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: context.colors.inset,
-    appBar: AppBar(
-      title: Text(title),
-      centerTitle: false,
-      backgroundColor: context.colors.surface,
-    ),
+    appBar: AppPageBar(title: Text(title)),
     body: SafeArea(
       top: false,
       child: Center(

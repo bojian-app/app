@@ -62,7 +62,13 @@ void main() {
         addTearDown(tester.view.resetViewPadding);
         addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
         final store = await testStore(authenticated: true);
-        await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+        await tester.pumpWidget(
+          MyApp(
+            startupAnimationEnabled: false,
+            bannerAdsEnabled: false,
+            store: store,
+          ),
+        );
         await tester.pumpAndSettle();
         expect(tester.getTopLeft(find.byType(DiscoveryPage)).dy, inset);
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.dark);

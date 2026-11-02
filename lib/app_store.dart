@@ -13,6 +13,9 @@ import 'legal_document.dart';
 import 'wechat_login.dart';
 import 'douyin_login.dart';
 import 'resume_templates.dart';
+import 'resume_editor_progress.dart';
+import 'resume_generated_text.dart';
+import 'template_preview_cache.dart';
 import 'realtime_client.dart';
 import 'device_metadata.dart';
 
@@ -314,8 +317,41 @@ String entriesText(dynamic entries, String detail) => (entries as List? ?? [])
       ].where((s) => '$s'.isNotEmpty).join('\n'),
     )
     .join('\n\n');
+ResumeEditorProgress resumeDraftProgress(ResumeDraft draft) {
+  Iterable<Map<String, dynamic>> entries(String key) =>
+      (draft.source[key] as List? ?? []).whereType<Map>().map((value) {
+        final entry = Map<String, dynamic>.from(value);
+        // Imported resumes can contain rich text without a plain-text copy.
+        for (final field in [
+          'description',
+          'achievements',
+          'campus_experience',
+        ]) {
+          if ((entry[field]?.toString().trim() ?? '').isEmpty) {
+            entry[field] = plainContent(entry['${field}_rich']);
+          }
+        }
+        return entry;
+      });
+  return resumeEditorProgress(
+    fields: {
+      'name': draft.name,
+      'phone': draft.phone,
+      'email': draft.email,
+      'position': draft.position,
+      'city': draft.city,
+    },
+    work: entries('work_experiences'),
+    projects: entries('projects'),
+    education: entries('educations'),
+    skills: entries('skills'),
+  );
+}
+
 ResumeDraft decodeResume(Map<String, dynamic> v) {
-  final content = (v['content'] as Map<String, dynamic>?) ?? {};
+  final content = cleanResumeGeneratedContent(
+    (v['content'] as Map<String, dynamic>?) ?? {},
+  );
   final personal = content['personal_info'] as Map? ?? {};
   final job = content['job_expectation'] as Map? ?? {};
   final draft = ResumeDraft(
@@ -343,18 +379,7 @@ ResumeDraft decodeResume(Map<String, dynamic> v) {
     education: entriesText(content['educations'], 'campus_experience'),
     skills: entriesText(content['skills'], 'description'),
   );
-  draft.progress =
-      [
-        draft.name,
-        draft.position,
-        draft.phone,
-        draft.email,
-        draft.summary,
-        draft.experience,
-        draft.education,
-        draft.skills,
-      ].where((v) => v.trim().isNotEmpty).length /
-      8;
+  draft.progress = resumeDraftProgress(draft).fraction;
   return draft;
 }
 
@@ -727,6 +752,8 @@ class AppStore extends ChangeNotifier {
         }
         session = stored;
         userID = integer(stored['user_id']);
+        phoneMasked = '${stored['phone_masked'] ?? ''}';
+        phoneBindingChecked = phoneMasked.isNotEmpty;
       }
     } catch (_) {
       errors['session'] = '无法读取安全登录状态，请重新登录';
@@ -850,6 +877,14 @@ class AppStore extends ChangeNotifier {
     String? nickname,
     Future<bool> Function()? confirmRegistration,
   }) async {
+    phone = phone
+        .trim()
+        .replaceAll(RegExp(r'[ -]'), '')
+        .replaceFirst(RegExp(r'^\+86'), '');
+    if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(phone) ||
+        !RegExp(r'^\d{6}$').hasMatch(code)) {
+      throw const ApiFailure('请输入正确的手机号和六位验证码');
+    }
     await initialize();
     final version = epoch;
     final response = await api.login(phone, code, headers);
@@ -857,6 +892,7 @@ class AppStore extends ChangeNotifier {
       response,
       version,
       nickname: nickname,
+      verifiedPhone: phone,
       confirmRegistration: confirmRegistration,
     );
   }
@@ -942,6 +978,13 @@ class AppStore extends ChangeNotifier {
       ++_phoneBindingRevision;
       phoneMasked = masked;
       phoneBindingChecked = true;
+      session = {...session!, 'phone_masked': masked};
+      await persist(session, version);
+      if (result.data['accounts_merged'] == true) {
+        // Await in-flight loads before refreshing data moved by the transaction.
+        await Future.wait(sectionRequests.values.toList());
+        if (version == epoch && alive) await loadAll();
+      }
       changed();
     });
   }
@@ -950,6 +993,7 @@ class AppStore extends ChangeNotifier {
     auth.LoginResponse response,
     int version, {
     String? nickname,
+    String? verifiedPhone,
     Future<bool> Function()? confirmRegistration,
   }) async {
     if (version != epoch || !alive) throw const ApiFailure('登录已取消');
@@ -973,7 +1017,12 @@ class AppStore extends ChangeNotifier {
         headers,
       );
     }
-    await _finishSignIn(response, version, nickname: nickname);
+    await _finishSignIn(
+      response,
+      version,
+      nickname: nickname,
+      verifiedPhone: verifiedPhone,
+    );
     return true;
   }
 
@@ -981,6 +1030,7 @@ class AppStore extends ChangeNotifier {
     auth.LoginResponse response,
     int version, {
     String? nickname,
+    String? verifiedPhone,
   }) async {
     if (response.registrationRequired ||
         response.accessToken.isEmpty ||
@@ -994,14 +1044,17 @@ class AppStore extends ChangeNotifier {
       'access_token': response.accessToken,
       'refresh_token': response.refreshToken,
       'user_id': response.user.id.toInt(),
+      if (verifiedPhone != null)
+        'phone_masked':
+            '${verifiedPhone.substring(0, 3)}****${verifiedPhone.substring(7)}',
     };
     await persist(next, version);
     if (version != epoch || !alive) return;
     session = next;
     sessionNotice = null;
     ipLocation = '';
-    phoneMasked = '';
-    phoneBindingChecked = false;
+    phoneMasked = '${next['phone_masked'] ?? ''}';
+    phoneBindingChecked = phoneMasked.isNotEmpty;
     _identityVerified = null;
     ++_identityRevision;
     ++_phoneBindingRevision;
@@ -1698,7 +1751,6 @@ class AppStore extends ChangeNotifier {
       ResumeDraft(
         id: 0,
         title: importedText == null ? '新的简历' : '导入的简历',
-        name: name,
         summary: importedText ?? '',
         template: template,
       );
@@ -1799,6 +1851,37 @@ class AppStore extends ChangeNotifier {
     return result;
   }
 
+  Future<String> unpublishArticle(int id) async {
+    final version = epoch;
+    final response = await request(
+      'PostArticlesIdUnpublish',
+      path: {'id': '$id'},
+    );
+    final status = response.data['status']?.toString() ?? 'DRAFT';
+    if (!alive || version != epoch) return status;
+    stories.removeWhere((story) => story.id == id);
+    _realtimeEvents.add({
+      'type': 'article.updated',
+      'data': {'article_id': id, 'status': status},
+    });
+    changed();
+    return status;
+  }
+
+  Future<ResumeDraft> copyResume(int id) async {
+    final version = epoch;
+    final response = await request('PostResumesIdCopies', path: {'id': '$id'});
+    if (!alive || epoch != version) throw const ApiFailure('账号已切换');
+    final copied = decodeResume(response.data);
+    if (copied.id <= 0 || copied.id == id) {
+      throw const ApiFailure('副本结果无效，请刷新简历列表确认');
+    }
+    resumes.removeWhere((resume) => resume.id == copied.id);
+    resumes.insert(0, copied);
+    changed();
+    return copied;
+  }
+
   Future<void> deleteResume(int id) async {
     final version = epoch;
     await request('DeleteResumesId', path: {'id': '$id'});
@@ -1874,7 +1957,9 @@ class AppStore extends ChangeNotifier {
     final matching = owned.where((row) => integer(row['id']) == templateID);
     if (matching.isEmpty) throw const ApiFailure('该模板未购买或已不可用，请刷新后重试');
     final design = matching.first;
-    final dom = await request('GetTemplatesIdDom', path: {'id': '$templateID'});
+    final dom = await loadTemplatePreviewDOM(
+      this, templateID, integer(design['version']), persist: true,
+    );
     if ((dom.data['html'] as String? ?? '').trim().isEmpty) {
       throw const ApiFailure('模板尚未生成可用版面，请稍后重试');
     }

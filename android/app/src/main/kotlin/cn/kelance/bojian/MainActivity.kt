@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -14,7 +13,6 @@ class MainActivity : FlutterActivity() {
     private var baiduFace: BaiduFaceBridge? = null
     private var resumeFiles: ResumeFileBridge? = null
     private var douyinLogin: DouyinLoginBridge? = null
-    private var startupAds: StartupAdsBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -22,7 +20,6 @@ class MainActivity : FlutterActivity() {
             "cn.kelance.bojian/banner",
             BannerAdFactory(this, flutterEngine.dartExecutor.binaryMessenger),
         )
-        startupAds = StartupAdsBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         baiduFace = BaiduFaceBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         resumeFiles = ResumeFileBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         douyinLogin = DouyinLoginBridge(this, flutterEngine.dartExecutor.binaryMessenger)
@@ -31,12 +28,10 @@ class MainActivity : FlutterActivity() {
                 try {
                     when (call.method) {
                         "deviceInfo" -> {
-                            Thread {
-                                val model = deviceDisplayName()
-                                runOnUiThread {
-                                    result.success(mapOf("model" to model, "os_version" to Build.VERSION.RELEASE))
-                                }
-                            }.start()
+                            result.success(mapOf(
+                                "model" to Build.MODEL.trim(),
+                                "os_version" to Build.VERSION.RELEASE,
+                            ))
                         }
                         "appInfo" -> {
                             @Suppress("DEPRECATION")
@@ -62,39 +57,6 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    private fun deviceDisplayName(): String {
-        // Vendors can expose a retail name separately from Build.MODEL.
-        for (property in listOf("ro.product.marketname", "ro.vendor.oplus.market.name")) {
-            val name = runCatching {
-                val process = ProcessBuilder("/system/bin/getprop", property).start()
-                try {
-                    // Keep the timeout compatible with Android 7 (API 24).
-                    val deadline = SystemClock.elapsedRealtime() + 200
-                    var exitCode: Int? = null
-                    while (SystemClock.elapsedRealtime() < deadline) {
-                        exitCode = try { process.exitValue() } catch (_: IllegalThreadStateException) { null }
-                        if (exitCode != null) break
-                        Thread.sleep(5)
-                    }
-                    if (exitCode != 0) {
-                        ""
-                    } else {
-                        process.inputStream.bufferedReader().use { it.readText().trim() }
-                    }
-                } finally {
-                    process.inputStream.close()
-                    process.errorStream.close()
-                    process.outputStream.close()
-                    process.destroy()
-                }
-            }.getOrDefault("")
-            if (name.isNotBlank() && !name.equals("unknown", ignoreCase = true)) return name
-        }
-        val maker = Build.MANUFACTURER.trim()
-        val model = Build.MODEL.trim()
-        return if (model.startsWith(maker, ignoreCase = true)) model else "$maker $model".trim()
-    }
-
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         if (baiduFace?.onPermissionResult(requestCode) == true) return
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -109,10 +71,6 @@ class MainActivity : FlutterActivity() {
     // Flutter delegates an unhandled root-route back action here. Keep the
     // task and engine alive, just like pressing Home, on every Android version.
     override fun popSystemNavigator(): Boolean {
-        if (startupAds?.active == true) {
-            startupAds?.finish("back")
-            return true
-        }
         if (!isTaskRoot) return false
         return moveTaskToBack(false)
     }
@@ -131,19 +89,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        startupAds?.onResume()
-    }
-
-    override fun onPause() {
-        startupAds?.onPause()
-        super.onPause()
-    }
-
     override fun onDestroy() {
-        startupAds?.close()
-        startupAds = null
         resumeFiles?.close()
         baiduFace?.close()
         baiduFace = null

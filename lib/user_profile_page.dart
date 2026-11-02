@@ -1,3 +1,5 @@
+import 'app_page_bar.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -31,8 +33,7 @@ class UserProfilePage extends StatefulWidget {
   State<UserProfilePage> createState() => _UserProfilePageState();
 }
 
-class _UserProfilePageState extends State<UserProfilePage>
-    with SingleTickerProviderStateMixin {
+class _UserProfilePageState extends State<UserProfilePage> {
   late PublicProfileController publicProfile;
   ProfileIdentityData? get profile => publicProfile.profile;
   List<Story> get articles => publicProfile.articles;
@@ -44,12 +45,9 @@ class _UserProfilePageState extends State<UserProfilePage>
   final nameKey = GlobalKey();
   final surfaceKey = GlobalKey();
   final viewportKey = GlobalKey();
-  late final pull = AnimationController(vsync: this);
   double headerHeight = 400, collapseExtent = 174;
-  double pullDistance = 0;
   bool measuring = false, openingDetails = false;
-  bool pulling = false, pullFromHeader = false, compact = false;
-  int? headerPointer;
+  bool compact = false;
   PageRoute<void>? detailsRoute;
 
   @override
@@ -107,8 +105,7 @@ class _UserProfilePageState extends State<UserProfilePage>
       final name = nameKey.currentContext?.findRenderObject();
       final viewport = viewportKey.currentContext?.findRenderObject();
       if (header is RenderBox && header.hasSize) {
-        final height =
-            header.size.height - pull.value * ProfileHeader.pullExtent;
+        final height = header.size.height;
         if ((height - headerHeight).abs() > .1) {
           setState(() => headerHeight = height);
         }
@@ -122,50 +119,6 @@ class _UserProfilePageState extends State<UserProfilePage>
     });
   }
 
-  void settlePull() {
-    if (!mounted) return;
-    pull.animateBack(
-      0,
-      duration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  bool onScroll(ScrollNotification notification) {
-    if (notification.depth != 0 || openingDetails) return false;
-    if (notification is ScrollStartNotification &&
-        notification.dragDetails != null) {
-      pulling =
-          notification.metrics.pixels <=
-          notification.metrics.minScrollExtent + .5;
-      pullFromHeader = headerPointer != null;
-      pullDistance = 0;
-    } else if (pulling &&
-        notification is OverscrollNotification &&
-        notification.dragDetails != null &&
-        notification.overscroll < 0) {
-      pullDistance = (pullDistance - notification.overscroll).clamp(0, 240);
-      if (pullFromHeader) pull.value = (pullDistance / 120).clamp(0, 1);
-    } else if (pulling &&
-        notification is ScrollUpdateNotification &&
-        notification.metrics.pixels >
-            notification.metrics.minScrollExtent + .5) {
-      pulling = false;
-      settlePull();
-    } else if (notification is ScrollEndNotification && pulling) {
-      pulling = false;
-      final details = pullFromHeader && pullDistance >= 120;
-      final refresh = pullDistance >= 48;
-      pullDistance = 0;
-      if (!details) settlePull();
-      if (refresh && !loading) unawaited(load());
-      if (details) unawaited(showDetails());
-    }
-    return false;
-  }
-
   Future<void> showDetails() async {
     if (openingDetails ||
         profile == null ||
@@ -176,10 +129,9 @@ class _UserProfilePageState extends State<UserProfilePage>
     final navigator = Navigator.of(context).context.findRenderObject();
     if (box is! RenderBox || navigator is! RenderBox) return;
     openingDetails = true;
-    pull.stop();
     final identity = profile!;
     final initialScrollOffset = scroll.offset;
-    final initialPull = pull.value;
+    const initialPull = 0.0;
     final origin =
         box.localToGlobal(Offset.zero, ancestor: navigator) & box.size;
     final surface = surfaceKey.currentContext?.findRenderObject();
@@ -218,22 +170,14 @@ class _UserProfilePageState extends State<UserProfilePage>
       transitionsBuilder: (context, animation, secondaryAnimation, child) =>
           child,
     );
-    void prepareReturn(AnimationStatus status) {
-      if (status == AnimationStatus.completed && mounted) pull.value = 0;
-    }
-
     detailsRoute = route;
     final navigation = Navigator.of(context).push(route);
-    route.animation!.addStatusListener(prepareReturn);
-    prepareReturn(route.animation!.status);
     try {
       await navigation;
       await route.completed;
     } finally {
-      route.animation!.removeStatusListener(prepareReturn);
       detailsRoute = null;
       openingDetails = false;
-      if (mounted && pull.value > 0) settlePull();
     }
   }
 
@@ -265,7 +209,6 @@ class _UserProfilePageState extends State<UserProfilePage>
   void dispose() {
     publicProfile.dispose();
     scroll.dispose();
-    pull.dispose();
     super.dispose();
   }
 
@@ -274,7 +217,7 @@ class _UserProfilePageState extends State<UserProfilePage>
     measureHeader();
     if (profile == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('个人主页')),
+        appBar: AppPageBar(title: const Text('个人主页')),
         body: loading
             ? const Center(child: CircularProgressIndicator())
             : Center(child: status(profileError ?? '该用户主页暂不可见', retry: true)),
@@ -292,138 +235,114 @@ class _UserProfilePageState extends State<UserProfilePage>
         backgroundColor: context.colors.surface,
         body: DefaultTabController(
           length: 1,
-          child: Listener(
-            onPointerUp: (_) => headerPointer = null,
-            onPointerCancel: (_) {
-              headerPointer = null;
-              pulling = false;
-              settlePull();
-            },
-            child: NotificationListener<ScrollNotification>(
-              onNotification: onScroll,
-              child: SizedBox.expand(
-                key: viewportKey,
-                child: CustomScrollView(
-                  key: const ValueKey('public-profile-scroll'),
-                  controller: scroll,
-                  physics: const ClampingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
-                  slivers: [
-                    AnimatedBuilder(
-                      animation: pull,
-                      builder: (context, _) => SliverPersistentHeader(
-                        pinned: true,
-                        delegate: ProfileHeaderSliver(
-                          expandedHeight:
-                              headerHeight +
-                              pull.value * ProfileHeader.pullExtent,
-                          collapsedHeight:
-                              ProfileHeader.toolbarHeight(context) +
-                              MediaQuery.paddingOf(context).top,
-                          collapseExtent: collapseExtent,
-                          headerBuilder: (offset, progress) => Listener(
-                            behavior: HitTestBehavior.translucent,
-                            onPointerDown: (event) =>
-                                headerPointer = event.pointer,
-                            child: ProfileHeader(
-                              key: headerKey,
-                              nameKey: nameKey,
-                              surfaceKey: surfaceKey,
-                              store: widget.store,
-                              identity: profile,
-                              pullProgress: pull.value,
-                              scrollOffset: offset,
-                              collapseProgress: progress,
-                              onMenu: () => Navigator.of(context).maybePop(),
-                              onEdit: () {},
-                              onAvatar: showDetails,
-                              onDetails: showDetails,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SliverAppBar(
-                      primary: false,
-                      pinned: true,
-                      toolbarHeight: 0,
-                      automaticallyImplyLeading: false,
-                      backgroundColor: context.colors.surface,
-                      elevation: 0,
-                      scrolledUnderElevation: 0,
-                      surfaceTintColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      bottom: const ProfileContentTabs(
-                        tabs: [
-                          Tab(
-                            key: ValueKey('profile-tab-articles'),
-                            text: '动态',
-                            height: 36,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (profileError != null)
-                      SliverToBoxAdapter(
-                        child: status(profileError!, retry: true),
-                      ),
-                    SliverList.builder(
-                      itemCount: articles.length,
-                      itemBuilder: (context, index) => KeyedSubtree(
-                        key: ValueKey('public-article-${articles[index].id}'),
-                        child: ColoredBox(
-                          color: context.colors.canvas,
-                          child: Container(
-                            color: context.colors.surface,
-                            margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 600,
-                                ),
-                                child: StoryCard(
-                                  story: articles[index],
-                                  store: widget.store,
-                                  flat: true,
-                                  compactTypography: true,
-                                  authorNavigationEnabled: false,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (articleError != null)
-                      SliverToBoxAdapter(
-                        child: status(articleError!, retry: true),
-                      ),
-                    if (articles.isEmpty && articleError == null)
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: status(loading ? '正在加载动态…' : '暂时没有公开动态'),
-                      ),
-                    SliverLayoutBuilder(
-                      builder: (context, constraints) => SliverToBoxAdapter(
-                        // Short or empty feeds still allow the shared header
-                        // to collapse, without adding a whole empty screen.
-                        child: SizedBox(
-                          height:
-                              (constraints.viewportMainAxisExtent -
-                                      ProfileHeader.toolbarHeight(context) -
-                                      MediaQuery.paddingOf(context).top +
-                                      headerHeight +
-                                      pull.value * ProfileHeader.pullExtent -
-                                      constraints.precedingScrollExtent)
-                                  .clamp(28.0, double.infinity),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+          child: SizedBox.expand(
+            key: viewportKey,
+            child: CustomScrollView(
+              key: const ValueKey('public-profile-scroll'),
+              controller: scroll,
+              physics: const ClampingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
               ),
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: ProfileHeaderSliver(
+                    expandedHeight: headerHeight,
+                    collapsedHeight:
+                        ProfileHeader.toolbarHeight(context) +
+                        MediaQuery.paddingOf(context).top,
+                    collapseExtent: collapseExtent,
+                    headerBuilder: (offset, progress) => Listener(
+                      behavior: HitTestBehavior.translucent,
+                      child: ProfileHeader(
+                        key: headerKey,
+                        nameKey: nameKey,
+                        surfaceKey: surfaceKey,
+                        store: widget.store,
+                        identity: profile,
+                        scrollOffset: offset,
+                        collapseProgress: progress,
+                        onMenu: () => Navigator.of(context).maybePop(),
+                        onEdit: () {},
+                        onAvatar: showDetails,
+                        onDetails: showDetails,
+                      ),
+                    ),
+                  ),
+                ),
+                SliverAppBar(
+                  primary: false,
+                  pinned: true,
+                  toolbarHeight: 0,
+                  automaticallyImplyLeading: false,
+                  backgroundColor: context.colors.surface,
+                  elevation: 0,
+                  scrolledUnderElevation: 0,
+                  surfaceTintColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  bottom: const ProfileContentTabs(
+                    tabs: [
+                      Tab(
+                        key: ValueKey('profile-tab-articles'),
+                        text: '动态',
+                        height: 36,
+                      ),
+                    ],
+                  ),
+                ),
+                if (profileError != null)
+                  SliverToBoxAdapter(child: status(profileError!, retry: true)),
+                SliverList.builder(
+                  itemCount: articles.length,
+                  itemBuilder: (context, index) => KeyedSubtree(
+                    key: ValueKey('public-article-${articles[index].id}'),
+                    child: ColoredBox(
+                      color: context.colors.canvas,
+                      child: Container(
+                        color: context.colors.surface,
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 600),
+                            child: StoryCard(
+                              story: articles[index],
+                              store: widget.store,
+                              flat: true,
+                              compactTypography: true,
+                              authorNavigationEnabled: false,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (articleError != null)
+                  SliverToBoxAdapter(child: status(articleError!, retry: true)),
+                if (articles.isEmpty && articleError == null)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: loading
+                        ? status('正在加载动态…')
+                        : const Center(child: EmptyState('暂时没有公开动态', '')),
+                  ),
+                SliverLayoutBuilder(
+                  builder: (context, constraints) => SliverToBoxAdapter(
+                    // Short or empty feeds still allow the shared header
+                    // to collapse, without adding a whole empty screen.
+                    child: SizedBox(
+                      height:
+                          (constraints.viewportMainAxisExtent -
+                                  ProfileHeader.toolbarHeight(context) -
+                                  MediaQuery.paddingOf(context).top +
+                                  headerHeight -
+                                  constraints.precedingScrollExtent)
+                              .clamp(28.0, double.infinity),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

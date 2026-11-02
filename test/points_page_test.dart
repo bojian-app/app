@@ -2,7 +2,7 @@ import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/points_page.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/story_composer.dart';
-import 'package:bojian_mobile/resume_guidance_share.dart';
+import 'package:bojian_mobile/resume_user_share.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -138,7 +138,7 @@ void main() {
       expect(find.text('选择需要优化的简历'), findsOneWidget);
       await tester.tap(find.text('产品经理 · 社招简历'));
       await tester.pumpAndSettle();
-      expect(find.byType(ResumeGuidanceShare), findsOneWidget);
+      expect(find.byType(ResumeUserShare), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

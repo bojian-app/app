@@ -96,6 +96,73 @@ class ResumeImporter {
   final ResumeUpload upload;
   final Future<void> Function(Duration) delay;
 
+  Future<ResumeDraft> resumeImport(int taskID) async {
+    final epoch = store.epoch;
+    final response = await store.request(
+      'GetResumeImportsId',
+      path: {'id': '$taskID'},
+      expectedEpoch: epoch,
+    );
+    final data = response.data;
+    if (data['status'] == 'SUCCEEDED' && integer(data['resume_id']) > 0) {
+      final saved = await store.request(
+        'GetResumesId',
+        path: {'id': '${data['resume_id']}'},
+        expectedEpoch: epoch,
+      );
+      return decodeResume(saved.data);
+    }
+    if (data['status'] != 'WAITING_CONFIRMATION') {
+      throw const ApiFailure('这份导入记录已不在待保存状态，请刷新后重试');
+    }
+    return parsedDraft(data, taskID, data['name'] as String? ?? '导入的简历');
+  }
+
+  ResumeDraft parsedDraft(Map<String, dynamic> data, int taskID, String name) {
+    final parsed = data['parsed_content'];
+    final content = parsed is Map
+        ? Map<String, dynamic>.from(parsed)
+        : <String, dynamic>{};
+    final raw =
+        content['raw_text'] as String? ??
+        data['unresolved_source_text'] as String? ??
+        '';
+    final parsedDraft = decodeResume({'content': content});
+    // Import fallback depends on extracted content, not completeness rules.
+    final hasParsedContent = [
+      parsedDraft.name,
+      parsedDraft.position,
+      parsedDraft.phone,
+      parsedDraft.email,
+      parsedDraft.summary,
+      parsedDraft.experience,
+      parsedDraft.education,
+      parsedDraft.skills,
+    ].any((value) => value.trim().isNotEmpty);
+    if (!hasParsedContent && raw.trim().isNotEmpty) {
+      content['job_expectation'] = {'preference': raw};
+    }
+    final draft = decodeResume({'title': name, 'content': content});
+    return ResumeDraft(
+      id: 0,
+      importID: taskID,
+      photoFileID: integer(data['photo_file_id']),
+      photoURL: data['photo_url'] as String? ?? '',
+      title: draft.title,
+      name: draft.name,
+      position: draft.position,
+      city: draft.city,
+      phone: draft.phone,
+      email: draft.email,
+      summary: draft.summary,
+      experience: draft.experience,
+      education: draft.education,
+      skills: draft.skills,
+      source: draft.source,
+      progress: draft.progress,
+    );
+  }
+
   Future<ResumeDraft> importFile(
     XFile file, {
     required void Function(String) onProgress,
@@ -180,38 +247,8 @@ class ResumeImporter {
           return decodeResume(saved.data);
         }
         if (status == 'WAITING_CONFIRMATION') {
-          final parsed = data['parsed_content'];
-          final content = parsed is Map
-              ? Map<String, dynamic>.from(parsed)
-              : <String, dynamic>{};
-          final raw =
-              content['raw_text'] as String? ??
-              data['unresolved_source_text'] as String? ??
-              '';
-          if (decodeResume({'content': content}).progress == 0 &&
-              raw.trim().isNotEmpty) {
-            content['job_expectation'] = {'preference': raw};
-          }
-          final draft = decodeResume({'title': name, 'content': content});
           onPhase?.call(ResumeImportPhase.ready);
-          return ResumeDraft(
-            id: 0,
-            importID: taskID,
-            photoFileID: integer(data['photo_file_id']),
-            photoURL: data['photo_url'] as String? ?? '',
-            title: draft.title,
-            name: draft.name,
-            position: draft.position,
-            city: draft.city,
-            phone: draft.phone,
-            email: draft.email,
-            summary: draft.summary,
-            experience: draft.experience,
-            education: draft.education,
-            skills: draft.skills,
-            source: draft.source,
-            progress: draft.progress,
-          );
+          return parsedDraft(data, taskID, name);
         }
         if (['FAILED', 'CANCELED', 'TIMED_OUT'].contains(status)) {
           final message = switch (data['error_code']) {

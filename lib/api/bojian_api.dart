@@ -175,7 +175,11 @@ class BojianApi implements ApiGateway {
       return await (() async {
         final request = http.Request(verb, uri);
         request.followRedirects = false;
-        request.headers.addAll({'accept': 'application/json', ...headers});
+        request.headers.addAll({
+          'accept': 'application/json',
+          'X-Template-Protocol': '2',
+          ...headers,
+        });
         if (body != null) {
           request.headers['content-type'] = 'application/json; charset=utf-8';
           request.body = jsonEncode(body);
@@ -220,8 +224,12 @@ class BojianApi implements ApiGateway {
       })().timeout(
         Duration(
           seconds:
-              route == '/me/identity-verification/ocr' ||
-                  route.startsWith('/me/identity-verification/face-sessions')
+              route == '/resume-work-descriptions' ||
+                  route == '/resume-project-descriptions' ||
+                  route == '/resume-project-achievements'
+              ? 50
+              : route == '/me/identity-verification/ocr' ||
+                    route.startsWith('/me/identity-verification/face-sessions')
               ? 45
               : 20,
         ),

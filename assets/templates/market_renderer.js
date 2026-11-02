@@ -2,11 +2,119 @@
 // Preview and export both use these exact pages; no PDF preview is involved.
 (function () {
   const tell = value => BojianPages.postMessage(JSON.stringify(value));
-  const itemKeys = new Set(['name','title','subtitle','auxiliary','start_date','end_date','detail','secondary_detail']);
+  const itemKeys = new Set(['name','title','subtitle','auxiliary','start_date','end_date','date_range','detail','secondary_detail']);
   const scalar = (scope, key) => key === 'photo' ? payload.photo : scope[key] ?? (scope !== payload.fields && itemKeys.has(key) ? '' : payload.fields[key] ?? '');
   const meaningful = value => Array.isArray(value) ? value.some(meaningful) : value && typeof value === 'object' ? Object.values(value).some(meaningful) : value != null && String(value).trim() !== '';
   const conditionValue = (scope, keys) => keys.split('|').some(key => meaningful(scalar(scope, key)));
   const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const sectionOrder=['job_expectation','self_evaluation','work_experiences','projects','educations','skills','certifications'];
+  const protocol=Number(payload.protocol_version||1);
+  const richText=value=>value&&Array.isArray(value.blocks)?value.blocks.map(b=>(b.spans||[]).map(s=>typeof s.text==='string'?s.text:'').join('')).join('\n'):'';
+  function prepareV2() {
+    if(protocol!==2)return;
+    const fields=payload.fields;
+    fields.birth_date_label=fields.birth_date_label||'出生日期';
+    for(const key of ['educations','work_experiences','projects','certifications','skills']) {
+      fields[key]=(Array.isArray(fields[key])?fields[key]:[]).filter(row=>['title','name','subtitle','auxiliary','start_date','end_date','detail','secondary_detail'].some(k=>String(row[k]??'').trim()||richText(row[k+'_rich']).trim())).map(row=>{
+        const copy={...row};
+        for(const key of ['detail','secondary_detail']) {const rich=richText(copy[key+'_rich']);if(rich.trim())copy[key]=rich;}
+        const start=String(copy.start_date||'').trim(),end=String(copy.end_date||'').trim();
+        copy.date_range=start&&end&&start!==end?start+' — '+end:start||end;
+        return copy;
+      });
+    }
+    const rich=richText(fields.preference_rich);if(rich.trim())fields.preference=rich;
+  }
+  function renderRich(target,scope,key) {
+    const raw=scope[key+'_rich'];
+    if(!richText(raw).trim()&&!String(scope[key]||'').trim())return;
+    const blocks=raw&&Array.isArray(raw.blocks)&&richText(raw).trim()?raw.blocks:String(scope[key]||'').split(/\r\n|\r|\n/).map(text=>({kind:'paragraph',spans:[{text}]}));
+    let list=null,lastKind='',number=0;
+    for(const block of blocks) {
+      const kind=['bullet','numbered'].includes(block.kind)?block.kind:'paragraph';
+      if(kind==='paragraph'){list=null;number=0;}
+      else if(kind!==lastKind||!list){list=document.createElement(kind==='numbered'?'ol':'ul');list.style.listStyle='none';target.appendChild(list);number=0;}
+      const p=document.createElement(kind==='paragraph'?'p':'li');
+      if(list){const marker=document.createElement('span');marker.textContent=kind==='numbered'?`${++number}. `:'• ';marker.dataset.bjListMarker=kind;p.appendChild(marker);}
+      for(const span of Array.isArray(block.spans)?block.spans:[]) {
+        if(typeof span.text!=='string')continue;
+        let node=document.createTextNode(span.text);
+        for(const [flag,tag] of [['bold','strong'],['italic','em'],['underline','u'],['strikethrough','s']])if(span[flag]===true){const wrapper=document.createElement(tag);wrapper.appendChild(node);node=wrapper;}
+        p.appendChild(node);
+      }
+      if(!p.childNodes.length)p.appendChild(document.createElement('br'));
+      (list||target).appendChild(p);lastKind=kind;
+    }
+  }
+  function reorderSections(flow) {
+    if(protocol!==2)return;
+    const nodes=new Map([...flow.querySelectorAll('[data-bj-section]')].map(n=>[n.dataset.bjSection,n]));
+    const stored=Array.isArray(payload.fields.section_order)?payload.fields.section_order:[];
+    const order=['personal_info',...new Set([...stored.filter(k=>sectionOrder.includes(k)),...sectionOrder])];
+    const values={personal_info:['name','phone','email','birth_date','gender'].some(k=>meaningful(payload.fields[k]))||!!payload.photo,job_expectation:['position','city','industry','salary'].some(k=>meaningful(payload.fields[k])),self_evaluation:meaningful(payload.fields.preference)||!!richText(payload.fields.preference_rich).trim()};
+    for(const key of order){const n=nodes.get(key);if(!n)throw Error('模板缺少模块：'+key);if(!(key in values?values[key]:meaningful(payload.fields[key]))){n.remove();continue;}n.parentElement.appendChild(n);}
+  }
+  function makeWordModel(flow,margins) {
+    if(protocol!==2)return null;
+    const clone=flow.cloneNode(true);clone.removeAttribute('id');clone.style.cssText=`position:absolute;left:-200000px;top:0;width:${794-margins.left-margins.right}px;height:auto;column-width:auto;column-count:auto;visibility:hidden;`;
+    document.body.appendChild(clone);
+    const sx=595.28/794,base=clone.getBoundingClientRect(),lines=[],pictures=[],rules=[];
+    const owners=new Map();let id=0;
+    const rgba=value=>{const a=value.match(/[\d.]+/g)?.map(Number)||[36,48,71];return ((((a[3]??1)*255)<<24)|(a[0]<<16)|(a[1]<<8)|a[2])>>>0;};
+    const walker=document.createTreeWalker(clone,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT);
+    let node;
+    while((node=walker.nextNode())) {
+      if(node.nodeType===Node.ELEMENT_NODE&&node.tagName!=='BR')continue;
+      const parent=node.parentElement;
+      let owner=parent.closest('p,h1,h2,h3,h4,h5,h6,li');
+      if(!owner){if(node.nodeType!==Node.TEXT_NODE||!node.nodeValue.trim())continue;owner=parent;}
+      if(!clone.contains(owner))continue;
+      const style=getComputedStyle(parent);if(style.display==='none'||Number(style.opacity)===0)continue;
+      if(!owner.getClientRects().length)continue;
+      let line=owners.get(owner);
+      if(!line){
+        const r=owner.getBoundingClientRect(),s=getComputedStyle(owner),size=parseFloat(s.fontSize)*sx,top=(r.top-base.top+margins.top)*sx;
+        line={paragraph_id:'v2-'+(++id),paragraph_field:owner.closest('[data-bj-body]')?.dataset.bjField||null,paragraph_left:(r.left-base.left+margins.left)*sx,paragraph_width:r.width*sx,paragraph_bottom:(r.bottom-base.top+margins.top)*sx,paragraph_align_right:owner.hasAttribute('data-bj-date')||s.textAlign==='right',top,height:(parseFloat(s.lineHeight)||parseFloat(s.fontSize)*1.5)*sx,baseline:top+size,spans:[]};owners.set(owner,line);lines.push(line);
+      }
+      const text=node.nodeType===Node.TEXT_NODE?node.nodeValue:'\n';
+      if(!text)continue;
+      line.spans.push({text,x:line.paragraph_left,width:0,size:parseFloat(style.fontSize)*sx,color:rgba(style.color),weight:Number(style.fontWeight)||400,italic:style.fontStyle==='italic',underline:style.textDecorationLine.includes('underline')||!!parent.closest('u'),strike:style.textDecorationLine.includes('line-through')||!!parent.closest('s')});
+    }
+    for(const [imageIndex,img] of [...clone.querySelectorAll('img')].entries()) {
+      const source=flow.querySelectorAll('img')[imageIndex];
+      const r=img.getBoundingClientRect();if(!r.width||!r.height)continue;
+      const canvas=document.createElement('canvas');canvas.width=Math.round(r.width*3);canvas.height=Math.round(r.height*3);
+      const ctx=canvas.getContext('2d'),fit=getComputedStyle(img).objectFit;
+      let w=canvas.width,h=canvas.height,x=0,y=0;
+      if(fit==='cover'||fit==='contain'){const scale=(fit==='cover'?Math.max:Math.min)(w/source.naturalWidth,h/source.naturalHeight);w=source.naturalWidth*scale;h=source.naturalHeight*scale;x=(canvas.width-w)/2;y=(canvas.height-h)/2;}
+      ctx.drawImage(source,x,y,w,h);pictures.push({data:canvas.toDataURL('image/png').split(',')[1],x:(r.left-base.left+margins.left)*sx,y:(r.top-base.top+margins.top)*sx,width:r.width*sx,height:r.height*sx});
+    }
+    const merged=[];
+    for(const [owner,line] of owners){
+      const previous=merged.at(-1);
+      if(previous&&!line.paragraph_field&&!previous.line.paragraph_field&&!line.paragraph_align_right&&!previous.line.paragraph_align_right&&previous.owner.parentElement===owner.parentElement&&Math.abs(previous.line.top-line.top)<1&&line.paragraph_left>=previous.line.paragraph_left+previous.line.paragraph_width-1){
+        previous.line.spans.push({...line.spans[0],text:'    '},...line.spans);
+        previous.line.paragraph_width=line.paragraph_left+line.paragraph_width-previous.line.paragraph_left;
+        previous.line.paragraph_bottom=Math.max(previous.line.paragraph_bottom,line.paragraph_bottom);
+      }else merged.push({owner,line});
+    }
+    // Keep horizontal template borders in the continuous Word model too.
+    // The PDF capture has its own page paint layer; Word cannot reuse that
+    // fixed-page background when editable paragraphs reflow.
+    for(const element of [clone,...clone.querySelectorAll('*')]) {
+      const r=element.getBoundingClientRect(),style=getComputedStyle(element);
+      if(r.width<=0||style.display==='none'||Number(style.opacity)===0)continue;
+      for(const side of ['Top','Bottom']) {
+        const thickness=parseFloat(style['border'+side+'Width']);
+        const color=rgba(style['border'+side+'Color']);
+        if(!thickness||!(color>>>24)||['none','hidden'].includes(style['border'+side+'Style']))continue;
+        const y=side==='Top'?r.top+thickness/2:r.bottom-thickness/2;
+        rules.push({x:(r.left-base.left+margins.left)*sx,y:(y-base.top+margins.top)*sx,width:r.width*sx,thickness:thickness*sx,color});
+      }
+    }
+    clone.remove();return {lines:merged.map(entry=>entry.line),rules,pictures,margins:Object.fromEntries(Object.entries(margins).map(([k,v])=>[k,v*sx]))};
+  }
+
   function replaceText(element, scope) {
     function snapshot() {
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
@@ -42,10 +150,13 @@
       replaceRange(state.nodes,token.index,token.index+token[0].length,String(scalar(scope,token[1])));
     }
   }
-  function bind(parent, scope) {
+  function bind(parent, scope, scopeId = "root") {
     let index = 0;
     while (index < parent.children.length) {
       const child = parent.children[index], text = child.textContent.trim();
+      if(protocol===2 && child.hasAttribute('data-bj-body'))child.dataset.bjField=scopeId==='root'?'self_evaluation.body':scopeId+'.body';
+      if(protocol===2 && child.hasAttribute('data-bj-rich')){renderRich(child,scope,child.dataset.bjRich);index++;continue;}
+      if(protocol===2 && /\{\{\s*date_range\s*\}\}/.test(text) && child.matches('p'))child.dataset.bjDate='true';
       const loop = text.match(/^\{\{#([a-z_]+)\}\}$/);
       const condition = text.match(/^\{\{(?:#if\s+|\?)([a-z_]+(?:\|[a-z_]+)*)\}\}$/);
       if (loop || condition) {
@@ -64,10 +175,10 @@
         if (!Array.isArray(values)) throw new Error('模板循环字段无效');
         const fragment = document.createDocumentFragment();
         if (values.length > 100) throw new Error('模板条目过多');
-        for (const value of values.filter(meaningful)) {
+        for (const [entryIndex,value] of values.filter(meaningful).entries()) {
           const holder = document.createElement('div');
           originals.forEach(item => holder.appendChild(item.cloneNode(true)));
-          bind(holder, value);
+          bind(holder, value, loop?key+'.'+entryIndex:scopeId);
           while (holder.firstChild) fragment.appendChild(holder.firstChild);
         }
         const closing = parent.children[end];
@@ -78,17 +189,21 @@
         index += inserted; continue;
       }
       if (child.matches('p,h1,h2,h3,h4,h5,h6,li') || child.children.length === 0) replaceText(child,scope);
-      else bind(child,scope);
+      else bind(child,scope,scopeId);
       index++;
     }
   }
-  async function start() {
+  async function start(notifyReady = true, prepareWordModel = false) {
     const started=performance.now();
     const timing=stage=>{if(window.bojianTrace)tell({type:'timing',stage,elapsed_ms:Math.round(performance.now()-started)});};
-    const flow = document.getElementById('flow');
+    let flow = document.getElementById('flow');
+    if (!flow) { flow = document.createElement('div'); flow.id = 'flow'; document.body.appendChild(flow); }
     flow.innerHTML = payload.html;
     flow.querySelectorAll('script,iframe,object,embed,form,link,style').forEach(n=>n.remove());
     flow.querySelectorAll('*').forEach(n=>Array.from(n.attributes).forEach(a=>{ if (/^on/i.test(a.name)) n.removeAttribute(a.name); }));
+    if(protocol!==1 && protocol!==2)throw Error("模板协议不受支持，请升级 APP");
+    prepareV2();
+    reorderSections(flow);
     bind(flow,payload.fields);
     const margins = {top:61.5,bottom:61.5,left:61.5,right:61.5};
     const probe = document.createElement('div'); document.body.appendChild(probe);
@@ -131,8 +246,11 @@
     })));
     const count = Math.max(1, Math.ceil((flow.scrollWidth+1)/(width+32)));
     timing('images-ready');
+    // Editable Word geometry and image encoding are only needed for export.
+    window.bojianWordModel=prepareWordModel?makeWordModel(flow,margins):null;
     if (count > 30) throw new Error('模板页数过多');
     const pages = document.getElementById('pages');
+    pages.replaceChildren();
     for (let i=0;i<count;i++) {
       const page = document.createElement('div'); page.className='paper';
       const inner = document.createElement('div'); inner.className='inner';
@@ -143,8 +261,19 @@
     flow.remove();
     window.pageCount = count;
     timing('pages-ready');
-    tell({type:'ready',count});
+    if (notifyReady) tell({type:'ready',count});
+    return count;
   }
+  // Export is re-typeset with its embedded font; preview uses the device font.
+  // Re-pagination keeps export geometry aligned with the font in PDF/Word.
+  window.setResumeExportMode = async function(enabled, token) {
+    try {
+      if (enabled) document.documentElement.style.setProperty('--resume-font', "'ResumeDocument',sans-serif");
+      else document.documentElement.style.removeProperty('--resume-font');
+      const count = await start(false, enabled);
+      tell({type:'font-ready',token,count});
+    } catch(e) { tell({type:'error',token,message:String(e.message||e)}); }
+  };
   window.capturePage = async function(index, token) {
     try {
       const page = document.querySelectorAll('.paper')[index];
@@ -274,11 +403,36 @@ window.exportNativeLayout = async function(token) {
           }
         }
       }
-      const walker=document.createTreeWalker(page.querySelector('.flow'),NodeFilter.SHOW_TEXT);
+      const paragraphIds=new WeakMap(),paragraphBreaks=new WeakMap();
+      let nextParagraphId=0;
+      function paragraphOwner(element) {
+        for(let n=element;n && n!==page;n=n.parentElement) {
+          const display=getComputedStyle(n).display;
+          const parentDisplay=n.parentElement?getComputedStyle(n.parentElement).display:'';
+          if(['block','list-item','table-cell','inline-block','flex','grid'].includes(display) || ['flex','inline-flex','grid','inline-grid'].includes(parentDisplay))return n;
+        }
+        return page.querySelector('.flow');
+      }
+      function paragraphMetadata(owner) {
+        if(!paragraphIds.has(owner))paragraphIds.set(owner,++nextParagraphId);
+        const r=owner.getBoundingClientRect(),s=getComputedStyle(owner);
+        const left=Math.max(clip.left,r.left+(parseFloat(s.paddingLeft)||0)+(parseFloat(s.borderLeftWidth)||0));
+        const right=Math.min(clip.right,r.right-(parseFloat(s.paddingRight)||0)-(parseFloat(s.borderRightWidth)||0));
+        return {paragraph_id:`html-${paragraphIds.get(owner)}-${paragraphBreaks.get(owner)||0}`,paragraph_left:(left-origin.left)*sx,paragraph_width:Math.max(1,(right-left)*sx)};
+      }
+      const walker=document.createTreeWalker(page.querySelector('.flow'),NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT);
       let node;
       while((node=walker.nextNode())) {
-        const parent=node.parentElement,style=getComputedStyle(parent);
-        if(style.display==='none'||style.visibility==='hidden'||!node.nodeValue.trim())continue;
+        const parent=node.parentElement;
+        if(node.nodeType===Node.ELEMENT_NODE) {
+          if(node.tagName==='BR') {
+            const owner=paragraphOwner(parent);
+            paragraphBreaks.set(owner,(paragraphBreaks.get(owner)||0)+1);
+          }
+          continue;
+        }
+        const style=getComputedStyle(parent),owner=paragraphOwner(parent);
+        if(style.display==='none'||style.visibility==='hidden'||!node.nodeValue)continue;
         const angle=rotation(parent);
         const segments=typeof Intl.Segmenter==='function'?[...new Intl.Segmenter('zh',{granularity:'grapheme'}).segment(node.nodeValue)].map(s=>({text:s.segment,index:s.index})):Array.from(node.nodeValue).map((text,i,a)=>({text,index:a.slice(0,i).join('').length}));
         if(angle) {
@@ -313,14 +467,29 @@ window.exportNativeLayout = async function(token) {
         for(const part of segments) {
           const range=document.createRange();range.setStart(node,part.index);range.setEnd(node,part.index+part.text.length);
           const r=range.getBoundingClientRect();
-          if(!visible(r)||/[\r\n]/.test(part.text)){current=null;continue;}
+          const newline=/[\r\n]/.test(part.text);
+          if(newline && ['pre','pre-wrap','pre-line','break-spaces'].includes(style.whiteSpace)) {
+            paragraphBreaks.set(owner,(paragraphBreaks.get(owner)||0)+1);
+            current=null;continue;
+          }
+          if(!visible(r)) {
+            // A soft-wrap space often has zero width in the DOM range. Keep
+            // it for Word paragraph editing without changing PDF paint widths.
+            const previous=current||lines[lines.length-1];
+            if(/^[\s]+$/.test(part.text) && r.width===0 && r.top>=clip.top-.5 && r.top<clip.bottom && previous?.paragraph_id===paragraphMetadata(owner).paragraph_id) {
+              const span=previous.spans[previous.spans.length-1];
+              const value=span.word_text??span.text;
+              if(!/[\s]$/.test(value))span.word_text=value+' ';
+            }
+            current=null;continue;
+          }
           if(!current||Math.abs(current.rawTop-r.top)>.5) {
             const size=parseFloat(style.fontSize)*sx;
             const span={text:'',x:(r.left-origin.left)*sx,width:0,size,color:color(style.color),weight:Number(style.fontWeight)||400,bold:Number(style.fontWeight)>=600,italic:style.fontStyle==='italic',underline:style.textDecorationLine.includes('underline'),strike:style.textDecorationLine.includes('line-through')};
-            current={rawTop:r.top,top:(r.top-origin.top)*sy,height:r.height*sy,baseline:(r.top-origin.top+baseline(style))*sy,spans:[span]};
+            current={...paragraphMetadata(owner),rawTop:r.top,top:(r.top-origin.top)*sy,height:r.height*sy,baseline:(r.top-origin.top+baseline(style))*sy,spans:[span]};
             lines.push(current);
           }
-          const span=current.spans[0];span.text+=part.text;span.width=(r.right-origin.left)*sx-span.x;
+          const span=current.spans[0];const value=newline?' ':part.text;span.text+=value;if(span.word_text!==undefined)span.word_text+=value;span.width=(r.right-origin.left)*sx-span.x;
         }
       }
       for(const image of page.querySelectorAll('.flow img')) {
@@ -338,6 +507,6 @@ window.exportNativeLayout = async function(token) {
       }
       output.push({lines:lines.map(({rawTop,...line})=>line),rules,pictures,background});
     }
-    BojianPages.postMessage(JSON.stringify({type:'native-layout',token,pages:output}));
+    BojianPages.postMessage(JSON.stringify({type:'native-layout',token,pages:output,word_model:window.bojianWordModel}));
   } catch(e) {BojianPages.postMessage(JSON.stringify({type:'error',token,message:String(e.message||e)}));}
 };

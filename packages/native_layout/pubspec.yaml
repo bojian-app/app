@@ -1,0 +1,11 @@
+name: bojian_native_layout
+description: Shared declarative resume renderer for mobile and publication checks.
+version: 1.0.0
+publish_to: none
+environment:
+  sdk: ^3.13.5
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_svg: ^2.3.0
+  vector_graphics: ^1.2.3

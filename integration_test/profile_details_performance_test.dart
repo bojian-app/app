@@ -22,11 +22,11 @@ void main() {
     tester,
   ) async {
     // Serve a fixed bundled bitmap locally: no personal data or remote requests.
-    final bytes = (await rootBundle.load('assets/points/rewards.png')).buffer
-        .asUint8List();
+    final data = await rootBundle.load('assets/points/rewards-transparent.webp');
+    final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
-      request.response.headers.contentType = ContentType('image', 'png');
+      request.response.headers.contentType = ContentType('image', 'webp');
       request.response.add(bytes);
       await request.response.close();
     });
@@ -37,7 +37,7 @@ void main() {
       'city': '广东省',
       'created_at': '2025-01-02T08:00:00Z',
       'bio': '我有四年前端开发经验，负责移动端界面、交互和性能优化。希望通过清晰的经历介绍，找到适合自己的工作。' * 3,
-      'avatar_url': 'http://127.0.0.1:${server.port}/avatar.png',
+      'avatar_url': 'http://127.0.0.1:${server.port}/avatar.webp',
     });
     final store = await testStore(authenticated: true, api: api);
     addTearDown(store.dispose);

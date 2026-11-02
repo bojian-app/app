@@ -1,3 +1,4 @@
+import 'app_page_bar.dart';
 import 'content_report.dart';
 import 'content_moderation.dart';
 import 'user_display_name.dart';
@@ -751,7 +752,7 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: context.colors.canvas,
-    appBar: AppBar(title: Text(widget.mineOnly ? '我的优化建议' : '指点记录')),
+    appBar: AppPageBar(title: Text(widget.mineOnly ? '我的优化建议' : '指点记录')),
     body: SafeArea(
       top: false,
       child: error != null
@@ -776,12 +777,10 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
                           SizedBox(
                             height: constraints.maxHeight,
                             child: Center(
-                              child: Text(
+                              child: const EmptyState(
                                 '还没有指点记录',
-                                style: TextStyle(
-                                  color: context.colors.muted,
-                                  fontSize: 13,
-                                ),
+                                '',
+                                compact: true,
                               ),
                             ),
                           ),

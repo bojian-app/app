@@ -10,6 +10,7 @@ import 'package:bojian_mobile/profile_identity.dart';
 import 'package:bojian_mobile/points_page.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/saved_articles_page.dart';
+import 'package:bojian_mobile/story_composer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -158,6 +159,219 @@ Future<void> pullAt(WidgetTester tester, Offset start) async {
 }
 
 void main() {
+  testWidgets(
+    'Fast profile flings continue into content after collapsing the header',
+    (tester) async {
+      await mount(tester, ProfileContentGateway());
+      await tester.flingFrom(
+        const Offset(300, 540),
+        const Offset(0, -120),
+        1500,
+      );
+      await tester.pumpAndSettle();
+      final outer = nested(tester).outerController;
+      expect(outer.offset, closeTo(outer.position.maxScrollExtent, .5));
+      final list = find.descendant(
+        of: find.byKey(const PageStorageKey('profile-articles')),
+        matching: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        ),
+      );
+      expect(
+        tester.state<ScrollableState>(list).position.pixels,
+        greaterThan(0),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Partial profile drags spring to the endpoint in either direction',
+    (tester) async {
+      await mount(tester, ProfileContentGateway());
+      final outer = nested(tester).outerController;
+      Future<void> slowDrag(double distance) async {
+        final gesture = await tester.startGesture(const Offset(300, 540));
+        for (var i = 0; i < 5; i++) {
+          await gesture.moveBy(Offset(0, distance / 5));
+          await tester.pump(const Duration(milliseconds: 30));
+        }
+        expect(outer.offset, greaterThan(0));
+        expect(outer.offset, lessThan(outer.position.maxScrollExtent));
+        await tester.pump(const Duration(milliseconds: 200));
+        await gesture.up();
+        await tester.pumpAndSettle();
+      }
+
+      await slowDrag(-80);
+      expect(outer.offset, closeTo(outer.position.maxScrollExtent, .5));
+      await slowDrag(80);
+      expect(outer.offset, closeTo(0, .5));
+      expect(find.byType(ProfileDetailsPage), findsNothing);
+      outer.jumpTo(outer.position.maxScrollExtent / 2);
+      await tester.pumpAndSettle();
+      expect(outer.offset, closeTo(outer.position.maxScrollExtent / 2, .5));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'A profile snap can be interrupted and reversed by another drag',
+    (tester) async {
+      await mount(tester, ProfileContentGateway());
+      final outer = nested(tester).outerController;
+      final up = await tester.startGesture(const Offset(300, 540));
+      await up.moveBy(const Offset(0, -80));
+      await tester.pump(const Duration(milliseconds: 200));
+      await up.up();
+      await tester.pump(const Duration(milliseconds: 70));
+      final down = await tester.startGesture(const Offset(300, 540));
+      await down.moveBy(const Offset(0, 60));
+      await tester.pump(const Duration(milliseconds: 200));
+      await down.up();
+      await tester.pumpAndSettle();
+      expect(outer.offset, closeTo(0, .5));
+      expect(find.byType(ProfileDetailsPage), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Profile actions follow a swipe before it settles', (
+    tester,
+  ) async {
+    await mount(tester, ProfileContentGateway());
+    final bar = tester.getRect(find.byKey(const ValueKey('profile-tabs')));
+    final start = Offset(320, bar.bottom + 35);
+    final publish = find
+        .byKey(const ValueKey('profile-publish-article'))
+        .hitTestable();
+    final add = find.byKey(const ValueKey('profile-add-resume')).hitTestable();
+    final controller = DefaultTabController.of(
+      tester.element(find.byType(TabBar)),
+    );
+    var gesture = await tester.startGesture(start);
+    await gesture.moveBy(const Offset(-20, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(-230, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(controller.index, 0); // The page drag has not settled yet.
+    expect(controller.animation!.value, greaterThan(.5));
+    expect(publish, findsNothing);
+    expect(add, findsNothing);
+    await gesture.moveBy(const Offset(250, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(publish, findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    await select(tester, 'saved');
+    gesture = await tester.startGesture(start);
+    await gesture.moveBy(const Offset(-20, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(-230, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(controller.index, 1);
+    expect(controller.animation!.value, greaterThan(1.5));
+    expect(add, findsOneWidget);
+    await gesture.moveBy(const Offset(250, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(add, findsNothing);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
+    await tester.pump();
+    expect(controller.indexIsChanging, isTrue);
+    expect(add, findsOneWidget);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-tab-saved')));
+    await tester.pump();
+    expect(controller.indexIsChanging, isTrue);
+    expect(add, findsNothing);
+    expect(publish, findsNothing);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'Profile tab actions align with tabs and open their matching creation flow',
+    (tester) async {
+      await mount(tester, ProfileContentGateway());
+      final publish = find.byKey(const ValueKey('profile-publish-article'));
+      expect(publish, findsOneWidget);
+      expect(
+        tester.getCenter(publish).dy,
+        closeTo(
+          tester.getCenter(find.byKey(const ValueKey('profile-tabs'))).dy,
+          1,
+        ),
+      );
+      await tester.tap(publish);
+      await tester.pumpAndSettle();
+      expect(find.byType(StoryComposer), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await select(tester, 'saved');
+      expect(find.text('发表动态').hitTestable(), findsNothing);
+      expect(find.text('添加简历').hitTestable(), findsNothing);
+      await select(tester, 'resumes');
+      final add = find.byKey(const ValueKey('profile-add-resume'));
+      expect(add, findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(ResumeLibrary), matching: add),
+        findsNothing,
+      );
+      expect(
+        tester.getCenter(add).dy,
+        closeTo(
+          tester.getCenter(find.byKey(const ValueKey('profile-tabs'))).dy,
+          1,
+        ),
+      );
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(find.text('手动添加'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Discovery menu opens the shared drawer and preserves search', (
+    tester,
+  ) async {
+    await mount(tester, ProfileContentGateway(), shell: true);
+    await tester.tap(find.byKey(const ValueKey('nav-0')));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('discovery-search'));
+    await tester.enterText(field, '简历');
+    await tester.pumpAndSettle();
+    final menu = find.byKey(const ValueKey('discovery-menu'));
+    expect(
+      tester.getRect(menu).right,
+      lessThanOrEqualTo(tester.getRect(field).left),
+    );
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+    final editor = tester.widget<EditableText>(
+      find.descendant(
+        of: find.byKey(const ValueKey('discovery-search'), skipOffstage: false),
+        matching: find.byType(EditableText, skipOffstage: false),
+      ),
+    );
+    expect(editor.focusNode.hasFocus, isFalse);
+    await tester.tap(find.text('隐私与设置'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsPage), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('discovery-search')), findsOneWidget);
+    expect(tester.widget<TextField>(field).controller!.text, '简历');
+    expect(tester.takeException(), isNull);
+  });
+
   for (final dark in [false, true]) {
     testWidgets(
       'Certified profile displays its badge and removes the application, dark=$dark',
@@ -212,78 +426,90 @@ void main() {
     },
   );
 
-  for (final tab in ['articles', 'saved', 'resumes']) {
-    testWidgets('Pulling $tab refreshes only the touched content region', (
-      tester,
-    ) async {
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    for (final tab in ['articles', 'saved', 'resumes']) {
+      testWidgets('Pulling $tab refreshes only the active list ($platform)', (
+        tester,
+      ) async {
+        final api = ProfileContentGateway();
+        await mount(tester, api);
+        for (final visited in ['saved', 'resumes', 'articles']) {
+          await select(tester, visited);
+        }
+        await select(tester, tab);
+        api.calls.clear();
+        final bar = tester.getRect(find.byKey(const ValueKey('profile-tabs')));
+        await pullAt(tester, Offset(bar.center.dx, bar.bottom + 35));
+        expect(find.byType(ProfileDetailsPage), findsNothing);
+        expect(api.calls, [
+          switch (tab) {
+            'articles' => 'GetMeArticles',
+            'saved' => 'GetMeFavorites',
+            _ => 'GetResumes',
+          },
+        ]);
+        expect(tester.takeException(), isNull);
+      }, variant: TargetPlatformVariant({platform}));
+
+      testWidgets(
+        'Pulling the header over $tab never refreshes tab content ($platform)',
+        (tester) async {
+          final api = ProfileContentGateway();
+          await mount(tester, api);
+          for (final visited in ['saved', 'resumes', 'articles']) {
+            await select(tester, visited);
+          }
+          await select(tester, tab);
+          api.calls.clear();
+          final header = tester.getRect(
+            find.byKey(const ValueKey('profile-header')),
+          );
+          await pullAt(tester, Offset(header.left + 60, header.top + 120));
+          expect(find.byType(ProfileDetailsPage), findsNothing);
+          expect(api.calls, isEmpty);
+          expect(
+            api.calls,
+            isNot(
+              contains(anyOf('GetMeArticles', 'GetMeFavorites', 'GetResumes')),
+            ),
+          );
+          expect(tester.takeException(), isNull);
+        },
+        variant: TargetPlatformVariant({platform}),
+      );
+    }
+  }
+  testWidgets(
+    'A top-origin drag can reverse to refresh without opening details',
+    (tester) async {
       final api = ProfileContentGateway();
       await mount(tester, api);
-      for (final visited in ['saved', 'resumes', 'articles']) {
-        await select(tester, visited);
-      }
-      await select(tester, tab);
       api.calls.clear();
       final bar = tester.getRect(find.byKey(const ValueKey('profile-tabs')));
-      await pullAt(tester, Offset(bar.center.dx, bar.bottom + 35));
-      expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(api.calls, [
-        switch (tab) {
-          'articles' => 'GetMeArticles',
-          'saved' => 'GetMeFavorites',
-          _ => 'GetResumes',
-        },
-      ]);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('Pulling the header over $tab never refreshes tab content', (
-      tester,
-    ) async {
-      final api = ProfileContentGateway();
-      await mount(tester, api);
-      for (final visited in ['saved', 'resumes', 'articles']) {
-        await select(tester, visited);
+      final gesture = await tester.startGesture(
+        Offset(bar.center.dx, bar.bottom + 35),
+      );
+      await gesture.moveBy(const Offset(0, -100));
+      await tester.pump(const Duration(milliseconds: 40));
+      for (var i = 0; i < 6; i++) {
+        await gesture.moveBy(const Offset(0, 70));
+        await tester.pump(const Duration(milliseconds: 40));
       }
-      await select(tester, tab);
-      api.calls.clear();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.byType(ProfileDetailsPage), findsNothing);
+      expect(api.calls, ['GetMeArticles']);
       final header = tester.getRect(
         find.byKey(const ValueKey('profile-header')),
       );
       await pullAt(tester, Offset(header.left + 60, header.top + 120));
-      expect(find.byType(ProfileDetailsPage), findsOneWidget);
-      expect(api.calls.where((call) => call == 'GetMe'), hasLength(1));
-      expect(
-        api.calls,
-        isNot(contains(anyOf('GetMeArticles', 'GetMeFavorites', 'GetResumes'))),
-      );
+      expect(find.byType(ProfileDetailsPage), findsNothing);
+      expect(api.calls, ['GetMeArticles']);
       expect(tester.takeException(), isNull);
-    });
-  }
-
-  testWidgets('Reversing a content drag keeps its refresh inside the list', (
-    tester,
-  ) async {
-    final api = ProfileContentGateway();
-    await mount(tester, api);
-    api.calls.clear();
-    final bar = tester.getRect(find.byKey(const ValueKey('profile-tabs')));
-    final gesture = await tester.startGesture(
-      Offset(bar.center.dx, bar.bottom + 35),
-    );
-    await gesture.moveBy(const Offset(0, -100));
-    await tester.pump(const Duration(milliseconds: 40));
-    for (var i = 0; i < 6; i++) {
-      await gesture.moveBy(const Offset(0, 70));
-      await tester.pump(const Duration(milliseconds: 40));
-    }
-    await gesture.up();
-    await tester.pumpAndSettle();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(find.byType(ProfileDetailsPage), findsNothing);
-    expect(api.calls, ['GetMeArticles']);
-    expect(tester.takeException(), isNull);
-  });
+    },
+  );
 
   testWidgets('A canceled header pull cannot claim the next content gesture', (
     tester,

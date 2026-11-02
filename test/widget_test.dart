@@ -20,7 +20,8 @@ Future<void> launch(
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MyApp(
-      startupAdsEnabled: false,
+      startupAnimationEnabled: false,
+      bannerAdsEnabled: false,
       store: store ?? await testStore(authenticated: true),
     ),
   );

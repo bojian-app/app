@@ -22,11 +22,22 @@ class _DeleteResumeDialog extends StatefulWidget {
 }
 
 class _DeleteResumeDialogState extends State<_DeleteResumeDialog> {
+  late final int epoch;
+  @override
+  void initState() {
+    super.initState();
+    epoch = widget.store.epoch;
+  }
+
   bool deleting = false;
   String? error;
 
   Future<void> remove() async {
     if (deleting) return;
+    if (widget.store.epoch != epoch || !widget.store.isAuthenticated) {
+      setState(() => error = '登录状态已变化，请返回后重试');
+      return;
+    }
     setState(() {
       deleting = true;
       error = null;

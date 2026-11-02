@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/resume_editor_helpers.dart';
 
 class ImportGateway extends FakeGateway {
   ImportGateway() {
@@ -67,6 +68,36 @@ XFile selectedFile({String name = '我的简历.PDF', int size = 20}) =>
     XFile.fromData(Uint8List(size), path: '/test/$name');
 
 void main() {
+  test(
+    'Zero completeness does not replace extracted fields with raw import text',
+    () async {
+      final api = ImportGateway();
+      api.documents['GetResumeImportsId'] = {
+        'status': 'WAITING_CONFIRMATION',
+        'parsed_content': {
+          'personal_info': {'full_name': '已解析姓名'},
+          'job_expectation': {'position': '人事专员', 'preference': '已解析自我评价'},
+          'raw_text': '原始文件全文',
+        },
+      };
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      final draft =
+          await ResumeImporter(
+            store: store,
+            upload: (_, _, _) async {},
+            delay: (_) async {},
+          ).importFile(
+            selectedFile(),
+            onProgress: (_) {},
+            isCancelled: () => false,
+          );
+      expect(draft.progress, 0);
+      expect(draft.position, '人事专员');
+      expect(draft.summary, '已解析自我评价');
+    },
+  );
+
   testWidgets('Shared file starts automatically and opens review once', (
     tester,
   ) async {
@@ -93,8 +124,8 @@ void main() {
     expect(api.calls.where((c) => c == 'PostResumeImports'), hasLength(1));
     expect(api.calls, isNot(contains('PostResumeImportsIdConfirm')));
     expect(returnedToLibrary, isFalse);
-    await tester.tap(find.text('保存'));
-    await tester.pumpAndSettle();
+    await openResumeSection(tester, 0);
+    await saveResumeSection(tester);
     expect(api.calls, contains('PostResumeImportsIdConfirm'));
     expect(returnedToLibrary, isTrue);
   });

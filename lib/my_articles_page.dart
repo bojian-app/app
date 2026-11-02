@@ -1,3 +1,5 @@
+import 'article_owner_actions.dart';
+import 'app_page_bar.dart';
 import 'playful_refresh.dart';
 
 import 'dart:async';
@@ -216,7 +218,10 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
         );
         if (mounted && widget.store.epoch == session) await _load();
       } else {
-        await openPage(context, OwnArticlePreview(story: story, row: detail));
+        await openPage(
+          context,
+          OwnArticlePreview(store: widget.store, story: story, row: detail),
+        );
       }
     } catch (e) {
       if (mounted) toast(context, '$e');
@@ -430,39 +435,17 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                           ),
                         ),
                       if (visible.isEmpty && error == null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 64),
-                          child: Column(
-                            children: [
-                              AppIcon(
-                                AppIcons.article,
-                                size: 36,
-                                color: context.colors.muted,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                query.isNotEmpty
-                                    ? '没有找到这篇文章'
-                                    : '暂无${_statuses[status]}的文章',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                query.isNotEmpty
-                                    ? '试试其他标题关键词'
-                                    : status == 'SUBMITTED'
-                                    ? '提交后的文章会显示在这里'
-                                    : '下拉刷新，查看最新状态',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: context.colors.muted,
-                                ),
-                              ),
-                            ],
-                          ),
+                        EmptyState(
+                          query.isNotEmpty
+                              ? '没有找到这篇文章'
+                              : feedLayout
+                              ? '暂无已发表的动态'
+                              : '暂无${_statuses[status]}的文章',
+                          query.isNotEmpty
+                              ? '试试其他标题关键词'
+                              : status == 'SUBMITTED'
+                              ? '提交后的文章会显示在这里'
+                              : '下拉刷新，查看最新状态',
                         ),
                       for (final row in visible)
                         if (feedLayout)
@@ -502,7 +485,7 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
     );
     if (widget.embedded) return body;
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppPageBar(
         title: Text(widget.draftsOnly ? '草稿箱' : '我的文章'),
         actions: widget.draftsOnly
             ? null
@@ -644,13 +627,25 @@ class _ArticleCard extends StatelessWidget {
 }
 
 class OwnArticlePreview extends StatelessWidget {
-  const OwnArticlePreview({super.key, required this.story, required this.row});
+  const OwnArticlePreview({
+    super.key,
+    required this.story,
+    required this.row,
+    this.store,
+  });
+  final AppStore? store;
   final Story story;
   final Map<String, dynamic> row;
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: context.colors.surface,
-    appBar: AppBar(backgroundColor: context.colors.surface),
+    appBar: AppPageBar(
+      actions: [
+        if (store != null &&
+            {'PUBLISHED', 'SUBMITTED', 'REJECTED'}.contains(row['status']))
+          ArticleOwnerActions(store: store!, articleID: story.id),
+      ],
+    ),
     body: Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(

@@ -1,3 +1,6 @@
+import 'article_owner_actions.dart';
+import 'app_page_bar.dart';
+import 'account_pages.dart' show showAccountMenu;
 import 'api/bojian_api.dart';
 import 'content_report.dart';
 import 'playful_refresh.dart';
@@ -8,7 +11,6 @@ import 'article_rich_content.dart';
 import 'article_reaction_button.dart';
 import 'resume_guidance_view.dart';
 import 'guidance_feed_card.dart';
-import 'story_composer.dart';
 export 'story_composer.dart';
 import 'profile_avatar.dart';
 import 'profile_identity.dart';
@@ -20,7 +22,6 @@ import 'package:flutter/material.dart';
 import 'app_store.dart';
 import 'discovery_banner.dart';
 import 'design.dart';
-import 'discovery_art.dart';
 import 'messages_button.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
@@ -39,7 +40,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
   final search = TextEditingController();
   final searchFocus = FocusNode();
   String query = '';
-  bool openingComposer = false;
+  bool openingMenu = false;
   final _seenArticles = <String, Set<int>>{};
   @override
   void dispose() {
@@ -48,18 +49,13 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     super.dispose();
   }
 
-  Future<void> write() async {
-    if (openingComposer ||
-        !widget.store.isAuthenticated ||
-        ModalRoute.of(context)?.isCurrent != true ||
-        !TickerMode.valuesOf(context).enabled) {
-      return;
-    }
-    setState(() => openingComposer = true);
+  Future<void> openMenu() async {
+    if (openingMenu) return;
+    openingMenu = true;
     try {
-      await openPage(context, StoryComposer(store: widget.store));
+      await showAccountMenu(context, widget.store);
     } finally {
-      if (mounted) setState(() => openingComposer = false);
+      openingMenu = false;
     }
   }
 
@@ -108,11 +104,6 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     empty: stories.isEmpty,
                     title: query.isEmpty ? '还没有发布的内容' : '没有找到相关内容',
                     subtitle: query.isEmpty ? '' : '试试其他关键词。',
-                    illustration: DiscoveryArt(
-                      scene: query.isEmpty
-                          ? DiscoveryScene.community
-                          : DiscoveryScene.search,
-                    ),
                   ),
                 ),
               ),
@@ -148,7 +139,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     );
   }
 
-  Widget searchBar(BuildContext context) {
+  Widget searchBar(BuildContext context, {double collapse = 0}) {
     final height = (MediaQuery.textScalerOf(context).scale(13) * 1.2 + 8)
         .clamp(32.0, double.infinity)
         .toDouble();
@@ -160,85 +151,107 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         );
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: SizedBox(
         key: const ValueKey('discovery-search-row'),
         height: rowHeight,
         child: Row(
           children: [
+            if (widget.store.isAuthenticated)
+              ColoredBox(
+                color: context.colors.surface,
+                child: IconButton(
+                  key: const ValueKey('discovery-menu'),
+                  tooltip: '展开菜单',
+                  style: buttonStyle,
+                  onPressed: openMenu,
+                  icon: AppIcon(
+                    AppIcons.menu,
+                    size: 20,
+                    color: context.colors.ink,
+                  ),
+                ),
+              ),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: SizedBox(
-                  height: height,
-                  child: TextField(
-                    key: const ValueKey('discovery-search'),
-                    controller: search,
-                    focusNode: searchFocus,
-                    textInputAction: TextInputAction.search,
-                    textAlignVertical: TextAlignVertical.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.2,
-                      color: context.colors.ink,
-                    ),
-                    onChanged: (value) => setState(() => query = value.trim()),
-                    onSubmitted: (_) => searchFocus.unfocus(),
-                    decoration: InputDecoration(
-                      hintText: '搜索',
-                      hintStyle: TextStyle(
-                        color: context.colors.muted,
-                        fontSize: 13,
-                        height: 1.2,
-                      ),
-                      filled: true,
-                      fillColor: context.colors.inset,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                      ),
-                      prefixIconConstraints: BoxConstraints.tightFor(
-                        width: 36,
-                        height: height,
-                      ),
-                      prefixIcon: Center(
-                        child: AppIcon(
-                          AppIcons.search,
-                          size: 16,
-                          color: context.colors.muted,
+              child: IgnorePointer(
+                ignoring: collapse > 0,
+                child: Opacity(
+                  opacity: (1 - collapse * 2).clamp(0.0, 1.0),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: SizedBox(
+                      height: height,
+                      child: TextField(
+                        key: const ValueKey('discovery-search'),
+                        controller: search,
+                        focusNode: searchFocus,
+                        textInputAction: TextInputAction.search,
+                        textAlignVertical: TextAlignVertical.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.2,
+                          color: context.colors.ink,
                         ),
-                      ),
-                      suffixIconConstraints: BoxConstraints.tightFor(
-                        width: 32,
-                        height: height,
-                      ),
-                      suffixIcon: search.text.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: '清空搜索',
-                              padding: EdgeInsets.zero,
-                              onPressed: () {
-                                search.clear();
-                                setState(() => query = '');
-                                searchFocus.requestFocus();
-                              },
-                              icon: AppIcon(
-                                AppIcons.clear,
-                                size: 16,
-                                color: context.colors.muted,
-                              ),
+                        onChanged: (value) =>
+                            setState(() => query = value.trim()),
+                        onSubmitted: (_) => searchFocus.unfocus(),
+                        decoration: InputDecoration(
+                          hintText: '搜索',
+                          hintStyle: TextStyle(
+                            color: context.colors.muted,
+                            fontSize: 13,
+                            height: 1.2,
+                          ),
+                          filled: true,
+                          fillColor: context.colors.inset,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
+                          prefixIconConstraints: BoxConstraints.tightFor(
+                            width: 36,
+                            height: height,
+                          ),
+                          prefixIcon: Center(
+                            child: AppIcon(
+                              AppIcons.search,
+                              size: 16,
+                              color: context.colors.muted,
                             ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                          ),
+                          suffixIconConstraints: BoxConstraints.tightFor(
+                            width: 32,
+                            height: height,
+                          ),
+                          suffixIcon: search.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: '清空搜索',
+                                  padding: EdgeInsets.zero,
+                                  onPressed: () {
+                                    search.clear();
+                                    setState(() => query = '');
+                                    searchFocus.requestFocus();
+                                  },
+                                  icon: AppIcon(
+                                    AppIcons.clear,
+                                    size: 16,
+                                    color: context.colors.muted,
+                                  ),
+                                ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -247,42 +260,24 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
             ),
             const SizedBox(width: 8),
             SizedBox(
-              width: 88,
+              width: 44,
               height: 44,
-              child: IconButtonTheme(
-                data: IconButtonThemeData(style: buttonStyle),
-                child: Row(
-                  children: [
-                    Semantics(
-                      label: '发布动态',
-                      button: true,
-                      excludeSemantics: true,
-                      onTap: openingComposer || !widget.store.isAuthenticated
-                          ? null
-                          : write,
-                      child: IconButton(
-                        key: const ValueKey('discovery-create'),
-                        tooltip: '发布动态',
-                        onPressed:
-                            openingComposer || !widget.store.isAuthenticated
-                            ? null
-                            : write,
-                        icon: AppIcon(
-                          AppIcons.send,
-                          size: 20,
-                          color: context.colors.ink,
+              child: ColoredBox(
+                color: context.colors.surface,
+                child: IconButtonTheme(
+                  data: IconButtonThemeData(style: buttonStyle),
+                  child: Row(
+                    children: [
+                      SizedBox.square(
+                        dimension: 44,
+                        child: MessagesButton(
+                          key: const ValueKey('discovery-messages'),
+                          store: widget.store,
+                          iconSize: 20,
                         ),
                       ),
-                    ),
-                    SizedBox.square(
-                      dimension: 44,
-                      child: MessagesButton(
-                        key: const ValueKey('discovery-messages'),
-                        store: widget.store,
-                        iconSize: 20,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -300,20 +295,57 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
         length: categories.length,
         child: NestedScrollView(
           headerSliverBuilder: (context, innerScrolled) => [
-            SliverToBoxAdapter(child: searchBar(context)),
-            SliverAppBar(
-              primary: false,
+            SliverPersistentHeader(
               pinned: true,
-              toolbarHeight: 0,
-              automaticallyImplyLeading: false,
-              backgroundColor: context.colors.surface,
-              scrolledUnderElevation: 0,
-              bottom: ProfileContentTabs(
-                tabBarKey: const ValueKey('discovery-tabs'),
-                tabs: [
-                  for (final category in categories)
-                    Tab(text: category, height: 36),
-                ],
+              delegate: _DiscoveryHeaderDelegate(
+                rowHeight:
+                    (MediaQuery.textScalerOf(context).scale(13) * 1.2 + 16)
+                        .clamp(44.0, double.infinity),
+                builder: (context, collapse) => ColoredBox(
+                  color: context.colors.surface,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 600),
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              left:
+                                  (widget.store.isAuthenticated ? 48 : 4) *
+                                  collapse,
+                              right: 48 * collapse,
+                              bottom:
+                                  (((MediaQuery.textScalerOf(context)
+                                                          .scale(13) *
+                                                      1.2 +
+                                                  16)
+                                              .clamp(44.0, double.infinity) -
+                                          38) /
+                                      2) *
+                                  collapse,
+                              child: ProfileContentTabs(
+                                tabBarKey: const ValueKey('discovery-tabs'),
+                                horizontalPadding: 8,
+                                showDivider: false,
+                                tabs: [
+                                  for (final category in categories)
+                                    Tab(text: category, height: 36),
+                                ],
+                              ),
+                            ),
+                            Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: searchBar(context, collapse: collapse),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             SliverToBoxAdapter(child: DiscoveryBanner(store: widget.store)),
@@ -331,6 +363,34 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
       ),
     );
   }
+}
+
+class _DiscoveryHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _DiscoveryHeaderDelegate({
+    required this.rowHeight,
+    required this.builder,
+  });
+  final double rowHeight;
+  final Widget Function(BuildContext context, double collapse) builder;
+
+  @override
+  double get minExtent => rowHeight;
+  @override
+  double get maxExtent => rowHeight + 38;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) => builder(
+    context,
+    (shrinkOffset / (maxExtent - minExtent)).clamp(0.0, 1.0),
+  );
+
+  @override
+  bool shouldRebuild(_DiscoveryHeaderDelegate oldDelegate) =>
+      rowHeight != oldDelegate.rowHeight || builder != oldDelegate.builder;
 }
 
 /// Only newly arriving records expand into the list. Existing keyed cards
@@ -1095,9 +1155,13 @@ class _StoryDetailState extends State<StoryDetail> {
     animation: widget.store,
     builder: (context, _) => Scaffold(
       backgroundColor: context.colors.surface,
-      appBar: AppBar(
-        backgroundColor: context.colors.surface,
+      appBar: AppPageBar(
         actions: [
+          if (!articleRemoved && widget.story.authorID == widget.store.userID)
+            ArticleOwnerActions(
+              store: widget.store,
+              articleID: widget.story.id,
+            ),
           if (!articleRemoved && widget.story.authorID != widget.store.userID)
             ReportArticleButton(
               store: widget.store,
@@ -1256,10 +1320,7 @@ class _StoryDetailState extends State<StoryDetail> {
                 if (displayedComments.isEmpty &&
                     commentError == null &&
                     !commentsLoading)
-                  Text(
-                    '还没有评论，聊聊你的看法',
-                    style: TextStyle(color: context.colors.muted, fontSize: 13),
-                  ),
+                  const EmptyState('还没有评论，聊聊你的看法', '', compact: true),
                 for (
                   var index = 0;
                   index < displayedComments.length;
@@ -1542,7 +1603,7 @@ class _StorySearchState extends State<StorySearch> {
                 )
                 .toList();
             return Scaffold(
-              appBar: AppBar(
+              appBar: AppPageBar(
                 title: Text(
                   widget.savedOnly
                       ? '我的收藏'
@@ -1578,11 +1639,7 @@ class _StorySearchState extends State<StorySearch> {
                   ),
                   const SizedBox(height: 20),
                   if (results.isEmpty)
-                    const EmptyState(
-                      '这里还没有内容',
-                      '试试其他关键词，或去发现页看看。',
-                      illustration: DiscoveryArt(scene: DiscoveryScene.search),
-                    ),
+                    const EmptyState('这里还没有内容', '试试其他关键词，或去发现页看看。'),
                   for (final story in results)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),

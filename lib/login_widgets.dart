@@ -3,16 +3,16 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 
 extension LoginTheme on BuildContext {
-  Color get loginCanvas => isDark ? colors.canvas : const Color(0xFFF7F7F5);
-  Color get loginInk => isDark ? colors.ink : const Color(0xFF25292E);
-  Color get loginLine => isDark ? colors.border : const Color(0xFFE1E3E5);
-  Color get loginMuted => isDark ? colors.muted : const Color(0xFF6F747C);
-  Color get loginOnPrimary => isDark ? colors.canvas : Colors.white;
+  Color get loginCanvas => colors.canvas;
+  Color get loginInk => colors.ink;
+  Color get loginLine => colors.border;
+  Color get loginMuted => colors.muted;
+  Color get loginOnPrimary => Theme.of(this).colorScheme.onPrimary;
 }
 
 ButtonStyle loginPrimaryButtonStyle(BuildContext context) =>
     FilledButton.styleFrom(
-      backgroundColor: context.loginInk,
+      backgroundColor: context.colors.accent,
       foregroundColor: context.loginOnPrimary,
       minimumSize: const Size(0, 56),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -77,14 +77,14 @@ class LoginConsent extends StatelessWidget {
             checkColor: context.loginOnPrimary,
             fillColor: WidgetStateProperty.resolveWith(
               (states) => states.contains(WidgetState.selected)
-                  ? context.loginInk
+                  ? context.colors.accent
                   : Colors.transparent,
             ),
             side: WidgetStateBorderSide.resolveWith(
               (states) => BorderSide(
                 color: states.contains(WidgetState.selected)
-                    ? context.loginInk
-                    : const Color(0xFFB7BBBF),
+                    ? context.colors.accent
+                    : context.colors.muted,
                 width: 1.2,
               ),
             ),

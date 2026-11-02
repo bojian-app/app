@@ -1,3 +1,5 @@
+import 'app_page_bar.dart';
+
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -188,7 +190,7 @@ class _ResumePhotoCropPageState extends State<ResumePhotoCropPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xFF171A21),
-    appBar: AppBar(
+    appBar: AppPageBar(
       title: Text(widget.aspectRatio == 1 ? '裁剪头像' : '裁剪简历照片'),
       actions: [
         TextButton(

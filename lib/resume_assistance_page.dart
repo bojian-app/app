@@ -1,3 +1,5 @@
+import 'app_page_bar.dart';
+
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -14,6 +16,7 @@ import 'resume_document.dart';
 import 'resume_files.dart';
 import 'resume_importer.dart';
 import 'resume_pages.dart';
+import 'job_title_picker.dart';
 
 enum _AnswerTags { skills, certificates, projects, activities, traits }
 
@@ -272,11 +275,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
       if (jobId != null) return generatingPage();
       return Scaffold(
         backgroundColor: background,
-        appBar: AppBar(
-          title: const Text('AI生成简历'),
-          backgroundColor: context.colors.surface,
-          surfaceTintColor: Colors.transparent,
-        ),
+        appBar: AppPageBar(title: const Text('AI生成简历')),
         bottomNavigationBar: SafeArea(
           top: false,
           minimum: const EdgeInsets.fromLTRB(16, 10, 16, 12),
@@ -459,9 +458,9 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
                 runSpacing: 10,
                 children: [
                   for (final (title, imageAsset) in [
-                    ('在校生', 'assets/resume_ai/identity-student.png'),
-                    ('应届生', 'assets/resume_ai/identity-graduate.png'),
-                    ('职场人', 'assets/resume_ai/identity-professional.png'),
+                    ('在校生', 'assets/resume_ai/identity-student.webp'),
+                    ('应届生', 'assets/resume_ai/identity-graduate.webp'),
+                    ('职场人', 'assets/resume_ai/identity-professional.webp'),
                   ])
                     SizedBox(
                       width: width,
@@ -534,21 +533,6 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
               '搜索意向岗位',
               () => choosePositionAt(index),
               key: const ValueKey('resume-position-search'),
-            ),
-            const SizedBox(height: 12),
-            choiceGrid(
-              resumeCreationPositions.take(6).toList(),
-              (value) => answers.position == value,
-              (value) {
-                answers.position = value;
-                prompt = 0;
-                advance(index + 1);
-              },
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => choosePositionAt(index),
-              child: Text('更多岗位', style: TextStyle(color: purple)),
             ),
           ],
         ),
@@ -683,7 +667,12 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   }
 
   Future<void> choosePositionAt(int index) async {
-    final value = await chooseText('选择意向岗位', resumeCreationPositions);
+    final value = await showJobTitlePicker(
+      context,
+      store: widget.store,
+      initialValue: answers.position,
+      title: '选择意向岗位',
+    );
     if (value == null || !mounted) return;
     answers.position = value;
     prompt = 0;
@@ -993,7 +982,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
 
   Widget generatingPage() => Scaffold(
     backgroundColor: background,
-    appBar: AppBar(title: const Text('AI生成简历')),
+    appBar: AppPageBar(title: const Text('AI生成简历')),
     body: SafeArea(
       child: Center(
         child: SingleChildScrollView(
@@ -1268,13 +1257,8 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     ),
   );
 
-  bool get generatedRoleExample =>
-      (result?.source['projects'] as List? ?? const []).whereType<Map>().any(
-        (project) => '${project['name'] ?? ''}'.contains('岗位示例'),
-      );
-
   Widget resultPage() => Scaffold(
-    appBar: AppBar(title: const Text('生成的简历')),
+    appBar: AppPageBar(title: const Text('生成的简历')),
     body: ResumeDocumentView(resume: result!, store: widget.store),
     bottomNavigationBar: SafeArea(
       top: false,
@@ -1283,9 +1267,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            generatedRoleExample
-                ? '岗位示例已保存，请按真实经历修改后使用'
-                : '已保存到我的简历，请核对并完善个人信息和项目内容',
+            '已保存到我的简历，请核对个人信息和经历后使用',
             style: TextStyle(color: context.colors.muted, fontSize: 12),
             textAlign: TextAlign.center,
           ),

@@ -133,35 +133,7 @@ class GuidanceParticipantList extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  if (people.isEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 48,
-                      ),
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Column(
-                        children: [
-                          AppIcon(
-                            AppIcons.feedback,
-                            size: 30,
-                            color: context.colors.muted,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            '暂时还没有人参与指点',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: context.colors.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  if (people.isEmpty) const EmptyState('暂时还没有人参与指点', ''),
                   for (final person in people)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),

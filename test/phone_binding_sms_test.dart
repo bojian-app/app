@@ -98,19 +98,36 @@ Future<AppStore> _requestCode(
   WidgetTester tester,
   _SmsGateway gateway, {
   bool settleVerification = true,
+  bool login = false,
 }) async {
   gateway.documents['GetMe']!.remove('phone_masked');
-  final store = await testStore(authenticated: true, api: gateway);
-  await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+  final store = await testStore(authenticated: !login, api: gateway);
+  await tester.pumpWidget(
+    MyApp(
+      startupAnimationEnabled: false,
+      bannerAdsEnabled: false,
+      store: store,
+    ),
+  );
   await tester.pumpAndSettle();
+  if (login) {
+    await tester.tap(find.byKey(const ValueKey('auth-consent')));
+    await tester.pumpAndSettle();
+  }
   await tester.enterText(
-    find.byKey(const ValueKey('phone-binding-phone')),
+    find.byKey(ValueKey(login ? 'auth-phone' : 'phone-binding-phone')),
     '13800138000',
   );
   await tester.ensureVisible(
-    find.byKey(const ValueKey('phone-binding-request-code')),
+    find.byKey(
+      ValueKey(login ? 'auth-request-code' : 'phone-binding-request-code'),
+    ),
   );
-  await tester.tap(find.byKey(const ValueKey('phone-binding-request-code')));
+  await tester.tap(
+    find.byKey(
+      ValueKey(login ? 'auth-request-code' : 'phone-binding-request-code'),
+    ),
+  );
   await tester.pump(const Duration(milliseconds: 350));
   await tester.runAsync(
     () => Future<void>.delayed(const Duration(milliseconds: 50)),
@@ -129,6 +146,38 @@ Future<AppStore> _requestCode(
 }
 
 void main() {
+  testWidgets('Phone login uses login SMS, retries errors, and skips binding', (
+    tester,
+  ) async {
+    final images = await tester.runAsync(
+      () async => (await _image(320, 180), await _image(44, 44)),
+    );
+    final api = _SmsGateway(images!.$1, images.$2)..rejectLogin = true;
+    api.failing =
+        'GetMe'; // Slow/unavailable profile must not cause a binding prompt.
+    final store = await _requestCode(tester, api, login: true);
+    expect(api.calls, contains('SendSMS'));
+    expect(api.calls, isNot(contains('PostMePhoneSMSCodes')));
+    await tester.enterText(find.byKey(const ValueKey('auth-code')), '123456');
+    await tester.tap(find.byKey(const ValueKey('auth-submit')));
+    await tester.pumpAndSettle();
+    expect(store.isAuthenticated, isFalse);
+    expect(find.text('验证码不正确'), findsOneWidget);
+    api.rejectLogin = false;
+    await tester.tap(find.byKey(const ValueKey('auth-submit')));
+    await tester.pumpAndSettle();
+    expect(store.isAuthenticated, isTrue);
+    expect(store.hasBoundPhone, isTrue);
+    expect(store.phoneMasked, '138****8000');
+    expect(find.byKey(const ValueKey('phone-binding-dialog')), findsNothing);
+    expect(api.calls, isNot(contains('PostMePhone')));
+    final restored = AppStore(api: api, storage: store.storage);
+    await restored.initialize();
+    expect(restored.hasBoundPhone, isTrue);
+    restored.dispose();
+    expect(tester.takeException(), isNull);
+  });
+
   for (final state in ['', 'SUBMITTED', 'DELIVERED']) {
     testWidgets(
       'SMS $state result is a single inline message, without a toast',
@@ -143,9 +192,7 @@ void main() {
         );
         await _requestCode(tester, gateway);
         final message = find.byKey(const ValueKey('phone-binding-status'));
-        final expected = state == 'DELIVERED'
-            ? '验证码已发送，请查看短信'
-            : '发送请求已提交，请稍后查看短信';
+        const expected = '短信验证码已发送，请注意查收';
         expect(find.text(expected), findsOneWidget);
         expect(
           tester.getTopLeft(message).dy,
@@ -161,9 +208,6 @@ void main() {
           gateway.calls.where((value) => value == 'PostMePhoneSMSCodes'),
           hasLength(1),
         );
-        if (state != 'DELIVERED') {
-          expect(find.text('验证码已发送，请查看短信'), findsNothing);
-        }
         expect(gateway.lastBody?['purpose'], 'BIND_PHONE');
         expect(gateway.lastHeaders?['authorization'], 'Bearer test-access');
         expect(gateway.calls, isNot(contains('SendSMS')));
@@ -203,7 +247,7 @@ void main() {
         ),
       );
       expect(find.byKey(const ValueKey('phone-binding-status')), findsNothing);
-      expect(find.text('验证码已发送，请查看短信'), findsNothing);
+      expect(find.text('短信验证码已发送，请注意查收'), findsNothing);
       expect(find.byType(SnackBar), findsNothing);
       expect(find.text('获取验证码'), findsOneWidget);
       expect(
@@ -247,7 +291,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(store.phoneMasked, '138****8000');
       expect(store.userID, id);
-      expect(store.session, session);
+      expect(store.session, {...session, 'phone_masked': '138****8000'});
       expect(find.byKey(const ValueKey('phone-binding-dialog')), findsNothing);
       expect(api.calls.where((m) => m == 'PostMePhone'), hasLength(2));
       await store.load('profile');

@@ -23,7 +23,7 @@ void main() {
     'Crystal silhouette has equal width and height on a transparent canvas',
     () async {
       final data = await rootBundle.load(
-        'assets/badges/developer_crystal_v1.png',
+        'assets/badges/developer_crystal_v1.webp',
       );
       final codec = await ui.instantiateImageCodec(
         data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
@@ -105,7 +105,7 @@ void main() {
         await tester.runAsync(
           () => precacheImage(
             const ResizeImage(
-              AssetImage('assets/badges/developer_crystal_v1.png'),
+              AssetImage('assets/badges/developer_crystal_v1.webp'),
               width: 192,
             ),
             tester.element(badge),

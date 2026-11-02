@@ -100,9 +100,7 @@ class _PhoneBindingDialogState extends State<PhoneBindingDialog> {
       setState(() {
         requestedPhone = targetPhone;
         countdown = response.retryAfterSeconds.clamp(1, 3600);
-        status = response.deliveryStatus == 'DELIVERED'
-            ? '验证码已发送，请查看短信'
-            : '发送请求已提交，请稍后查看短信';
+        status = '短信验证码已发送，请注意查收';
       });
       timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!current) {
@@ -175,6 +173,10 @@ class _PhoneBindingDialogState extends State<PhoneBindingDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const Text(
+              '验证后，同一手机号下的微信、抖音和手机号账号将合并，简历、积分等数据会一并保留。',
+              style: TextStyle(fontSize: 12, height: 1.5),
+            ),
             const SizedBox(height: 12),
             CupertinoTextField(
               key: const ValueKey('phone-binding-phone'),
@@ -273,7 +275,7 @@ class _PhoneBindingDialogState extends State<PhoneBindingDialog> {
         ),
         cancelLabel: '暂时跳过',
         cancelKey: const ValueKey('phone-binding-skip'),
-        confirmLabel: submitting ? '绑定中…' : '绑定',
+        confirmLabel: submitting ? '绑定中…' : '绑定并合并账号',
         confirmKey: const ValueKey('phone-binding-confirm'),
         onCancel: busy ? null : () => Navigator.pop(context, false),
         onConfirm: busy ? null : submit,

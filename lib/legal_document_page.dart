@@ -1,3 +1,5 @@
+import 'app_page_bar.dart';
+
 import 'package:flutter/material.dart';
 
 import 'design.dart';
@@ -106,11 +108,8 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
     final current = document;
     return Scaffold(
       backgroundColor: context.colors.surface,
-      appBar: AppBar(
+      appBar: AppPageBar(
         title: Text(current.title),
-        centerTitle: false,
-        titleSpacing: 0,
-        backgroundColor: context.colors.surface,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),

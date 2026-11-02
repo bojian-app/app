@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+
+import 'confirmation_dialog.dart';
 
 import 'app_store.dart';
 import 'api/bojian_api.dart';
@@ -220,4 +223,104 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
       ),
     );
   }
+}
+
+Future<void> showResumeRenameDialog(
+  BuildContext context, {
+  required AppStore store,
+  required ResumeDraft resume,
+}) => showAppDialog<void>(
+  context,
+  builder: (_) => _ResumeRenameDialog(store: store, resume: resume),
+);
+
+class _ResumeRenameDialog extends StatefulWidget {
+  const _ResumeRenameDialog({required this.store, required this.resume});
+  final AppStore store;
+  final ResumeDraft resume;
+  @override
+  State<_ResumeRenameDialog> createState() => _ResumeRenameDialogState();
+}
+
+class _ResumeRenameDialogState extends State<_ResumeRenameDialog> {
+  late final controller = TextEditingController(text: widget.resume.title);
+  late final int epoch;
+  @override
+  void initState() {
+    super.initState();
+    epoch = widget.store.epoch;
+  }
+
+  bool saving = false;
+  String? error;
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    if (saving) return;
+    final name = controller.text.trim();
+    if (name.isEmpty || name.runes.length > 160) {
+      setState(() => error = '请输入 1–160 个字的简历名称');
+      return;
+    }
+    if (widget.store.epoch != epoch || !widget.store.isAuthenticated) {
+      setState(() => error = '登录状态已变化，请返回后重试');
+      return;
+    }
+    if (name == widget.resume.title) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      await widget.store.renameResume(widget.resume.id, name);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          saving = false;
+          error = e is ApiFailure ? e.message : '重命名失败，请重试';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !saving,
+    child: AppConfirmationDialog(
+      title: '重命名简历',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CupertinoTextField(
+            key: const ValueKey('resume-rename-dialog-input'),
+            controller: controller,
+            autofocus: true,
+            enabled: !saving,
+            placeholder: '简历名称',
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => save(),
+            padding: const EdgeInsets.all(12),
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              error!,
+              style: const TextStyle(color: CupertinoColors.systemRed),
+            ),
+          ],
+        ],
+      ),
+      confirmLabel: saving ? '保存中…' : '保存',
+      onConfirm: saving ? null : save,
+      onCancel: saving ? null : () => Navigator.pop(context),
+    ),
+  );
 }

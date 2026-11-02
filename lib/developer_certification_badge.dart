@@ -15,7 +15,7 @@ class DeveloperCertificationBadge extends StatelessWidget {
       message: '开发者认证',
       excludeFromSemantics: true,
       child: Image.asset(
-        'assets/badges/developer_crystal_v1.png',
+        'assets/badges/developer_crystal_v1.webp',
         width: size,
         height: size,
         fit: BoxFit.contain,

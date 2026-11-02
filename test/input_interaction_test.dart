@@ -17,7 +17,8 @@ Future<void> launch(WidgetTester tester, {bool guest = false}) async {
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MyApp(
-      startupAdsEnabled: false,
+      startupAnimationEnabled: false,
+      bannerAdsEnabled: false,
       store: await testStore(authenticated: guest, seeded: guest),
     ),
   );
@@ -32,7 +33,13 @@ Future<void> launchBinding(WidgetTester tester) async {
   final api = FakeGateway();
   api.documents['GetMe']!.remove('phone_masked');
   final store = await testStore(authenticated: true, api: api);
-  await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+  await tester.pumpWidget(
+    MyApp(
+      startupAnimationEnabled: false,
+      bannerAdsEnabled: false,
+      store: store,
+    ),
+  );
   await tester.pumpAndSettle();
 }
 

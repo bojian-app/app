@@ -77,7 +77,13 @@ Future<void> _openLogin(
     weChatAuthorizer: _AuthorizedWeChat(),
     douyinAuthorizer: FakeDouyinAuthorizer(code: 'verified-code'),
   );
-  await tester.pumpWidget(MyApp(startupAdsEnabled: false, store: store));
+  await tester.pumpWidget(
+    MyApp(
+      startupAnimationEnabled: false,
+      bannerAdsEnabled: false,
+      store: store,
+    ),
+  );
   await tester.pumpAndSettle();
   addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
   final consent = find.byKey(const ValueKey('auth-consent'));

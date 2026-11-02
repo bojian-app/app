@@ -1,3 +1,5 @@
+import 'app_page_bar.dart';
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -34,7 +36,7 @@ class ProfileAvatarEditorView extends StatelessWidget {
     child: Scaffold(
       key: const ValueKey('profile-avatar-editor'),
       backgroundColor: Colors.black,
-      appBar: AppBar(
+      appBar: AppPageBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
@@ -151,8 +153,7 @@ class ProfileBiographyEditorView extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     key: const ValueKey('profile-biography-editor'),
     backgroundColor: context.colors.surface,
-    appBar: AppBar(
-      backgroundColor: context.colors.surface,
+    appBar: AppPageBar(
       title: const Text('个人简介', maxLines: 1, overflow: TextOverflow.ellipsis),
       actions: [
         _ProfileSaveAction(saving: saving, onSave: saving ? null : onSave),

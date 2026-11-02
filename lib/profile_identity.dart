@@ -105,6 +105,7 @@ class ProfileHeader extends StatelessWidget {
   final Key? nameKey, surfaceKey;
   final bool showName, transitionSnapshot, paintBackground;
   static const pullExtent = 40.0;
+  static const detailsPullThreshold = 64.0;
 
   static double toolbarHeight(BuildContext context) =>
       (MediaQuery.textScalerOf(context).scale(14) * 1.3)
@@ -227,18 +228,9 @@ class ProfileHeader extends StatelessWidget {
                   child: ProfileBackdrop(store: store, identity: identity),
                 ),
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: -1,
-                height: 25,
-                child: IgnorePointer(
-                  child: ProfileSheetHandle(handleOpacity: 1 - t),
-                ),
-              ),
             ],
             Padding(
-              padding: EdgeInsets.fromLTRB(16, inset, 16, 40),
+              padding: EdgeInsets.fromLTRB(16, inset, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -403,22 +395,66 @@ class ProfileHeader extends StatelessWidget {
                         ),
                       ),
                     if (identity == null)
-                      IconButton(
-                        key: const ValueKey('profile-edit'),
-                        tooltip: '编辑个人资料',
-                        onPressed: onEdit,
-                        icon: AppIcon(
-                          AppIcons.profileEdit,
-                          size: 20,
-                          color: color,
-                        ),
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            height: 32,
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                key: const ValueKey('profile-actions-capsule'),
+                                decoration: ShapeDecoration(
+                                  color: color.withValues(
+                                    alpha: context.isDark ? .10 : .10 * (1 - t),
+                                  ),
+                                  shape: StadiumBorder(
+                                    side: BorderSide(
+                                      color: color.withValues(alpha: .24),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                key: const ValueKey('profile-edit'),
+                                tooltip: '编辑个人资料',
+                                onPressed: onEdit,
+                                icon: AppIcon(
+                                  AppIcons.profileEdit,
+                                  size: 18,
+                                  color: color,
+                                ),
+                              ),
+                              SizedBox(
+                                width: 1,
+                                height: 16,
+                                child: ColoredBox(
+                                  color: color.withValues(alpha: .28),
+                                ),
+                              ),
+                              MessagesButton(
+                                key: const ValueKey('profile-messages'),
+                                store: store,
+                                color: color,
+                                iconSize: 18,
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+                    else
+                      MessagesButton(
+                        key: const ValueKey('profile-messages'),
+                        store: store,
+                        color: color,
+                        iconSize: 20,
                       ),
-                    MessagesButton(
-                      key: const ValueKey('profile-messages'),
-                      store: store,
-                      color: color,
-                      iconSize: 20,
-                    ),
                   ],
                 ),
               ),
@@ -445,6 +481,9 @@ class ProfileContentTabs extends StatelessWidget
   const ProfileContentTabs({
     super.key,
     this.tabBarKey = const ValueKey('profile-tabs'),
+    this.horizontalPadding = 12,
+    this.showDivider = true,
+    this.trailing,
     this.tabs = const [
       Tab(key: ValueKey('profile-tab-articles'), text: '动态', height: 36),
       Tab(key: ValueKey('profile-tab-saved'), text: '收藏', height: 36),
@@ -453,20 +492,23 @@ class ProfileContentTabs extends StatelessWidget
   });
   final List<Widget> tabs;
   final Key? tabBarKey;
+  final double horizontalPadding;
+  final bool showDivider;
+  final Widget? trailing;
 
   @override
   Size get preferredSize => const Size.fromHeight(38);
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: preferredSize.height,
-    child: TabBar(
+  Widget build(BuildContext context) {
+    final bar = TabBar(
       key: tabBarKey,
       isScrollable: true,
       tabAlignment: TabAlignment.start,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       labelPadding: const EdgeInsets.symmetric(horizontal: 8),
       dividerColor: context.colors.border,
+      dividerHeight: showDivider && trailing == null ? 1 : 0,
       indicatorColor: context.colors.ink,
       indicatorWeight: 2,
       indicatorSize: TabBarIndicatorSize.label,
@@ -478,36 +520,29 @@ class ProfileContentTabs extends StatelessWidget
         fontWeight: FontWeight.w500,
       ),
       tabs: tabs,
-    ),
-  );
-}
-
-class ProfileSheetHandle extends StatelessWidget {
-  const ProfileSheetHandle({super.key, this.handleOpacity = 1});
-  final double handleOpacity;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    key: const ValueKey('profile-curved-edge'),
-    decoration: BoxDecoration(
-      color: context.colors.surface,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-    ),
-    child: Center(
-      child: Opacity(
-        opacity: handleOpacity,
-        child: Container(
-          key: const ValueKey('profile-drag-handle'),
-          width: 44,
-          height: 4,
-          decoration: BoxDecoration(
-            color: context.colors.muted.withValues(alpha: .4),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-      ),
-    ),
-  );
+    );
+    return SizedBox(
+      height: preferredSize.height,
+      child: trailing == null
+          ? bar
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                border: showDivider
+                    ? Border(bottom: BorderSide(color: context.colors.border))
+                    : null,
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: bar),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 20),
+                    child: trailing!,
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
 }
 
 class _ProfileAboutSummary extends StatelessWidget {
@@ -883,14 +918,6 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                       child: details,
                     ),
                   ),
-                  if (progress < 1)
-                    Positioned(
-                      left: rect.left,
-                      width: rect.width,
-                      top: rect.bottom - 24 + progress * 25,
-                      height: 25,
-                      child: const IgnorePointer(child: ProfileSheetHandle()),
-                    ),
                 ],
               ),
             );

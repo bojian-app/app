@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-import 'template_preview_document.dart';
+import 'resume_native_export.dart';
 
 /// Immutable bundled resources shared by previews; individual HTML documents
 /// still have separate lifetimes. Keep them beside the fonts so iOS file read
@@ -83,7 +83,7 @@ class TemplatePreviewResources {
   Future<void> _prepareFonts() async {
     await directory.create(recursive: true);
     await Future.wait(
-      templatePreviewFontAssets.entries.map((entry) async {
+      resumeDocumentFontAssets.entries.map((entry) async {
         final file = File('${directory.path}/${entry.key}');
         if (await file.exists()) return;
         final bytes = await rootBundle.load(entry.value);

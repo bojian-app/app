@@ -1,5 +1,4 @@
 import 'package:bojian_mobile/app_store.dart';
-import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/resume_rename.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,14 +105,11 @@ void main() {
       store.resumes.add(resume);
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: ResumeLibrary(store: store)),
+          home: Scaffold(
+            body: ResumeInlineName(store: store, resume: resume),
+          ),
         ),
       );
-      await tester.ensureVisible(find.byKey(const ValueKey('resume-arrow-42')));
-      await tester.tap(find.byKey(const ValueKey('resume-arrow-42')));
-      await tester.pumpAndSettle();
-      expect(find.byType(ResumeEditor), findsNothing);
-      expect(find.byType(ResumePreview), findsNothing);
       await tester.tap(find.text('旧名称'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '  ');

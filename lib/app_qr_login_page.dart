@@ -1,6 +1,9 @@
+import 'app_page_bar.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_qr_scanner.dart';
 
@@ -91,12 +94,51 @@ class _AppQRLoginPageState extends State<AppQRLoginPage> {
           phase == AppQRLoginPhase.confirmation ||
           phase == AppQRLoginPhase.confirming ||
           phase == AppQRLoginPhase.canceling;
+      if (phase == AppQRLoginPhase.scanning) {
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle.light.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: Colors.black,
+            systemNavigationBarDividerColor: Colors.transparent,
+          ),
+          child: Scaffold(
+            key: const ValueKey('app-qr-login-page'),
+            backgroundColor: Colors.black,
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                KeyedSubtree(key: _scannerKey, child: _camera(context)),
+                SafeArea(
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: TextButton(
+                        key: const ValueKey('app-qr-scan-cancel'),
+                        onPressed: () => Navigator.maybePop(context),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(64, 48),
+                          textStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
       return Scaffold(
         key: const ValueKey('app-qr-login-page'),
         backgroundColor: authorizing ? context.colors.surface : null,
-        appBar: AppBar(
+        appBar: AppPageBar(
           backgroundColor: authorizing ? context.colors.surface : null,
-          surfaceTintColor: authorizing ? Colors.transparent : null,
           automaticallyImplyLeading: !authorizing,
           title: authorizing
               ? TextButton(
@@ -108,31 +150,12 @@ class _AppQRLoginPageState extends State<AppQRLoginPage> {
                   ),
                   child: const Text('关闭'),
                 )
-              : Text(phase == AppQRLoginPhase.scanning ? '扫一扫' : '官网登录'),
+              : const Text('官网登录'),
           titleSpacing: authorizing ? 8 : null,
-          centerTitle: authorizing ? false : null,
         ),
         body: SafeArea(
           child: authorizing
               ? _authorization(context)
-              : phase == AppQRLoginPhase.scanning
-              ? Column(
-                  children: [
-                    Expanded(
-                      child: KeyedSubtree(
-                        key: _scannerKey,
-                        child: _camera(context),
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        '扫描博简官网的 App 登录二维码',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
-                )
               : Center(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),

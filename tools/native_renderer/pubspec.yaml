@@ -1,0 +1,13 @@
+name: bojian_native_renderer
+publish_to: none
+version: 1.0.0
+environment:
+  sdk: ^3.13.5
+dependencies:
+  flutter:
+    sdk: flutter
+  bojian_native_layout:
+    path: ../../packages/native_layout
+flutter:
+  assets:
+    - assets/fonts/

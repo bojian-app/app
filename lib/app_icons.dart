@@ -5,6 +5,10 @@ typedef AppIconData = List<List<dynamic>>;
 
 /// Shared stroke-rounded Hugeicons vocabulary.
 abstract final class AppIcons {
+  static const drag = HugeIcons.strokeRoundedDragDropVertical;
+  static const switchResume = HugeIcons.strokeRoundedExchange01;
+  static const more = HugeIcons.strokeRoundedMoreHorizontal;
+  static const power = HugeIcons.strokeRoundedPower;
   static const phone = HugeIcons.strokeRoundedSmartPhone01;
   static const computer = HugeIcons.strokeRoundedComputer;
   static const export = HugeIcons.strokeRoundedFileExport;
@@ -16,6 +20,7 @@ abstract final class AppIcons {
   static const moveDown = HugeIcons.strokeRoundedArrowDown01;
   static const delete = HugeIcons.strokeRoundedDelete02;
   static const location = HugeIcons.strokeRoundedLocation01;
+  static const industry = HugeIcons.strokeRoundedBuilding03;
   static const filter = HugeIcons.strokeRoundedFilterHorizontal;
   static const work = HugeIcons.strokeRoundedBriefcase01;
   static const education = HugeIcons.strokeRoundedMortarboard01;
@@ -53,6 +58,8 @@ abstract final class AppIcons {
   static const readAll = HugeIcons.strokeRoundedTickDouble02;
   static const addPerson = HugeIcons.strokeRoundedUserAdd01;
   static const guidanceRecipients = HugeIcons.strokeRoundedUserSearch01;
+  static const aiOptimize = HugeIcons.strokeRoundedAiMagic;
+  static const monochrome = HugeIcons.strokeRoundedContrast;
   static const notification = HugeIcons.strokeRoundedNotification01;
   static const notificationUnread = HugeIcons.strokeRoundedNotification02;
   static const notificationSettings = HugeIcons.strokeRoundedNotificationSquare;

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'app_store.dart';
+import 'app_icons.dart';
+import 'app_action_sheet.dart';
 import 'design.dart';
 
 const reportReasons = <String, String>{
@@ -81,18 +83,37 @@ class ReportArticleButton extends StatelessWidget {
   final int articleID;
 
   @override
-  Widget build(BuildContext context) => PopupMenuButton<String>(
+  Widget build(BuildContext context) => IconButton(
     tooltip: '更多操作',
-    icon: const Icon(Icons.more_horiz),
-    onSelected: (_) => reportContent(
-      context,
-      store: store,
-      subjectType: 'ARTICLE',
-      subjectID: articleID,
-    ),
-    itemBuilder: (_) => const [
-      PopupMenuItem(value: 'report', child: Text('举报文章')),
-    ],
+    icon: const AppIcon(AppIcons.more, size: 20),
+    onPressed: () async {
+      final epoch = store.epoch;
+      final selected = await showAppActionSheet(
+        context,
+        builder: (_) => const AppActionSheet(
+          title: '文章操作',
+          subtitle: '内容反馈',
+          cancelKey: ValueKey('article-report-menu-cancel'),
+          actions: [
+            AppSheetAction(
+              value: 'report',
+              label: '举报文章',
+              materialIcon: Icons.flag_outlined,
+              key: ValueKey('article-action-report'),
+            ),
+          ],
+        ),
+      );
+      if (!context.mounted || selected != 'report' || store.epoch != epoch) {
+        return;
+      }
+      await reportContent(
+        context,
+        store: store,
+        subjectType: 'ARTICLE',
+        subjectID: articleID,
+      );
+    },
   );
 }
 

@@ -1,3 +1,5 @@
+import 'app_page_bar.dart';
+
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -79,11 +81,7 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
     builder: (context, _) => Scaffold(
       key: const ValueKey('developer-verification-page'),
       backgroundColor: context.colors.inset,
-      appBar: AppBar(
-        title: const Text('开发者认证'),
-        centerTitle: false,
-        backgroundColor: context.colors.surface,
-      ),
+      appBar: AppPageBar(title: const Text('开发者认证')),
       body: !controller.sessionCurrent
           ? const Center(child: Text('登录状态已变化，请返回后重试'))
           : SafeArea(

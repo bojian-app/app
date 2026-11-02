@@ -10,7 +10,7 @@ import 'package:bojian_mobile/guidance_region_comments.dart';
 import 'package:bojian_mobile/resume_document.dart';
 import 'package:bojian_mobile/resume_native_export.dart';
 import 'package:bojian_mobile/resume_guidance_annotations.dart';
-import 'package:bojian_mobile/resume_guidance_share.dart';
+import 'package:bojian_mobile/resume_user_share.dart';
 import 'package:bojian_mobile/resume_guidance_view.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -282,10 +282,10 @@ void main() {
   );
 
   testWidgets(
-    'Sharing, friend selection, question entry and sending no longer show guidance',
+    'User sharing, recipient selection and sending do not show guidance',
     (tester) async {
       final api = SceneGateway();
-      api.documents['GetFriends'] = {
+      api.documents['GetUsersSearch'] = {
         'items': [
           {'id': 2, 'display_name': '小林', 'public_id': '10086'},
         ],
@@ -308,7 +308,7 @@ void main() {
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => ResumeGuidanceShare(
+                    builder: (_) => ResumeUserShare(
                       store: store,
                       resume: decodeResume({
                         'id': 42,
@@ -327,19 +327,24 @@ void main() {
       await tap(tester, find.text('打开分享'));
       expect(find.text('先决定向谁请教'), findsNothing);
       expect(nav.pushes, hasLength(2));
-      await tap(tester, find.text('指定用户'));
+      await tester.enterText(
+        find.byKey(const ValueKey('resume-share-user-id')),
+        '10086',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
       expect(find.text('搜索后勾选想请教的好友'), findsNothing);
       expect(card, findsNothing);
       await tap(tester, find.text('小林'));
       expect(find.text('告诉大家你想改进什么'), findsNothing);
       await tester.enterText(
-        find.byKey(const ValueKey('guidance-question')),
+        find.byKey(const ValueKey('resume-share-remark')),
         '怎样写清工作成果？',
       );
       await tester.pumpAndSettle();
       expect(find.text('确认分享范围后发送'), findsNothing);
       expect(writes(api), isEmpty);
-      await tap(tester, find.byKey(const ValueKey('guidance-submit')));
+      await tap(tester, find.byKey(const ValueKey('resume-user-share-submit')));
       expect(writes(api), ['PostResumesIdGuidance']);
       expect(find.text('打开分享'), findsOneWidget);
       expect(card, findsNothing);

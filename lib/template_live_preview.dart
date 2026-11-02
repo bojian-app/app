@@ -11,6 +11,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'resume_native_market.dart';
 import 'template_preview_document.dart';
 import 'template_preview_resources.dart';
 import 'template_preview_cache.dart';
@@ -39,6 +40,7 @@ class TemplateLivePreview extends StatefulWidget {
 
 class _TemplateLivePreviewState extends State<TemplateLivePreview> {
   WebViewController? controller;
+  NativeMarketDocument? nativeDocument;
   File? document;
   Timer? timeout;
   int operation = 0, pages = 0;
@@ -63,6 +65,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
     if (widget.store.epoch == epoch) return;
     operation++;
     timeout?.cancel();
+    releaseNativeDocument();
     setState(() {
       controller = null;
       ready = false;
@@ -172,8 +175,17 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
     operation++;
     timeout?.cancel();
     pageActions.dispose();
+    nativeDocument?.dispose();
     removeDocument(document);
     super.dispose();
+  }
+
+  void releaseNativeDocument() {
+    final previous = nativeDocument;
+    nativeDocument = null;
+    if (previous != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => previous.dispose());
+    }
   }
 
   void removeDocument(File? value) {
@@ -196,6 +208,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
 
     timeout?.cancel();
     pageActions.value = [];
+    releaseNativeDocument();
     final previous = document;
     document = null;
     setState(() {
@@ -206,23 +219,13 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
     removeDocument(previous);
     File? pending;
     try {
-      final prepared = await Future.wait<Object>([
-        loadTemplatePreviewDOM(
-          widget.store,
-          widget.templateID,
-          widget.version,
-          refresh: refresh,
-        ).then((value) {
-          trace('dom-ready');
-          return value;
-        }),
-        TemplatePreviewResources.load().then((value) {
-          trace('assets-ready');
-          return value;
-        }),
-      ]);
-      final result = prepared[0] as ApiDocument;
-      final resources = prepared[1] as TemplatePreviewResources;
+      final result = await loadTemplatePreviewDOM(
+        widget.store,
+        widget.templateID,
+        widget.version,
+        refresh: refresh,
+      );
+      trace('dom-ready');
       if (!current(request)) return;
       if ((result.data['html'] as String? ?? '').trim().isEmpty) {
         throw const ApiFailure('模板预览正在准备，请稍后重试');
@@ -232,6 +235,36 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
               integer(result.data['version']) != widget.version)) {
         throw const ApiFailure('模板已更新，请刷新详情');
       }
+      final schema = result.data['schema'];
+      final payload = schema is Map ? schema['native'] : null;
+      if (payload is Map) {
+        // The market uses the same fictional fields and native renderer as
+        // resume previews. No browser, HTML/font files, or JS pagination.
+        final photo = await rootBundle.load(
+          'assets/templates/preview_portrait.png',
+        );
+        if (!current(request)) return;
+        final value = await NativeMarketDocument.load(
+          payload,
+          templatePreviewFields,
+          photo.buffer.asUint8List(photo.offsetInBytes, photo.lengthInBytes),
+        );
+        if (!current(request)) {
+          value.dispose();
+          return;
+        }
+        setState(() {
+          nativeDocument = value;
+          pages = value.document.pages.length;
+          ready = true;
+        });
+        trace('native-display-ready');
+        return;
+      }
+      // Existing HTML-only templates retain their compatible browser renderer.
+      final resources = await TemplatePreviewResources.load();
+      if (!current(request)) return;
+      trace('assets-ready');
       final file = pending = await resources.createDocument(
         templatePreviewDocument(
           dom: result.data,
@@ -326,6 +359,14 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
   Widget build(BuildContext context) => Stack(
     fit: StackFit.expand,
     children: [
+      if (nativeDocument != null && error == null)
+        Semantics(
+          label: '$pages 页简历预览，作者水印：${widget.author}',
+          child: NativeMarketPages(
+            value: nativeDocument!,
+            watermark: widget.author,
+          ),
+        ),
       if (controller != null && error == null)
         Semantics(
           label: ready ? '$pages 页简历预览，作者水印：${widget.author}' : '简历预览',

@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
 import 'app_store.dart';
+import 'app_icons.dart';
 import 'profile_avatar.dart';
 import 'resume_updated_label.dart';
 import 'design.dart';
@@ -244,6 +245,36 @@ class _RegionCommentsState extends State<_RegionComments>
       sendError = null;
     });
     focus.requestFocus();
+  }
+
+  final liking = <int>{};
+  Future<void> likeComment(Map<String, dynamic> item) async {
+    final id = integer(item['id']);
+    if (!liking.add(id)) return;
+    final epoch = widget.store.epoch;
+    setState(() {});
+    try {
+      final scope = widget.notification ? 'Notifications' : 'Articles';
+      final verb = item['liked'] == true ? 'Delete' : 'Put';
+      final result = await widget.store.request(
+        '$verb${scope}IdGuidanceAnnotationsAnnotationIdLike',
+        path: {'id': '${widget.id}', 'annotation_id': '$id'},
+      );
+      if (!mounted || epoch != widget.store.epoch) return;
+      setState(() {
+        for (final row in items ?? <Map<String, dynamic>>[]) {
+          if (row['legacy'] != true && integer(row['id']) == id) {
+            row['liked'] = result.data['liked'];
+            row['like_count'] = result.data['like_count'];
+          }
+        }
+      });
+      await load();
+    } catch (error) {
+      if (mounted && epoch == widget.store.epoch) toast(context, '$error');
+    } finally {
+      if (mounted) setState(() => liking.remove(id));
+    }
   }
 
   Future<void> load() async {
@@ -602,6 +633,32 @@ class _RegionCommentsState extends State<_RegionComments>
                           color: (context.isDark
                               ? context.colors.muted
                               : Color(0xFFB0B3B9)),
+                        ),
+                      ),
+                    if (item['legacy'] != true && contentVisible(item))
+                      TextButton.icon(
+                        key: ValueKey('region-comment-like-${item['id']}'),
+                        onPressed: liking.contains(integer(item['id']))
+                            ? null
+                            : () => likeComment(item),
+                        style: TextButton.styleFrom(
+                          foregroundColor: item['liked'] == true
+                              ? context.colors.accent
+                              : context.colors.muted,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          minimumSize: const Size(40, 28),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: AppIcon(
+                          AppIcons.like,
+                          size: 13,
+                          color: item['liked'] == true
+                              ? context.colors.accent
+                              : context.colors.muted,
+                        ),
+                        label: Text(
+                          '${integer(item['like_count'])}',
+                          style: const TextStyle(fontSize: 11),
                         ),
                       ),
                     if (item['legacy'] != true && contentVisible(item))
@@ -1073,15 +1130,11 @@ class _RegionCommentsState extends State<_RegionComments>
                                           ),
                                         ),
                                       )
-                                    : Center(
-                                        child: Text(
+                                    : const Center(
+                                        child: EmptyState(
                                           '还没有评论，聊聊你的看法',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: (context.isDark
-                                                ? context.colors.muted
-                                                : Color(0xFFA3A7AF)),
-                                          ),
+                                          '',
+                                          compact: true,
                                         ),
                                       ),
                               )

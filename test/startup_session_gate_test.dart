@@ -19,12 +19,39 @@ class DelayedSessionStorage extends MemoryStorage {
 }
 
 void main() {
+  testWidgets('Welcome finishes once and does not replay on resume', (
+    tester,
+  ) async {
+    final storage = DelayedSessionStorage();
+    final store = AppStore(api: FakeGateway(), storage: storage);
+    await tester.pumpWidget(MyApp(store: store, bannerAdsEnabled: false));
+    storage.sessionRead.complete(null);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('startup-session-gate')), findsOneWidget);
+    expect(find.byType(AuthPage), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byType(AuthPage), findsOneWidget);
+    expect(find.byKey(const ValueKey('startup-session-gate')), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('startup-session-gate')), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('Restored cold start never mounts the login page', (
     tester,
   ) async {
     final storage = DelayedSessionStorage();
     final store = AppStore(api: FakeGateway(), storage: storage);
-    await tester.pumpWidget(MyApp(store: store, startupAdsEnabled: false));
+    await tester.pumpWidget(
+      MyApp(
+        store: store,
+        startupAnimationEnabled: false,
+        bannerAdsEnabled: false,
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const ValueKey('startup-session-gate')), findsOneWidget);
     expect(find.byType(AuthPage, skipOffstage: false), findsNothing);
@@ -55,7 +82,13 @@ void main() {
       (tester) async {
         final storage = DelayedSessionStorage();
         final store = AppStore(api: FakeGateway(), storage: storage);
-        await tester.pumpWidget(MyApp(store: store, startupAdsEnabled: false));
+        await tester.pumpWidget(
+          MyApp(
+            store: store,
+            startupAnimationEnabled: false,
+            bannerAdsEnabled: false,
+          ),
+        );
         await tester.pump(const Duration(milliseconds: 500));
         expect(find.byType(AuthPage, skipOffstage: false), findsNothing);
         storage.sessionRead.complete(saved);

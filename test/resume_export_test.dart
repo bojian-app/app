@@ -134,10 +134,12 @@ void main() {
   testWidgets(
     'Editor switches independent sections without losing saved input',
     (tester) async {
+      final editorStore = await testStore(authenticated: true);
+      addTearDown(editorStore.dispose);
       await tester.pumpWidget(
         MaterialApp(
           home: ResumeEditor(
-            store: store,
+            store: editorStore,
             draft: ResumeDraft(id: 0, title: '简历'),
           ),
         ),
@@ -145,11 +147,23 @@ void main() {
       await openResumeSection(tester, 0);
       await tester.enterText(find.byKey(const ValueKey('resume-name')), '李明');
       await saveResumeSection(tester);
+      expect(find.byKey(const ValueKey('resume-modules')), findsOneWidget);
       await openResumeSection(tester, 6);
-      expect(find.text('添加技能'), findsOneWidget);
+      expect(find.text('还没有专业技能'), findsOneWidget);
+      expect(find.byKey(const ValueKey('resume-more')), findsOneWidget);
       expect(find.byKey(const ValueKey('resume-name')), findsNothing);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('李明'),
+        -250,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('resume-modules')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       expect(find.text('李明'), findsOneWidget);
       await openResumeSection(tester, 0);
       expect(

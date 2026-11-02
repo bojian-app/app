@@ -28,6 +28,8 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  bojian_native_layout:
+    path: packages/native_layout
   flutter_svg: ^2.3.0
   flutter:
     sdk: flutter
@@ -42,13 +44,16 @@ dependencies:
   cronet_http: ^1.10.0
   http: ^1.6.0
   file_selector: ^1.1.0
+  path_provider: ^2.1.6
   http_parser: ^4.1.2
   hugeicons: ^1.2.0
   share_plus: ^13.3.1
   pdf: ^3.13.1
   archive: ^4.3.0
+  xml: ^7.0.1
   vector_math: ^2.4.0
   webview_flutter: ^4.14.1
+  webview_flutter_android: ^4.14.1
   flutter_quill: ^11.6.0
   fluwx_no_pay: ^6.0.6
   image_picker: ^1.2.4
@@ -81,14 +86,21 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/app_icon.png
-    - assets/badges/developer_crystal_v1.png
+    - assets/badges/developer_crystal_v1.webp
     - assets/login/reading.svg
+    - assets/login/happy-cat.svg
+    - assets/login/ILLLUSTRATIONS-LICENSE.txt
     - assets/login/OPEN-DOODLES-LICENSE.txt
     - assets/login/wechat.jpg
     - assets/login/douyin.jpg
-    - assets/resume_ai/
+    # List optimized runtime images explicitly; keep PNG originals out of the bundle.
+    - assets/empty_states/cat_detective.webp
+    - assets/resume_ai/identity-student.webp
+    - assets/resume_ai/identity-graduate.webp
+    - assets/resume_ai/identity-professional.webp
     - assets/templates/
-    - assets/points/
+    - assets/points/rewards-transparent.webp
+    - assets/points/resume.webp
     - assets/points/tasks/
     - assets/fonts/OFL.txt
     - assets/fonts/ChillRound-OFL.txt
