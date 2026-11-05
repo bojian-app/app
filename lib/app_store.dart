@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'api/bojian_api.dart';
+import 'app_environment.dart';
 import 'api/generated/auth.pb.dart' as auth;
 import 'legal_document.dart';
 import 'wechat_login.dart';
@@ -500,7 +501,7 @@ class AppStore extends ChangeNotifier {
       ? RealtimeClient(
           baseURL: api is BojianApi
               ? (api as BojianApi).baseURL
-              : Uri.parse('https://bojian.kelance.cn/api/v1'),
+              : Uri.parse(AppEnvironment.apiBaseURL),
           credentials: () async =>
               (await request('PostRealtimeToken', body: {})).data,
           connect:
@@ -971,6 +972,7 @@ class AppStore extends ChangeNotifier {
     return auth.SMSResponse(
       retryAfterSeconds: integer(result.data['retry_after_seconds']),
       deliveryStatus: result.data['delivery_status'] as String?,
+      testCode: AppEnvironment.smsTestCode(phone, result.data['test_code']),
     );
   }
 

@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'app_environment.dart';
+
 /// Disposable, account-scoped template assets. Never stores resume content,
 /// user photos, credentials or signed preview URLs.
 class TemplateDomStorage {
@@ -14,10 +16,7 @@ class TemplateDomStorage {
 
   Future<Directory?> _directory() async {
     if (userID <= 0) return null;
-    const origin = String.fromEnvironment(
-      'BOJIAN_API_BASE_URL',
-      defaultValue: 'https://bojian.kelance.cn/api/v1',
-    );
+    const origin = AppEnvironment.apiBaseURL;
     final base = await getApplicationCacheDirectory();
     final scope = base64Url.encode(utf8.encode(origin)).replaceAll('=', '');
     return Directory('${base.path}/bojian-template-dom-v1/$scope/$userID');

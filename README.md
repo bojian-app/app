@@ -1,3 +1,30 @@
+## 本地测试手机号与验证码回填（2026-11-05）
+
+`1.0.0-local+2026110503` 已安装并打开于 PJD110，状态为“已安装，待人工测试”。静态分析、本地回填、普通短信流程与正式环境隔离检查通过。产物与交付记录见 `artifacts/android/local-2026110503/`。上一轮待验收包保留用于对照；协议生成临时目录已自动清理。
+
+本地测试版的登录页和手机号绑定页默认填入 `13800138000`。同意协议后点击“获取验证码”，无需滑块，也不发送真实短信；后端正常生成并保存测试验证码（`123456`），收到成功响应后自动填入输入框。验证码仍遵守过期、一次性消费、发送频率和绑定账号/用途校验，注册与绑定仍需点击确认。
+
+仅 `BOJIAN_ENV=local` 且号码为默认测试手机号时启用。其他手机号保持正常验证码流程；正式构建不预填号码，也不读取接口返回的测试验证码。服务端 `LOCAL_TEST_PHONE` 仅允许在 `development/test` 且 API 监听回环地址时设置，生产环境配置该值会拒绝启动。本地启动脚本自动配置该测试号码。
+
+## 本地真机测试（2026-11-05）
+
+`1.0.0-local+2026110502` 已安装到 PJD110，状态为“已安装，待人工测试”。手机访问本地就绪接口成功，23 项环境隔离及 HTTP 定向检查通过。产物与记录保留在 `artifacts/android/local-2026110502/`；本轮转换验证的临时样例已清理，历史待验收包与发布资料保留。
+
+手机测试包默认使用本地后端，不需要先上线。在项目目录运行：
+
+```sh
+sh scripts/install_android_local.sh
+# 多台手机连接时：sh scripts/install_android_local.sh b738806e
+```
+
+脚本构建并启动相邻 `app-server` 的最新代码，启动独立 PostgreSQL/Redis，建立 USB 转发，再构建 ARM64 APK、覆盖安装并打开。保留原应用签名和包名以兼容微信等原生 SDK；版本名为 `1.0.0-local`，页面右上角显示“本地测试”。登录凭证、草稿和模板缓存与线上隔离，需要在本地重新注册/登录。测试数据持久保存，不包含线上用户与模板数据。
+
+保持电脑、本地服务和 USB 连接。拔插手机后无需重装，执行 `adb reverse tcp:8080 tcp:8080` 恢复连接；多设备时加 `-s <设备ID>`。仅更新后端可运行 `python3 ../app-server/scripts/local_backend.py start`，停止用 `stop`，查看状态用 `status`，查看日志用 `logs`。
+
+默认 `BOJIAN_ENV=local` 仅允许 `http://127.0.0.1:<端口>/api/v1`，不会在本地后端不可用时回退线上。正式发布须显式使用 `BOJIAN_ENV=production`；`scripts/build_android_release.sh` 已固定传入该环境，正式 API 继续强制 HTTPS。不要用正式发布脚本给测试手机装包。
+
+后端第三方凭证仍从 `app-server/.env` 读取，AI、人脸识别及非默认测试号码的短信仍会调用对应供应商；本地数据库与 Redis 的地址由脚本固定，上传文件使用 `local-phone-test` 前缀。激励广告未配置时不能领取广告奖励。
+
 ## 2026-11-03：分享隐私星号与项目名称（1.0.0+2026110301）
 
 已安装到 PJD110（b738806e），版本及启动已核对，状态为“已安装，待人工测试”。APP 分享简历的隐私字段直接显示 `***`，移除蒙版；好友和动态分享保留项目名称。官网外链页面及配套接口同步调整，官网 `website-share-stars-20261103-r1` 和接口 `share-stars-20261103-r1` 已发布并通过线上检查。历史快照中已删除的项目名称需重新分享；外链需先停用再生成。
@@ -438,10 +465,10 @@ flutter run --release -d <手机设备ID>
 默认服务地址为 `https://bojian.kelance.cn/api/v1`。可在运行或构建时覆盖：
 
 ```sh
-flutter run --release -d <手机设备ID> --dart-define=BOJIAN_API_BASE_URL=https://your-server.example/api/v1
+sh scripts/install_android_local.sh <手机设备ID>
 ```
 
-地址必须使用 HTTPS 并包含 `/api/v1` 前缀。认证凭证保存在系统安全存储中；测试响应位于 `test/support/`。
+普通构建默认连接 USB 转发后的本地 API；正式构建显式指定 `BOJIAN_ENV=production` 并使用 HTTPS。地址均包含 `/api/v1` 前缀。认证凭证按环境隔离并保存在系统安全存储中；测试响应位于 `test/support/`。
 
 ## Android 构建
 
@@ -462,7 +489,7 @@ sh scripts/build_android_release.sh
 在安装 Xcode 和 iOS SDK 的 macOS 上构建：
 
 ```sh
-flutter build ios --release --no-codesign
+flutter build ios --release --no-codesign --dart-define=BOJIAN_ENV=production
 ```
 
 该命令用于验证未签名构建，安装或发布需在 Xcode 中完成签名、归档和导出。

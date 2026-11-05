@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_shell.dart';
+import 'app_environment.dart';
 import 'auth_page.dart';
 import 'app_store.dart';
 import 'confirmation_dialog.dart';
@@ -297,7 +298,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   },
                 ),
           },
-          child: TooltipVisibility(visible: false, child: child!),
+          child: TooltipVisibility(
+            visible: false,
+            child: AppEnvironment.isLocal
+                ? Banner(
+                    message: '本地测试',
+                    location: BannerLocation.topEnd,
+                    child: child!,
+                  )
+                : child!,
+          ),
         ),
       ),
       home: home,

@@ -24,6 +24,8 @@ message SMSResponse {
   int32 retry_after_seconds = 1;
   // SUBMITTED means accepted; only a successful receipt is DELIVERED.
   string delivery_status = 2;
+  // Returned only by the development backend; ignored by production builds.
+  string test_code = 3;
 }
 message PhoneLoginRequest { string phone = 1; string code = 2; }
 message ConfirmRegistrationRequest {

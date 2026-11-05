@@ -116,7 +116,7 @@ Future<AppStore> _requestCode(
   }
   await tester.enterText(
     find.byKey(ValueKey(login ? 'auth-phone' : 'phone-binding-phone')),
-    '13800138000',
+    '13700137000',
   );
   await tester.ensureVisible(
     find.byKey(
@@ -168,7 +168,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(store.isAuthenticated, isTrue);
     expect(store.hasBoundPhone, isTrue);
-    expect(store.phoneMasked, '138****8000');
+    expect(store.phoneMasked, '137****7000');
     expect(find.byKey(const ValueKey('phone-binding-dialog')), findsNothing);
     expect(api.calls, isNot(contains('PostMePhone')));
     final restored = AppStore(api: api, storage: store.storage);
@@ -289,9 +289,9 @@ void main() {
       api.failing = null;
       await tester.tap(find.byKey(const ValueKey('phone-binding-confirm')));
       await tester.pumpAndSettle();
-      expect(store.phoneMasked, '138****8000');
+      expect(store.phoneMasked, '137****7000');
       expect(store.userID, id);
-      expect(store.session, {...session, 'phone_masked': '138****8000'});
+      expect(store.session, {...session, 'phone_masked': '137****7000'});
       expect(find.byKey(const ValueKey('phone-binding-dialog')), findsNothing);
       expect(api.calls.where((m) => m == 'PostMePhone'), hasLength(2));
       await store.load('profile');
@@ -322,7 +322,7 @@ void main() {
       expect(api.calls, isNot(contains('PostMePhone')));
       await tester.enterText(
         find.byKey(const ValueKey('phone-binding-phone')),
-        '13800138000',
+        '13700137000',
       );
       api.pendingBind = Completer<ApiDocument>();
       await tester.tap(find.byKey(const ValueKey('phone-binding-confirm')));
@@ -343,7 +343,7 @@ void main() {
             .onPressed,
         isNull,
       );
-      api.pendingBind!.complete(ApiDocument({'phone_masked': '138****8000'}));
+      api.pendingBind!.complete(ApiDocument({'phone_masked': '137****7000'}));
       await tester.pumpAndSettle();
       expect(store.hasBoundPhone, isTrue);
       expect(find.byKey(const ValueKey('phone-binding-dialog')), findsNothing);

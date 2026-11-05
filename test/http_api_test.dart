@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:bojian_mobile/api/bojian_api.dart';
+import 'package:bojian_mobile/app_environment.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class StubClient extends MockClient {
@@ -241,10 +242,7 @@ void main() {
           headers: {'authorization': 'Bearer token', 'if-match': 'revision-7'},
           body: {'title': '简历'},
         );
-        expect(
-          client.uri.toString(),
-          'https://bojian.kelance.cn/api/v1/resumes/4',
-        );
+        expect(client.uri.toString(), '${AppEnvironment.apiBaseURL}/resumes/4');
         expect(client.verb, 'PATCH');
         expect(client.request!.headers['if-match'], 'revision-7');
         expect(client.request!.headers['authorization'], 'Bearer token');

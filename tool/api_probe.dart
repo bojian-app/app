@@ -1,13 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bojian_mobile/app_environment.dart';
+
 Future<void> main() async {
-  final base = Uri.parse(
-    const String.fromEnvironment(
-      'BOJIAN_API_BASE_URL',
-      defaultValue: 'https://bojian.kelance.cn/api/v1',
-    ),
-  );
+  final base = Uri.parse(AppEnvironment.apiBaseURL);
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
   try {
     for (final route in ['/health', '/auth/captchas']) {

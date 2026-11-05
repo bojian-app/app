@@ -7,6 +7,7 @@ release_id=$(date -u +%Y%m%dT%H%M%SZ)
 release_dir="$PWD/artifacts/android/$release_id"
 mkdir -p "$release_dir/symbols"
 "${FLUTTER_BIN:-flutter}" build apk --release --split-per-abi \
+  --dart-define=BOJIAN_ENV=production \
   --split-debug-info="$release_dir/symbols" \
   -P force-version-code-ignoring-abi=true "$@"
 for abi in armeabi-v7a arm64-v8a x86_64; do

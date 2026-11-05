@@ -350,10 +350,12 @@ class SMSResponse extends $pb.GeneratedMessage {
   factory SMSResponse({
     $core.int? retryAfterSeconds,
     $core.String? deliveryStatus,
+    $core.String? testCode,
   }) {
     final result = SMSResponse._();
     if (retryAfterSeconds != null) result.retryAfterSeconds = retryAfterSeconds;
     if (deliveryStatus != null) result.deliveryStatus = deliveryStatus;
+    if (testCode != null) result.testCode = testCode;
     return result;
   }
 
@@ -372,6 +374,7 @@ class SMSResponse extends $pb.GeneratedMessage {
       createEmptyInstance: SMSResponse.$_createMessage)
     ..aI(1, _omitFieldNames ? '' : 'retryAfterSeconds')
     ..aOS(2, _omitFieldNames ? '' : 'deliveryStatus')
+    ..aOS(3, _omitFieldNames ? '' : 'testCode')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -414,6 +417,16 @@ class SMSResponse extends $pb.GeneratedMessage {
   $core.bool hasDeliveryStatus() => $_has(1);
   @$pb.TagNumber(2)
   void clearDeliveryStatus() => $_clearField(2);
+
+  /// Returned only by the development backend; ignored by production builds.
+  @$pb.TagNumber(3)
+  $core.String get testCode => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set testCode($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasTestCode() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearTestCode() => $_clearField(3);
 }
 
 class PhoneLoginRequest extends $pb.GeneratedMessage {

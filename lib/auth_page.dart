@@ -10,6 +10,7 @@ import 'package:flutter/cupertino.dart' show CupertinoTextField;
 import 'package:flutter/services.dart';
 
 import 'app_store.dart';
+import 'app_environment.dart';
 import 'design.dart';
 import 'login_widgets.dart';
 import 'login_illustration.dart';
@@ -36,7 +37,7 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   final inviteCode = TextEditingController();
-  final phone = TextEditingController();
+  final phone = TextEditingController(text: AppEnvironment.defaultTestPhone);
   final code = TextEditingController();
   Timer? resendTimer;
   int countdown = 0;
@@ -119,30 +120,38 @@ class _AuthPageState extends State<AuthPage> {
     });
     try {
       if (!await confirmAgreement() || !current()) return;
-      final challenge = await widget.store.api.createCaptcha(
-        widget.store.headers,
-      );
-      if (!mounted || !current()) return;
-      final outcome = await showDialog<SmsRequestOutcome>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => CaptchaDialog(
-          store: widget.store,
-          challenge: challenge,
-          phone: targetPhone,
-          onSendSMS: (token) {
-            if (!current()) throw const ApiFailure('登录已取消');
-            return widget.store.api.sendSMS(
-              targetPhone,
-              token,
-              widget.store.headers,
-            );
-          },
-        ),
-      );
+      SmsRequestOutcome? outcome;
+      if (AppEnvironment.isTestPhone(targetPhone)) {
+        outcome = SmsRequestOutcome.accepted(
+          await widget.store.api.sendSMS(targetPhone, '', widget.store.headers),
+        );
+      } else {
+        final challenge = await widget.store.api.createCaptcha(
+          widget.store.headers,
+        );
+        if (!mounted || !current()) return;
+        outcome = await showDialog<SmsRequestOutcome>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => CaptchaDialog(
+            store: widget.store,
+            challenge: challenge,
+            phone: targetPhone,
+            onSendSMS: (token) {
+              if (!current()) throw const ApiFailure('登录已取消');
+              return widget.store.api.sendSMS(
+                targetPhone,
+                token,
+                widget.store.headers,
+              );
+            },
+          ),
+        );
+      }
       if (!current() || outcome == null) return;
-      if (outcome.error != null) {
-        setState(() => error = '${outcome.error}');
+      final failure = outcome.error;
+      if (failure != null) {
+        setState(() => error = '$failure');
         return;
       }
       final response = outcome.response!;
@@ -151,6 +160,14 @@ class _AuthPageState extends State<AuthPage> {
         requestedPhone = targetPhone;
         countdown = response.retryAfterSeconds.clamp(1, 3600);
         smsStatus = '短信验证码已发送，请注意查收';
+        final testCode = AppEnvironment.smsTestCode(
+          targetPhone,
+          response.testCode,
+        );
+        if (testCode.isNotEmpty) {
+          code.text = testCode;
+          smsStatus = '测试验证码已自动填入，未发送短信';
+        }
       });
       final availableAt = DateTime.now().add(Duration(seconds: countdown));
       resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {

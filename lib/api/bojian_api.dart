@@ -11,6 +11,7 @@ import 'package:http/io_client.dart';
 
 import 'generated/auth.pb.dart' as auth;
 import 'http_routes.dart';
+import '../app_environment.dart';
 
 class ApiFailure implements Exception {
   const ApiFailure(
@@ -59,11 +60,12 @@ abstract class SessionStorage {
 class SecureSessionStorage implements SessionStorage {
   final storage = const FlutterSecureStorage();
   @override
-  Future<String?> read(String key) => storage.read(key: key);
+  Future<String?> read(String key) =>
+      storage.read(key: AppEnvironment.storageKey(key));
   @override
   Future<void> write(String key, String? value) => value == null
-      ? storage.delete(key: key)
-      : storage.write(key: key, value: value);
+      ? storage.delete(key: AppEnvironment.storageKey(key))
+      : storage.write(key: AppEnvironment.storageKey(key), value: value);
 }
 
 class CaptchaChallenge {
@@ -124,25 +126,18 @@ abstract class ApiGateway {
 
 class BojianApi implements ApiGateway {
   factory BojianApi({Uri? baseURL, http.Client? client}) {
-    final address =
-        baseURL ??
-        Uri.parse(
-          const String.fromEnvironment(
-            'BOJIAN_API_BASE_URL',
-            defaultValue: 'https://bojian.kelance.cn/api/v1',
-          ),
-        );
-    if (address.scheme != 'https' ||
+    final address = baseURL ?? Uri.parse(AppEnvironment.apiBaseURL);
+    if (!AppEnvironment.accepts(address) ||
         address.host.isEmpty ||
         address.hasQuery ||
         address.hasFragment ||
         address.userInfo.isNotEmpty ||
         address.path.replaceFirst(RegExp(r'/$'), '') != '/api/v1') {
-      throw const ApiFailure('服务地址配置无效，需要 HTTPS 地址及 /api/v1 前缀');
+      throw const ApiFailure('服务地址与构建环境不匹配，或缺少 /api/v1 前缀');
     }
     final transport =
         client ??
-        (Platform.isAndroid
+        (Platform.isAndroid && !AppEnvironment.isLocal
             ? CronetClient.fromCronetEngine(
                 CronetEngine.build(
                   enableHttp2: true,
@@ -327,6 +322,7 @@ class BojianApi implements ApiGateway {
     return auth.SMSResponse(
       retryAfterSeconds: v['retry_after_seconds'] as int?,
       deliveryStatus: v['delivery_status'] as String?,
+      testCode: AppEnvironment.smsTestCode(phone, v['test_code']),
     );
   }
 
