@@ -71,7 +71,7 @@ Future<void> open(WidgetTester tester, AppStore store) async {
 
 void main() {
   testWidgets(
-    'Diagnosis is shown first and reanalysis replaces only the pending task',
+    'Result shows comparisons without diagnostic sections and supports reanalysis',
     (tester) async {
       final api = FakeGateway()
         ..documents['GetResumesIdPolishJobs'] = {'id': 12}
@@ -79,8 +79,12 @@ void main() {
       final store = await testStore(authenticated: true, api: api);
       addTearDown(store.dispose);
       await open(tester, store);
-      expect(find.text('内容诊断'), findsOneWidget);
-      expect(find.text('需要核对的内容问题'), findsOneWidget);
+      expect(find.text('优化结果'), findsOneWidget);
+      expect(find.text('需要核对的内容问题'), findsNothing);
+      expect(find.text('问题与改法'), findsNothing);
+      expect(find.text('结束时间为空'), findsNothing);
+      expect(find.text('项目是否还在进行？'), findsNothing);
+      expect(find.text('表达清楚'), findsNothing);
       api.documents['GetResumesIdPolishJobs'] = {'id': null};
       api.documents['PostResumesIdPolishJobs'] = {'id': 13, 'status': 'QUEUED'};
       final button = find.byKey(const ValueKey('resume-ai-reanalyze'));
@@ -243,7 +247,8 @@ void main() {
     addTearDown(store.dispose);
     await open(tester, store);
     expect(find.byKey(const ValueKey('resume-ai-apply')), findsNothing);
-    expect(find.text('请先核对下方问题，信息不足的部分没有自动改写。'), findsOneWidget);
+    expect(find.text('本次没有可采纳的修改。'), findsOneWidget);
+    expect(find.text('需要核对的内容问题'), findsNothing);
     final discard = find.text('放弃本次结果');
     await tester.ensureVisible(discard);
     await tester.tap(discard);

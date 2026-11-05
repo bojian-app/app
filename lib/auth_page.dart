@@ -6,6 +6,7 @@ import 'legal_document_page.dart';
 import 'confirmation_dialog.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoTextField;
 import 'package:flutter/services.dart';
 
 import 'app_store.dart';
@@ -34,6 +35,7 @@ class _AuthPageState extends State<AuthPage> {
     if (mounted) setState(() {});
   }
 
+  final inviteCode = TextEditingController();
   final phone = TextEditingController();
   final code = TextEditingController();
   Timer? resendTimer;
@@ -205,18 +207,42 @@ class _AuthPageState extends State<AuthPage> {
 
   Future<bool> confirmRegistration() async {
     if (!mounted) return false;
-    return await showAppConfirmation(
+    final confirmed =
+        await showAppConfirmation(
           context,
           dialogKey: const ValueKey('auth-registration-dialog'),
           barrierDismissible: false,
           title: '该账号尚未注册',
-          content: const Text('是否创建博简账号并完成登录？'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('是否创建博简账号并完成登录？'),
+              const SizedBox(height: 14),
+              CupertinoTextField(
+                key: const ValueKey('registration-invite-code'),
+                controller: inviteCode,
+                placeholder: '邀请码（选填）',
+                maxLength: 32,
+                autocorrect: false,
+                padding: const EdgeInsets.all(12),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '填写好友邀请码，绑定手机号后好友可得 500 积分。',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
           cancelLabel: '暂不注册',
           cancelKey: const ValueKey('auth-registration-cancel'),
           confirmLabel: '确认注册并登录',
           confirmKey: const ValueKey('auth-registration-confirm'),
         ) ??
         false;
+    widget.store.registrationInviteCode = confirmed
+        ? inviteCode.text.trim()
+        : '';
+    return confirmed;
   }
 
   Future<void> legal(bool privacy) async {
@@ -498,6 +524,7 @@ class _AuthPageState extends State<AuthPage> {
   @override
   void dispose() {
     resendTimer?.cancel();
+    inviteCode.dispose();
     phone.dispose();
     code.dispose();
     widget.store.removeListener(refreshState);

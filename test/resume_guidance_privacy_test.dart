@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test('Old shared resumes are masked before drawing and accessibility', () {
+  test('Shared privacy is literal stars before drawing and accessibility', () {
     final input = <String, dynamic>{
       'title': '小林的简历',
       'question': '请联系 lin@example.com',
@@ -72,6 +72,20 @@ void main() {
         .expand((p) => p.ink)
         .map((i) => i.visibleText)
         .join('\n');
+    final runs = document.pages.expand((p) => p.ink).toList();
+    expect(resumePrivacyMask, '***');
+    expect(
+      runs.any((run) => run.text.text!.toPlainText().contains('***')),
+      isTrue,
+    );
+    expect(
+      runs.any((run) => run.text.text!.toPlainText().contains('▒')),
+      isFalse,
+    );
+    final projectName = runs.firstWhere(
+      (run) => run.text.text!.toPlainText().contains('云桥协作平台'),
+    );
+    expect(projectName.privacyMasked, isFalse);
     expect(accessible, contains('隐私信息已隐藏'));
     expect(accessible, isNot(contains('小林')));
     expect(accessible, isNot(contains('▒')));

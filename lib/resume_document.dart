@@ -30,99 +30,6 @@ const resumePaperSize = Size(595.28, 841.89);
 const resumePaperMargin = 46.0;
 const resumePaperInk = Color(0xFF26292E);
 
-InlineSpan _transparentPrivacySpans(InlineSpan span) {
-  if (!span.toPlainText().contains(resumePrivacyMask)) return span;
-  if (span is! TextSpan) return span;
-  final text = span.text ?? '';
-  final children = <InlineSpan>[];
-  var cursor = 0;
-  for (final match in RegExp('▒+').allMatches(text)) {
-    if (match.start > cursor) {
-      children.add(TextSpan(text: text.substring(cursor, match.start)));
-    }
-    children.add(
-      TextSpan(
-        text: match.group(0),
-        style: const TextStyle(color: Colors.transparent),
-      ),
-    );
-    cursor = match.end;
-  }
-  if (cursor < text.length) {
-    children.add(TextSpan(text: text.substring(cursor)));
-  }
-  children.addAll((span.children ?? []).map(_transparentPrivacySpans));
-  return TextSpan(style: span.style, children: children);
-}
-
-/// Soft translucent condensation over anonymous, defocused glyph shapes.
-/// No identifying source text is ever painted beneath the frosted area.
-void paintPrivacyFog(Canvas canvas, Rect bounds) {
-  final rect = bounds.deflate(bounds.height * .1);
-  final height = rect.height;
-  final pane = rect.inflate(3);
-  final paint = Paint()
-    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
-  canvas.drawRRect(
-    RRect.fromRectAndRadius(pane, const Radius.circular(6)),
-    paint
-      ..shader = ui.Gradient.linear(
-        pane.topLeft,
-        pane.bottomRight,
-        [
-          const Color(0xDDF5F8FA),
-          const Color(0x88E6EDF1),
-          const Color(0xAAF9FBFC),
-        ],
-        const [0.0, .5, 1.0],
-      ),
-  );
-  paint.shader = null;
-  paint.color = const Color(0x44647585);
-  paint.maskFilter = MaskFilter.blur(
-    BlurStyle.normal,
-    math.max(2.5, height * .19),
-  );
-  final step = math.max(6.0, height * .5);
-  var index = 0;
-  for (var x = rect.left + 2; x < rect.right - 3; x += step) {
-    final h = height * ([.4, .64, .5, .72][index++ % 4]);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset(x + step * .25, rect.center.dy),
-          width: step * .55,
-          height: h,
-        ),
-        const Radius.circular(2),
-      ),
-      paint,
-    );
-  }
-  canvas.drawRRect(
-    RRect.fromRectAndRadius(pane, const Radius.circular(6)),
-    Paint()
-      ..color = const Color(0x77FFFFFF)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
-  );
-  // Faint highlights suggest water vapour without drawing a hard border.
-  for (var i = 0; i < 3; i++) {
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(
-          rect.left + rect.width * (.2 + i * .29),
-          rect.top + height * (.32 + (i % 2) * .24),
-        ),
-        width: 1.6,
-        height: 2.1,
-      ),
-      Paint()
-        ..color = const Color(0x99FFFFFF)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, .7),
-    );
-  }
-}
-
 class ResumeInk {
   ResumeInk(
     this.text,
@@ -142,14 +49,21 @@ class ResumeInk {
   final double? wordLeft, wordWidth;
   final bool wordAlignRight;
   bool get privacyMasked =>
-      text.text!.toPlainText().contains(resumePrivacyMask);
+      text.text!.toPlainText().contains(resumePrivacyMask) &&
+      (fieldPath == null ||
+          RegExp(
+            r'^(personal_info\.|educations\.\d+\.institution$|work_experiences\.\d+\.company$|certifications\.\d+\.issuer$)',
+          ).hasMatch(fieldPath!));
   String get visibleText {
     final value = text.text!.toPlainText();
     final start = text.getPositionForOffset(Offset(0, sourceTop)).offset;
     final end = text
         .getPositionForOffset(Offset(text.width, sourceTop + height - .001))
         .offset;
-    return value.substring(start, end).replaceAll(RegExp('▒+'), '隐私信息已隐藏');
+    final visible = value.substring(start, end);
+    return privacyMasked
+        ? visible.replaceAll(resumePrivacyMask, '隐私信息已隐藏')
+        : visible;
   }
 }
 
@@ -353,7 +267,7 @@ class _ResumeTypesetter {
 
   TextPainter measure(InlineSpan text, [double available = width]) {
     final painter = TextPainter(
-      text: _transparentPrivacySpans(text),
+      text: text,
       textDirection: TextDirection.ltr,
       textScaler: TextScaler.noScaling,
     )..layout(maxWidth: available);
@@ -2526,13 +2440,8 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                                             true
                                         ? Semantics(
                                             label: '简历头像已隐藏',
-                                            child: DecoratedBox(
-                                              decoration: const BoxDecoration(
-                                                color: Color(0xFFE6E9ED),
-                                                borderRadius: BorderRadius.all(
-                                                  Radius.circular(4),
-                                                ),
-                                              ),
+                                            child: const Center(
+                                              child: Text(resumePrivacyMask),
                                             ),
                                           )
                                         : photoURL.isEmpty
@@ -2808,7 +2717,7 @@ void paintResumeSheet(
         run.position.dy,
         run.text.width,
         run.height,
-      ).inflate(run.privacyMasked ? 5 : 0),
+      ),
     );
     final coloredRegions = reviewRegions
         .where(
@@ -2843,20 +2752,6 @@ void paintResumeSheet(
         run.text.paint(canvas, run.position - Offset(0, run.sourceTop));
         canvas.restore();
         canvas.restore();
-      }
-    }
-    if (run.privacyMasked) {
-      for (final match in RegExp(
-        '▒+',
-      ).allMatches(run.text.text!.toPlainText())) {
-        for (final box in run.text.getBoxesForSelection(
-          TextSelection(baseOffset: match.start, extentOffset: match.end),
-        )) {
-          paintPrivacyFog(
-            canvas,
-            box.toRect().shift(run.position - Offset(0, run.sourceTop)),
-          );
-        }
       }
     }
     canvas.restore();

@@ -6,6 +6,7 @@ import BojianPangleAds
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private var rewardedAd: BojianRewardedAdBridge?
   private var douyinLogin: BojianDouyinLogin?
   private var baiduFace: BojianNativeFaceBridge?
   override func application(
@@ -18,6 +19,7 @@ import BojianPangleAds
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianBannerAds") {
+      rewardedAd = BojianRewardedAdBridge(messenger: registrar.messenger())
       registrar.register(BojianBannerFactory(messenger: registrar.messenger()), withId: "cn.kelance.bojian/banner")
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianDouyinLogin") {

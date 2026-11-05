@@ -266,6 +266,10 @@ void main() {
       expect(api.lastMutationBody!['question'], '请帮我看看项目经历');
       expect(api.lastMutationBody!['hidden_fields'], contains('personal_info'));
       expect(
+        api.lastMutationBody!['hidden_fields'],
+        isNot(contains('projects.name')),
+      );
+      expect(
         tester.widget<TextField>(remarkField).controller!.text,
         ' 请帮我看看项目经历 ',
       );

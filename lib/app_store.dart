@@ -696,6 +696,23 @@ class AppStore extends ChangeNotifier {
   int? points;
   int? rewardPoints;
   bool rewardClaimed = false;
+  String rewardStatus = '';
+  int rewardDay = 0;
+  List<Map<String, dynamic>> rewardDays = [];
+  String registrationInviteCode = '';
+  bool get rewardEnded =>
+      rewardStatus == 'EXPIRED' || rewardStatus == 'COMPLETED';
+  void readReward(Map<String, dynamic> data) {
+    rewardPoints = integer(data['points']);
+    rewardClaimed = data['claimable'] != true;
+    rewardStatus = '${data['status'] ?? ''}';
+    rewardDay = integer(data['day']);
+    rewardDays = (data['days'] as List? ?? [])
+        .whereType<Map>()
+        .map((v) => Map<String, dynamic>.from(v))
+        .toList();
+  }
+
   bool publicProfile = true;
   final stories = <Story>[];
   final resumes = <ResumeDraft>[];
@@ -1015,7 +1032,9 @@ class AppStore extends ChangeNotifier {
         response.registrationToken,
         legalAgreementVersions,
         headers,
+        inviteCode: registrationInviteCode,
       );
+      registrationInviteCode = '';
     }
     await _finishSignIn(
       response,
@@ -1113,6 +1132,10 @@ class AppStore extends ChangeNotifier {
     points = null;
     rewardPoints = null;
     rewardClaimed = false;
+    rewardStatus = '';
+    rewardDay = 0;
+    rewardDays = [];
+    registrationInviteCode = '';
     publicProfile = true;
     stories.clear();
     resumes.clear();
@@ -1319,8 +1342,8 @@ class AppStore extends ChangeNotifier {
           }
           points = integer(w.data['available_points']);
           final reward = await request('GetWalletDailyReward');
-          rewardPoints = integer(reward.data['points']);
-          rewardClaimed = reward.data['claimable'] != true;
+          if (version != epoch || !alive) return;
+          readReward(reward.data);
         case 'templates':
           final v = await request('GetTemplates', query: query);
           if (version != epoch || !alive) return;
@@ -1721,6 +1744,9 @@ class AppStore extends ChangeNotifier {
     }
     rewardClaimed = true;
     rewardPoints = integer(response.data['points']);
+    if (response.data['reward'] case final Map data) {
+      readReward(Map<String, dynamic>.from(data));
+    }
     final wallet = response.data['wallet'];
     if (wallet is Map && wallet['available_points'] is num) {
       points = integer(wallet['available_points']);
@@ -1958,7 +1984,10 @@ class AppStore extends ChangeNotifier {
     if (matching.isEmpty) throw const ApiFailure('该模板未购买或已不可用，请刷新后重试');
     final design = matching.first;
     final dom = await loadTemplatePreviewDOM(
-      this, templateID, integer(design['version']), persist: true,
+      this,
+      templateID,
+      integer(design['version']),
+      persist: true,
     );
     if ((dom.data['html'] as String? ?? '').trim().isEmpty) {
       throw const ApiFailure('模板尚未生成可用版面，请稍后重试');

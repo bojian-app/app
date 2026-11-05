@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-const resumePrivacyMask = '▒▒▒▒▒▒';
+const resumePrivacyMask = '***';
 
 /// Strip identifying fields before typesetting, semantics or image loading.
-/// The mask is a drawing instruction, never the original private text.
+/// Share views render the replacement text directly, never a visual overlay.
 Map<String, dynamic> privateGuidancePreview(Map<String, dynamic> input) {
   final result = jsonDecode(jsonEncode(input)) as Map<String, dynamic>;
   final snapshot = result['snapshot'];
@@ -23,7 +23,7 @@ Map<String, dynamic> privateGuidancePreview(Map<String, dynamic> input) {
   }
   snapshot['personal_info'] = {
     'full_name': resumePrivacyMask,
-    'phone': '$resumePrivacyMask$resumePrivacyMask',
+    'phone': resumePrivacyMask,
   };
   if (snapshot['projects'] is List) {
     for (final entry in snapshot['projects'] as List) {

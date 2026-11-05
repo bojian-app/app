@@ -243,8 +243,9 @@ class FakeGateway implements ApiGateway {
   Future<auth.LoginResponse> confirmRegistration(
     String registrationToken,
     Map<String, String> agreements,
-    Map<String, String> headers,
-  ) async {
+    Map<String, String> headers, {
+    String inviteCode = '',
+  }) async {
     calls.add('ConfirmRegistration');
     return login('', '', headers);
   }

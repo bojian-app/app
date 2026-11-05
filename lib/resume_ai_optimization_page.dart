@@ -30,7 +30,7 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
   bool restoring = false;
   String status = '', summary = '';
   String? error;
-  List<Map<String, dynamic>> changes = [], issues = [];
+  List<Map<String, dynamic>> changes = [];
   final selected = <String, bool>{};
   bool get valid =>
       mounted && widget.store.alive && widget.store.epoch == accountEpoch;
@@ -127,7 +127,6 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
       setState(() {
         status = '${response.data['status']}';
         changes = [];
-        issues = [];
         selected.clear();
       });
       await poll();
@@ -156,9 +155,7 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
       final next = '${data['status']}';
       final result = data['comparisons'];
       if (next == 'WAITING_CONFIRMATION' &&
-          (result is! Map ||
-              result['changes'] is! List ||
-              result['issues'] is! List)) {
+          (result is! Map || result['changes'] is! List)) {
         throw const ApiFailure('优化结果无效，请放弃后重新优化');
       }
       setState(() {
@@ -167,9 +164,6 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
         if (status == 'WAITING_CONFIRMATION') {
           summary = '${result['summary'] ?? ''}';
           changes = (result['changes'] as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .toList();
-          issues = (result['issues'] as List)
               .map((e) => Map<String, dynamic>.from(e as Map))
               .toList();
           final decisions = data['decisions'];
@@ -220,7 +214,6 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
         jobId = null;
         status = 'CANCELED';
         changes = [];
-        issues = [];
         selected.clear();
       });
     } catch (e) {
@@ -390,7 +383,7 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
                       children: [
                         const Expanded(
                           child: Text(
-                            '内容诊断',
+                            '优化结果',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -405,17 +398,11 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
                       ],
                     ),
                     const SizedBox(height: 12),
-                    paragraph(summary.isEmpty ? '请核对内容问题，选择需要采纳的修改。' : summary),
                     paragraph(
-                      'AI 可能理解有误，请核对职责、技术和成果。待补充信息不会自动写入简历。',
-                      muted: true,
+                      summary.isEmpty ? '请对比原文和优化后的内容，选择需要采纳的修改。' : summary,
                     ),
-                    if (changes.isEmpty)
-                      paragraph(
-                        issues.isEmpty
-                            ? '未发现需要实质改写的内容。'
-                            : '请先核对下方问题，信息不足的部分没有自动改写。',
-                      ),
+                    paragraph('AI 可能理解有误，请核对职责、技术和成果后再采纳。', muted: true),
+                    if (changes.isEmpty) paragraph('本次没有可采纳的修改。'),
                     if (changes.isNotEmpty)
                       Row(
                         children: [
@@ -438,27 +425,6 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
                         ],
                       ),
                   ]),
-                  if (issues.isNotEmpty)
-                    card([
-                      const Text(
-                        '需要核对的内容问题',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      for (final issue in issues) ...[
-                        Text(
-                          label('${issue['path']}'),
-                          style: TextStyle(color: context.colors.accent),
-                        ),
-                        const SizedBox(height: 8),
-                        paragraph('${issue['message']}'),
-                        paragraph('${issue['question']}', muted: true),
-                      ],
-                      paragraph('回到简历编辑补充信息后，可重新优化。', muted: true),
-                    ]),
                   for (final change in changes)
                     card([
                       CheckboxListTile(
@@ -477,15 +443,6 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
                                     selected['${change['path']}'] = v ?? false,
                               ),
                       ),
-                      Text(
-                        '问题与改法',
-                        style: TextStyle(
-                          color: context.colors.accent,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      paragraph('${change['reason']}'),
                       paragraph('原文', muted: true),
                       SelectableText(
                         '${change['before']}',

@@ -77,7 +77,6 @@ void main() {
           'projects.url',
           'educations.institution',
           'work_experiences.company',
-          'projects.name',
           'certifications.issuer',
         ],
       });

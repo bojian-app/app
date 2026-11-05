@@ -235,3 +235,83 @@ typedef void (^BojianAdReady)(NSString *error);
   return [[BojianBannerView alloc] initWithFrame:frame identifier:viewId messenger:_messenger];
 }
 @end
+
+@interface BojianRewardedAdBridge () <BUMNativeExpressRewardedVideoAdDelegate>
+@property(nonatomic, strong) FlutterMethodChannel *channel;
+@property(nonatomic, copy) FlutterResult pending;
+@property(nonatomic, strong) BUNativeExpressRewardedVideoAd *ad;
+@property(nonatomic, strong) NSTimer *deadline;
+@property(nonatomic) BOOL eligible, shown;
+@property(nonatomic) NSUInteger generation;
+@end
+
+@implementation BojianRewardedAdBridge
+- (instancetype)initWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger {
+  self = [super init];
+  if (!self) return nil;
+  _channel = [FlutterMethodChannel methodChannelWithName:@"cn.kelance.bojian/rewarded-ad" binaryMessenger:messenger];
+  __weak typeof(self) weakSelf = self;
+  [_channel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
+    BojianRewardedAdBridge *bridge = weakSelf;
+    if (!bridge) { result([FlutterError errorWithCode:@"AD_UNAVAILABLE" message:@"广告页面已关闭" details:nil]); return; }
+    if (![call.method isEqualToString:@"show"]) { result(FlutterMethodNotImplemented); return; }
+    if (bridge.pending) { result([FlutterError errorWithCode:@"AD_BUSY" message:@"广告正在播放" details:nil]); return; }
+    NSDictionary *args = [call.arguments isKindOfClass:NSDictionary.class] ? call.arguments : @{};
+    for (NSString *key in @[@"appId", @"slotId", @"userId", @"extra"]) {
+      if (![args[key] isKindOfClass:NSString.class] || ![args[key] length]) { result([FlutterError errorWithCode:@"AD_UNAVAILABLE" message:@"广告配置暂不可用" details:nil]); return; }
+    }
+    if (![args[@"consent"] isEqual:@YES]) { result([FlutterError errorWithCode:@"AD_UNAVAILABLE" message:@"请确认观看广告" details:nil]); return; }
+    bridge.pending = result; bridge.eligible = NO; bridge.shown = NO;
+    NSUInteger attempt = ++bridge.generation;
+    bridge.deadline = [NSTimer scheduledTimerWithTimeInterval:30 repeats:NO block:^(NSTimer *timer) { if (weakSelf.generation == attempt) [weakSelf finish:@"广告加载超时，请稍后重试"]; }];
+    [[BojianAdSDK shared] start:args[@"appId"] mediation:YES ready:^(NSString *error) {
+      BojianRewardedAdBridge *b = weakSelf;
+      if (!b.pending || b.generation != attempt) return;
+      if (error) { [b finish:@"广告暂不可用，请稍后重试"]; return; }
+      BURewardedVideoModel *model = [BURewardedVideoModel new];
+      model.userId = args[@"userId"];
+      model.extra = args[@"extra"];
+      model.rewardName = @"积分"; model.rewardAmount = 20;
+      b.ad = [[BUNativeExpressRewardedVideoAd alloc] initWithSlotID:args[@"slotId"] rewardedVideoModel:model];
+      b.ad.delegate = b;
+      [b.ad loadAdData];
+    }];
+  }];
+  return self;
+}
+- (void)finish:(NSString *)error {
+  if (!self.pending) return;
+  FlutterResult result = self.pending;
+  self.pending = nil; self.generation++;
+  [self.deadline invalidate]; self.deadline = nil;
+  self.ad.delegate = nil; self.ad = nil;
+  if (error) result([FlutterError errorWithCode:@"AD_UNAVAILABLE" message:error details:nil]);
+  else result(@{@"eligible": @(self.eligible)});
+}
+- (void)nativeExpressRewardedVideoAdDidDownLoadVideo:(BUNativeExpressRewardedVideoAd *)ad {
+  if (ad != self.ad || self.shown || !self.pending) return;
+  UIViewController *presenter = nil;
+  for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+    if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+    for (UIWindow *window in ((UIWindowScene *)scene).windows) if (window.isKeyWindow) { presenter = window.rootViewController; break; }
+    if (presenter) break;
+  }
+  while (presenter.presentedViewController) presenter = presenter.presentedViewController;
+  if (!presenter || !ad.mediation.isReady) { [self finish:@"广告暂不可用，请稍后重试"]; return; }
+  self.shown = YES;
+  [self.deadline invalidate];
+  __weak typeof(self) weakSelf = self;
+  self.deadline = [NSTimer scheduledTimerWithTimeInterval:1200 repeats:NO block:^(NSTimer *timer) { [weakSelf finish:@"广告观看已超时"]; }];
+  if (![ad showAdFromRootViewController:presenter]) [self finish:@"广告展示失败"];
+}
+- (void)nativeExpressRewardedVideoAd:(BUNativeExpressRewardedVideoAd *)ad didFailWithError:(NSError *)error { if (ad == self.ad) [self finish:@"暂时没有可观看的广告，请稍后重试"]; }
+- (void)nativeExpressRewardedVideoAdDidShowFailed:(BUNativeExpressRewardedVideoAd *)ad error:(NSError *)error { if (ad == self.ad) [self finish:@"广告展示失败"]; }
+- (void)nativeExpressRewardedVideoAdDidPlayFinish:(BUNativeExpressRewardedVideoAd *)ad didFailWithError:(NSError *)error { if (ad == self.ad && error) [self finish:@"广告播放失败"]; }
+- (void)nativeExpressRewardedVideoAdServerRewardDidSucceed:(BUNativeExpressRewardedVideoAd *)ad verify:(BOOL)verify { if (ad == self.ad) self.eligible = verify; }
+- (void)nativeExpressRewardedVideoAdDidClose:(BUNativeExpressRewardedVideoAd *)ad {
+  if (ad != self.ad) return;
+  NSUInteger attempt = self.generation;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ if (self.generation == attempt) [self finish:nil]; });
+}
+- (void)dealloc { [_deadline invalidate]; [_channel setMethodCallHandler:nil]; }
+@end

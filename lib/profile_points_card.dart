@@ -190,6 +190,8 @@ class _ProfilePointsCardState extends State<ProfilePointsCard>
                           child: Text(
                             busy
                                 ? '领取中…'
+                                : store.rewardEnded
+                                ? '已结束'
                                 : received != null || store.rewardClaimed
                                 ? '今日已领取'
                                 : '领取积分',
@@ -210,11 +212,13 @@ class _ProfilePointsCardState extends State<ProfilePointsCard>
                       child: Text(
                         received != null && received! > 0
                             ? '+$received 积分已到账'
+                            : store.rewardEnded
+                            ? '新人奖励已结束'
                             : store.rewardClaimed
                             ? '今日奖励已领取'
                             : store.rewardPoints == null
                             ? '每日奖励加载中'
-                            : '每日奖励 +${store.rewardPoints} 积分',
+                            : '${store.rewardDay > 0 ? '新人第 ${store.rewardDay} 天' : '每日奖励'} +${store.rewardPoints} 积分',
                         key: const ValueKey('profile-reward-status'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

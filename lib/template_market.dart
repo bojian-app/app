@@ -177,7 +177,8 @@ class _TemplateMarketViewState extends State<TemplateMarketView> {
                         ),
                       if (rows.isEmpty)
                         SliverFillRemaining(
-                          hasScrollBody: false,
+                          // EmptyState measures its available height and scrolls internally.
+                          hasScrollBody: true,
                           child: _MarketStatus(
                             loading: loading,
                             error: failure,

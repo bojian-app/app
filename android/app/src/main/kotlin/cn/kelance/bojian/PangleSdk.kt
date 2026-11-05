@@ -15,6 +15,7 @@ import com.bytedance.sdk.openadsdk.mediation.init.MediationPrivacyConfig
 object PangleSdk {
     private val handler = Handler(Looper.getMainLooper())
     private val waiters = mutableListOf<(String?) -> Unit>()
+    private var configuredAppId: String? = null
     private var started = false
     private var complete = false
     private var failure: String? = null
@@ -25,6 +26,10 @@ object PangleSdk {
             callback("unsupported_abi")
             return
         }
+        if (configuredAppId != null && configuredAppId != appId) {
+            callback("configuration_changed")
+            return
+        }
         if (complete) {
             callback(failure)
             return
@@ -32,6 +37,7 @@ object PangleSdk {
         waiters.add(callback)
         if (started) return
         started = true
+        configuredAppId = appId
         handler.postDelayed({ finish("init_timeout") }, 8000)
         try {
             val config = TTAdConfig.Builder()

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'app_icons.dart';
+import 'invitation_page.dart';
+import 'discovery.dart' show DiscoveryPage;
+import 'rewarded_ad.dart';
 import 'app_store.dart';
 import 'design.dart';
 import 'resume_pages.dart';
@@ -23,6 +26,110 @@ class PointsPage extends StatefulWidget {
 }
 
 class _PointsPageState extends State<PointsPage> {
+  final tasks = <String, Map<String, dynamic>>{};
+  String? claimingTask;
+  bool adEnabled = false;
+  bool watchingAd = false;
+  Future<void> refresh() async {
+    final epoch = store.epoch;
+    await Future.wait([
+      store.load('profile'),
+      () async {
+        try {
+          final result = await store.request('GetWalletTasks');
+          if (!mounted || epoch != store.epoch) return;
+          setState(() {
+            tasks.clear();
+            for (final row
+                in (result.data['items'] as List? ?? []).whereType<Map>()) {
+              tasks['${row['task']}'] = Map<String, dynamic>.from(row);
+            }
+          });
+        } catch (_) {
+          if (mounted && epoch == store.epoch) setState(tasks.clear);
+        }
+      }(),
+      () async {
+        try {
+          final enabled = await RewardedAd.available(store);
+          if (mounted && epoch == store.epoch) {
+            setState(() => adEnabled = enabled);
+          }
+        } catch (_) {
+          if (mounted) setState(() => adEnabled = false);
+        }
+      }(),
+    ]);
+  }
+
+  Future<void> claimTask(String task) async {
+    if (claimingTask != null) return;
+    final epoch = store.epoch;
+    setState(() => claimingTask = task);
+    try {
+      final result = await store.request(
+        'PostWalletTasksTaskClaims',
+        path: {'task': task},
+        body: {},
+      );
+      if (!mounted || epoch != store.epoch) return;
+      toast(
+        context,
+        result.data['deduplicated'] == true ? '今日奖励已领取' : '+100 积分已到账',
+      );
+      await refresh();
+    } catch (e) {
+      if (mounted && epoch == store.epoch) toast(context, '$e');
+    } finally {
+      if (mounted) setState(() => claimingTask = null);
+    }
+  }
+
+  Future<void> watchAd() async {
+    if (watchingAd) return;
+    final epoch = store.epoch;
+    setState(() => watchingAd = true);
+    try {
+      final amount = await RewardedAd.watch(store);
+      if (!mounted || epoch != store.epoch) return;
+      toast(context, amount > 0 ? '+$amount 积分已到账' : '未获得新的广告奖励');
+      await refresh();
+    } catch (e) {
+      if (mounted && epoch == store.epoch) toast(context, '$e');
+    } finally {
+      if (mounted) setState(() => watchingAd = false);
+    }
+  }
+
+  Widget dailyTask(
+    String task,
+    String title,
+    String action,
+    String asset,
+    VoidCallback go,
+  ) {
+    final state = tasks[task];
+    final claimed = state?['claimed'] == true;
+    final claimable = state?['claimable'] == true;
+    return _task(
+      title,
+      '每日完成一次，领取 100 积分',
+      claimed
+          ? '今日已领'
+          : claimingTask == task
+          ? '领取中…'
+          : claimable
+          ? '领取100'
+          : action,
+      asset,
+      claimed || claimingTask != null
+          ? null
+          : claimable
+          ? () => claimTask(task)
+          : go,
+    );
+  }
+
   int tab = 0;
   bool claiming = false;
   bool choosingResume = false;
@@ -32,7 +139,7 @@ class _PointsPageState extends State<PointsPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && store.isAuthenticated) store.load('profile');
+      if (mounted && store.isAuthenticated) refresh();
     });
   }
 
@@ -59,7 +166,7 @@ class _PointsPageState extends State<PointsPage> {
     builder: (context) => AlertDialog(
       title: const Text('积分规则'),
       content: const Text(
-        '每日任务：邀请新人、打卡。打卡每日可领取一次积分，数量以当日显示为准。\n\n长期任务：创建一份简历、发布一篇文章、请求别人优化简历、观看广告，每项仅限完成一次。\n\n积分可用于模版市场中的付费模版，兑换前会展示所需积分。',
+        '新人奖励：注册日起 7 个北京时间自然日，依次领取 50、75、100、125、150、200、300 积分，共 1000 积分；漏领不补，结束后停止。\n\n邀请新人：每位新人注册时填写邀请码，完成手机号绑定后，邀请人自动获得 500 积分。\n\n每日任务：发布文章、请求别人优化、帮助别人优化，每项每天可领取一次 100 积分，需完成相应操作并通过审核。\n\n长期任务：观看激励视频广告，每次满足广告奖励条件且验证成功可得 20 积分。\n\n积分可用于模版市场中的付费模版，兑换前会展示所需积分。',
       ),
       actions: [
         TextButton(
@@ -82,7 +189,7 @@ class _PointsPageState extends State<PointsPage> {
         backgroundColor: background,
         body: RefreshIndicator(
           color: _blue,
-          onRefresh: () => store.load('profile'),
+          onRefresh: refresh,
           child: SingleChildScrollView(
             key: const PageStorageKey('points-scroll'),
             physics: const AlwaysScrollableScrollPhysics(),
@@ -275,19 +382,23 @@ class _PointsPageState extends State<PointsPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          claimed ? '今天已签到' : '今天未签到',
+          store.rewardEnded ? '新人奖励已结束' : '新人送 1000 积分',
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 5),
         Text(
-          '每日奖励 +${store.rewardPoints ?? '—'} 积分',
+          store.rewardEnded
+              ? '注册起 7 天内领取，漏领不补'
+              : '${store.rewardDay > 0 ? '第 ${store.rewardDay} 天' : '每日奖励'} +${store.rewardPoints ?? '—'} 积分',
           style: TextStyle(fontSize: 11, color: context.colors.muted),
         ),
       ],
     );
     final button = _primaryButton(
       key: const ValueKey('profile-claim-reward'),
-      label: claimed
+      label: store.rewardEnded
+          ? '已结束'
+          : claimed
           ? '已领取'
           : claiming
           ? '领取中…'
@@ -333,16 +444,16 @@ class _PointsPageState extends State<PointsPage> {
           ),
           const SizedBox(height: 12),
           Text(
-            '每日来领取，积累小确幸',
+            '按北京时间每日领取，漏领不补，第 8 天起停止',
             style: TextStyle(fontSize: 10, color: context.colors.muted),
           ),
           _taskDivider(),
           _task(
             '邀请新人',
-            '邀请新用户加入博简',
-            '待开放',
+            '每位新人完成手机号绑定，得 500 积分',
+            '去邀请',
             'assets/points/tasks/invite-newcomer.svg',
-            null,
+            () => _openTask(() => InvitationPage(store: store)),
           ),
         ],
       ),
@@ -350,6 +461,51 @@ class _PointsPageState extends State<PointsPage> {
   }
 
   Widget _day(int index, double width, bool claimed) {
+    if (store.rewardDays.length == 7) {
+      final day = store.rewardDays[index];
+      final status = day['status'];
+      return SizedBox(
+        width: width,
+        child: Column(
+          children: [
+            Container(
+              width: width,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: status == 'AVAILABLE'
+                    ? context.colors.accentSoft
+                    : context.colors.inset,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    '+${day['points']}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    status == 'CLAIMED'
+                        ? '已领取'
+                        : status == 'MISSED'
+                        ? '已错过'
+                        : status == 'AVAILABLE'
+                        ? '今天'
+                        : '待解锁',
+                    style: TextStyle(fontSize: 9, color: context.colors.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text('第 ${index + 1} 天', style: const TextStyle(fontSize: 9)),
+          ],
+        ),
+      );
+    }
     final today = DateTime.now().weekday - 1 == index;
     return SizedBox(
       width: width,
@@ -436,12 +592,13 @@ class _PointsPageState extends State<PointsPage> {
     );
   }
 
-  void _openTask(Widget Function() page) {
+  Future<void> _openTask(Widget Function() page) async {
     if (!store.isAuthenticated) {
       store.endSession();
       return;
     }
-    openPage(context, page());
+    await openPage(context, page());
+    if (mounted) await refresh();
   }
 
   Future<void> _requestOptimization() async {
@@ -489,6 +646,7 @@ class _PointsPageState extends State<PointsPage> {
       );
       if (!mounted || epoch != store.epoch || resume == null) return;
       await openPage(context, ResumeUserShare(store: store, resume: resume));
+      if (mounted) await refresh();
     } finally {
       choosingResume = false;
     }
@@ -513,28 +671,50 @@ class _PointsPageState extends State<PointsPage> {
           ),
         ),
         _taskDivider(),
-        _task(
+        dailyTask(
+          'PUBLISH_ARTICLE',
           '发布一篇文章',
-          '分享你的经验与见解',
           '去发布',
           'assets/points/tasks/publish-article.svg',
           () => _openTask(() => StoryComposer(store: store)),
         ),
         _taskDivider(),
-        _task(
+        dailyTask(
+          'REQUEST_REVIEW',
           '请求别人优化简历',
-          '选择简历，向他人请教',
           '去请求',
           'assets/points/tasks/request-review.svg',
           _requestOptimization,
         ),
         _taskDivider(),
+        dailyTask(
+          'HELP_REVIEW',
+          '帮别人优化简历',
+          '去帮助',
+          'assets/points/tasks/request-review.svg',
+          () async {
+            await store.load('feed');
+            if (mounted) {
+              await _openTask(
+                () => Scaffold(
+                  appBar: AppBar(title: const Text('帮助优化简历')),
+                  body: DiscoveryPage(store: store),
+                ),
+              );
+            }
+          },
+        ),
+        _taskDivider(),
         _task(
           '观看广告',
-          '观看视频广告，获取积分奖励',
-          '待开放',
+          '每次完成观看并验证成功，得 20 积分',
+          watchingAd
+              ? '观看中…'
+              : adEnabled
+              ? '去观看'
+              : '待开放',
           'assets/points/tasks/watch-ad.svg',
-          null,
+          adEnabled && !watchingAd ? watchAd : null,
         ),
       ],
     ),

@@ -96,7 +96,6 @@ class _ResumePostComposerState extends State<ResumePostComposer> {
             'projects.url',
             'educations.institution',
             'work_experiences.company',
-            'projects.name',
             'certifications.issuer',
           ],
         },

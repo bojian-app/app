@@ -6,4 +6,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger;
 @end
 
+
+@interface BojianRewardedAdBridge : NSObject
+- (instancetype)initWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger;
+@end
+
 NS_ASSUME_NONNULL_END

@@ -116,7 +116,6 @@ class _ResumeUserShareState extends State<ResumeUserShare> {
         'projects.url',
         'educations.institution',
         'work_experiences.company',
-        'projects.name',
         'certifications.issuer',
       ],
     };

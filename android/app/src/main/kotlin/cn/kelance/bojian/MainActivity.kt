@@ -10,6 +10,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var rewardedAd: RewardedAdBridge? = null
     private var baiduFace: BaiduFaceBridge? = null
     private var resumeFiles: ResumeFileBridge? = null
     private var douyinLogin: DouyinLoginBridge? = null
@@ -20,6 +21,7 @@ class MainActivity : FlutterActivity() {
             "cn.kelance.bojian/banner",
             BannerAdFactory(this, flutterEngine.dartExecutor.binaryMessenger),
         )
+        rewardedAd = RewardedAdBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         baiduFace = BaiduFaceBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         resumeFiles = ResumeFileBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         douyinLogin = DouyinLoginBridge(this, flutterEngine.dartExecutor.binaryMessenger)
@@ -90,6 +92,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        rewardedAd?.close()
+        rewardedAd = null
         resumeFiles?.close()
         baiduFace?.close()
         baiduFace = null
