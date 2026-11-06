@@ -662,8 +662,8 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
           store: store,
         ),
         _ProfileMenuPage.points => Scaffold(
-          appBar: AppPageBar(title: const Text('我的积分')),
-          body: PointsPage(store: store),
+          appBar: AppPageBar(title: const Text('积分中心')),
+          body: PointsPage(store: store, showTitle: false),
         ),
       });
     } finally {

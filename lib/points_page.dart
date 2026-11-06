@@ -1,35 +1,79 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'app_icons.dart';
-import 'invitation_page.dart';
-import 'discovery.dart' show DiscoveryPage;
-import 'rewarded_ad.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'discovery.dart' show DiscoveryPage;
+import 'invitation_page.dart';
 import 'resume_pages.dart';
 import 'resume_user_share.dart';
+import 'rewarded_ad.dart';
 import 'story_composer.dart';
+import 'template_market.dart' show MarketTemplateArtwork;
 
-const _blue = brandBlue;
-const _navy = Color(0xFF203D6B);
+const _displayFont = 'ResumeDocument';
+const _goldInk = Color(0xFFE07B00);
+const _orange = [Color(0xFFFF9A2E), Color(0xFFFF6A1A)];
+const _dailyTasks = ['PUBLISH_ARTICLE', 'REQUEST_REVIEW', 'HELP_REVIEW'];
 
 class PointsPage extends StatefulWidget {
-  const PointsPage({super.key, required this.store});
+  const PointsPage({super.key, required this.store, this.showTitle = true});
   final AppStore store;
 
+  /// False when a parent app bar already names the page.
+  final bool showTitle;
+
+  /// Top colour of the page gradient; the shell paints the status bar with it.
   static Color headerColor(BuildContext context) =>
-      context.isDark ? const Color(0xFF192536) : const Color(0xFFEAF1FF);
+      context.isDark ? const Color(0xFF1C2E52) : const Color(0xFFBFD6FF);
 
   @override
   State<PointsPage> createState() => _PointsPageState();
 }
 
-class _PointsPageState extends State<PointsPage> {
+class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
   final tasks = <String, Map<String, dynamic>>{};
+  final templates = <Map<String, dynamic>>[];
+  final pageKey = GlobalKey();
+  final balanceKey = GlobalKey();
+  final todayKey = GlobalKey();
+  final taskKeys = {for (final task in _dailyTasks) task: GlobalKey()};
+  final adKey = GlobalKey();
+  final bursts = <_Burst>[];
+  late final boxWiggle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
   String? claimingTask;
-  bool adEnabled = false;
-  bool watchingAd = false;
+  bool adEnabled = false, watchingAd = false, claiming = false;
+  bool choosingResume = false;
+
+  /// Balance shown while coins are still flying, so the number rises only
+  /// when they land.
+  int? heldPoints;
+  AppStore get store => widget.store;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && store.isAuthenticated) refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final burst in bursts) {
+      burst.controller.dispose();
+    }
+    boxWiggle.dispose();
+    super.dispose();
+  }
+
   Future<void> refresh() async {
     final epoch = store.epoch;
     await Future.wait([
@@ -59,12 +103,100 @@ class _PointsPageState extends State<PointsPage> {
           if (mounted) setState(() => adEnabled = false);
         }
       }(),
+      () async {
+        try {
+          final result = await store.request(
+            'GetTemplates',
+            query: {'pricing': 'PAID', 'limit': '3'},
+          );
+          if (!mounted || epoch != store.epoch) return;
+          setState(() {
+            templates
+              ..clear()
+              ..addAll(
+                (result.data['items'] as List? ?? [])
+                    .whereType<Map>()
+                    .map((row) => Map<String, dynamic>.from(row))
+                    .take(3),
+              );
+          });
+        } catch (_) {
+          // The market link stays available when the preview list fails.
+          if (mounted && epoch == store.epoch) setState(templates.clear);
+        }
+      }(),
     ]);
+  }
+
+  bool get animate => !MediaQuery.disableAnimationsOf(context);
+
+  /// Coins burst from [source], fly into the balance, and the number rolls
+  /// up once they land.
+  void celebrate(GlobalKey source, int amount, int? before) {
+    HapticFeedback.mediumImpact();
+    final page = pageKey.currentContext?.findRenderObject();
+    final from = source.currentContext?.findRenderObject();
+    final to = balanceKey.currentContext?.findRenderObject();
+    if (!animate ||
+        page is! RenderBox ||
+        from is! RenderBox ||
+        to is! RenderBox) {
+      toast(context, '+$amount 积分已到账');
+      return;
+    }
+    final start = page.globalToLocal(
+      from.localToGlobal(from.size.center(Offset.zero)),
+    );
+    final end = page.globalToLocal(
+      to.localToGlobal(Offset(18, to.size.height / 2)),
+    );
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    final burst = _Burst(controller, start, end, amount);
+    setState(() {
+      heldPoints = before;
+      bursts.add(burst);
+    });
+    var landed = false;
+    controller.addListener(() {
+      if (!landed && controller.value >= _Burst.landAt) {
+        landed = true;
+        if (mounted) setState(() => heldPoints = null);
+        boxWiggle.forward(from: 0);
+      }
+    });
+    controller.forward().whenComplete(() {
+      if (!mounted) return;
+      setState(() => bursts.remove(burst));
+      controller.dispose();
+    });
+  }
+
+  Future<void> checkIn() async {
+    if (claiming || store.rewardClaimed || store.pending.contains('reward')) {
+      return;
+    }
+    final epoch = store.epoch;
+    final before = store.points;
+    setState(() => claiming = true);
+    try {
+      final amount = await store.claimReward();
+      if (mounted && epoch == store.epoch && amount != null && amount > 0) {
+        celebrate(todayKey, amount, before);
+      }
+    } catch (error) {
+      if (mounted && epoch == store.epoch) toast(context, '$error');
+    } finally {
+      if (mounted) setState(() => claiming = false);
+    }
   }
 
   Future<void> claimTask(String task) async {
     if (claimingTask != null) return;
     final epoch = store.epoch;
+    final before = store.points;
     setState(() => claimingTask = task);
     try {
       final result = await store.request(
@@ -73,10 +205,11 @@ class _PointsPageState extends State<PointsPage> {
         body: {},
       );
       if (!mounted || epoch != store.epoch) return;
-      toast(
-        context,
-        result.data['deduplicated'] == true ? '今日奖励已领取' : '+100 积分已到账',
-      );
+      if (result.data['deduplicated'] == true) {
+        toast(context, '今日奖励已领取');
+      } else {
+        celebrate(taskKeys[task]!, integer(result.data['points']), before);
+      }
       await refresh();
     } catch (e) {
       if (mounted && epoch == store.epoch) toast(context, '$e');
@@ -88,508 +221,22 @@ class _PointsPageState extends State<PointsPage> {
   Future<void> watchAd() async {
     if (watchingAd) return;
     final epoch = store.epoch;
+    final before = store.points;
     setState(() => watchingAd = true);
     try {
       final amount = await RewardedAd.watch(store);
       if (!mounted || epoch != store.epoch) return;
-      toast(context, amount > 0 ? '+$amount 积分已到账' : '未获得新的广告奖励');
+      if (amount > 0) {
+        celebrate(adKey, amount, before);
+      } else {
+        toast(context, '未获得新的广告奖励');
+      }
       await refresh();
     } catch (e) {
       if (mounted && epoch == store.epoch) toast(context, '$e');
     } finally {
       if (mounted) setState(() => watchingAd = false);
     }
-  }
-
-  Widget dailyTask(
-    String task,
-    String title,
-    String action,
-    String asset,
-    VoidCallback go,
-  ) {
-    final state = tasks[task];
-    final claimed = state?['claimed'] == true;
-    final claimable = state?['claimable'] == true;
-    return _task(
-      title,
-      '每日完成一次，领取 100 积分',
-      claimed
-          ? '今日已领'
-          : claimingTask == task
-          ? '领取中…'
-          : claimable
-          ? '领取100'
-          : action,
-      asset,
-      claimed || claimingTask != null
-          ? null
-          : claimable
-          ? () => claimTask(task)
-          : go,
-    );
-  }
-
-  int tab = 0;
-  bool claiming = false;
-  bool choosingResume = false;
-  AppStore get store => widget.store;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && store.isAuthenticated) refresh();
-    });
-  }
-
-  Future<void> claim() async {
-    if (claiming || store.rewardClaimed || store.pending.contains('reward')) {
-      return;
-    }
-    final epoch = store.epoch;
-    setState(() => claiming = true);
-    try {
-      final amount = await store.claimReward();
-      if (mounted && epoch == store.epoch && amount != null) {
-        toast(context, '+$amount 积分已到账');
-      }
-    } catch (error) {
-      if (mounted && epoch == store.epoch) toast(context, '$error');
-    } finally {
-      if (mounted) setState(() => claiming = false);
-    }
-  }
-
-  void rules() => showDialog<void>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('积分规则'),
-      content: const Text(
-        '新人奖励：注册日起 7 个北京时间自然日，依次领取 50、75、100、125、150、200、300 积分，共 1000 积分；漏领不补，结束后停止。\n\n邀请新人：每位新人注册时填写邀请码，完成手机号绑定后，邀请人自动获得 500 积分。\n\n每日任务：发布文章、请求别人优化、帮助别人优化，每项每天可领取一次 100 积分，需完成相应操作并通过审核。\n\n长期任务：观看激励视频广告，每次满足广告奖励条件且验证成功可得 20 积分。\n\n积分可用于模版市场中的付费模版，兑换前会展示所需积分。',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('知道了'),
-        ),
-      ],
-    ),
-  );
-
-  void market() => openPage(context, TemplateMarket(store: store));
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: store,
-    builder: (context, _) {
-      final dark = context.isDark;
-      final background = PointsPage.headerColor(context);
-      return Scaffold(
-        backgroundColor: background,
-        body: RefreshIndicator(
-          color: _blue,
-          onRefresh: refresh,
-          child: SingleChildScrollView(
-            key: const PageStorageKey('points-scroll'),
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 4, 14, 4),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          '积分福利中心',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: rules,
-                        style: TextButton.styleFrom(
-                          foregroundColor: dark ? Colors.white70 : _navy,
-                        ),
-                        child: const Text('规则', style: TextStyle(fontSize: 12)),
-                      ),
-                    ],
-                  ),
-                ),
-                _overview(),
-                const SizedBox(height: 18),
-                Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: dark
-                        ? context.colors.canvas
-                        : const Color(0xFFF8F8F8),
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(22),
-                    ),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          for (final (index, label) in [(0, '赚积分'), (1, '兑好礼')])
-                            Expanded(
-                              child: Semantics(
-                                selected: tab == index,
-                                child: TextButton(
-                                  key: ValueKey('points-tab-$index'),
-                                  onPressed: () => setState(() => tab = index),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: tab == index
-                                        ? _blue
-                                        : context.colors.muted,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 10,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        label,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: tab == index
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 7),
-                                      Container(
-                                        width: 24,
-                                        height: 3,
-                                        decoration: BoxDecoration(
-                                          color: tab == index
-                                              ? _blue
-                                              : Colors.transparent,
-                                          borderRadius: BorderRadius.circular(
-                                            2,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      DataStatus(
-                        store: store,
-                        section: 'profile',
-                        empty: false,
-                      ),
-                      if (tab == 0) ...[
-                        if (store.isAuthenticated) _checkIn(),
-                        const SizedBox(height: 12),
-                        _tasks(),
-                      ] else ...[
-                        _redeem(),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
-  );
-
-  Widget _overview() => Container(
-    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-    padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(20),
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: context.isDark
-            ? const [Color(0xFF284F97), Color(0xFF233D70)]
-            : const [Color(0xFF487EF5), Color(0xFF285BCB)],
-      ),
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '我的积分',
-                style: TextStyle(fontSize: 12, color: Color(0xFFDCE8FF)),
-              ),
-              const SizedBox(height: 8),
-              Semantics(
-                label: '可用积分 ${store.points ?? '暂不可用'}',
-                excludeSemantics: true,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    store.isAuthenticated ? '${store.points ?? '—'}' : '—',
-                    style: const TextStyle(
-                      fontSize: 38,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Image.asset(
-          'assets/points/rewards-transparent.webp',
-          width: 124,
-          height: 96,
-          fit: BoxFit.contain,
-          excludeFromSemantics: true,
-        ),
-      ],
-    ),
-  );
-
-  Widget _card({required Widget child}) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: context.colors.surface,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: child,
-  );
-
-  Widget _checkIn() {
-    final claimed = store.rewardClaimed;
-    final disabled =
-        claimed ||
-        claiming ||
-        store.rewardPoints == null ||
-        store.pending.contains('reward');
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          store.rewardEnded ? '新人奖励已结束' : '新人送 1000 积分',
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          store.rewardEnded
-              ? '注册起 7 天内领取，漏领不补'
-              : '${store.rewardDay > 0 ? '第 ${store.rewardDay} 天' : '每日奖励'} +${store.rewardPoints ?? '—'} 积分',
-          style: TextStyle(fontSize: 11, color: context.colors.muted),
-        ),
-      ],
-    );
-    final button = _primaryButton(
-      key: const ValueKey('profile-claim-reward'),
-      label: store.rewardEnded
-          ? '已结束'
-          : claimed
-          ? '已领取'
-          : claiming
-          ? '领取中…'
-          : '签到领取',
-      onPressed: disabled ? null : claim,
-    );
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) =>
-                MediaQuery.textScalerOf(context).scale(14) > 22
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [title, const SizedBox(height: 10), button],
-                  )
-                : Row(
-                    children: [
-                      Expanded(child: title),
-                      const SizedBox(width: 10),
-                      button,
-                    ],
-                  ),
-          ),
-          const SizedBox(height: 14),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final large = MediaQuery.textScalerOf(context).scale(12) > 18;
-              final width = large ? 62.0 : (constraints.maxWidth - 30) / 7;
-              return SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < 7; i++) ...[
-                      if (i > 0) const SizedBox(width: 5),
-                      _day(i, width, claimed),
-                    ],
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '按北京时间每日领取，漏领不补，第 8 天起停止',
-            style: TextStyle(fontSize: 10, color: context.colors.muted),
-          ),
-          _taskDivider(),
-          _task(
-            '邀请新人',
-            '每位新人完成手机号绑定，得 500 积分',
-            '去邀请',
-            'assets/points/tasks/invite-newcomer.svg',
-            () => _openTask(() => InvitationPage(store: store)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _day(int index, double width, bool claimed) {
-    if (store.rewardDays.length == 7) {
-      final day = store.rewardDays[index];
-      final status = day['status'];
-      return SizedBox(
-        width: width,
-        child: Column(
-          children: [
-            Container(
-              width: width,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: status == 'AVAILABLE'
-                    ? context.colors.accentSoft
-                    : context.colors.inset,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    '+${day['points']}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    status == 'CLAIMED'
-                        ? '已领取'
-                        : status == 'MISSED'
-                        ? '已错过'
-                        : status == 'AVAILABLE'
-                        ? '今天'
-                        : '待解锁',
-                    style: TextStyle(fontSize: 9, color: context.colors.muted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 7),
-            Text('第 ${index + 1} 天', style: const TextStyle(fontSize: 9)),
-          ],
-        ),
-      );
-    }
-    final today = DateTime.now().weekday - 1 == index;
-    return SizedBox(
-      width: width,
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: today
-                  ? context.colors.accentSoft
-                  : context.colors.inset.withValues(alpha: .55),
-              border: Border.all(
-                color: today
-                    ? context.colors.accent.withValues(alpha: .25)
-                    : Colors.transparent,
-              ),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: SizedBox(
-              height: 32,
-              child: Stack(
-                alignment: Alignment.topCenter,
-                children: [
-                  SizedBox.square(
-                    dimension: 28,
-                    child: CustomPaint(
-                      painter: _CheckInStar(
-                        color: context.colors.accent,
-                        claimed: today && claimed,
-                      ),
-                    ),
-                  ),
-                  if (today && claimed && store.rewardPoints != null)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Semantics(
-                        label: '今日已领取 ${store.rewardPoints} 积分',
-                        excludeSemantics: true,
-                        child: Container(
-                          key: const ValueKey('check-in-received-amount'),
-                          constraints: BoxConstraints(maxWidth: width),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 3,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: context.colors.accent,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: context.colors.surface),
-                          ),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              '+${store.rewardPoints}',
-                              style: TextStyle(
-                                fontSize: 8,
-                                height: 1.1,
-                                fontWeight: FontWeight.w700,
-                                color: context.isDark
-                                    ? const Color(0xFF172D50)
-                                    : Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            today ? '今天' : ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][index],
-            style: TextStyle(
-              fontSize: 9,
-              color: today ? _blue : context.colors.muted,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _openTask(Widget Function() page) async {
@@ -652,306 +299,1710 @@ class _PointsPageState extends State<PointsPage> {
     }
   }
 
-  Widget _taskDivider() => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 14),
-    child: Divider(height: 1, color: Theme.of(context).dividerColor),
+  Future<void> _helpOthers() async {
+    await store.load('feed');
+    if (!mounted) return;
+    await _openTask(
+      () => Scaffold(
+        appBar: AppBar(title: const Text('帮别人改简历')),
+        body: DiscoveryPage(store: store),
+      ),
+    );
+  }
+
+  void market() => openPage(context, TemplateMarket(store: store));
+
+  void rules() => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: context.colors.surface,
+    builder: (context) => const _RulesSheet(),
   );
 
-  Widget _tasks() => _card(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _task(
-          '创建一份简历',
-          '整理经历，开启求职第一步',
-          '去创建',
-          'assets/points/tasks/create-resume.svg',
-          () => _openTask(
-            () => ResumeEditor(store: store, draft: store.createResume()),
-          ),
-        ),
-        _taskDivider(),
-        dailyTask(
-          'PUBLISH_ARTICLE',
-          '发布一篇文章',
-          '去发布',
-          'assets/points/tasks/publish-article.svg',
-          () => _openTask(() => StoryComposer(store: store)),
-        ),
-        _taskDivider(),
-        dailyTask(
-          'REQUEST_REVIEW',
-          '请求别人优化简历',
-          '去请求',
-          'assets/points/tasks/request-review.svg',
-          _requestOptimization,
-        ),
-        _taskDivider(),
-        dailyTask(
-          'HELP_REVIEW',
-          '帮别人优化简历',
-          '去帮助',
-          'assets/points/tasks/request-review.svg',
-          () async {
-            await store.load('feed');
-            if (mounted) {
-              await _openTask(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('帮助优化简历')),
-                  body: DiscoveryPage(store: store),
+  void ledger() => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: context.colors.surface,
+    builder: (context) => _LedgerSheet(store: store),
+  );
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: store,
+    builder: (context, _) {
+      final dark = context.isDark;
+      return Scaffold(
+        backgroundColor: context.colors.canvas,
+        body: Stack(
+          key: pageKey,
+          fit: StackFit.expand,
+          children: [
+            RefreshIndicator(
+              color: brandBlue,
+              onRefresh: refresh,
+              child: SingleChildScrollView(
+                key: const PageStorageKey('points-scroll'),
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: 420,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0, .55, 1],
+                            colors: dark
+                                ? [
+                                    PointsPage.headerColor(context),
+                                    const Color(0xFF152038),
+                                    context.colors.canvas,
+                                  ]
+                                : [
+                                    PointsPage.headerColor(context),
+                                    const Color(0xFFDDE9FF),
+                                    context.colors.canvas,
+                                  ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Column(
+                      children: [
+                        _topBar(),
+                        _hero(),
+                        DataStatus(
+                          store: store,
+                          section: 'profile',
+                          empty: false,
+                        ),
+                        if (store.isAuthenticated) ...[
+                          if (!store.rewardEnded && store.rewardDays.length == 7)
+                            _checkIn(),
+                          _invite(),
+                          _tasks(),
+                        ],
+                        _redeem(),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ],
                 ),
-              );
-            }
-          },
+              ),
+            ),
+            for (final burst in bursts)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _BurstPainter(burst, dark: dark),
+                  ),
+                ),
+              ),
+          ],
         ),
-        _taskDivider(),
-        _task(
-          '观看广告',
-          '每次完成观看并验证成功，得 20 积分',
-          watchingAd
-              ? '观看中…'
-              : adEnabled
-              ? '去观看'
-              : '待开放',
-          'assets/points/tasks/watch-ad.svg',
-          adEnabled && !watchingAd ? watchAd : null,
+      );
+    },
+  );
+
+  Widget _topBar() => SizedBox(
+    height: 44,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        if (widget.showTitle)
+          const Text(
+            '积分中心',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          ),
+        Positioned(
+          right: 16,
+          child: _Pill(label: '规则', onTap: rules),
         ),
       ],
     ),
   );
 
-  Widget _task(
-    String title,
-    String subtitle,
-    String action,
-    String image,
-    VoidCallback? onTap,
-  ) => LayoutBuilder(
-    builder: (context, constraints) {
-      final content = Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _hero() {
+    final points = heldPoints ?? store.points;
+    final art = math.min(200.0, MediaQuery.sizeOf(context).width * .5);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 150),
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SvgPicture.asset(
-              image,
-              width: 44,
-              height: 44,
-              fit: BoxFit.contain,
-              excludeFromSemantics: true,
+          Positioned(
+            right: -12,
+            top: -18,
+            width: art,
+            child: AnimatedBuilder(
+              animation: boxWiggle,
+              builder: (context, child) {
+                final t = boxWiggle.value;
+                final angle = t == 0 || t == 1
+                    ? 0.0
+                    : math.sin(t * math.pi * 3) * (1 - t) * .12;
+                return Transform.rotate(
+                  angle: angle,
+                  child: Transform.scale(
+                    scale: 1 + math.sin(t * math.pi) * .05,
+                    child: child,
+                  ),
+                );
+              },
+              child: Image.asset(
+                'assets/points/rewards-transparent.webp',
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+              ),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
+          Padding(
+            padding: EdgeInsets.fromLTRB(22, 14, art - 20, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                Row(
+                  children: [
+                    const _Coin(size: 18),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '我的积分',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: context.colors.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Semantics(
+                  label: '可用积分 ${points ?? '暂不可用'}',
+                  excludeSemantics: true,
+                  child: FittedBox(
+                    key: balanceKey,
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    // Already display-sized; system text scaling would
+                    // push digits out of their rolling windows.
+                    child: MediaQuery.withNoTextScaling(
+                      child: store.isAuthenticated && points != null
+                          ? _Odometer(value: points)
+                          : Text('—', style: _Odometer.style(context)),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 10, color: context.colors.muted),
-                ),
+                const SizedBox(height: 10),
+                if (store.isAuthenticated)
+                  _Pill(
+                    key: const ValueKey('points-ledger'),
+                    label: '积分明细 ›',
+                    onTap: ledger,
+                  ),
               ],
             ),
           ),
         ],
-      );
-      final button = TextButton(
-        onPressed: onTap,
-        style: TextButton.styleFrom(
-          foregroundColor: brandBlue,
-          backgroundColor: context.isDark
-              ? const Color(0xFF22324D)
-              : const Color(0xFFEAF1FF),
-          minimumSize: const Size(64, 36),
-        ),
-        child: Text(action, style: const TextStyle(fontSize: 11)),
-      );
-      return MediaQuery.textScalerOf(context).scale(12) > 18
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [content, button],
-            )
-          : Row(
-              children: [
-                Expanded(child: content),
-                const SizedBox(width: 8),
-                button,
-              ],
-            );
-    },
+      ),
+    );
+  }
+
+  Widget _card({required Widget child, EdgeInsets? padding}) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+    padding: padding ?? const EdgeInsets.fromLTRB(14, 18, 14, 16),
+    decoration: BoxDecoration(
+      color: context.colors.surface,
+      borderRadius: BorderRadius.circular(18),
+    ),
+    child: child,
   );
 
-  Widget _redeem() => _card(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _cardHead(String title, String trailing, {VoidCallback? onTap}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (onTap == null)
+              Text(
+                trailing,
+                style: TextStyle(fontSize: 13, color: context.colors.muted),
+              )
+            else
+              TextButton(
+                key: const ValueKey('points-market'),
+                onPressed: onTap,
+                style: TextButton.styleFrom(
+                  foregroundColor: context.colors.muted,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(44, 32),
+                ),
+                child: Text(trailing, style: const TextStyle(fontSize: 13)),
+              ),
+          ],
+        ),
+      );
+
+  Widget _checkIn() {
+    final days = store.rewardDays;
+    final today = store.rewardDay - 1;
+    final signed = days.where((day) => day['status'] == 'CLAIMED').length;
+    final claimed = store.rewardClaimed;
+    final nextPoints = today >= 0 && today + 1 < days.length
+        ? integer(days[today + 1]['points'])
+        : 0;
+    final disabled =
+        claimed ||
+        claiming ||
+        store.rewardPoints == null ||
+        store.pending.contains('reward');
+    final muted = TextStyle(fontSize: 13, color: context.colors.muted);
+    const accent = TextStyle(color: _goldInk, fontWeight: FontWeight.w600);
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _cardHead('新人 7 天礼', '已签 $signed/7 天'),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text.rich(
+              claimed
+                  ? nextPoints > 0
+                        ? TextSpan(
+                            children: [
+                              const TextSpan(text: '今天已签到，明天签到可得 '),
+                              TextSpan(text: '$nextPoints', style: accent),
+                              const TextSpan(text: ' 积分'),
+                            ],
+                          )
+                        : const TextSpan(text: '新人礼已全部领取')
+                  : TextSpan(
+                      children: [
+                        const TextSpan(text: '漏签不补，第 7 天可领 '),
+                        TextSpan(
+                          text: '${integer(days.last['points'])}',
+                          style: accent,
+                        ),
+                        const TextSpan(text: ' 积分大礼'),
+                      ],
+                    ),
+              style: muted,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              for (var i = 0; i < 7; i++) ...[
+                if (i > 0) const SizedBox(width: 6),
+                Expanded(
+                  child: _DayTile(
+                    key: i == today ? todayKey : null,
+                    points: integer(days[i]['points']),
+                    status: '${days[i]['status']}',
+                    label: i == today
+                        ? '今天'
+                        : today >= 0 && i == today + 1
+                        ? '明天'
+                        : '第${i + 1}天',
+                    bonus: i == 6,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          _GradientButton(
+            key: const ValueKey('profile-claim-reward'),
+            label: claimed
+                ? '今日已签到'
+                : claiming
+                ? '签到中…'
+                : '立即签到 +${store.rewardPoints ?? '—'}',
+            onPressed: disabled ? null : checkIn,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _invite() => Container(
+    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+    constraints: const BoxConstraints(minHeight: 104),
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(18),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: context.isDark
+            ? const [Color(0xFF2F5BC4), Color(0xFF1D3E9A)]
+            : const [Color(0xFF4C8BFF), Color(0xFF2A62F0), Color(0xFF1F4FD8)],
+      ),
+    ),
+    child: Stack(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.asset(
-            'assets/points/resume.webp',
-            width: double.infinity,
-            height: 180,
-            fit: BoxFit.cover,
-            excludeFromSemantics: true,
+        Positioned(
+          right: -40,
+          top: -60,
+          child: Container(
+            width: 140,
+            height: 140,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  Colors.white.withValues(alpha: .22),
+                  Colors.white.withValues(alpha: 0),
+                ],
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 18),
-        const Text(
-          '用积分，解锁一份出彩',
-          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '精选简历模版，让好经历被看见。\n具体所需积分以模版详情为准。',
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.7,
-            color: context.colors.muted,
+        Positioned(
+          right: 96,
+          top: 0,
+          bottom: 0,
+          child: const Center(
+            child: SizedBox(
+              width: 76,
+              height: 76,
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: 22,
+                    top: 2,
+                    child: _Coin(size: 46, angle: .25, shadow: true),
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: 34,
+                    child: _Coin(size: 36, angle: -.3, shadow: true),
+                  ),
+                  Positioned(
+                    left: 50,
+                    top: 46,
+                    child: _Coin(size: 28, angle: .1, shadow: true),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 18),
-        SizedBox(
-          width: double.infinity,
-          child: _primaryButton(label: '逛逛模版市场', onPressed: market),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '邀请好友',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withValues(alpha: .85),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '500',
+                            style: TextStyle(
+                              fontFamily: _displayFont,
+                              fontSize: 34,
+                              height: 1.1,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFFFE27A),
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' 积分 / 每人',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '好友注册并绑定手机号后到账',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: .7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton(
+                key: const ValueKey('points-invite'),
+                onPressed: () => _openTask(() => InvitationPage(store: store)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF2457E6),
+                  minimumSize: const Size(0, 34),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: const Text('去邀请'),
+              ),
+            ],
+          ),
         ),
       ],
     ),
   );
 
-  Widget _primaryButton({
-    Key? key,
-    required String label,
-    required VoidCallback? onPressed,
-  }) => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: onPressed == null
-            ? [const Color(0xFFA7B9D8), const Color(0xFFA7B9D8)]
-            : [brandBlue, const Color(0xFF53A0FF)],
+  Widget _tasks() {
+    final done = _dailyTasks
+        .where((task) => tasks[task]?['claimed'] == true)
+        .length;
+    return _card(
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _cardHead('每日任务', '已完成 $done/3'),
+          const SizedBox(height: 4),
+          _dailyTask(
+            'PUBLISH_ARTICLE',
+            '发一篇求职经验',
+            '审核通过后可领',
+            'publish-article',
+            () => _openTask(() => StoryComposer(store: store)),
+          ),
+          _divider(),
+          _dailyTask(
+            'REQUEST_REVIEW',
+            '请大家帮你改简历',
+            '发出一份简历求助',
+            'request-review',
+            _requestOptimization,
+          ),
+          _divider(),
+          _dailyTask(
+            'HELP_REVIEW',
+            '帮别人改简历',
+            '留一条有用的修改建议',
+            'help-review',
+            _helpOthers,
+          ),
+          if (adEnabled) ...[
+            _divider(),
+            _TaskRow(
+              actionKey: adKey,
+              title: '看一段视频',
+              note: '每次都能领',
+              reward: 20,
+              icon: 'watch-ad',
+              state: watchingAd ? _TaskState.busy : _TaskState.todo,
+              action: watchingAd ? '播放中…' : '去观看',
+              onPressed: watchingAd ? null : watchAd,
+            ),
+          ],
+        ],
       ),
-      borderRadius: BorderRadius.circular(12),
+    );
+  }
+
+  Widget _divider() => Divider(height: 1, color: context.colors.border);
+
+  Widget _dailyTask(
+    String task,
+    String title,
+    String note,
+    String icon,
+    VoidCallback go,
+  ) {
+    final row = tasks[task];
+    final claimed = row?['claimed'] == true;
+    final claimable = row?['claimable'] == true;
+    final busy = claimingTask == task;
+    final state = claimed
+        ? _TaskState.done
+        : busy
+        ? _TaskState.busy
+        : claimable
+        ? _TaskState.claim
+        : _TaskState.todo;
+    return _TaskRow(
+      actionKey: taskKeys[task],
+      title: title,
+      progress: claimed || claimable ? '(1/1)' : '(0/1)',
+      note: claimable || claimed ? null : note,
+      reward: 100,
+      icon: icon,
+      state: state,
+      action: switch (state) {
+        _TaskState.done => '已领取',
+        _TaskState.busy => '领取中…',
+        _TaskState.claim => '点击领取',
+        _TaskState.todo => '去完成',
+      },
+      onPressed: switch (state) {
+        _TaskState.done || _TaskState.busy => null,
+        _TaskState.claim => claimingTask == null ? () => claimTask(task) : null,
+        _TaskState.todo => go,
+      },
+    );
+  }
+
+  Widget _redeem() {
+    final points = heldPoints ?? store.points ?? 0;
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _cardHead('积分兑模版', '全部 ›', onTap: market),
+          const SizedBox(height: 10),
+          if (templates.isEmpty)
+            InkWell(
+              onTap: market,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  color: context.colors.inset,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '去模版市场看看',
+                  style: TextStyle(fontSize: 14, color: context.colors.muted),
+                ),
+              ),
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < 3; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: i < templates.length
+                        ? _TemplateTile(
+                            template: templates[i],
+                            balance: points,
+                            onTap: market,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A gold coin drawn in code, so every size stays crisp.
+class _Coin extends StatelessWidget {
+  const _Coin({required this.size, this.angle = 0, this.shadow = false});
+  final double size, angle;
+  final bool shadow;
+
+  @override
+  Widget build(BuildContext context) => Transform.rotate(
+    angle: angle,
+    child: SizedBox.square(
+      dimension: size,
+      child: CustomPaint(painter: _CoinPainter(shadow: shadow)),
     ),
-    child: TextButton(
-      key: key,
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        foregroundColor: Colors.white,
-        disabledForegroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+  );
+}
+
+class _CoinPainter extends CustomPainter {
+  const _CoinPainter({this.shadow = false});
+  final bool shadow;
+
+  static final _star = () {
+    final path = Path();
+    for (var i = 0; i < 10; i++) {
+      final r = i.isEven ? 4.7 : 2.0;
+      final a = -math.pi / 2 + i * math.pi / 5;
+      final p = Offset(12 + math.cos(a) * r, 11.6 + math.sin(a) * r);
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    return path..close();
+  }();
+
+  /// Paints a 24-unit coin scaled into [rect].
+  static void paintCoin(
+    Canvas canvas,
+    Rect rect, {
+    double opacity = 1,
+    bool shadow = false,
+  }) {
+    canvas.save();
+    canvas.translate(rect.left, rect.top);
+    canvas.scale(rect.width / 24);
+    Color fade(Color color) =>
+        color.withValues(alpha: color.a * opacity.clamp(0, 1));
+    if (shadow) {
+      canvas.drawCircle(
+        const Offset(12, 14),
+        10.5,
+        Paint()
+          ..color = fade(const Color(0x590A1E5A))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+      );
+    }
+    canvas.drawCircle(
+      const Offset(12, 13),
+      10.5,
+      Paint()..color = fade(const Color(0xFFD97800)),
+    );
+    canvas.drawCircle(
+      const Offset(12, 11.6),
+      10.4,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-.3, -.4),
+          radius: .9,
+          colors: [
+            fade(const Color(0xFFFFF1A8)),
+            fade(const Color(0xFFFFC72C)),
+            fade(const Color(0xFFF08A00)),
+          ],
+          stops: const [0, .55, 1],
+        ).createShader(Rect.fromCircle(center: const Offset(12, 11.6), radius: 10.4)),
+    );
+    canvas.drawCircle(
+      const Offset(12, 11.6),
+      7.4,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3
+        ..color = fade(const Color(0xFFFFE68A)),
+    );
+    canvas.drawPath(_star, Paint()..color = fade(const Color(0xFFF29A00)));
+    canvas.save();
+    canvas.translate(8.6, 6.6);
+    canvas.rotate(-.5);
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset.zero, width: 5.2, height: 2.8),
+      Paint()..color = fade(Colors.white.withValues(alpha: .6)),
+    );
+    canvas.restore();
+    canvas.restore();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintCoin(canvas, Offset.zero & size, shadow: shadow);
+
+  @override
+  bool shouldRepaint(_CoinPainter oldDelegate) => oldDelegate.shadow != shadow;
+}
+
+/// Balance digits that roll to their new value like an odometer.
+class _Odometer extends StatelessWidget {
+  const _Odometer({required this.value});
+  final int value;
+  static const _height = 52.0;
+
+  static TextStyle style(BuildContext context) => TextStyle(
+    fontFamily: _displayFont,
+    fontSize: 46,
+    height: _height / 46,
+    fontWeight: FontWeight.w700,
+    color: context.colors.ink,
+    fontFeatures: const [FontFeature.tabularFigures()],
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final text = value.toString().replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => ',',
+    );
+    final textStyle = style(context);
+    final chars = text.split('');
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < chars.length; i++)
+          if (chars[i] == ',')
+            Text(',', style: textStyle)
+          else
+            // Keyed from the right so a digit keeps its column as it rolls.
+            _DigitColumn(
+              key: ValueKey(chars.length - i),
+              digit: int.parse(chars[i]),
+              style: textStyle,
+              height: _height,
+              delay: (chars.length - 1 - i) * 70,
+            ),
+      ],
+    );
+  }
+}
+
+class _DigitColumn extends StatelessWidget {
+  const _DigitColumn({
+    super.key,
+    required this.digit,
+    required this.style,
+    required this.height,
+    required this.delay,
+  });
+  final int digit, delay;
+  final TextStyle style;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    // Tabular figures share one width; measure it so the column can be a
+    // fixed window over the 0-9 strip.
+    final probe = TextPainter(
+      text: TextSpan(text: '0', style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final width = probe.width;
+    probe.dispose();
+    return ClipRect(
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(end: digit.toDouble()),
+          duration: Duration(milliseconds: 800 + delay),
+          curve: Interval(delay / (800 + delay), 1, curve: Curves.easeOutCubic),
+          builder: (context, value, _) => OverflowBox(
+            alignment: Alignment.topCenter,
+            minWidth: width,
+            maxWidth: width,
+            minHeight: height * 10,
+            maxHeight: height * 10,
+            child: Transform.translate(
+              offset: Offset(0, -value * height),
+              child: Column(
+                children: [
+                  for (var n = 0; n < 10; n++)
+                    SizedBox(
+                      height: height,
+                      child: Center(child: Text('$n', style: style)),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({super.key, required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: onTap,
+    style: TextButton.styleFrom(
+      backgroundColor: context.isDark
+          ? Colors.white.withValues(alpha: .1)
+          : Colors.white.withValues(alpha: .75),
+      foregroundColor: context.colors.ink,
+      minimumSize: const Size(0, 30),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      shape: const StadiumBorder(),
+      textStyle: const TextStyle(fontSize: 13),
+    ),
+    child: Text(label),
+  );
+}
+
+class _GradientButton extends StatelessWidget {
+  const _GradientButton({super.key, required this.label, this.onPressed});
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(99),
+        color: enabled ? null : context.colors.inset,
+        gradient: enabled
+            ? const LinearGradient(colors: [brandBlue, Color(0xFF4F8DFF)])
+            : null,
+        boxShadow: enabled
+            ? [
+                BoxShadow(
+                  color: brandBlue.withValues(alpha: .3),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
+      ),
+      child: TextButton(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.white,
+          disabledForegroundColor: context.colors.muted,
+          minimumSize: const Size.fromHeight(48),
+          shape: const StadiumBorder(),
+          textStyle: TextStyle(
+            fontSize: 16,
+            fontWeight: enabled ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+        child: Text(label),
+      ),
+    );
+  }
+}
+
+/// One day of the newcomer gift. It flips to its claimed face when the
+/// claim is confirmed.
+class _DayTile extends StatefulWidget {
+  const _DayTile({
+    super.key,
+    required this.points,
+    required this.status,
+    required this.label,
+    required this.bonus,
+  });
+  final int points;
+  final String status, label;
+  final bool bonus;
+
+  @override
+  State<_DayTile> createState() => _DayTileState();
+}
+
+class _DayTileState extends State<_DayTile>
+    with SingleTickerProviderStateMixin {
+  late final flip = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 500),
+    value: widget.status == 'CLAIMED' ? 1 : 0,
+  );
+
+  @override
+  void didUpdateWidget(_DayTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.status == oldWidget.status) return;
+    if (widget.status == 'CLAIMED') {
+      if (MediaQuery.disableAnimationsOf(context)) {
+        flip.value = 1;
+      } else {
+        flip.animateTo(1, curve: Curves.easeOutBack);
+      }
+    } else {
+      flip.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    flip.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final today = widget.status == 'AVAILABLE';
+    final missed = widget.status == 'MISSED';
+    Widget face({required bool claimed}) {
+      final Color ink = claimed
+          ? colors.muted.withValues(alpha: .7)
+          : today
+          ? const Color(0xFF7A4600)
+          : colors.ink;
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: claimed || !(today || widget.bonus) ? colors.inset : null,
+          gradient: claimed
+              ? null
+              : today
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFFFE48A), Color(0xFFFFC233)],
+                )
+              : widget.bonus
+              ? LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: context.isDark
+                      ? const [Color(0xFF24324F), Color(0xFF1E2A45)]
+                      : const [Color(0xFFEAF1FF), Color(0xFFD7E5FF)],
+                )
+              : null,
+          boxShadow: today && !claimed
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFFFFB21E).withValues(alpha: .4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        padding: const EdgeInsets.all(4),
+        child: Opacity(
+          opacity: missed ? .5 : 1,
+          // Scales as one block so enlarged text never overflows the tile.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '+${widget.points}',
+                style: TextStyle(
+                  fontFamily: _displayFont,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: ink,
+                ),
+              ),
+              const SizedBox(height: 4),
+              if (claimed)
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: context.isDark
+                        ? const Color(0xFF3A4250)
+                        : const Color(0xFFCBD3E0),
+                  ),
+                  child: const Icon(Icons.check, size: 14, color: Colors.white),
+                )
+              else
+                ColorFiltered(
+                  colorFilter: missed
+                      ? const ColorFilter.matrix([
+                          .33, .33, .33, 0, 0, //
+                          .33, .33, .33, 0, 0, //
+                          .33, .33, .33, 0, 0, //
+                          0, 0, 0, 1, 0,
+                        ])
+                      : const ColorFilter.mode(
+                          Colors.transparent,
+                          BlendMode.dst,
+                        ),
+                  child: const _Coin(size: 24),
+                ),
+              const SizedBox(height: 4),
+              Text(
+                claimed
+                    ? '已签'
+                    : missed
+                    ? '漏签'
+                    : widget.label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: today && !claimed
+                      ? FontWeight.w600
+                      : FontWeight.w400,
+                  color: claimed ? colors.muted.withValues(alpha: .7) : ink,
+                ),
+              ),
+            ],
+          ),
+          ),
+        ),
+      );
+    }
+
+    return Semantics(
+      label:
+          '${widget.label} ${widget.points} 积分 ${widget.status == 'CLAIMED' ? '已签' : missed ? '漏签' : ''}',
+      excludeSemantics: true,
+      child: SizedBox(
+        height: 76,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: flip,
+                builder: (context, _) {
+                  final angle = flip.value * math.pi;
+                  final back = angle > math.pi / 2;
+                  return Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, .002)
+                      ..rotateY(back ? angle - math.pi : angle),
+                    child: face(claimed: back),
+                  );
+                },
+              ),
+            ),
+            if (widget.bonus)
+              Positioned(
+                top: -9,
+                right: -2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFF5A4E),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(8),
+                      topRight: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                      bottomLeft: Radius.circular(2),
+                    ),
+                  ),
+                  child: const Text(
+                    '大礼',
+                    style: TextStyle(
+                      fontSize: 10,
+                      height: 1.2,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _TaskState { todo, claim, busy, done }
+
+class _TaskRow extends StatefulWidget {
+  const _TaskRow({
+    required this.actionKey,
+    required this.title,
+    this.progress,
+    this.note,
+    required this.reward,
+    required this.icon,
+    required this.state,
+    required this.action,
+    required this.onPressed,
+  });
+  final Key? actionKey;
+  final String title, icon, action;
+  final String? progress, note;
+  final int reward;
+  final _TaskState state;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_TaskRow> createState() => _TaskRowState();
+}
+
+class _TaskRowState extends State<_TaskRow>
+    with SingleTickerProviderStateMixin {
+  // A claimable reward gives a small periodic nudge.
+  late final pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    syncPulse();
+  }
+
+  @override
+  void didUpdateWidget(_TaskRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    syncPulse();
+  }
+
+  void syncPulse() {
+    final on =
+        widget.state == _TaskState.claim &&
+        !MediaQuery.disableAnimationsOf(context);
+    if (on && !pulse.isAnimating) {
+      pulse.repeat();
+    } else if (!on && pulse.isAnimating) {
+      pulse
+        ..stop()
+        ..value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final done = widget.state == _TaskState.done;
+    final claim = widget.state == _TaskState.claim;
+    final button = TextButton(
+      key: widget.actionKey,
+      onPressed: widget.onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: claim ? Colors.white : brandBlue,
+        disabledForegroundColor: done ? colors.muted : brandBlue,
+        backgroundColor: claim
+            ? null
+            : done
+            ? colors.inset
+            : colors.accentSoft,
+        minimumSize: const Size(80, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        shape: const StadiumBorder(),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+      child: Text(widget.action),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 2),
+      child: Row(
+        children: [
+          Opacity(
+            opacity: done ? .55 : 1,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SvgPicture.asset(
+                'assets/points/tasks/${widget.icon}.svg',
+                width: 42,
+                height: 42,
+                excludeFromSemantics: true,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(text: widget.title),
+                      if (widget.progress != null)
+                        TextSpan(
+                          text: ' ${widget.progress}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                            color: colors.muted,
+                          ),
+                        ),
+                    ],
+                  ),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: done ? colors.muted : colors.ink,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    const _Coin(size: 15),
+                    const SizedBox(width: 3),
+                    Text(
+                      '+${widget.reward}',
+                      style: const TextStyle(
+                        fontFamily: _displayFont,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _goldInk,
+                      ),
+                    ),
+                    if (widget.note != null) ...[
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          widget.note!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: colors.muted),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (claim)
+            AnimatedBuilder(
+              animation: pulse,
+              builder: (context, child) {
+                final t = pulse.value;
+                final scale = t < .7
+                    ? 1.0
+                    : 1 + math.sin((t - .7) / .3 * math.pi * 2) * .06;
+                return Transform.scale(scale: scale, child: child);
+              },
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(99),
+                  gradient: const LinearGradient(colors: _orange),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _orange.last.withValues(alpha: .3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: button,
+              ),
+            )
+          else
+            button,
+        ],
+      ),
+    );
+  }
+}
+
+class _TemplateTile extends StatelessWidget {
+  const _TemplateTile({
+    required this.template,
+    required this.balance,
+    required this.onTap,
+  });
+  final Map<String, dynamic> template;
+  final int balance;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final price = integer(template['price_points']);
+    final affordable = balance >= price;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Ink(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+        decoration: BoxDecoration(
+          color: context.colors.inset,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 104,
+              width: double.infinity,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: MarketTemplateArtwork(template: template),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${template['name'] ?? ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const _Coin(size: 14),
+                const SizedBox(width: 2),
+                Flexible(
+                  child: Text(
+                    '$price',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: _displayFont,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: _goldInk,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              affordable ? '可兑换' : '还差 ${price - balance}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: affordable ? brandBlue : context.colors.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One claim celebration: sparks at the source, coins arcing to the balance
+/// and the amount floating up beside it.
+class _Burst {
+  _Burst(this.controller, this.from, this.to, this.amount);
+  final AnimationController controller;
+  final Offset from, to;
+  final int amount;
+
+  /// Fraction of the timeline at which the first coin reaches the balance.
+  static const landAt = .5;
+  static const coins = 6;
+}
+
+class _BurstPainter extends CustomPainter {
+  _BurstPainter(this.burst, {required this.dark})
+    : super(repaint: burst.controller);
+  final _Burst burst;
+  final bool dark;
+
+  static const _sparkColors = [
+    Color(0xFFFFC233),
+    Color(0xFFFF8A3D),
+    Color(0xFF4F8DFF),
+    Color(0xFFFFE48A),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = burst.controller.value;
+    final from = burst.from, to = burst.to;
+
+    // Sparks ring out from the claimed item.
+    final spark = (t / .35).clamp(0.0, 1.0);
+    if (spark < 1) {
+      final e = Curves.easeOutCubic.transform(spark);
+      for (var i = 0; i < 14; i++) {
+        final a = i / 14 * math.pi * 2;
+        final d = (34 + (i % 3) * 14) * e;
+        canvas.drawCircle(
+          from + Offset(math.cos(a) * d, math.sin(a) * d),
+          3 * (1 - e * .7),
+          Paint()
+            ..color = _sparkColors[i % 4].withValues(alpha: 1 - spark),
+        );
+      }
+    }
+
+    // Coins pop out, then arc into the balance.
+    for (var i = 0; i < _Burst.coins; i++) {
+      final start = i * .04;
+      final p = ((t - start) / _Burst.landAt).clamp(0.0, 1.0);
+      if (p <= 0 || p >= 1) continue;
+      final a = -math.pi / 2 + (i - (_Burst.coins - 1) / 2) * .5;
+      final pop = from + Offset(math.cos(a) * 46, math.sin(a) * 46);
+      final control = Offset(
+        (pop.dx + to.dx) / 2 + 20,
+        math.min(pop.dy, to.dy) - 50,
+      );
+      Offset at;
+      double scale;
+      if (p < .3) {
+        final e = Curves.easeOutCubic.transform(p / .3);
+        at = Offset.lerp(from, pop, e)!;
+        scale = .5 + .7 * e;
+      } else {
+        final u = Curves.easeInOutSine.transform((p - .3) / .7);
+        at =
+            pop * ((1 - u) * (1 - u)) +
+            control * (2 * (1 - u) * u) +
+            to * (u * u);
+        scale = 1.2 - u * .5;
+      }
+      // A spinning coin narrows as it turns edge-on.
+      final spin = math.cos(p * math.pi * 4).abs() * .7 + .3;
+      final s = 24 * scale;
+      canvas.save();
+      canvas.translate(at.dx, at.dy);
+      canvas.scale(spin, 1);
+      _CoinPainter.paintCoin(
+        canvas,
+        Rect.fromCenter(center: Offset.zero, width: s, height: s),
+        opacity: p > .9 ? (1 - p) * 10 : 1,
+      );
+      canvas.restore();
+    }
+
+    // The amount pops beside the balance as the coins land.
+    final f = ((t - _Burst.landAt) / (1 - _Burst.landAt)).clamp(0.0, 1.0);
+    if (f > 0 && f < 1) {
+      final rise = Curves.easeOutBack.transform((f / .3).clamp(0.0, 1.0));
+      final opacity = f < .7 ? 1.0 : (1 - f) / .3;
+      final text = TextPainter(
+        text: TextSpan(
+          text: '+${burst.amount}',
+          style: TextStyle(
+            fontFamily: _displayFont,
+            fontSize: 22 * (.6 + .4 * rise),
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFFF07A00).withValues(alpha: opacity),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      text.paint(canvas, to + Offset(90, -42 - f * 18));
+      text.dispose();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BurstPainter oldDelegate) =>
+      oldDelegate.burst != burst || oldDelegate.dark != dark;
+}
+
+class _RulesSheet extends StatelessWidget {
+  const _RulesSheet();
+
+  static const rules = [
+    (
+      '新人 7 天礼',
+      '注册当天起连续 7 天（北京时间）每天签到一次，依次得 50、75、100、125、150、200、300 积分；漏签不补。',
+      '共 1000',
+    ),
+    ('邀请好友', '好友注册时填写你的邀请码，并绑定手机号后到账。', '500/位'),
+    ('每日任务', '发经验、请人改简历、帮人改简历，每项每天能领一次，需完成并通过审核。', '各 100'),
+    ('看视频', '完整看完并验证成功后到账，可重复。', '20/次'),
+    ('积分怎么用', '兑换模版市场里的付费简历模版，兑换前会显示所需积分。积分不能提现或转让。', ''),
+  ];
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            '积分规则',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          for (final (index, (title, body, amount)) in rules.indexed) ...[
+            if (index > 0) Divider(height: 1, color: context.colors.border),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          body,
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.6,
+                            color: context.colors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (amount.isNotEmpty) ...[
+                    const SizedBox(width: 16),
+                    Text(
+                      amount,
+                      style: const TextStyle(
+                        fontFamily: _displayFont,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _goldInk,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          _GradientButton(
+            label: '我知道了',
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
       ),
     ),
   );
 }
 
-/// A rounded star character; only a confirmed claim changes its expression.
-class _CheckInStar extends CustomPainter {
-  const _CheckInStar({required this.color, required this.claimed});
-  final Color color;
-  final bool claimed;
+class _LedgerSheet extends StatefulWidget {
+  const _LedgerSheet({required this.store});
+  final AppStore store;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 28, size.height / 28);
-    final star = Path()
-      ..moveTo(11.8, 3.2)
-      ..quadraticBezierTo(14, -.1, 16.2, 3.2)
-      ..lineTo(18.5, 7.7)
-      ..quadraticBezierTo(19, 8.5, 20, 8.6)
-      ..lineTo(24.5, 9.3)
-      ..quadraticBezierTo(28, 9.9, 25.5, 12.8)
-      ..lineTo(22.3, 16.1)
-      ..quadraticBezierTo(21.7, 16.8, 21.9, 17.9)
-      ..lineTo(22.6, 22.1)
-      ..quadraticBezierTo(23.1, 26, 19.6, 24.5)
-      ..lineTo(15, 22.3)
-      ..quadraticBezierTo(14, 21.8, 13, 22.3)
-      ..lineTo(8.4, 24.5)
-      ..quadraticBezierTo(4.9, 26, 5.4, 22.1)
-      ..lineTo(6.1, 17.9)
-      ..quadraticBezierTo(6.3, 16.8, 5.7, 16.1)
-      ..lineTo(2.5, 12.8)
-      ..quadraticBezierTo(0, 9.9, 3.5, 9.3)
-      ..lineTo(8, 8.6)
-      ..quadraticBezierTo(9, 8.5, 9.5, 7.7)
-      ..close();
-    canvas.drawPath(
-      star,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color.lerp(Colors.white, color, claimed ? .35 : .18)!,
-            Color.lerp(Colors.white, color, claimed ? .85 : .55)!,
-          ],
-        ).createShader(const Rect.fromLTWH(0, 0, 28, 26)),
+  State<_LedgerSheet> createState() => _LedgerSheetState();
+}
+
+class _LedgerSheetState extends State<_LedgerSheet> {
+  late Future<List<Map<String, dynamic>>> rows = load();
+
+  Future<List<Map<String, dynamic>>> load() async {
+    final result = await widget.store.request(
+      'GetWalletTransactions',
+      query: {'limit': '50'},
     );
-    canvas.drawPath(
-      star,
-      Paint()
-        ..color = color.withValues(alpha: .35)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = .7,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(11.8, 7.2)
-        ..quadraticBezierTo(13.8, 2.5, 15, 5.5),
-      Paint()
-        ..color = Colors.white.withValues(alpha: .8)
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = 1.5,
-    );
-    final face = Paint()
-      ..color = const Color(0xFF245499)
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 1.3;
-    if (claimed) {
-      face.style = PaintingStyle.stroke;
-      for (final x in [10.0, 17.0]) {
-        canvas.drawPath(
-          Path()
-            ..moveTo(x - 1, 14)
-            ..quadraticBezierTo(x, 11.9, x + 1, 14),
-          face,
-        );
-      }
-    } else {
-      for (final x in [10.0, 18.0]) {
-        canvas.drawOval(
-          Rect.fromCenter(center: Offset(x, 13.5), width: 1.6, height: 2.3),
-          face,
-        );
-      }
-    }
-    canvas.drawPath(
-      Path()
-        ..moveTo(12.2, 16)
-        ..quadraticBezierTo(14, claimed ? 19 : 18, 15.8, 16),
-      face..style = PaintingStyle.stroke,
-    );
-    for (final x in [8.0, 20.0]) {
-      canvas.drawOval(
-        Rect.fromCenter(center: Offset(x, 16), width: 3, height: 1.5),
-        Paint()..color = Colors.white.withValues(alpha: .6),
-      );
-    }
+    return (result.data['items'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  static String when(Object? value) {
+    final time = DateTime.tryParse('$value')?.toLocal();
+    if (time == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${time.month}月${time.day}日 ${two(time.hour)}:${two(time.minute)}';
   }
 
   @override
-  bool shouldRepaint(_CheckInStar oldDelegate) =>
-      color != oldDelegate.color || claimed != oldDelegate.claimed;
+  Widget build(BuildContext context) => SafeArea(
+    child: SizedBox(
+      height: MediaQuery.sizeOf(context).height * .7,
+      child: Column(
+        children: [
+          const Text(
+            '积分明细',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: FutureBuilder(
+              future: rows,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${snapshot.error}'),
+                        TextButton(
+                          onPressed: () => setState(() => rows = load()),
+                          child: const Text('重新加载'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                final items = snapshot.data!;
+                if (items.isEmpty) {
+                  return Center(
+                    child: Text(
+                      '还没有积分记录，去签到或做任务吧',
+                      style: TextStyle(color: context.colors.muted),
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) =>
+                      Divider(height: 1, color: context.colors.border),
+                  itemBuilder: (context, index) {
+                    final row = items[index];
+                    final income = row['direction'] == 'IN';
+                    final amount = integer(row['amount_points']);
+                    final title = '${row['description'] ?? ''}'.trim();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title.isEmpty ? '积分变动' : title,
+                                  style: const TextStyle(fontSize: 15),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  when(row['created_at']),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.colors.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '${income ? '+' : '-'}$amount',
+                            style: TextStyle(
+                              fontFamily: _displayFont,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: income ? _goldInk : context.colors.ink,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
