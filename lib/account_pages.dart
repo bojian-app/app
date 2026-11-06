@@ -1600,7 +1600,7 @@ class _VerificationPageState extends State<VerificationPage> {
           ] else ...[
             Text(
               switch (snapshot.data?['status']) {
-                'APPROVED' => '已认证',
+                'VERIFIED' || 'EXPIRED' => '已认证',
                 'PENDING' => '审核中',
                 'REJECTED' => '认证未通过',
                 _ => '尚未认证',

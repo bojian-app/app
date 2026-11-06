@@ -666,9 +666,11 @@ class AppStore extends ChangeNotifier {
   bool isGuest = false;
   bool get isAuthenticated => session != null;
   bool? _identityVerified;
+  // 一个账号只能完成一次实名认证，证件过期后也不能重新认证。
+  bool? _identityCompleted;
   int _identityRevision = 0;
   bool get identityVerified => _identityVerified == true;
-  bool get canApplyDeveloperVerification => _identityVerified == false;
+  bool get canApplyDeveloperVerification => _identityCompleted == false;
 
   // Only called after the server confirms and persists a successful face result.
   void recordIdentityVerificationSuccess({
@@ -683,6 +685,7 @@ class AppStore extends ChangeNotifier {
     }
     ++_identityRevision;
     _identityVerified = true;
+    _identityCompleted = true;
     changed();
   }
 
@@ -1077,6 +1080,7 @@ class AppStore extends ChangeNotifier {
     phoneMasked = '${next['phone_masked'] ?? ''}';
     phoneBindingChecked = phoneMasked.isNotEmpty;
     _identityVerified = null;
+    _identityCompleted = null;
     ++_identityRevision;
     ++_phoneBindingRevision;
     userID = response.user.id.toInt();
@@ -1117,6 +1121,7 @@ class AppStore extends ChangeNotifier {
     ++epoch;
     session = null;
     _identityVerified = null;
+    _identityCompleted = null;
     ++_identityRevision;
     isGuest = false;
     name = '';
@@ -1319,6 +1324,7 @@ class AppStore extends ChangeNotifier {
               .add(const Duration(hours: 8))
               .toIso8601String()
               .substring(0, 10);
+          _identityCompleted = status == 'VERIFIED' || status == 'EXPIRED';
           _identityVerified =
               status == 'VERIFIED' &&
               (validUntil as String).compareTo(today) >= 0;

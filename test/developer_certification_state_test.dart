@@ -54,7 +54,10 @@ void main() {
         final store = await testStore(authenticated: true, api: api);
         addTearDown(store.dispose);
         expect(store.identityVerified, status == 'VERIFIED');
-        expect(store.canApplyDeveloperVerification, status != 'VERIFIED');
+        expect(
+          store.canApplyDeveloperVerification,
+          status != 'VERIFIED' && status != 'EXPIRED',
+        );
       },
     );
   }
@@ -68,7 +71,7 @@ void main() {
     final store = await testStore(authenticated: true, api: api);
     addTearDown(store.dispose);
     expect(store.identityVerified, false);
-    expect(store.canApplyDeveloperVerification, true);
+    expect(store.canApplyDeveloperVerification, false);
   });
 
   test(
