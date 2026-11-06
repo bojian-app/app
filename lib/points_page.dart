@@ -411,6 +411,7 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
   );
 
   Widget _topBar() => SizedBox(
+    width: double.infinity,
     height: 44,
     child: Stack(
       alignment: Alignment.center,
@@ -677,36 +678,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
             ),
           ),
         ),
-        Positioned(
-          right: 96,
-          top: 0,
-          bottom: 0,
-          child: const Center(
-            child: SizedBox(
-              width: 76,
-              height: 76,
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: 22,
-                    top: 2,
-                    child: _Coin(size: 46, angle: .25, shadow: true),
-                  ),
-                  Positioned(
-                    left: 0,
-                    top: 34,
-                    child: _Coin(size: 36, angle: -.3, shadow: true),
-                  ),
-                  Positioned(
-                    left: 50,
-                    top: 46,
-                    child: _Coin(size: 28, angle: .1, shadow: true),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
           child: Row(
@@ -758,6 +729,32 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
                   ],
                 ),
               ),
+              // Coins sit in their own column so narrow screens wrap the
+              // copy instead of covering it.
+              const SizedBox(
+                width: 64,
+                height: 64,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: 18,
+                      top: 0,
+                      child: _Coin(size: 38, angle: .25, shadow: true),
+                    ),
+                    Positioned(
+                      left: 0,
+                      top: 28,
+                      child: _Coin(size: 30, angle: -.3, shadow: true),
+                    ),
+                    Positioned(
+                      left: 40,
+                      top: 38,
+                      child: _Coin(size: 22, angle: .1, shadow: true),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
               FilledButton(
                 key: const ValueKey('points-invite'),
                 onPressed: () => _openTask(() => InvitationPage(store: store)),
