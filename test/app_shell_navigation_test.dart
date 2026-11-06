@@ -87,7 +87,7 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pumpAndSettle();
-      final own = find.widgetWithText(ChoiceChip, '我的模板');
+      final own = find.byKey(const ValueKey('market-tab-owned'));
       await tester.ensureVisible(own);
       await tester.pumpAndSettle();
       await tester.tap(own);

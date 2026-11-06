@@ -10,7 +10,7 @@ enum TemplateMarketFilter {
   all('全部', ''),
   free('免费', 'FREE'),
   paid('积分', 'PAID'),
-  owned('我的模板', '');
+  owned('我的', '');
 
   const TemplateMarketFilter(this.label, this.pricing);
   final String label, pricing;

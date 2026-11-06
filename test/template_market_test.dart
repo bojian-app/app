@@ -391,7 +391,7 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(find.text('使用模板'), findsOneWidget);
-      expect(find.text('购买模板'), findsNothing);
+      expect(find.text('兑换模板'), findsNothing);
       expect(api.calls, isNot(contains('PostTemplateOrders')));
       expect(market.authored, {7});
       expect(market.ownedIDs, {7});
@@ -468,7 +468,7 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(find.text('商务设计'), findsOneWidget);
-      expect(find.text('80 积分'), findsOneWidget);
+      expect(find.text('80'), findsOneWidget);
       expect(find.text('好设计，让重点自然被看见。'), findsNothing);
       expect(find.byType(SliverGrid), findsOneWidget);
       tester.view.physicalSize = const Size(844, 390);
@@ -514,7 +514,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     await settlePreview(tester);
-    await tester.tap(find.text('积分购买'));
+    await tester.tap(find.text('积分兑换'));
     await tester.pumpAndSettle();
     expect(find.text('本次使用 80 积分'), findsOneWidget);
     await tester.tap(find.text('取消'));
@@ -572,7 +572,7 @@ void main() {
       await settlePreview(tester);
       expect(find.byType(MarketTemplateArtwork), findsNothing);
       expect(find.byType(TemplateLivePreview), findsOneWidget);
-      expect(find.text('积分购买'), findsOneWidget);
+      expect(find.text('积分兑换'), findsOneWidget);
       expect(api.calls, isNot(contains('GetTemplatesIdPreviewAssets')));
       expect(tester.takeException(), isNull);
       final web = preview.controllers.single;
