@@ -78,7 +78,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       await Future.wait([
         initialization,
         if (widget.startupAnimationEnabled && !reduceMotion)
-          Future<void>.delayed(const Duration(milliseconds: 1400)),
+          Future<void>.delayed(startupAnimationDuration),
       ]);
     } finally {
       BannerAds.ready.value = mounted && widget.bannerAdsEnabled;
