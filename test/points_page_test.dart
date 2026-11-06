@@ -75,7 +75,7 @@ void main() {
     expect(find.text('服务器暂不可用'), findsNothing);
     expect(store.points, 123);
     expect(find.bySemanticsLabel('可用积分 123'), findsOneWidget);
-    expect(find.text('立即签到 +125'), findsOneWidget);
+    expect(find.text('立即签到 领 125 积分'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -88,13 +88,15 @@ void main() {
     addTearDown(store.dispose);
     await tester.pumpWidget(host(PointsPage(store: store)));
     await tester.pumpAndSettle();
-    expect(find.text('新人 7 天礼'), findsOneWidget);
-    expect(find.text('已签 2/7 天'), findsOneWidget);
+    expect(find.textContaining('已签到 2 天', findRichText: true), findsOneWidget);
+    expect(find.text('7 天共 1000 积分'), findsOneWidget);
+    expect(find.text('今天签到领 125！'), findsOneWidget);
     expect(find.text('已签'), findsNWidgets(2));
     expect(find.text('漏签'), findsOneWidget);
     expect(find.text('今天'), findsOneWidget);
     expect(find.text('明天'), findsOneWidget);
     expect(find.text('大礼'), findsOneWidget);
+    expect(find.text('第7天大奖'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -132,8 +134,12 @@ void main() {
       expect(find.bySemanticsLabel('可用积分 0'), findsOneWidget);
       await tester.pumpAndSettle();
       expect(find.bySemanticsLabel('可用积分 125'), findsOneWidget);
-      expect(find.text('今日已签到'), findsOneWidget);
-      expect(find.text('已签 3/7 天'), findsOneWidget);
+      expect(find.text('今日已签到，明天再来领 150'), findsOneWidget);
+      expect(
+        find.textContaining('已签到 3 天', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.text('明天再来领 150～'), findsOneWidget);
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(
@@ -225,7 +231,8 @@ void main() {
     addTearDown(store.dispose);
     await tester.pumpWidget(host(PointsPage(store: store)));
     await tester.pumpAndSettle();
-    expect(find.text('新人 7 天礼'), findsNothing);
+    expect(find.textContaining('已签到', findRichText: true), findsNothing);
+    expect(find.text('做任务赚积分～'), findsOneWidget);
     expect(find.byKey(const ValueKey('profile-claim-reward')), findsNothing);
     expect(find.textContaining('每日任务'), findsOneWidget);
     expect(api.calls, isNot(contains('PostWalletDailyRewardClaims')));
@@ -250,7 +257,7 @@ void main() {
     await tester.pumpWidget(host(PointsPage(store: store)));
     await tester.pumpAndSettle();
     expect(api.calls, isNot(contains('PostWalletTasksTaskClaims')));
-    expect(find.text('已完成 0/3'), findsOneWidget);
+    expect(find.text('0/3'), findsOneWidget);
     await tester.ensureVisible(find.text('点击领取'));
     api.documents['GetWalletTasks'] = {
       'items': [
@@ -261,7 +268,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.calls.where((v) => v == 'PostWalletTasksTaskClaims').length, 1);
     expect(find.text('已领取'), findsOneWidget);
-    expect(find.text('已完成 1/3'), findsOneWidget);
+    expect(find.text('1/3'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
