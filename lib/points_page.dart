@@ -61,10 +61,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
   final taskKeys = {for (final task in _dailyTasks) task: GlobalKey()};
   final adKey = GlobalKey();
   final bursts = <_Burst>[];
-  late final otterJump = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 700),
-  );
   String? claimingTask;
   bool adEnabled = false, watchingAd = false, claiming = false;
   bool choosingResume = false;
@@ -87,7 +83,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
     for (final burst in bursts) {
       burst.controller.dispose();
     }
-    otterJump.dispose();
     super.dispose();
   }
 
@@ -181,7 +176,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
       if (!landed && controller.value >= _Burst.landAt) {
         landed = true;
         if (mounted) setState(() => heldPoints = null);
-        otterJump.forward(from: 0);
       }
     });
     controller.forward().whenComplete(() {
@@ -350,27 +344,12 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
       !store.rewardEnded &&
       store.rewardDays.length == 7;
 
-  /// What the otter says: today's reward, tomorrow's, or the tasks.
-  String bubbleText() {
-    if (!store.isAuthenticated) return '登录领新人 1000 积分';
-    if (showCheckIn) {
-      final days = store.rewardDays;
-      final today = store.rewardDay - 1;
-      if (!store.rewardClaimed) {
-        return '今天签到领 ${store.rewardPoints ?? integer(days[math.max(today, 0)]['points'])}！';
-      }
-      if (today >= 0 && today + 1 < days.length) {
-        return '明天再来领 ${integer(days[today + 1]['points'])}～';
-      }
-    }
-    return '做任务赚积分～';
-  }
-
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: store,
     builder: (context, _) {
       final dark = context.isDark;
+      final topInset = MediaQuery.paddingOf(context).top;
       return AnnotatedRegion<SystemUiOverlayStyle>(
         // The hero is saturated blue in both themes.
         value: appSystemUiStyle(context).copyWith(
@@ -396,11 +375,12 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
                         top: 0,
                         left: 0,
                         right: 0,
-                        height: _heroHeight,
+                        height: _heroHeight + topInset,
                         child: _HeroBackground(dark: dark),
                       ),
                       Column(
                         children: [
+                          SizedBox(height: topInset),
                           _topBar(),
                           _hero(),
                           DataStatus(
@@ -449,28 +429,14 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
 
   Widget _hero() {
     final points = heldPoints ?? store.points;
-    final art = math.min(180.0, MediaQuery.sizeOf(context).width * .46);
     const white = Colors.white;
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: showCheckIn ? 170 : 190),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // The otter peeks out from behind the treasure chest.
-          Positioned(
-            right: 4,
-            top: 0,
-            width: art,
-            height: art * 150 / 180,
-            child: _Mascot(jump: otterJump),
-          ),
-          Positioned(
-            right: art - 30,
-            top: -24,
-            child: _Bubble(text: bubbleText()),
-          ),
           Padding(
-            padding: EdgeInsets.fromLTRB(22, 14, art - 10, 12),
+            padding: const EdgeInsets.fromLTRB(22, 14, 22, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -748,31 +714,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
             ],
           ),
         ),
-        // Coins sit in their own column so narrow screens wrap the copy
-        // instead of covering it.
-        const SizedBox(
-          width: 64,
-          height: 64,
-          child: Stack(
-            children: [
-              Positioned(
-                left: 18,
-                top: 0,
-                child: _Coin(size: 38, angle: .25, shadow: true),
-              ),
-              Positioned(
-                left: 0,
-                top: 28,
-                child: _Coin(size: 30, angle: -.3, shadow: true),
-              ),
-              Positioned(
-                left: 40,
-                top: 38,
-                child: _Coin(size: 22, angle: .1, shadow: true),
-              ),
-            ],
-          ),
-        ),
         const SizedBox(width: 8),
         _OrangeButton(
           key: const ValueKey('points-invite'),
@@ -824,8 +765,7 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
             'PUBLISH_ARTICLE',
             '发一篇求职经验',
             '审核通过后可领',
-            Icons.edit_outlined,
-            const [Color(0xFFFFB547), Color(0xFFFF7A2E)],
+            'assets/points/tasks/publish-material.webp',
             () => _openTask(() => StoryComposer(store: store)),
           ),
           _divider(),
@@ -833,8 +773,7 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
             'REQUEST_REVIEW',
             '请大家帮你改简历',
             '发出一份简历求助',
-            Icons.chat_bubble_outline_rounded,
-            const [Color(0xFF5BA8FF), Color(0xFF2867EE)],
+            'assets/points/tasks/request-material.webp',
             _requestOptimization,
           ),
           _divider(),
@@ -842,8 +781,7 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
             'HELP_REVIEW',
             '帮别人改简历',
             '留一条有用的修改建议',
-            Icons.fact_check_outlined,
-            const [Color(0xFF4FD1B0), Color(0xFF13A58C)],
+            'assets/points/tasks/review-material.webp',
             _helpOthers,
           ),
           if (adEnabled) ...[
@@ -871,8 +809,7 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
     String task,
     String title,
     String note,
-    IconData icon,
-    List<Color> colors,
+    String imageAsset,
     VoidCallback go,
   ) {
     final row = tasks[task];
@@ -892,8 +829,7 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
       progress: claimed || claimable ? '(1/1)' : '(0/1)',
       note: claimable || claimed ? null : note,
       reward: 100,
-      icon: icon,
-      colors: colors,
+      imageAsset: imageAsset,
       state: state,
       action: switch (state) {
         _TaskState.done => '已领取',
@@ -987,8 +923,16 @@ class _HeroBackground extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: dark
-                ? const [Color(0xFF23356B), Color(0xFF1C2C66), Color(0xFF2E2470)]
-                : const [Color(0xFF3F86FF), Color(0xFF2E5BF0), Color(0xFF5A44E8)],
+                ? const [
+                    Color(0xFF23356B),
+                    Color(0xFF1C2C66),
+                    Color(0xFF2E2470),
+                  ]
+                : const [
+                    Color(0xFF3F86FF),
+                    Color(0xFF2E5BF0),
+                    Color(0xFF5A44E8),
+                  ],
           ),
         ),
       ),
@@ -1040,132 +984,6 @@ class _DotsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DotsPainter oldDelegate) => false;
-}
-
-/// The brand otter peeking from behind the treasure chest. It sways gently
-/// and jumps when coins land.
-class _Mascot extends StatefulWidget {
-  const _Mascot({required this.jump});
-  final AnimationController jump;
-
-  @override
-  State<_Mascot> createState() => _MascotState();
-}
-
-class _MascotState extends State<_Mascot> with SingleTickerProviderStateMixin {
-  late final sway = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 3200),
-  );
-
-  bool played = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!played && !MediaQuery.disableAnimationsOf(context)) {
-      played = true;
-      _playTimes(sway, 3);
-    }
-  }
-
-  @override
-  void dispose() {
-    sway.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final w = constraints.maxWidth;
-      return Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: w * .06,
-            top: -w * .05,
-            width: w * .52,
-            child: AnimatedBuilder(
-              animation: Listenable.merge([sway, widget.jump]),
-              builder: (context, child) {
-                final s = math.sin(sway.value * math.pi * 2);
-                final j = widget.jump.value;
-                final hop = j == 0 || j == 1 ? 0.0 : math.sin(j * math.pi);
-                return Transform.translate(
-                  offset: Offset(0, -s * 3 - hop * 26),
-                  child: Transform.rotate(
-                    angle: -.17 + s * .05 - hop * .1,
-                    alignment: const Alignment(0, .8),
-                    child: Transform.scale(scale: 1 + hop * .06, child: child),
-                  ),
-                );
-              },
-              child: Image.asset(
-                'assets/points/otter-sticker.webp',
-                excludeFromSemantics: true,
-              ),
-            ),
-          ),
-          Positioned(
-            right: 0,
-            bottom: 0,
-            width: w * .83,
-            child: Image.asset(
-              'assets/points/rewards-transparent.webp',
-              excludeFromSemantics: true,
-            ),
-          ),
-          Positioned(
-            right: w * .02,
-            top: w * .04,
-            child: const Text(
-              '✦',
-              style: TextStyle(fontSize: 14, color: Color(0xFFFFE27A)),
-            ),
-          ),
-        ],
-      );
-    },
-  );
-}
-
-/// Speech bubble from the otter.
-class _Bubble extends StatelessWidget {
-  const _Bubble({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    constraints: const BoxConstraints(maxWidth: 170),
-    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(14),
-        topRight: Radius.circular(14),
-        bottomLeft: Radius.circular(14),
-        bottomRight: Radius.circular(4),
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: const Color(0xFF141E78).withValues(alpha: .25),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
-        ),
-      ],
-    ),
-    child: Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF1F3FB5),
-      ),
-    ),
-  );
 }
 
 class _Pill extends StatelessWidget {
@@ -1377,23 +1195,18 @@ class _GradientButton extends StatelessWidget {
 
 /// A gold coin drawn in code, so every size stays crisp.
 class _Coin extends StatelessWidget {
-  const _Coin({required this.size, this.angle = 0, this.shadow = false});
-  final double size, angle;
-  final bool shadow;
+  const _Coin({required this.size});
+  final double size;
 
   @override
-  Widget build(BuildContext context) => Transform.rotate(
-    angle: angle,
-    child: SizedBox.square(
-      dimension: size,
-      child: CustomPaint(painter: _CoinPainter(shadow: shadow)),
-    ),
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: size,
+    child: CustomPaint(painter: _CoinPainter()),
   );
 }
 
 class _CoinPainter extends CustomPainter {
-  const _CoinPainter({this.shadow = false});
-  final bool shadow;
+  const _CoinPainter();
 
   static final _star = () {
     final path = Path();
@@ -1440,16 +1253,19 @@ class _CoinPainter extends CustomPainter {
       const Offset(12, 11.6),
       10.4,
       Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-.3, -.4),
-          radius: .9,
-          colors: [
-            fade(const Color(0xFFFFF1A8)),
-            fade(const Color(0xFFFFC72C)),
-            fade(const Color(0xFFF08A00)),
-          ],
-          stops: const [0, .55, 1],
-        ).createShader(Rect.fromCircle(center: const Offset(12, 11.6), radius: 10.4)),
+        ..shader =
+            RadialGradient(
+              center: const Alignment(-.3, -.4),
+              radius: .9,
+              colors: [
+                fade(const Color(0xFFFFF1A8)),
+                fade(const Color(0xFFFFC72C)),
+                fade(const Color(0xFFF08A00)),
+              ],
+              stops: const [0, .55, 1],
+            ).createShader(
+              Rect.fromCircle(center: const Offset(12, 11.6), radius: 10.4),
+            ),
     );
     canvas.drawCircle(
       const Offset(12, 11.6),
@@ -1472,11 +1288,10 @@ class _CoinPainter extends CustomPainter {
   }
 
   @override
-  void paint(Canvas canvas, Size size) =>
-      paintCoin(canvas, Offset.zero & size, shadow: shadow);
+  void paint(Canvas canvas, Size size) => paintCoin(canvas, Offset.zero & size);
 
   @override
-  bool shouldRepaint(_CoinPainter oldDelegate) => oldDelegate.shadow != shadow;
+  bool shouldRepaint(_CoinPainter oldDelegate) => false;
 }
 
 /// Balance digits that roll to their new value like an odometer.
@@ -1584,7 +1399,6 @@ class _DigitColumn extends StatelessWidget {
   }
 }
 
-
 /// One day of the newcomer gift. Today glows; the tile flips to its claimed
 /// face when the claim is confirmed.
 class _DayTile extends StatefulWidget {
@@ -1640,7 +1454,8 @@ class _DayTileState extends State<_DayTile> with TickerProviderStateMixin {
 
   void syncGlow() {
     final on =
-        widget.status == 'AVAILABLE' && !MediaQuery.disableAnimationsOf(context);
+        widget.status == 'AVAILABLE' &&
+        !MediaQuery.disableAnimationsOf(context);
     if (on && !played) {
       played = true;
       _playTimes(glow, 5);
@@ -1784,7 +1599,11 @@ class _DayTileState extends State<_DayTile> with TickerProviderStateMixin {
 
     return Semantics(
       label:
-          '${widget.label} ${widget.points} 积分 ${widget.status == 'CLAIMED' ? '已签' : missed ? '漏签' : ''}',
+          '${widget.label} ${widget.points} 积分 ${widget.status == 'CLAIMED'
+              ? '已签'
+              : missed
+              ? '漏签'
+              : ''}',
       excludeSemantics: true,
       child: SizedBox(
         height: 80,
@@ -1804,9 +1623,8 @@ class _DayTileState extends State<_DayTile> with TickerProviderStateMixin {
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 width: 2,
-                                color: const Color(
-                                  0xFFFFC93D,
-                                ).withValues(alpha: .9 * (1 - glow.value)),
+                                color: const Color(0xFFFFC93D)
+                                    .withValues(alpha: .9 * (1 - glow.value)),
                               ),
                             ),
                           ),
@@ -1874,8 +1692,9 @@ class _TaskRow extends StatefulWidget {
     this.progress,
     this.note,
     required this.reward,
-    required this.icon,
-    required this.colors,
+    this.icon,
+    this.imageAsset,
+    this.colors = const [],
     required this.state,
     required this.action,
     required this.onPressed,
@@ -1884,7 +1703,8 @@ class _TaskRow extends StatefulWidget {
   final String title, action;
   final String? progress, note;
   final int reward;
-  final IconData icon;
+  final IconData? icon;
+  final String? imageAsset;
   final List<Color> colors;
   final _TaskState state;
   final VoidCallback? onPressed;
@@ -1964,21 +1784,29 @@ class _TaskRowState extends State<_TaskRow>
         children: [
           Opacity(
             opacity: done ? .45 : 1,
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: done
-                      ? [colors.muted, colors.muted]
-                      : widget.colors,
-                ),
-              ),
-              child: Icon(widget.icon, size: 22, color: Colors.white),
-            ),
+            child: widget.imageAsset != null
+                ? Image.asset(
+                    widget.imageAsset!,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.contain,
+                    excludeFromSemantics: true,
+                  )
+                : Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: done
+                            ? [colors.muted, colors.muted]
+                            : widget.colors,
+                      ),
+                    ),
+                    child: Icon(widget.icon, size: 22, color: Colors.white),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -2150,7 +1978,6 @@ class _TemplateTile extends StatelessWidget {
     );
   }
 }
-
 
 /// One claim celebration: confetti at the source, coins arcing to the
 /// balance and the amount floating up beside it.

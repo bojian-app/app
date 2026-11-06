@@ -100,7 +100,9 @@ flutter:
     - assets/resume_ai/identity-professional.webp
     - assets/templates/
     - assets/points/rewards-transparent.webp
-    - assets/points/otter-sticker.webp
+    - assets/points/tasks/publish-material.webp
+    - assets/points/tasks/request-material.webp
+    - assets/points/tasks/review-material.webp
     - assets/fonts/OFL.txt
     - assets/fonts/ChillRound-OFL.txt
     - assets/fonts/AlibabaPuHuiTi-LICENSE.txt

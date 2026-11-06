@@ -90,7 +90,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('已签到 2 天', findRichText: true), findsOneWidget);
     expect(find.text('7 天共 1000 积分'), findsOneWidget);
-    expect(find.text('今天签到领 125！'), findsOneWidget);
+    expect(find.text('今天签到领 125！'), findsNothing);
     expect(find.text('已签'), findsNWidgets(2));
     expect(find.text('漏签'), findsOneWidget);
     expect(find.text('今天'), findsOneWidget);
@@ -139,7 +139,7 @@ void main() {
         find.textContaining('已签到 3 天', findRichText: true),
         findsOneWidget,
       );
-      expect(find.text('明天再来领 150～'), findsOneWidget);
+      expect(find.text('明天再来领 150～'), findsNothing);
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(
@@ -232,7 +232,7 @@ void main() {
     await tester.pumpWidget(host(PointsPage(store: store)));
     await tester.pumpAndSettle();
     expect(find.textContaining('已签到', findRichText: true), findsNothing);
-    expect(find.text('做任务赚积分～'), findsOneWidget);
+    expect(find.text('做任务赚积分～'), findsNothing);
     expect(find.byKey(const ValueKey('profile-claim-reward')), findsNothing);
     expect(find.textContaining('每日任务'), findsOneWidget);
     expect(api.calls, isNot(contains('PostWalletDailyRewardClaims')));

@@ -202,7 +202,7 @@ class _RetainedTabState extends State<_RetainedTab> {
                         _ => context.colors.canvas,
                       },
                       child: SafeArea(
-                        top: widget.index != 3,
+                        top: widget.index != 2 && widget.index != 3,
                         bottom: false,
                         child: ColoredBox(
                           color: context.colors.canvas,
