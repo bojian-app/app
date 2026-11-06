@@ -939,8 +939,6 @@ class _ProfileContentTab extends StatefulWidget {
 class _ProfileContentTabState extends State<_ProfileContentTab>
     with AutomaticKeepAliveClientMixin {
   TabController? tabs;
-  ScrollPosition? position;
-  double? savedOffset;
   bool active = false;
 
   @override
@@ -959,23 +957,7 @@ class _ProfileContentTabState extends State<_ProfileContentTab>
 
   void tabChanged() {
     final next = tabs!.index == widget.index;
-    if (active == next) return;
-    if (active) savedOffset = position?.pixels;
-    setState(() => active = next);
-    if (next && savedOffset != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted ||
-            !active ||
-            position == null ||
-            !position!.hasContentDimensions) {
-          return;
-        }
-        final offset = savedOffset!
-            .clamp(position!.minScrollExtent, position!.maxScrollExtent)
-            .toDouble();
-        if ((position!.pixels - offset).abs() > .01) position!.jumpTo(offset);
-      });
-    }
+    if (active != next) setState(() => active = next);
   }
 
   @override
@@ -987,25 +969,23 @@ class _ProfileContentTabState extends State<_ProfileContentTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification.depth == 0 &&
-            notification.metrics.axis == Axis.vertical &&
-            notification.context != null) {
-          position = Scrollable.maybeOf(
-            notification.context!,
-            axis: Axis.vertical,
-          )?.position;
-        }
-        return false;
-      },
-      // A nested coordinator can move retained lists when another tab focuses
-      // its search field. Restore the offset captured when this tab was left.
-      child: FocusScope(
-        canRequestFocus: active,
-        child: TickerMode(enabled: active, child: widget.child),
-      ),
+    // NestedScrollView treats every attached inner list as one: an idle tab
+    // resting at its top lets a drag or fling in the visible list expand the
+    // header, and focus in one tab moves the others. Only the visible tab joins
+    // the coordinator; switching controllers keeps each list's offset.
+    final inner = PrimaryScrollController.maybeOf(context);
+    final child = FocusScope(
+      canRequestFocus: active,
+      child: TickerMode(enabled: active, child: widget.child),
     );
+    return active && inner != null
+        ? PrimaryScrollController(
+            // Matches the inheritance NestedScrollView gives its body.
+            automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
+            controller: inner,
+            child: child,
+          )
+        : PrimaryScrollController.none(child: child);
   }
 }
 

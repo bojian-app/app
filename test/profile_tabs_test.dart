@@ -563,6 +563,44 @@ void main() {
   );
 
   testWidgets(
+    'Scrolling back up a list does not expand the header while another tab rests at its top',
+    (tester) async {
+      final api = ProfileContentGateway();
+      await mount(tester, api);
+      // Visiting a tab keeps its list alive at offset zero.
+      await select(tester, 'saved');
+      await select(tester, 'articles');
+      final outer = nested(tester).outerController;
+      outer.jumpTo(outer.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      ScrollPosition articles() => tester
+          .state<ScrollableState>(
+            find.descendant(
+              of: find.byKey(const PageStorageKey('profile-articles')),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Scrollable &&
+                    widget.axisDirection == AxisDirection.down,
+              ),
+            ),
+          )
+          .position;
+      articles().jumpTo(400);
+      await tester.pumpAndSettle();
+      final bar = tester.getRect(find.byKey(const ValueKey('profile-tabs')));
+      await tester.dragFrom(
+        Offset(bar.center.dx, bar.bottom + 60),
+        const Offset(0, 150),
+      );
+      await tester.pumpAndSettle();
+      expect(outer.offset, closeTo(outer.position.maxScrollExtent, .5));
+      expect(articles().pixels, lessThan(400));
+      expect(articles().pixels, greaterThan(0));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'Profile tabs omit search and keep published content and scroll position',
     (tester) async {
       final api = ProfileContentGateway();
