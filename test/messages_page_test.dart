@@ -91,8 +91,9 @@ void main() {
         'unread_count': 1,
         'items': [
           {
-            ...notification(5, type: 'LOGIN_SUCCEEDED'),
-            'payload': {'title': '官网登录成功', 'body': '你的博简账号已通过 App 扫码登录官网。' * 4},
+            ...notification(5, type: 'RESUME_CREATION_FAILED'),
+            'subject_type': 'RESUME_CREATION_JOB',
+            'payload': {'title': 'AI简历生成未完成', 'body': '本次生成暂未成功，请重新生成简历。' * 4},
           },
         ],
       };
@@ -107,14 +108,17 @@ void main() {
       );
       await tester.pumpAndSettle();
       final body = tester.widget<Text>(
-        find.textContaining('你的博简账号已通过 App 扫码登录官网。'),
+        find.textContaining('本次生成暂未成功，请重新生成简历。'),
       );
       expect(body.maxLines, isNull);
       expect(
-        find.ancestor(of: find.text('官网登录成功'), matching: find.byType(InkWell)),
+        find.ancestor(
+          of: find.text('AI简历生成未完成'),
+          matching: find.byType(InkWell),
+        ),
         findsNothing,
       );
-      await tester.tap(find.text('官网登录成功'));
+      await tester.tap(find.text('AI简历生成未完成'));
       await tester.pumpAndSettle();
       expect(find.byType(BottomSheet), findsNothing);
       expect(api.calls, contains('PostNotificationsRead'));

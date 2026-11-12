@@ -13,6 +13,9 @@ class AppSearchField extends StatefulWidget {
     required this.onChanged,
     this.fillColor,
     this.autofocus = false,
+    this.clearable = true,
+    this.contentPadding,
+    this.plainIcons = false,
   });
 
   final Key? fieldKey;
@@ -23,6 +26,14 @@ class AppSearchField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final Color? fillColor;
   final bool autofocus;
+
+  /// Shows a clear button once the field has text.
+  final bool clearable;
+  final EdgeInsets? contentPadding;
+
+  /// Uses theme-default icons without padding or muted colour, and keeps the
+  /// keyboard open after clearing.
+  final bool plainIcons;
 
   @override
   State<AppSearchField> createState() => _AppSearchFieldState();
@@ -52,27 +63,30 @@ class _AppSearchFieldState extends State<AppSearchField> {
       decoration: InputDecoration(
         hintText: widget.hintText,
         fillColor: widget.fillColor,
-        prefixIcon: Padding(
-          padding: const EdgeInsets.all(14),
-          child: AppIcon(
-            AppIcons.search,
-            size: 20,
-            color: context.colors.muted,
-          ),
-        ),
-        suffixIcon: value.text.isEmpty
+        contentPadding: widget.contentPadding,
+        prefixIcon: widget.plainIcons
+            ? const AppIcon(AppIcons.search)
+            : Padding(
+                padding: const EdgeInsets.all(14),
+                child: AppIcon(
+                  AppIcons.search,
+                  size: 20,
+                  color: context.colors.muted,
+                ),
+              ),
+        suffixIcon: !widget.clearable || value.text.isEmpty
             ? null
             : IconButton(
                 tooltip: '清空搜索',
                 onPressed: () {
                   _controller.clear();
                   widget.onChanged('');
-                  dismissKeyboard();
+                  if (!widget.plainIcons) dismissKeyboard();
                 },
                 icon: AppIcon(
                   AppIcons.clear,
                   size: 18,
-                  color: context.colors.muted,
+                  color: widget.plainIcons ? null : context.colors.muted,
                 ),
               ),
       ),

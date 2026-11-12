@@ -85,6 +85,32 @@ class ReferenceImporter extends ResumeImporter {
 
 const experience = '我有三年前端开发经验，熟悉Flutter，负责电商应用开发。';
 
+/// Answers the professional branch up to the final free-text question.
+Future<void> answerUntilAdditional(WidgetTester tester) async {
+  Future<void> tapText(String text) async {
+    final target = find.text(text).last;
+    await tester.ensureVisible(target);
+    await tester.pumpAndSettle();
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+  }
+
+  await tapText('职场人');
+  await tapText('中级[3–5年]');
+  final search = find.byKey(const ValueKey('resume-position-search'));
+  await tester.ensureVisible(search);
+  await tester.tap(search);
+  await tester.pumpAndSettle();
+  await enterJobTitleChoice(tester, '新媒体运营');
+  await tapText('跳过');
+  await tapText('跳过');
+  await tapText('跳过');
+  await tester.ensureVisible(
+    find.byKey(const ValueKey('resume-assistance-additional')),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   test(
     'Lost-response retry reuses key; edited description gets a new key',
@@ -170,10 +196,9 @@ void main() {
             .onPressed,
         isNull,
       );
-      await tester.tap(find.byKey(const ValueKey('resume-mode-quick')));
-      await tester.pumpAndSettle();
+      await answerUntilAdditional(tester);
       await tester.enterText(
-        find.byKey(const ValueKey('resume-assistance-description')),
+        find.byKey(const ValueKey('resume-assistance-additional')),
         experience,
       );
       await tester.pump();
@@ -183,7 +208,7 @@ void main() {
       expect(
         tester
             .widget<TextField>(
-              find.byKey(const ValueKey('resume-assistance-description')),
+              find.byKey(const ValueKey('resume-assistance-additional')),
             )
             .controller!
             .text,
@@ -253,7 +278,7 @@ void main() {
       await tapText('中级[3–5年]');
       await tapText('新媒体运营');
       await tapText('电子商务');
-      await tapText('＋ 团队协作');
+      await tapText('团队协作');
       await tapText('确认');
       await tapText('跳过');
       await tester.enterText(
@@ -275,7 +300,7 @@ void main() {
       }
       expect(brief, isNot(contains('资格证书：')));
       expect(find.text('网络暂不可用'), findsOneWidget);
-      await tapText('✓ 团队协作');
+      await tapText('团队协作');
       expect(
         tester
             .widget<FilledButton>(
@@ -311,10 +336,9 @@ void main() {
           home: ResumeAssistancePage(store: store),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('resume-mode-quick')));
-      await tester.pumpAndSettle();
+      await answerUntilAdditional(tester);
       await tester.enterText(
-        find.byKey(const ValueKey('resume-assistance-description')),
+        find.byKey(const ValueKey('resume-assistance-additional')),
         experience,
       );
       await tester.pump();
@@ -331,7 +355,7 @@ void main() {
       expect(
         tester
             .widget<TextField>(
-              find.byKey(const ValueKey('resume-assistance-description')),
+              find.byKey(const ValueKey('resume-assistance-additional')),
             )
             .controller!
             .text,
@@ -396,8 +420,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('resume-mode-quick')));
-      await tester.pumpAndSettle();
+      await answerUntilAdditional(tester);
       await tester.ensureVisible(
         find.byKey(const ValueKey('resume-reference-pick')),
       );
@@ -415,13 +438,14 @@ void main() {
       await tester.tap(find.text('移除'));
       await tester.pumpAndSettle();
       expect(find.text('已解析：reference-resume.pdf'), findsNothing);
+      // Completed answers can still generate a sample resume without a reference.
       expect(
         tester
             .widget<FilledButton>(
               find.byKey(const ValueKey('resume-assistance-submit')),
             )
             .onPressed,
-        isNull,
+        isNotNull,
       );
       expect(tester.takeException(), isNull);
     },
@@ -445,10 +469,9 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('resume-mode-quick')));
-    await tester.pumpAndSettle();
+    await answerUntilAdditional(tester);
     await tester.enterText(
-      find.byKey(const ValueKey('resume-assistance-description')),
+      find.byKey(const ValueKey('resume-assistance-additional')),
       experience,
     );
     await tester.ensureVisible(
@@ -460,7 +483,7 @@ void main() {
     expect(
       tester
           .widget<TextField>(
-            find.byKey(const ValueKey('resume-assistance-description')),
+            find.byKey(const ValueKey('resume-assistance-additional')),
           )
           .controller!
           .text,
@@ -495,8 +518,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('resume-mode-quick')));
-      await tester.pumpAndSettle();
+      await answerUntilAdditional(tester);
       await tester.ensureVisible(
         find.byKey(const ValueKey('resume-reference-pick')),
       );
@@ -617,13 +639,13 @@ void main() {
           await pick('电子商务');
         }
         final category = student ? '学生会' : '产品推广方案';
-        await pick('＋ $category');
+        await pick(category);
         expect(
           find.text(student ? '请选择符合你的性格特征（多选）' : '请选择符合你的软技能（多选）'),
           findsNothing,
         );
         await pick('确认');
-        await pick(student ? '＋ 责任感强' : '＋ 学习能力');
+        await pick(student ? '责任感强' : '学习能力');
         await pick('确认');
         await pick('跳过');
         await tester.enterText(
@@ -698,8 +720,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('resume-mode-quick')));
-      await tester.pumpAndSettle();
+      await answerUntilAdditional(tester);
       await tester.ensureVisible(
         find.byKey(const ValueKey('resume-reference-pick')),
       );

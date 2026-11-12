@@ -154,6 +154,7 @@ class _ResumePostComposerState extends State<ResumePostComposer> {
           buttonKey: const ValueKey('resume-post-submit'),
           label: publishing ? '发表中…' : '发表',
           onPressed: publishing ? null : publish,
+          softDisabled: false,
         ),
         children: [
           TextField(

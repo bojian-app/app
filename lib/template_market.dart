@@ -9,10 +9,12 @@ import 'package:flutter/material.dart';
 import 'api/bojian_api.dart';
 import 'app_icons.dart';
 import 'app_store.dart';
+import 'form_page_layout.dart';
 import 'design.dart';
 import 'confirmation_dialog.dart';
 import 'template_market_store.dart';
 import 'template_live_preview.dart';
+import 'network_image_cache.dart';
 import 'profile_avatar.dart';
 import 'points_coin.dart';
 import 'points_page.dart';
@@ -431,9 +433,9 @@ class MarketTemplateArtwork extends StatelessWidget {
     );
     return url.isEmpty
         ? fallback
-        : Image.network(
-            url,
-            cacheWidth: 720,
+        : Image(
+            image: ResizeImage(CachedNetworkImage(url), width: 720),
+            gaplessPlayback: true,
             fit: fit,
             loadingBuilder: (context, child, progress) => progress == null
                 ? child
@@ -1126,109 +1128,83 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                 ignoring: previewTransitioning,
                 child: FadeTransition(
                   opacity: previewOpacity,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      border: Border(
-                        top: BorderSide(color: context.colors.border),
-                      ),
-                    ),
-                    child: SafeArea(
-                      top: false,
-                      child: Center(
-                        heightFactor: 1,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 860),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              appPageHorizontalPadding,
-                              12,
-                              appPageHorizontalPadding,
-                              12,
-                            ),
-                            child: Row(
+                  child: BottomActionBar(
+                    maxWidth: 860,
+                    child: Row(
+                      children: [
+                        if (!acquired) ...[
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (!acquired) ...[
-                                  Expanded(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        if (integer(design['price_points']) ==
-                                            0)
-                                          const Text(
-                                            '免费',
-                                            style: TextStyle(
-                                              fontSize: 18,
-                                              height: 1.3,
-                                              fontWeight: FontWeight.w700,
-                                              color: Color(0xFF13A58C),
-                                            ),
-                                          )
-                                        else
-                                          FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            alignment: Alignment.centerLeft,
-                                            child: _PointsPrice(
-                                              points: integer(
-                                                design['price_points'],
-                                              ),
-                                              size: 20,
-                                            ),
-                                          ),
-                                        if (balance != null) ...[
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '我的积分 $balance',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: context.colors.muted,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
+                                if (integer(design['price_points']) == 0)
+                                  const Text(
+                                    '免费',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      height: 1.3,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF13A58C),
+                                    ),
+                                  )
+                                else
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: _PointsPrice(
+                                      points: integer(design['price_points']),
+                                      size: 20,
                                     ),
                                   ),
-                                  const SizedBox(width: 16),
+                                if (balance != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '我的积分 $balance',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: context.colors.muted,
+                                    ),
+                                  ),
                                 ],
-                                Expanded(
-                                  flex: acquired ? 1 : 2,
-                                  child: FilledButton(
-                                    onPressed: canAcquire ? acquire : null,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: context.colors.accent,
-                                      foregroundColor: Colors.white,
-                                      minimumSize: const Size(0, 46),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 12,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      busy
-                                          ? '正在处理…'
-                                          : acquired
-                                          ? '使用模板'
-                                          : integer(design['price_points']) == 0
-                                          ? '免费获取'
-                                          : '积分兑换',
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ),
                               ],
                             ),
                           ),
+                          const SizedBox(width: 16),
+                        ],
+                        Expanded(
+                          flex: acquired ? 1 : 2,
+                          child: FilledButton(
+                            onPressed: canAcquire ? acquire : null,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: context.colors.accent,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size(0, 46),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: Text(
+                              busy
+                                  ? '正在处理…'
+                                  : acquired
+                                  ? '使用模板'
+                                  : integer(design['price_points']) == 0
+                                  ? '免费获取'
+                                  : '积分兑换',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),

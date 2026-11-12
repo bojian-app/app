@@ -296,6 +296,11 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                               fieldKey: const ValueKey('my-articles-search'),
                               hintText: '搜索文章标题',
                               fillColor: context.colors.surface,
+                              clearable: false,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
                               onChanged: (value) =>
                                   setState(() => query = value),
                             ),

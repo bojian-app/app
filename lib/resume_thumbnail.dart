@@ -1,3 +1,4 @@
+import 'network_image_cache.dart';
 import 'resume_photo_image.dart';
 import 'template_preview_data.dart';
 
@@ -32,9 +33,9 @@ class MarketResumeThumbnail extends StatelessWidget {
     );
     return url.isEmpty
         ? placeholder
-        : Image.network(
-            url,
-            cacheWidth: 720,
+        : Image(
+            image: ResizeImage(CachedNetworkImage(url), width: 720),
+            gaplessPlayback: true,
             fit: BoxFit.contain,
             errorBuilder: (_, _, _) => placeholder,
           );

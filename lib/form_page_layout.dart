@@ -60,9 +60,13 @@ class PrimaryActionButton extends StatelessWidget {
     this.buttonKey,
     required this.label,
     required this.onPressed,
+    this.softDisabled = true,
   });
 
   final Key? buttonKey;
+
+  /// Disabled state uses pale accent colours instead of the theme's grey.
+  final bool softDisabled;
   final String label;
   final VoidCallback? onPressed;
 
@@ -74,12 +78,55 @@ class PrimaryActionButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        disabledBackgroundColor: context.colors.accentSoft,
-        disabledForegroundColor: context.colors.accent.withValues(alpha: .5),
+        disabledBackgroundColor: softDisabled
+            ? context.colors.accentSoft
+            : null,
+        disabledForegroundColor: softDisabled
+            ? context.colors.accent.withValues(alpha: .5)
+            : null,
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
       onPressed: onPressed,
       child: Text(label),
+    ),
+  );
+}
+
+/// Bar pinned under page content: white, top hairline, safe-area aware and
+/// centred to [maxWidth].
+class BottomActionBar extends StatelessWidget {
+  const BottomActionBar({
+    super.key,
+    required this.maxWidth,
+    required this.child,
+  });
+
+  final double maxWidth;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: context.colors.surface,
+      border: Border(top: BorderSide(color: context.colors.border)),
+    ),
+    child: SafeArea(
+      top: false,
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              appPageHorizontalPadding,
+              12,
+              appPageHorizontalPadding,
+              12,
+            ),
+            child: child,
+          ),
+        ),
+      ),
     ),
   );
 }

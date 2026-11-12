@@ -18,6 +18,7 @@ import 'phone_binding_dialog.dart';
 import 'design.dart';
 import 'legal_document.dart';
 import 'legal_document_page.dart';
+import 'network_image_cache.dart';
 import 'profile_avatar.dart';
 
 const _settingsChannel = MethodChannel('cn.kelance.bojian/settings');
@@ -33,11 +34,19 @@ class _SettingsPageState extends State<SettingsPage> {
   bool savingPrivacy = false;
   Timer? cacheRefresh;
   int imageCacheBytes = PaintingBinding.instance.imageCache.currentSizeBytes;
+  int imageDiskBytes = 0;
 
   void refreshImageCache() {
     final bytes = PaintingBinding.instance.imageCache.currentSizeBytes;
     if (mounted && bytes != imageCacheBytes) {
       setState(() => imageCacheBytes = bytes);
+    }
+  }
+
+  Future<void> refreshImageDisk() async {
+    final bytes = await NetworkImageStore.instance.diskBytes();
+    if (mounted && bytes != imageDiskBytes) {
+      setState(() => imageDiskBytes = bytes);
     }
   }
 
@@ -52,6 +61,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     if (Platform.isAndroid) _loadVersion();
+    refreshImageDisk();
     // Images finish decoding after this page builds; ImageCache is not a Listenable.
     cacheRefresh = Timer.periodic(
       const Duration(seconds: 1),
@@ -102,7 +112,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final clear = await showAppConfirmation(
       context,
       title: '清理图片缓存？',
-      content: const Text('清理临时图片后，再次查看时会重新加载。已保存的简历和文件不受影响。'),
+      content: const Text('清理本机保存的图片后，再次查看时会重新加载。已保存的简历和文件不受影响。'),
       confirmLabel: '清理',
     );
     if (!mounted || clear != true) return;
@@ -111,6 +121,8 @@ class _SettingsPageState extends State<SettingsPage> {
       ..clearLiveImages();
     refreshImageCache();
     toast(context, '图片缓存已清理');
+    await NetworkImageStore.instance.clear();
+    await refreshImageDisk();
   }
 
   @override
@@ -118,199 +130,216 @@ class _SettingsPageState extends State<SettingsPage> {
     listenable: widget.store,
     builder: (context, _) {
       final store = widget.store;
-      final cached = imageCacheBytes == 0
-          ? '0 B'
-          : imageCacheBytes < 1024
-          ? '$imageCacheBytes B'
-          : imageCacheBytes < 1024 * 1024
-          ? '${(imageCacheBytes / 1024).toStringAsFixed(1)} KB'
-          : '${(imageCacheBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-      return Scaffold(
-        appBar: AppPageBar(title: const Text('隐私与设置')),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                appPageHorizontalPadding,
-                16,
-                appPageHorizontalPadding,
-                32,
-              ),
-              children: [
-                if (store.isAuthenticated) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 28),
-                    child: Row(
+      final total = imageCacheBytes + imageDiskBytes;
+      final cached = total < 1024
+          ? '$total B'
+          : total < 1024 * 1024
+          ? '${(total / 1024).toStringAsFixed(1)} KB'
+          : '${(total / (1024 * 1024)).toStringAsFixed(1)} MB';
+      return _SettingsListPage(
+        title: '隐私与设置',
+        children: [
+          if (store.isAuthenticated) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 28),
+              child: Row(
+                children: [
+                  ProfileAvatar(
+                    seed: profileAvatarSeed(store),
+                    url: store.avatarURL,
+                    size: 42,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ProfileAvatar(
-                          seed: profileAvatarSeed(store),
-                          url: store.avatarURL,
-                          size: 42,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                userDisplayName(store.name),
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '用户 ID：${store.publicID.isEmpty ? store.userID : store.publicID}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: context.colors.muted,
-                                ),
-                              ),
-                            ],
+                        Text(
+                          userDisplayName(store.name),
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        TextButton(
-                          onPressed: () async {
-                            await Clipboard.setData(
-                              ClipboardData(
-                                text: store.publicID.isEmpty
-                                    ? '${store.userID}'
-                                    : store.publicID,
-                              ),
-                            );
-                            if (context.mounted) toast(context, '用户 ID 已复制');
-                          },
-                          child: const Text('复制'),
+                        const SizedBox(height: 4),
+                        Text(
+                          '用户 ID：${store.publicID.isEmpty ? store.userID : store.publicID}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: context.colors.muted,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  _SettingsGroup(
-                    '账号与隐私',
-                    children: [
-                      _SettingsRow(
-                        icon: AppIcons.accountSecurity,
-                        title: '账号安全',
-                        subtitle: '管理登录设备与账号',
-                        onTap: () =>
-                            openPage(context, _SecurityPage(store: store)),
-                      ),
-                      _SettingsRow(
-                        icon: AppIcons.publicProfile,
-                        title: '公开个人介绍',
-                        subtitle: '允许其他用户查看你的简介',
-                        trailing: savingPrivacy
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Switch.adaptive(
-                                value: store.publicProfile,
-                                activeTrackColor: blue,
-                                onChanged: savingPrivacy ? null : _privacy,
-                              ),
-                      ),
-                    ],
+                  TextButton(
+                    onPressed: () async {
+                      await Clipboard.setData(
+                        ClipboardData(
+                          text: store.publicID.isEmpty
+                              ? '${store.userID}'
+                              : store.publicID,
+                        ),
+                      );
+                      if (context.mounted) toast(context, '用户 ID 已复制');
+                    },
+                    child: const Text('复制'),
                   ),
                 ],
-                _SettingsGroup(
-                  '应用管理',
-                  children: [
-                    _SettingsRow(
-                      icon: AppIcons.notificationSettings,
-                      title: '通知设置',
-                      subtitle: '管理系统通知的显示方式',
-                      onTap: () => _systemSettings('openNotifications'),
-                    ),
-                    _SettingsRow(
-                      icon: AppIcons.permissions,
-                      title: '系统权限',
-                      subtitle: '查看与管理博简的设备权限',
-                      onTap: () => _systemSettings('openPermissions'),
-                    ),
-                    _SettingsRow(
-                      icon: AppIcons.imageCache,
-                      title: '图片缓存',
-                      value: cached,
-                      subtitle: '图片内存缓存，最多保留 32 MB，自动淘汰旧图片',
-                      onTap: _clearImages,
-                    ),
-                  ],
+              ),
+            ),
+            _SettingsGroup(
+              '账号与隐私',
+              children: [
+                _SettingsRow(
+                  icon: AppIcons.accountSecurity,
+                  title: '账号安全',
+                  subtitle: '管理登录设备与账号',
+                  onTap: () => openPage(context, _SecurityPage(store: store)),
                 ),
-                _SettingsGroup(
-                  '帮助与关于',
-                  children: [
-                    if (store.isAuthenticated)
-                      _SettingsRow(
-                        icon: AppIcons.feedback,
-                        title: '意见反馈',
-                        onTap: () =>
-                            openPage(context, _FeedbackPage(store: store)),
-                      ),
-                    _SettingsRow(
-                      key: const ValueKey('settings-user-agreement'),
-                      icon: AppIcons.terms,
-                      title: '用户协议',
-                      onTap: () => _legal(LegalDocumentKind.userAgreement),
-                    ),
-                    _SettingsRow(
-                      key: const ValueKey('settings-privacy-policy'),
-                      icon: AppIcons.privacyPolicy,
-                      title: '隐私政策',
-                      onTap: () => _legal(LegalDocumentKind.privacyPolicy),
-                    ),
-                    _SettingsRow(
-                      icon: AppIcons.about,
-                      title: '关于博简',
-                      value: 'v$version',
-                      onTap: () => showModalBottomSheet<void>(
-                        context: context,
-                        showDragHandle: true,
-                        builder: (_) => SafeArea(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  '博简',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '版本 $version',
-                                  style: TextStyle(
-                                    color: context.colors.muted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                const Text(
-                                  '简历创建与优化、模板选择，以及求职经验交流。',
-                                  style: TextStyle(fontSize: 14, height: 1.7),
-                                ),
-                              ],
-                            ),
-                          ),
+                _SettingsRow(
+                  icon: AppIcons.publicProfile,
+                  title: '公开个人介绍',
+                  subtitle: '允许其他用户查看你的简介',
+                  trailing: savingPrivacy
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Switch.adaptive(
+                          value: store.publicProfile,
+                          activeTrackColor: blue,
+                          onChanged: savingPrivacy ? null : _privacy,
                         ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
+          ],
+          _SettingsGroup(
+            '应用管理',
+            children: [
+              _SettingsRow(
+                icon: AppIcons.notificationSettings,
+                title: '通知设置',
+                subtitle: '管理系统通知的显示方式',
+                onTap: () => _systemSettings('openNotifications'),
+              ),
+              _SettingsRow(
+                icon: AppIcons.permissions,
+                title: '系统权限',
+                subtitle: '查看与管理博简的设备权限',
+                onTap: () => _systemSettings('openPermissions'),
+              ),
+              _SettingsRow(
+                icon: AppIcons.imageCache,
+                title: '图片缓存',
+                value: cached,
+                subtitle: '头像、封面等图片保存在本机，最多 200 MB，自动淘汰旧图片',
+                onTap: _clearImages,
+              ),
+            ],
           ),
-        ),
+          _SettingsGroup(
+            '帮助与关于',
+            children: [
+              if (store.isAuthenticated)
+                _SettingsRow(
+                  icon: AppIcons.feedback,
+                  title: '意见反馈',
+                  onTap: () => openPage(context, _FeedbackPage(store: store)),
+                ),
+              _SettingsRow(
+                key: const ValueKey('settings-user-agreement'),
+                icon: AppIcons.terms,
+                title: '用户协议',
+                onTap: () => _legal(LegalDocumentKind.userAgreement),
+              ),
+              _SettingsRow(
+                key: const ValueKey('settings-privacy-policy'),
+                icon: AppIcons.privacyPolicy,
+                title: '隐私政策',
+                onTap: () => _legal(LegalDocumentKind.privacyPolicy),
+              ),
+              _SettingsRow(
+                icon: AppIcons.about,
+                title: '关于博简',
+                value: 'v$version',
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (_) => SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '博简',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '版本 $version',
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            '简历创建与优化、模板选择，以及求职经验交流。',
+                            style: TextStyle(fontSize: 14, height: 1.7),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       );
     },
+  );
+}
+
+/// Settings sub-page: titled bar over a centred, width-limited list.
+class _SettingsListPage extends StatelessWidget {
+  const _SettingsListPage({
+    required this.title,
+    required this.children,
+    this.actions,
+    this.padding = const EdgeInsets.fromLTRB(
+      appPageHorizontalPadding,
+      16,
+      appPageHorizontalPadding,
+      32,
+    ),
+  });
+
+  final String title;
+  final List<Widget> children;
+  final List<Widget>? actions;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppPageBar(title: Text(title), actions: actions),
+    body: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 680),
+        child: ListView(
+          padding: padding,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          children: children,
+        ),
+      ),
+    ),
   );
 }
 
@@ -491,75 +520,62 @@ class _FeedbackPageState extends State<_FeedbackPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppPageBar(
-      title: Text(widget.appeal ? '账号申诉' : '意见反馈'),
-      actions: const [DismissKeyboardButton()],
+  Widget build(BuildContext context) => _SettingsListPage(
+    title: widget.appeal ? '账号申诉' : '意见反馈',
+    actions: const [DismissKeyboardButton()],
+    padding: const EdgeInsets.symmetric(
+      horizontal: appPageHorizontalPadding,
+      vertical: 24,
     ),
-    body: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680),
-        child: ListView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: appPageHorizontalPadding,
-            vertical: 24,
+    children: [
+      if (widget.appeal)
+        Text(
+          '请描述账号遇到的问题，并留下可联系的方式，便于核实和处理。',
+          style: TextStyle(
+            fontSize: 13,
+            color: context.colors.muted,
+            height: 1.6,
           ),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        )
+      else
+        Wrap(
+          spacing: 8,
           children: [
-            if (widget.appeal)
-              Text(
-                '请描述账号遇到的问题，并留下可联系的方式，便于核实和处理。',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: context.colors.muted,
-                  height: 1.6,
-                ),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final choice in {
-                    'BUG': '遇到问题',
-                    'SUGGESTION': '功能建议',
-                  }.entries)
-                    ChoiceChip(
-                      label: Text(choice.value),
-                      selected: category == choice.key,
-                      onSelected: sending
-                          ? null
-                          : (_) => setState(() => category = choice.key),
-                    ),
-                ],
+            for (final choice in {'BUG': '遇到问题', 'SUGGESTION': '功能建议'}.entries)
+              ChoiceChip(
+                label: Text(choice.value),
+                selected: category == choice.key,
+                onSelected: sending
+                    ? null
+                    : (_) => setState(() => category = choice.key),
               ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: text,
-              enabled: !sending,
-              minLines: 8,
-              maxLines: 14,
-              maxLength: widget.appeal ? 300 : 600,
-              decoration: InputDecoration(
-                hintText: widget.appeal ? '问题描述与联系方式…' : '描述你遇到的问题或建议…',
-                fillColor: context.colors.surface,
-              ),
-              style: const TextStyle(fontSize: 14, height: 1.7),
-            ),
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: sending ? null : submit,
-              child: Text(
-                sending
-                    ? '正在提交…'
-                    : widget.appeal
-                    ? '提交申诉'
-                    : '提交反馈',
-              ),
-            ),
           ],
         ),
+      const SizedBox(height: 20),
+      TextField(
+        controller: text,
+        enabled: !sending,
+        minLines: 8,
+        maxLines: 14,
+        maxLength: widget.appeal ? 300 : 600,
+        decoration: InputDecoration(
+          hintText: widget.appeal ? '问题描述与联系方式…' : '描述你遇到的问题或建议…',
+          fillColor: context.colors.surface,
+        ),
+        style: const TextStyle(fontSize: 14, height: 1.7),
       ),
-    ),
+      const SizedBox(height: 20),
+      FilledButton(
+        onPressed: sending ? null : submit,
+        child: Text(
+          sending
+              ? '正在提交…'
+              : widget.appeal
+              ? '提交申诉'
+              : '提交反馈',
+        ),
+      ),
+    ],
   );
 }
 
@@ -764,90 +780,72 @@ class _SecurityPageState extends State<_SecurityPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppPageBar(title: const Text('账号安全')),
-    body: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            appPageHorizontalPadding,
-            16,
-            appPageHorizontalPadding,
-            32,
-          ),
-          children: [
-            _SettingsGroup(
-              '登录设备',
-              children: [
-                if (loading)
-                  const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                else if (error != null)
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          error!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: context.colors.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextButton(onPressed: load, child: const Text('重新加载')),
-                      ],
-                    ),
-                  )
-                else if (sessions.isEmpty)
-                  const EmptyState('暂无登录设备', '', compact: true)
-                else
-                  for (final session in sessions) deviceRow(session),
-              ],
-            ),
-            _SettingsGroup(
-              '账号管理',
-              dividerInset: 16,
-              children: [
-                ListenableBuilder(
-                  listenable: widget.store,
-                  builder: (_, _) => _SettingsRow(
-                    key: const ValueKey('security-phone-binding'),
-                    title: '手机号',
-                    value: widget.store.hasBoundPhone
-                        ? widget.store.phoneMasked
-                        : widget.store.phoneBindingChecked
-                        ? '未绑定'
-                        : '待获取',
-                    subtitle: '用于账号联系与安全验证',
-                    onTap: widget.store.hasBoundPhone ? null : bindPhone,
+  Widget build(BuildContext context) => _SettingsListPage(
+    title: '账号安全',
+    children: [
+      _SettingsGroup(
+        '登录设备',
+        children: [
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else if (error != null)
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    error!,
+                    style: TextStyle(fontSize: 12, color: context.colors.muted),
                   ),
-                ),
-                _SettingsRow(
-                  title: '账号申诉',
-                  subtitle: '账号使用遇到问题，提交申诉协助处理',
-                  onTap: () => openPage(
-                    context,
-                    _FeedbackPage(store: widget.store, appeal: true),
-                  ),
-                ),
-                _SettingsRow(
-                  title: deleting ? '正在申请注销…' : '账号注销',
-                  titleColor: Theme.of(context).colorScheme.error,
-                  subtitle: '注销后账号及相关数据将被删除，请先保存需要的内容',
-                  onTap: deleting ? null : deleteAccount,
-                ),
-              ],
-            ),
-          ],
-        ),
+                  const SizedBox(height: 8),
+                  TextButton(onPressed: load, child: const Text('重新加载')),
+                ],
+              ),
+            )
+          else if (sessions.isEmpty)
+            const EmptyState('暂无登录设备', '', compact: true)
+          else
+            for (final session in sessions) deviceRow(session),
+        ],
       ),
-    ),
+      _SettingsGroup(
+        '账号管理',
+        dividerInset: 16,
+        children: [
+          ListenableBuilder(
+            listenable: widget.store,
+            builder: (_, _) => _SettingsRow(
+              key: const ValueKey('security-phone-binding'),
+              title: '手机号',
+              value: widget.store.hasBoundPhone
+                  ? widget.store.phoneMasked
+                  : widget.store.phoneBindingChecked
+                  ? '未绑定'
+                  : '待获取',
+              subtitle: '用于账号联系与安全验证',
+              onTap: widget.store.hasBoundPhone ? null : bindPhone,
+            ),
+          ),
+          _SettingsRow(
+            title: '账号申诉',
+            subtitle: '账号使用遇到问题，提交申诉协助处理',
+            onTap: () => openPage(
+              context,
+              _FeedbackPage(store: widget.store, appeal: true),
+            ),
+          ),
+          _SettingsRow(
+            title: deleting ? '正在申请注销…' : '账号注销',
+            titleColor: Theme.of(context).colorScheme.error,
+            subtitle: '注销后账号及相关数据将被删除，请先保存需要的内容',
+            onTap: deleting ? null : deleteAccount,
+          ),
+        ],
+      ),
+    ],
   );
 }

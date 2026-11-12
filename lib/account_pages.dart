@@ -16,6 +16,7 @@ import 'package:file_selector/file_selector.dart';
 import 'app_store.dart';
 import 'app_photo_picker.dart';
 import 'developer_verification_page.dart';
+import 'form_page_layout.dart';
 import 'design.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
@@ -1468,50 +1469,28 @@ class _ProfileEditorState extends State<ProfileEditor> {
           padding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(context).bottom,
           ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              border: Border(top: BorderSide(color: context.colors.border)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Center(
-                heightFactor: 1,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      appPageHorizontalPadding,
-                      12,
-                      appPageHorizontalPadding,
-                      12,
-                    ),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        key: const ValueKey('profile-save'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                        ).withoutHover(),
-                        onPressed: saving || choosing ? null : saveProfile,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (saving) ...[
-                              const SizedBox.square(
-                                dimension: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                            ],
-                            Text(saving ? '正在保存…' : '保存资料'),
-                          ],
-                        ),
+          child: BottomActionBar(
+            maxWidth: 760,
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                key: const ValueKey('profile-save'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ).withoutHover(),
+                onPressed: saving || choosing ? null : saveProfile,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (saving) ...[
+                      const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                    ),
-                  ),
+                      const SizedBox(width: 10),
+                    ],
+                    Text(saving ? '正在保存…' : '保存资料'),
+                  ],
                 ),
               ),
             ),

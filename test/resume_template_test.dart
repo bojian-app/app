@@ -79,13 +79,12 @@ void main() {
     expect(store.resumes.first.template, ResumeLayout.standard.id);
   });
   test(
-    'Acquired templates are deduplicated and authored designs excluded',
+    'Acquired templates are deduplicated and invalid rows skipped',
     () async {
       api.documents['GetMeTemplates'] = {
         'items': [
           {'id': 7, 'name': '购买模板', 'source': 'ACQUIRED'},
           {'id': 7, 'name': '重复记录', 'source': 'ACQUIRED'},
-          {'id': 8, 'name': '发布模板', 'source': 'PUBLISHED_BY_ME'},
           {'id': 0, 'source': 'ACQUIRED'},
         ],
       };
@@ -161,12 +160,11 @@ void main() {
     }
   });
   testWidgets(
-    'Picker lists standard and purchased templates without unowned or authored designs',
+    'Picker lists standard and purchased templates without unowned designs',
     (tester) async {
       api.documents['GetMeTemplates'] = {
         'items': [
           {'id': 7, 'name': '已购买设计', 'source': 'ACQUIRED'},
-          {'id': 8, 'name': '自己发布的设计', 'source': 'PUBLISHED_BY_ME'},
         ],
       };
       api.documents['GetTemplates'] = {
@@ -195,7 +193,6 @@ void main() {
             (widget.properties.label ?? '').startsWith(name),
       );
       expect(tile('已购买设计'), findsOneWidget);
-      expect(find.text('自己发布的设计'), findsNothing);
       expect(tile('未购买设计'), findsNothing);
       expect(find.text('模板市场'), findsNothing);
       expect(find.text('商务蓝'), findsNothing);

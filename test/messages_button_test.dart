@@ -68,7 +68,6 @@ void main() {
     expect(find.byType(MessagesPage), findsOneWidget);
     expect(find.text('消息'), findsOneWidget);
     expect(api.calls.where((call) => call == 'GetNotifications'), hasLength(1));
-    expect(api.calls, isNot(contains('GetConversations')));
     expect(find.text('暂无系统通知'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();

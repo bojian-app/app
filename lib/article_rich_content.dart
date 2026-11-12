@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'design.dart';
+import 'network_image_cache.dart';
 
 /// Converts editor operations to the block/span format shared with the Mac app.
 Map<String, dynamic> articleContentFromDelta(List<dynamic> operations) {
@@ -219,9 +220,12 @@ class ArticleRichBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (url != null && ['https', 'http'].contains(url.scheme))
-          Image.network(
-            url.toString(),
-            cacheWidth: 1440,
+          Image(
+            image: ResizeImage(
+              CachedNetworkImage(url.toString()),
+              width: 1440,
+              policy: ResizeImagePolicy.fit,
+            ),
             fit: BoxFit.contain,
             semanticLabel: '${data['alt'] ?? ''}',
             errorBuilder: (_, _, _) => Text(

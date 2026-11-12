@@ -1621,6 +1621,7 @@ class _StorySearchState extends State<StorySearch> {
                     controller: search,
                     autofocus: !widget.savedOnly && !widget.mineOnly,
                     hintText: '搜索',
+                    plainIcons: true,
                     onChanged: (v) => setState(() => query = v),
                   ),
                   const SizedBox(height: 20),

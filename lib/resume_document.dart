@@ -669,7 +669,7 @@ class _ResumeTypesetter {
     final label = [
       'role',
       'url',
-    ].map((key) => value(entry, key)).where((v) => v.isNotEmpty).join('\u2002');
+    ].map((key) => value(entry, key)).where((v) => v.isNotEmpty).join(' ');
     final dates = ['start_date', 'end_date']
         .map((key) => formatResumeMonth(value(entry, key)))
         .where((v) => v.isNotEmpty)
@@ -781,7 +781,7 @@ class _ResumeTypesetter {
         supporting
             .map((key) => value(entry, key))
             .where((s) => s.isNotEmpty)
-            .join('\u2002'),
+            .join(' '),
         dates,
       );
       for (final field in details) {
@@ -2233,6 +2233,31 @@ List<List<ResumeReviewRegion>> resumeReviewRegions(
     (_) => <ResumeReviewRegion>[],
   );
   for (final highlight in highlights) {
+    // Underlines [boxes] of [run], clipped to the run's visible slice.
+    void addWaves(int index, ResumeInk run, Iterable<TextBox> boxes) {
+      final area = Rect.fromLTWH(
+        run.position.dx,
+        run.position.dy,
+        run.text.width,
+        run.height,
+      );
+      for (final box in boxes) {
+        final rect = box.toRect().shift(
+          run.position - Offset(0, run.sourceTop),
+        );
+        if (!rect.overlaps(area)) continue;
+        final clipped = rect.intersect(area);
+        if (clipped.isEmpty) continue;
+        pages[index].add(
+          ResumeReviewRegion(
+            clipped.inflate(2),
+            [highlight],
+            waveRects: [clipped],
+          ),
+        );
+      }
+    }
+
     final matches = <(int, ResumeInk)>[];
     for (var p = 0; p < document.pages.length; p++) {
       for (final run in document.pages[p].ink) {
@@ -2248,32 +2273,16 @@ List<List<ResumeReviewRegion>> resumeReviewRegions(
       if (highlight.text.trim().isEmpty) {
         for (final (index, run) in matches) {
           final length = run.text.text!.toPlainText().length;
-          final area = Rect.fromLTWH(
-            run.position.dx,
-            run.position.dy,
-            run.text.width,
-            run.height,
+          addWaves(
+            index,
+            run,
+            run.text.getBoxesForSelection(
+              TextSelection(baseOffset: 0, extentOffset: length),
+              boxHeightStyle: highlight.colorText
+                  ? ui.BoxHeightStyle.tight
+                  : ui.BoxHeightStyle.max,
+            ),
           );
-          for (final box in run.text.getBoxesForSelection(
-            TextSelection(baseOffset: 0, extentOffset: length),
-            boxHeightStyle: highlight.colorText
-                ? ui.BoxHeightStyle.tight
-                : ui.BoxHeightStyle.max,
-          )) {
-            final rect = box.toRect().shift(
-              run.position - Offset(0, run.sourceTop),
-            );
-            if (!rect.overlaps(area)) continue;
-            final clipped = rect.intersect(area);
-            if (clipped.isEmpty) continue;
-            pages[index].add(
-              ResumeReviewRegion(
-                clipped.inflate(2),
-                [highlight],
-                waveRects: [clipped],
-              ),
-            );
-          }
         }
         continue;
       }
@@ -2309,27 +2318,7 @@ List<List<ResumeReviewRegion>> resumeReviewRegions(
       );
       for (final (index, run) in matches) {
         if (!identical(run.text, matchedPainter)) continue;
-        final area = Rect.fromLTWH(
-          run.position.dx,
-          run.position.dy,
-          run.text.width,
-          run.height,
-        );
-        for (final box in boxes) {
-          final rect = box.toRect().shift(
-            run.position - Offset(0, run.sourceTop),
-          );
-          if (!rect.overlaps(area)) continue;
-          final clipped = rect.intersect(area);
-          if (clipped.isEmpty) continue;
-          pages[index].add(
-            ResumeReviewRegion(
-              clipped.inflate(2),
-              [highlight],
-              waveRects: [clipped],
-            ),
-          );
-        }
+        addWaves(index, run, boxes);
       }
       continue;
     }
@@ -2980,9 +2969,18 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
     super.dispose();
   }
 
-  Future<ResumeExportLayout> captureLayout({
+  /// Downloads the resume photo and lays out a fresh export document, then
+  /// hands both to [build]. Both are disposed afterwards. [build] must call
+  /// `check` between steps so cancellation stops the export.
+  Future<T> _withExportDocument<T>({
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
+    required Future<T> Function(
+      ResumeDocument exportDocument,
+      ui.Image? photo,
+      void Function() check,
+    )
+    build,
   }) async {
     final resume = widget.resume.copy();
     final store = widget.store;
@@ -3046,6 +3044,20 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         photoURL: url,
         theme: widget.theme,
       );
+      return await build(exportDocument, photo, check);
+    } finally {
+      photo?.dispose();
+      exportDocument?.dispose();
+    }
+  }
+
+  Future<ResumeExportLayout> captureLayout({
+    required bool Function() isCancelled,
+    required ValueChanged<String> onProgress,
+  }) => _withExportDocument(
+    isCancelled: isCancelled,
+    onProgress: onProgress,
+    build: (exportDocument, photo, check) async {
       final pages = <ResumeExportPage>[];
       final wordPages = <ResumeExportPage>[];
       for (var index = 0; index < exportDocument.pages.length; index++) {
@@ -3126,78 +3138,16 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                 },
               ),
       );
-    } finally {
-      photo?.dispose();
-      exportDocument?.dispose();
-    }
-  }
+    },
+  );
 
   Future<List<Uint8List>> capturePages({
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
-  }) async {
-    final resume = widget.resume.copy();
-    final store = widget.store;
-    final epoch = store?.epoch;
-    const font = resumeDocumentFontFamily;
-    void check() {
-      if (!mounted || isCancelled() || store?.epoch != epoch) {
-        throw const ApiFailure('导出已取消');
-      }
-    }
-
-    check();
-    ui.Image? photo;
-    ResumeDocument? exportDocument;
-    try {
-      var url = photoURL;
-      if (resume.photoFileID > 0 || url.isNotEmpty) {
-        onProgress('正在准备简历照片…');
-        if (store != null && resume.id > 0) {
-          final response = await store.request(
-            'GetResumesId',
-            path: {'id': '${resume.id}'},
-          );
-          check();
-          if (response.data['photo_file_id'] != null &&
-              integer(response.data['photo_file_id']) != resume.photoFileID) {
-            throw const ApiFailure('简历照片已更新，请刷新预览后导出');
-          }
-          url = response.data['photo_url'] as String? ?? url;
-        }
-        if (Uri.tryParse(url)?.scheme != 'https') {
-          throw const ApiFailure('简历照片暂不可用，请重试');
-        }
-        final ready = Completer<ui.Image>();
-        final stream = ResumePhotoImage(
-          url,
-          fileID: resume.photoFileID,
-        ).resolve(ImageConfiguration.empty);
-        late ImageStreamListener listener;
-        listener = ImageStreamListener(
-          (info, _) {
-            if (!ready.isCompleted) ready.complete(info.image.clone());
-          },
-          onError: (_, _) {
-            if (!ready.isCompleted) {
-              ready.completeError(const ApiFailure('简历照片下载失败，请重试'));
-            }
-          },
-        );
-        stream.addListener(listener);
-        try {
-          photo = await ready.future.timeout(const Duration(seconds: 30));
-        } finally {
-          stream.removeListener(listener);
-        }
-        check();
-      }
-      exportDocument = ResumeDocument(
-        resume,
-        fontFamily: font,
-        photoURL: url,
-        theme: widget.theme,
-      );
+  }) => _withExportDocument(
+    isCancelled: isCancelled,
+    onProgress: onProgress,
+    build: (exportDocument, photo, check) async {
       final pages = <Uint8List>[];
       // 288 dpi: paint the same text, clips, photo and footer as the preview.
       const scale = 4.0;
@@ -3254,11 +3204,8 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       }
       check();
       return pages;
-    } finally {
-      exportDocument?.dispose();
-      photo?.dispose();
-    }
-  }
+    },
+  );
 
   @override
   Widget build(BuildContext context) {

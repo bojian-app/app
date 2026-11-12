@@ -36,7 +36,6 @@ class ResumeAssistancePage extends StatefulWidget {
 }
 
 class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
-  final description = TextEditingController();
   final additional = TextEditingController();
   final reference = TextEditingController();
   String? referenceName, referenceProgress, referenceError;
@@ -46,7 +45,6 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   final answers = ResumeCreationAnswers();
   final questionKeys = List.generate(7, (_) => GlobalKey());
   late final submission = ResumeCreationController(widget.store);
-  bool quick = false;
   int step = 0, prompt = 0;
   bool skillsConfirmed = false, certificatesConfirmed = false;
   bool experienceConfirmed = false;
@@ -58,18 +56,13 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   String jobStatus = 'QUEUED';
   ResumeDraft? result;
 
-  Color get accent =>
-      context.isDark ? const Color(0xFF8AB4FF) : const Color(0xFF2867EE);
-  Color get soft =>
-      context.isDark ? const Color(0xFF1F2A44) : const Color(0xFFEAF1FF);
-  Color get background =>
-      context.isDark ? context.colors.canvas : const Color(0xFFF8F7FF);
+  // App theme tokens keep this flow consistent with the rest of the app.
+  Color get accent => context.colors.accent;
+  Color get soft => context.colors.accentSoft;
+  Color get background => context.colors.surface;
   String get generationDescription {
-    final base = quick
-        ? description.text.trim()
-        : answers.describe(additional.text);
     return [
-      base,
+      answers.describe(additional.text),
       if (reference.text.trim().isNotEmpty)
         '本人上传的参考简历：\n${reference.text.trim()}',
     ].join('\n\n');
@@ -79,21 +72,18 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
       !referenceBusy &&
       !referencePicking &&
       generationDescription.runes.length <= 5000 &&
-      (quick
-          ? generationDescription.trim().runes.length >= 10
-          : step == 6 &&
-                skillsConfirmed &&
-                certificatesConfirmed &&
-                (answers.identity == '职场人' || experienceConfirmed) &&
-                answers.identity.isNotEmpty &&
-                answers.position.isNotEmpty);
+      step == 6 &&
+      skillsConfirmed &&
+      certificatesConfirmed &&
+      (answers.identity == '职场人' || experienceConfirmed) &&
+      answers.identity.isNotEmpty &&
+      answers.position.isNotEmpty;
 
   @override
   void dispose() {
     pollTimer?.cancel();
     referenceOperation++;
     reference.dispose();
-    description.dispose();
     additional.dispose();
     scroll.dispose();
     submission.dispose();
@@ -106,7 +96,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
       error = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || quick) return;
+      if (!mounted) return;
       final target = questionKeys[next].currentContext;
       if (target != null) {
         Scrollable.ensureVisible(
@@ -264,28 +254,14 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([
-      description,
-      additional,
-      reference,
-      submission,
-    ]),
+    listenable: Listenable.merge([additional, reference, submission]),
     builder: (context, _) {
       if (result != null) return resultPage();
       if (jobId != null) return generatingPage();
       return Scaffold(
         backgroundColor: background,
         appBar: AppPageBar(title: const Text('AI生成简历')),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          minimum: const EdgeInsets.fromLTRB(
-            appPageHorizontalPadding,
-            10,
-            appPageHorizontalPadding,
-            12,
-          ),
-          child: generateButton(),
-        ),
+        bottomNavigationBar: bottomBar(generateButton()),
         body: SafeArea(
           top: false,
           bottom: false,
@@ -293,16 +269,16 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
             controller: scroll,
             padding: const EdgeInsets.fromLTRB(
               appPageHorizontalPadding,
-              16,
+              12,
               appPageHorizontalPadding,
-              20,
+              16,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                modeTabs(),
-                const SizedBox(height: 20),
-                if (quick) quickForm() else questionnaire(),
+                questionnaireProgress(),
+                const SizedBox(height: 14),
+                questionnaire(),
                 if (generationDescription.runes.length > 5000)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
@@ -323,131 +299,109 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     },
   );
 
-  Widget modeTabs() => Container(
-    padding: const EdgeInsets.all(4),
-    decoration: BoxDecoration(
-      color: context.colors.inset,
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Row(
+  Widget questionnaireProgress() {
+    final current = (step + 1).clamp(1, 7);
+    return Row(
       children: [
-        for (final (value, title, icon) in [
-          (false, '问答创建', Icons.forum_outlined),
-          (true, '快速生成', Icons.auto_fix_high_outlined),
-        ])
-          Expanded(
-            child: TextButton(
-              key: ValueKey(
-                value ? 'resume-mode-quick' : 'resume-mode-questions',
-              ),
-              onPressed: submission.submitting
-                  ? null
-                  : () => setState(() {
-                      quick = value;
-                      error = null;
-                    }),
-              style: TextButton.styleFrom(
-                foregroundColor: quick == value ? accent : context.colors.ink,
-                backgroundColor: quick == value
-                    ? context.colors.surface
-                    : Colors.transparent,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 14,
-                  horizontal: 8,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(11),
-                ),
-              ).withoutHover(),
-              child: Wrap(
-                alignment: WrapAlignment.center,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 6,
-                children: [
-                  Icon(icon, size: 21),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
+        Text(
+          '问答进度',
+          style: TextStyle(fontSize: 12, color: context.colors.muted),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: current / 7,
+              minHeight: 4,
+              color: accent,
+              backgroundColor: context.colors.border,
             ),
           ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '$current/7',
+          style: TextStyle(
+            fontSize: 12,
+            color: accent,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
+    );
+  }
+
+  InputDecoration compactField(String hint) => InputDecoration(
+    hintText: hint,
+    hintStyle: TextStyle(
+      fontSize: 13,
+      height: 1.55,
+      color: context.colors.muted,
+    ),
+    filled: true,
+    fillColor: context.colors.inset,
+    isDense: true,
+    contentPadding: const EdgeInsets.all(12),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide.none,
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide.none,
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: accent, width: 1.2),
     ),
   );
 
-  Widget quickForm() => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+  /// Content-width option used for multi-select answers.
+  Widget pill(
+    String label, {
+    required bool selected,
+    required VoidCallback? onTap,
+    IconData? icon,
+  }) => Material(
+    color: selected ? soft : context.colors.inset,
+    shape: StadiumBorder(
+      side: BorderSide(
+        color: selected ? accent : Colors.transparent,
+        width: 1.2,
+      ),
+    ),
+    child: InkWell(
+      customBorder: const StadiumBorder(),
+      onTap: submission.submitting ? null : onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              '聊聊你的经历，AI帮你整理成简历',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('resume-assistance-description'),
-              controller: description,
-              enabled: !submission.submitting,
-              minLines: 8,
-              maxLines: 16,
-              maxLength: 5000,
-              keyboardType: TextInputType.multiline,
-              decoration: const InputDecoration(
-                hintText: '可以写求职岗位、教育背景、工作或实习经历。\n\n项目写清：为什么做、你负责什么、怎样推进、取得了哪些实际成果。\n\n还可以补充姓名、邮箱和已取得的证书。至少10字。',
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                filled: false,
-                contentPadding: EdgeInsets.zero,
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: selected ? accent : context.colors.muted,
+              ),
+              const SizedBox(width: 4),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.3,
+                  color: selected ? accent : context.colors.ink,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
               ),
             ),
-            referenceControl(),
           ],
         ),
       ),
-      const SizedBox(height: 18),
-      Text(
-        '试试这样开始',
-        style: TextStyle(fontSize: 13, color: context.colors.muted),
-      ),
-      const SizedBox(height: 10),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final (label, text) in [
-            ('零经验 · 市场营销实习', '我是市场营销专业在校生，希望寻找市场营销实习。请结合我的课程和校园活动经历整理简历：'),
-            ('应届生 · 产品经理', '我是应届毕业生，求职方向是产品经理。我的专业、课程项目和实习经历如下：'),
-            ('职场人 · 新媒体运营', '我希望应聘新媒体运营，有以下工作和项目经历。项目目标、我的具体工作和实际成果是：'),
-            ('开发工程师 · 项目经历', '我希望应聘开发工程师。以下是我参与的项目、使用的技术、负责的模块和解决的问题：'),
-          ])
-            ActionChip(
-              label: Text(label),
-              onPressed: submission.submitting
-                  ? null
-                  : () {
-                      description.text = text;
-                      description.selection = TextSelection.collapsed(
-                        offset: text.length,
-                      );
-                    },
-            ),
-        ],
-      ),
-    ],
+    ),
   );
 
   Widget questionnaire() => Column(
@@ -459,13 +413,10 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
-              final largeText = MediaQuery.textScalerOf(context).scale(14) > 22;
-              final width = largeText
-                  ? constraints.maxWidth
-                  : (constraints.maxWidth - 20) / 3;
+              final width = gridItemWidth(context, constraints, 3);
               return Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (final (title, imageAsset) in [
                     ('在校生', 'assets/resume_ai/identity-student.webp'),
@@ -622,55 +573,57 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
             style: TextStyle(
               color: context.colors.muted,
               fontSize: 12,
-              height: 1.6,
+              height: 1.5,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           TextField(
             key: const ValueKey('resume-assistance-additional'),
             controller: additional,
-            minLines: 7,
-            maxLines: 14,
+            minLines: 5,
+            maxLines: 12,
             maxLength: 3000,
             keyboardType: TextInputType.multiline,
-            decoration: InputDecoration(
-              hintText: '写写你的工作、实习或项目经历。\n\n项目背景与目标：\n我负责的工作与具体行动：\n实际成果或反馈：\n\n也可以补充姓名、邮箱、学校和起止时间。',
-              fillColor: context.colors.inset,
-              contentPadding: const EdgeInsets.all(14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: context.colors.border),
-              ),
+            style: const TextStyle(fontSize: 14, height: 1.55),
+            decoration: compactField(
+              '写写你的工作、实习或项目经历。\n\n项目背景与目标：\n我负责的工作与具体行动：\n实际成果或反馈：\n\n也可以补充姓名、邮箱、学校和起止时间。',
             ),
           ),
           referenceControl(),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.auto_awesome_outlined, color: accent, size: 20),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(
-                  '推荐词：${resumeProjectPrompts(answers.position)[prompt % 3]}',
-                  style: TextStyle(color: accent, height: 1.6),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 4, 2, 4),
+            decoration: BoxDecoration(
+              color: soft,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome_outlined, color: accent, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '推荐词：${resumeProjectPrompts(answers.position)[prompt % 3]}',
+                    style: TextStyle(color: accent, fontSize: 13, height: 1.5),
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: '换一个提示',
-                onPressed: () => setState(() => prompt++),
-                icon: Icon(Icons.refresh, color: accent),
-              ),
-            ],
+                IconButton(
+                  tooltip: '换一个提示',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setState(() => prompt++),
+                  icon: Icon(Icons.refresh, color: accent, size: 18),
+                ),
+              ],
+            ),
           ),
         ],
       ),
       Padding(
-        padding: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.only(top: 2),
         child: Text(
           '已收到你的信息，点击生成简历',
           textAlign: TextAlign.center,
-          style: TextStyle(color: context.colors.muted, fontSize: 13),
+          style: TextStyle(color: context.colors.muted, fontSize: 12),
         ),
       ),
     ];
@@ -732,45 +685,62 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     String title, {
     required List<Widget> children,
     VoidCallback? skip,
-  }) => Container(
-    key: questionKeys[index],
-    margin: const EdgeInsets.only(bottom: 16),
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: context.colors.surface,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text(
-                '${index + 1}/7',
-                style: TextStyle(color: accent, fontSize: 14),
+  }) {
+    final done = step > index;
+    return Container(
+      key: questionKeys[index],
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: done ? soft : accent,
+                ),
+                child: done
+                    ? Icon(Icons.check_rounded, size: 14, color: accent)
+                    : Text(
+                        '${index + 1}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: context.isDark ? Colors.black : Colors.white,
+                        ),
+                      ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  height: 1.45,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    height: 1.4,
+                    color: context.colors.ink,
+                  ),
                 ),
               ),
-            ),
-            if (skip != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: InkWell(
+              if (skip != null)
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
                   onTap: submission.submitting ? null : skip,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
                     child: Text(
                       '跳过',
                       style: TextStyle(
@@ -780,37 +750,55 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  /// The confirmed answer, shown as a quiet line under its question.
+  Widget bubble(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 4, 14),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(Icons.subdirectory_arrow_right, size: 16, color: accent),
         ),
-        const SizedBox(height: 18),
-        ...children,
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 13, height: 1.45, color: accent),
+          ),
+        ),
       ],
     ),
   );
 
-  Widget bubble(String text) => Align(
-    alignment: Alignment.centerRight,
-    child: Container(
-      margin: const EdgeInsets.only(left: 26, bottom: 22),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: context.isDark
-              ? [const Color(0xFF233456), const Color(0xFF1F2E52)]
-              : [const Color(0xFFDCE9FF), const Color(0xFFC9DCFF)],
-        ),
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 15, height: 1.5, color: context.colors.ink),
-      ),
+  /// Width of one cell in an 8pt-gapped grid; large text gets a single
+  /// full-width column.
+  double gridItemWidth(
+    BuildContext context,
+    BoxConstraints constraints,
+    int columns,
+  ) => MediaQuery.textScalerOf(context).scale(14) > 22
+      ? constraints.maxWidth
+      : (constraints.maxWidth - 8 * (columns - 1)) / columns;
+
+  Widget bottomBar(Widget child) => SafeArea(
+    top: false,
+    minimum: const EdgeInsets.fromLTRB(
+      appPageHorizontalPadding,
+      8,
+      appPageHorizontalPadding,
+      10,
     ),
+    child: child,
   );
 
   Widget choiceGrid(
@@ -819,13 +807,10 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     void Function(String) pick,
   ) => LayoutBuilder(
     builder: (context, constraints) {
-      final largeText = MediaQuery.textScalerOf(context).scale(14) > 22;
-      final width = largeText
-          ? constraints.maxWidth
-          : (constraints.maxWidth - 12) / 2;
+      final width = gridItemWidth(context, constraints, 2);
       return Wrap(
-        spacing: 12,
-        runSpacing: 12,
+        spacing: 8,
+        runSpacing: 8,
         children: [
           for (final value in values)
             SizedBox(
@@ -842,95 +827,153 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     bool selected,
     VoidCallback action, {
     String? imageAsset,
-  }) => TextButton(
-    onPressed: submission.submitting ? null : action,
-    style: TextButton.styleFrom(
-      foregroundColor: selected ? accent : context.colors.ink,
-      backgroundColor: selected
-          ? soft
-          : context.colors.inset.withValues(alpha: .65),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 17),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: selected
-              ? accent.withValues(alpha: .18)
-              : context.colors.border,
+  }) => Material(
+    color: selected ? soft : context.colors.inset,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: BorderSide(
+        color: selected ? accent : Colors.transparent,
+        width: 1.2,
+      ),
+    ),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: submission.submitting ? null : action,
+      child: Padding(
+        padding: imageAsset == null
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 11)
+            : const EdgeInsets.fromLTRB(6, 8, 6, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (imageAsset != null) ...[
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Image.asset(
+                    imageAsset,
+                    height: 64,
+                    width: 64,
+                    cacheWidth: 256,
+                    fit: BoxFit.contain,
+                    excludeFromSemantics: true,
+                  ),
+                  if (selected)
+                    Positioned(
+                      right: -10,
+                      top: -2,
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: accent,
+                        ),
+                        child: Icon(
+                          Icons.check_rounded,
+                          size: 12,
+                          color: context.isDark ? Colors.black : Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+            ],
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? accent : context.colors.ink,
+              ),
+            ),
+          ],
         ),
       ),
-    ).withoutHover(),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (imageAsset != null) ...[
-          Image.asset(
-            imageAsset,
-            height: 100,
-            width: 100,
-            cacheWidth: 400,
-            fit: BoxFit.contain,
-            excludeFromSemantics: true,
-          ),
-          const SizedBox(height: 12),
-        ],
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-        ),
-      ],
     ),
   );
 
-  Widget searchEntry(String hint, VoidCallback action, {Key? key}) =>
-      OutlinedButton.icon(
-        key: key,
-        onPressed: submission.submitting ? null : action,
-        style: OutlinedButton.styleFrom(
-          alignment: Alignment.centerLeft,
-          foregroundColor: context.colors.muted,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
-          side: BorderSide(color: accent),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+  Widget searchEntry(String hint, VoidCallback action, {Key? key}) => Material(
+    key: key,
+    color: context.colors.inset,
+    borderRadius: BorderRadius.circular(10),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: submission.submitting ? null : action,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Row(
+          children: [
+            Icon(Icons.search, size: 19, color: context.colors.muted),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                hint,
+                style: TextStyle(fontSize: 14, color: context.colors.muted),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: context.colors.muted,
+            ),
+          ],
         ),
-        icon: const Icon(Icons.search),
-        label: Text(hint),
-      );
+      ),
+    ),
+  );
 
   Widget multiChoices(_AnswerTags kind, List<String> defaults) {
     final selected = tagSelection(kind);
     final options = {...defaults, ...selected}.toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: [
-        choiceGrid(
-          options
-              .map((value) => '${selected.contains(value) ? '✓' : '＋'} $value')
-              .toList(),
-          (value) => selected.contains(value.substring(2)),
-          (display) {
-            final value = display.substring(2);
-            if (!selected.contains(value) && selected.length >= 12) {
-              toast(context, '最多选择12项');
-              return;
-            }
-            setState(() {
-              selected.contains(value)
-                  ? selected.remove(value)
-                  : selected.add(value);
-              confirmTags(kind, false);
-            });
-          },
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => addChoice(kind),
-            icon: Icon(Icons.add, color: accent),
-            label: Text(tagAddLabel(kind), style: TextStyle(color: accent)),
+        for (final value in options)
+          pill(
+            value,
+            selected: selected.contains(value),
+            icon: selected.contains(value)
+                ? Icons.check_rounded
+                : Icons.add_rounded,
+            onTap: () {
+              if (!selected.contains(value) && selected.length >= 12) {
+                toast(context, '最多选择12项');
+                return;
+              }
+              setState(() {
+                selected.contains(value)
+                    ? selected.remove(value)
+                    : selected.add(value);
+                confirmTags(kind, false);
+              });
+            },
+          ),
+        Material(
+          color: Colors.transparent,
+          shape: StadiumBorder(
+            side: BorderSide(color: accent.withValues(alpha: .5)),
+          ),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: submission.submitting ? null : () => addChoice(kind),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.edit_outlined, size: 14, color: accent),
+                  const SizedBox(width: 4),
+                  Text(
+                    tagAddLabel(kind),
+                    style: TextStyle(fontSize: 13, height: 1.3, color: accent),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -938,15 +981,18 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   }
 
   Widget confirmChoices(VoidCallback confirm) => Padding(
-    padding: const EdgeInsets.only(top: 14),
+    padding: const EdgeInsets.only(top: 12),
     child: Align(
       alignment: Alignment.centerRight,
       child: FilledButton(
         style: FilledButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: context.isDark ? Colors.black : Colors.white,
+          backgroundColor: brandBlue,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(72, 34),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-        ),
+        ).withoutHover(),
         onPressed: confirm,
         child: const Text('确认'),
       ),
@@ -958,27 +1004,37 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     onPressed: submission.submitting || !canGenerate ? null : submit,
     style: FilledButton.styleFrom(
       foregroundColor: Colors.white,
-      backgroundColor: const Color(0xFF2867EE),
-      disabledBackgroundColor: accent.withValues(alpha: .3),
-      padding: const EdgeInsets.symmetric(vertical: 17, horizontal: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      backgroundColor: brandBlue,
+      disabledBackgroundColor: brandBlue.withValues(
+        alpha: context.isDark ? .3 : .28,
+      ),
+      disabledForegroundColor: Colors.white.withValues(alpha: .95),
+      minimumSize: const Size.fromHeight(48),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ).withoutHover(),
-    child: Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 8,
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(Icons.auto_fix_high_outlined, size: 24),
-        Text(
-          submission.submitting ? '提交中…' : '生成简历',
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        const Icon(Icons.auto_fix_high_outlined, size: 19),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            submission.submitting
+                ? '提交中…'
+                : canGenerate
+                ? '生成简历'
+                : '完成问答后生成简历',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
         ),
       ],
     ),
   );
 
   Widget errorMessage() => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
+    padding: const EdgeInsets.symmetric(vertical: 10),
     child: Text(
       error!,
       key: const ValueKey('resume-assistance-error'),
@@ -990,70 +1046,133 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     ),
   );
 
-  Widget generatingPage() => Scaffold(
-    backgroundColor: background,
-    appBar: AppPageBar(title: const Text('AI生成简历')),
-    body: SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: appPageHorizontalPadding,
-            vertical: 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!failed && error == null && !delayed)
-                CircularProgressIndicator(color: accent),
-              if (failed) Icon(Icons.refresh, color: accent, size: 44),
-              const SizedBox(height: 24),
-              Text(
-                failed
-                    ? '简历生成未完成'
-                    : delayed
-                    ? '简历仍在生成中'
-                    : jobStatus == 'QUEUED'
-                    ? '已提交，正在等待生成'
-                    : 'AI正在生成简历',
-                style: const TextStyle(
-                  fontSize: 20,
+  Widget generatingPage() {
+    final waiting = !failed && error == null && !delayed;
+    final title = failed
+        ? '简历生成未完成'
+        : delayed
+        ? '简历仍在生成中'
+        : jobStatus == 'QUEUED'
+        ? '已提交，正在等待生成'
+        : 'AI正在生成简历';
+    final subtitle = failed
+        ? '已保留你填写的内容，可返回修改后重新生成'
+        : delayed
+        ? '这次用时较长，可以稍后继续查看结果'
+        : null;
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppPageBar(title: const Text('AI生成简历')),
+      bottomNavigationBar: bottomBar(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (failed)
+              primaryAction(returnToAnswers, '返回修改或重试')
+            else if (error != null || delayed)
+              primaryAction(
+                checking
+                    ? null
+                    : () {
+                        polls = 0;
+                        unawaited(checkJob());
+                      },
+                '继续查看生成结果',
+              ),
+            TextButton(
+              onPressed: () => Navigator.maybePop(context),
+              style: TextButton.styleFrom(
+                foregroundColor: accent,
+                minimumSize: const Size.fromHeight(44),
+                textStyle: const TextStyle(
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
-                textAlign: TextAlign.center,
+              ).withoutHover(),
+              child: Text(failed ? '返回' : '返回，完成后通知我'),
+            ),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(
+              horizontal: appPageHorizontalPadding,
+              vertical: 16,
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: math.max(0, constraints.maxHeight - 32),
               ),
-              const SizedBox(height: 14),
-              Text(
-                '我们会结合你的求职方向，整理工作经历、项目经历和专业技能。\n你可以留在此页查看结果，也可以返回，完成后会通过消息通知你。',
-                style: TextStyle(color: context.colors.muted, height: 1.7),
-                textAlign: TextAlign.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: _ResumeWritingAnimation(
+                      animate: waiting,
+                      failed: failed,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: context.colors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: context.colors.muted,
+                      ),
+                    )
+                  else
+                    _ResumeWritingTips(animate: waiting),
+                  if (!failed) ...[
+                    const SizedBox(height: 18),
+                    Text(
+                      '可以先返回做别的事，完成后会通过消息通知你',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.5,
+                        color: context.colors.muted,
+                      ),
+                    ),
+                  ],
+                  if (error != null && !failed) errorMessage(),
+                ],
               ),
-              if (error != null) errorMessage(),
-              const SizedBox(height: 24),
-              if (failed)
-                FilledButton(
-                  onPressed: returnToAnswers,
-                  child: const Text('返回修改或重试'),
-                )
-              else if (error != null || delayed)
-                FilledButton(
-                  onPressed: checking
-                      ? null
-                      : () {
-                          polls = 0;
-                          unawaited(checkJob());
-                        },
-                  child: const Text('继续查看生成结果'),
-                ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.maybePop(context),
-                child: const Text('返回，完成后通知我'),
-              ),
-            ],
+            ),
           ),
         ),
       ),
-    ),
+    );
+  }
+
+  Widget primaryAction(VoidCallback? onPressed, String label) => FilledButton(
+    onPressed: onPressed,
+    style: FilledButton.styleFrom(
+      foregroundColor: Colors.white,
+      backgroundColor: brandBlue,
+      minimumSize: const Size.fromHeight(48),
+      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ).withoutHover(),
+    child: Text(label),
   );
 
   Future<void> pickReference() async {
@@ -1163,7 +1282,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
             key: const ValueKey('resume-reference-pick'),
             onPressed: submission.submitting ? null : pickReference,
             icon: const Icon(Icons.upload_file_outlined, size: 19),
-            label: Text(quick ? '上传简历作为参考' : '参考文件'),
+            label: const Text('上传参考简历（可选）'),
           ),
         ),
       if (referenceName != null)
@@ -1388,4 +1507,337 @@ class _SearchChoicesState extends State<_SearchChoices> {
       },
     ),
   );
+}
+
+/// Whether the platform asked for reduced motion.
+bool _reduceMotion(BuildContext context) =>
+    MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+/// A resume page writing itself: lines fill in behind a pencil while the
+/// page bobs and sparkles twinkle. Reduced motion shows the finished page.
+class _ResumeWritingAnimation extends StatefulWidget {
+  const _ResumeWritingAnimation({required this.animate, required this.failed});
+  final bool animate, failed;
+
+  @override
+  State<_ResumeWritingAnimation> createState() =>
+      _ResumeWritingAnimationState();
+}
+
+class _ResumeWritingAnimationState extends State<_ResumeWritingAnimation>
+    with SingleTickerProviderStateMixin {
+  late final controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 3600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResumeWritingAnimation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    sync();
+  }
+
+  void sync() {
+    if (widget.animate && !_reduceMotion(context)) {
+      if (!controller.isAnimating) controller.repeat();
+    } else {
+      controller.stop();
+      controller.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: 220,
+        height: 190,
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => CustomPaint(
+            painter: _ResumeWritingPainter(
+              progress: controller.value,
+              moving: controller.isAnimating,
+              accent: widget.failed ? colors.muted : colors.accent,
+              soft: widget.failed ? colors.inset : colors.accentSoft,
+              paper: colors.surface,
+              line: colors.border,
+              ink: colors.ink,
+              shadow: context.isDark
+                  ? Colors.black.withValues(alpha: .4)
+                  : const Color(0x1F2867EE),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResumeWritingPainter extends CustomPainter {
+  _ResumeWritingPainter({
+    required this.progress,
+    required this.moving,
+    required this.accent,
+    required this.soft,
+    required this.paper,
+    required this.line,
+    required this.ink,
+    required this.shadow,
+  });
+  final double progress;
+  final bool moving;
+  final Color accent, soft, paper, line, ink, shadow;
+
+  // Relative widths of the text lines written on the page.
+  static const lines = [.62, .9, .78, .0, .5, .86, .7];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final wave = moving ? math.sin(progress * math.pi * 2) : 0.0;
+    // Soft backdrop blob.
+    canvas.drawCircle(center, 82, Paint()..color = soft);
+
+    // Sparkles twinkle on their own phases around the page.
+    final sparkles = [
+      (const Offset(-86, -56), 9.0, 0.0),
+      (const Offset(84, -40), 7.0, .33),
+      (const Offset(-74, 58), 6.0, .66),
+      (const Offset(90, 52), 10.0, .5),
+    ];
+    for (final (offset, radius, phase) in sparkles) {
+      final pulse = moving
+          ? (math.sin((progress + phase) * math.pi * 4) + 1) / 2
+          : .7;
+      drawSparkle(
+        canvas,
+        center + offset,
+        radius * (.55 + .45 * pulse),
+        Paint()..color = accent.withValues(alpha: .35 + .55 * pulse),
+      );
+    }
+
+    // The page floats gently and leans a little.
+    canvas.save();
+    canvas.translate(center.dx, center.dy + wave * 4);
+    canvas.rotate(-.06 + wave * .015);
+    final page = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset.zero, width: 112, height: 144),
+      const Radius.circular(12),
+    );
+    canvas.drawRRect(
+      page.shift(const Offset(0, 6)),
+      Paint()
+        ..color = shadow
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
+    canvas.drawRRect(page, Paint()..color = paper);
+
+    // Header: avatar and name bar.
+    final left = page.left + 14;
+    canvas.drawCircle(
+      Offset(left + 9, page.top + 22),
+      9,
+      Paint()..color = accent.withValues(alpha: .85),
+    );
+    final bar = Paint()
+      ..color = accent
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 5;
+    canvas.drawLine(
+      Offset(left + 25, page.top + 18),
+      Offset(left + 62, page.top + 18),
+      bar,
+    );
+    canvas.drawLine(
+      Offset(left + 25, page.top + 27),
+      Offset(left + 48, page.top + 27),
+      bar
+        ..color = line
+        ..strokeWidth = 4,
+    );
+
+    // Body lines are written one after another during each cycle; the last
+    // fifth of the cycle holds the finished page before it starts over.
+    final width = page.width - 28;
+    final written = moving ? math.min(1.0, progress / .8) : 1.0;
+    final count = lines.where((w) => w > 0).length;
+    var done = written * count;
+    Offset? pen;
+    for (var index = 0; index < lines.length; index++) {
+      final y = page.top + 48 + index * 12.0;
+      if (lines[index] == 0) {
+        continue;
+      }
+      final full = width * lines[index];
+      canvas.drawLine(
+        Offset(left, y),
+        Offset(left + full, y),
+        Paint()
+          ..color = line
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = 4,
+      );
+      final share = done.clamp(0.0, 1.0);
+      if (share > 0) {
+        final end = Offset(left + full * share, y);
+        canvas.drawLine(
+          Offset(left, y),
+          end,
+          Paint()
+            ..color = index == 3 || index == 4
+                ? accent.withValues(alpha: .8)
+                : ink.withValues(alpha: .55)
+            ..strokeCap = StrokeCap.round
+            ..strokeWidth = 4,
+        );
+        if (share < 1) pen ??= end;
+      }
+      done -= 1;
+    }
+    if (moving && written < 1 && pen != null) drawPencil(canvas, pen);
+    canvas.restore();
+  }
+
+  void drawSparkle(Canvas canvas, Offset c, double r, Paint paint) {
+    final path = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..quadraticBezierTo(c.dx, c.dy, c.dx + r, c.dy)
+      ..quadraticBezierTo(c.dx, c.dy, c.dx, c.dy + r)
+      ..quadraticBezierTo(c.dx, c.dy, c.dx - r, c.dy)
+      ..quadraticBezierTo(c.dx, c.dy, c.dx, c.dy - r)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  void drawPencil(Canvas canvas, Offset tip) {
+    canvas.save();
+    canvas.translate(tip.dx, tip.dy);
+    canvas.rotate(-math.pi / 4);
+    final body = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(8, -4, 30, 8),
+      const Radius.circular(2),
+    );
+    canvas.drawRRect(body, Paint()..color = accent);
+    canvas.drawRect(
+      const Rect.fromLTWH(34, -4, 4, 8),
+      Paint()..color = const Color(0xFFFFB4A8),
+    );
+    final cone = Path()
+      ..moveTo(0, 0)
+      ..lineTo(8, -4)
+      ..lineTo(8, 4)
+      ..close();
+    canvas.drawPath(cone, Paint()..color = const Color(0xFFF6D7A7));
+    canvas.drawCircle(Offset.zero, 1.6, Paint()..color = ink);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_ResumeWritingPainter old) =>
+      old.progress != progress ||
+      old.moving != moving ||
+      old.accent != accent ||
+      old.paper != paper;
+}
+
+/// Light-hearted lines that rotate while the resume is being written.
+class _ResumeWritingTips extends StatefulWidget {
+  const _ResumeWritingTips({required this.animate});
+  final bool animate;
+
+  @override
+  State<_ResumeWritingTips> createState() => _ResumeWritingTipsState();
+}
+
+class _ResumeWritingTipsState extends State<_ResumeWritingTips> {
+  static const tips = [
+    '正在翻阅你的经历，挑出闪光点',
+    '正在把“做过”写成“做成”',
+    '正在给项目成果找准数字',
+    '正在斟酌每一个动词',
+    '正在排版，让 HR 一眼看到重点',
+  ];
+  Timer? timer;
+  int index = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResumeWritingTips oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    sync();
+  }
+
+  void sync() {
+    final run = widget.animate && !_reduceMotion(context);
+    if (run && timer == null) {
+      timer = Timer.periodic(
+        const Duration(milliseconds: 2800),
+        (_) => setState(() => index = (index + 1) % tips.length),
+      );
+    } else if (!run) {
+      timer?.cancel();
+      timer = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: 13,
+      height: 1.5,
+      color: context.colors.muted,
+    );
+    if (_reduceMotion(context) || !widget.animate) {
+      return Text(
+        '正在整理工作经历、项目经历和专业技能',
+        textAlign: TextAlign.center,
+        style: style,
+      );
+    }
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 350),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween(
+            begin: const Offset(0, .35),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: Text(
+        tips[index],
+        key: ValueKey(index),
+        textAlign: TextAlign.center,
+        style: style,
+      ),
+    );
+  }
 }

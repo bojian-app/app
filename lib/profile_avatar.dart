@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'api/bojian_api.dart';
 import 'app_store.dart';
+import 'network_image_cache.dart';
 import 'resume_importer.dart';
 import 'resume_photo.dart';
 
@@ -25,6 +26,10 @@ int assignedAvatar(String accountID) {
   }
   return hash % systemAvatarNames.length;
 }
+
+// One decode size for every avatar placement, so all pages share one entry.
+ImageProvider profileAvatarImage(String url) =>
+    ResizeImage(CachedNetworkImage(url), width: 256, height: 256);
 
 class ProfileAvatar extends StatelessWidget {
   const ProfileAvatar({
@@ -63,11 +68,10 @@ class ProfileAvatar extends StatelessWidget {
               )
             : variant != null || url.isEmpty
             ? fallback
-            : Image.network(
-                url,
+            : Image(
+                image: profileAvatarImage(url),
                 fit: BoxFit.cover,
-                cacheWidth: (size * MediaQuery.devicePixelRatioOf(context))
-                    .ceil(),
+                gaplessPlayback: true,
                 errorBuilder: (_, _, _) => fallback,
               ),
       ),
