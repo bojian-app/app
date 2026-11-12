@@ -370,8 +370,10 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       });
       await tester.pumpAndSettle();
-      expect(find.text('商务设计'), findsOneWidget);
-      expect(find.text('80'), findsOneWidget);
+      // Cards show only the page preview; name and price live on the detail page.
+      final card = find.byType(MarketTemplateArtwork);
+      expect(card, findsOneWidget);
+      expect(find.text('预览生成中'), findsOneWidget);
       expect(find.text('好设计，让重点自然被看见。'), findsNothing);
       expect(find.byType(SliverGrid), findsOneWidget);
       tester.view.physicalSize = const Size(390, 844);
@@ -381,7 +383,7 @@ void main() {
       expect(searchRect.left, appPageHorizontalPadding);
       expect(390 - searchRect.right, appPageHorizontalPadding);
       expect(tester.getTopLeft(find.text('模板市场')).dx, appPageHorizontalPadding);
-      expect(tester.getTopLeft(find.text('商务设计')).dx, appPageHorizontalPadding);
+      expect(tester.getTopLeft(card).dx, appPageHorizontalPadding);
       expect(tester.takeException(), isNull);
       tester.view.physicalSize = const Size(844, 390);
       tester.view.devicePixelRatio = 1;

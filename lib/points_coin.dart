@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 /// The points coin, drawn in code so every size stays crisp. Shared by the
 /// points center and the template market so prices look the same.
 class PointsCoin extends StatelessWidget {
-  const PointsCoin({required this.size});
+  const PointsCoin({super.key, required this.size});
   final double size;
 
   @override

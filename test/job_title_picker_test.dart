@@ -91,9 +91,8 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(tester.widget<TextFormField>(field).controller!.text, '产品经理');
+      // Each section saves on its own; there is no separate editor save.
       await saveResumeSection(tester);
-      await tester.tap(find.byKey(const ValueKey('resume-editor-save')));
-      await tester.pumpAndSettle();
       expect(saved, isTrue);
       expect(
         api.lastMutationBody!['content']['job_expectation']['position'],

@@ -156,9 +156,11 @@ void main() {
         final picker = tester.widget<CupertinoDatePicker>(
           find.byType(CupertinoDatePicker),
         );
+        // Work and project experience share the full-date picker.
+        final fullDate = section == 3 || section == 4;
         expect(
           picker.mode,
-          section == 3
+          fullDate
               ? CupertinoDatePickerMode.date
               : CupertinoDatePickerMode.monthYear,
         );
@@ -167,7 +169,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           tester.widget<TextFormField>(field).controller!.text,
-          section == 3 ? '2023-07-01' : '2023-07',
+          fullDate ? '2023-07-01' : '2023-07',
         );
         await saveResumeSection(tester);
       }

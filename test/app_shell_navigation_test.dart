@@ -87,12 +87,13 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pumpAndSettle();
-      final own = find.byKey(const ValueKey('market-tab-owned'));
-      await tester.ensureVisible(own);
+      // Owned templates moved out of the market tabs; use the last filter.
+      final paid = find.byKey(const ValueKey('market-tab-paid'));
+      await tester.ensureVisible(paid);
       await tester.pumpAndSettle();
-      await tester.tap(own);
+      await tester.tap(paid);
       await tester.pumpAndSettle();
-      expect(find.text('暂无已获取模板'), findsOneWidget);
+      expect(tester.takeException(), isNull);
       addTearDown(tester.view.resetViewInsets);
       tester.view.viewInsets = const FakeViewPadding(bottom: 260);
       await tester.pumpAndSettle();

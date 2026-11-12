@@ -188,18 +188,24 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       });
       await tester.pumpAndSettle();
-      expect(find.text('已购买设计'), findsOneWidget);
+      // Tiles show page previews; the design name is the tile's label.
+      Finder tile(String name) => find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            (widget.properties.label ?? '').startsWith(name),
+      );
+      expect(tile('已购买设计'), findsOneWidget);
       expect(find.text('自己发布的设计'), findsNothing);
-      expect(find.text('未购买设计'), findsNothing);
+      expect(tile('未购买设计'), findsNothing);
       expect(find.text('模板市场'), findsNothing);
       expect(find.text('商务蓝'), findsNothing);
       expect(find.text('简约'), findsNothing);
-      await tester.tap(find.text('标准模板'));
+      await tester.tap(tile('标准模板'));
       await tester.pumpAndSettle();
       expect(api.calls, contains('GetMeTemplates'));
       expect(api.calls, isNot(contains('GetTemplates')));
       expect(api.calls, isNot(contains('PatchResumesId')));
-      expect(find.text('当前使用'), findsOneWidget);
+      expect(find.text('使用中'), findsOneWidget);
       expect(find.text('使用选中模板'), findsOneWidget);
       tester.view.physicalSize = const Size(844, 390);
       tester.view.devicePixelRatio = 1;
@@ -208,7 +214,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(tester.getRect(find.text('使用选中模板')).bottom, lessThan(390));
-      await tester.tap(find.text('已购买设计'));
+      await tester.tap(tile('已购买设计'));
       await tester.pumpAndSettle();
       expect(api.calls, isNot(contains('PatchResumesId')));
       final selection = tester

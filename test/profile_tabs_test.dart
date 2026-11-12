@@ -782,10 +782,10 @@ void main() {
               widget.axisDirection == AxisDirection.down,
         ),
       );
-      await tester.scrollUntilVisible(find.text('加载更多'), 400, scrollable: list);
-      await tester.pumpAndSettle();
+      // Reaching the end of the list loads the next page automatically.
       api.failArticles = true;
-      await tester.tap(find.text('加载更多'));
+      final end = tester.state<ScrollableState>(list).position;
+      end.jumpTo(end.maxScrollExtent);
       await tester.pumpAndSettle();
       tester.state<ScrollableState>(list).position.jumpTo(0);
       await tester.pumpAndSettle();

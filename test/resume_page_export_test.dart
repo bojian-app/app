@@ -64,14 +64,16 @@ void main() {
         final word = await encodeNativeResume(layout, 'DOCX', regular, bold);
         final archive = ZipDecoder().decodeBytes(word);
         final xml = utf8.decode(archive.findFile('word/document.xml')!.content);
+        // Word receives flowing text and paginates it itself, so every line
+        // is present without fixed page breaks or zero margins.
+        expect(xml, contains('<w:footerReference'));
+        expect(xml, contains('工作内容 69'));
+        // Pages stay text; the only pictures are section divider rules.
         expect(
-          RegExp('<w:br w:type="page"/>').allMatches(xml).length,
-          pages.length - 1,
-        );
-        expect(xml, contains('w:top="0" w:right="0" w:bottom="0" w:left="0"'));
-        expect(
-          archive.files.where((f) => f.name.startsWith('word/media/')),
-          isEmpty,
+          archive.files
+              .where((f) => f.name.startsWith('word/media/'))
+              .map((f) => f.name),
+          everyElement(startsWith('word/media/rule')),
         );
         expect(xml, contains('预览一致性'));
         final pdf = await encodeNativeResume(layout, 'PDF', regular, bold);

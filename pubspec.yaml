@@ -92,7 +92,6 @@ flutter:
     - assets/invitation/icons/
     - assets/branding/app_icon.png
     - assets/badges/developer_crystal_v1.webp
-    - assets/login/reading.svg
     - assets/login/happy-cat.svg
     - assets/login/ILLLUSTRATIONS-LICENSE.txt
     - assets/login/OPEN-DOODLES-LICENSE.txt
@@ -104,7 +103,6 @@ flutter:
     - assets/resume_ai/identity-graduate.webp
     - assets/resume_ai/identity-professional.webp
     - assets/templates/
-    - assets/points/rewards-transparent.webp
     - assets/points/coin-3d.webp
     - assets/points/coin-stack.webp
     - assets/points/tasks/publish-material.webp
@@ -112,7 +110,6 @@ flutter:
     - assets/points/tasks/review-material.webp
     - assets/points/tasks/icons/video.svg
     - assets/fonts/OFL.txt
-    - assets/fonts/ChillRound-OFL.txt
     - assets/fonts/resume-sans-regular.ttf
     - assets/fonts/resume-sans-medium.ttf
     - assets/fonts/resume-sans-bold.ttf

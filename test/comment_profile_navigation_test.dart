@@ -198,6 +198,10 @@ void main() {
         api.documents['Get${prefix}IdGuidanceAnnotations'] = {
           'items': [_comment(7, 2), _comment(8, store.userID, parent: 7)],
         };
+        // Article views reload legacy suggestions from the server.
+        api.documents['GetArticlesIdGuidance'] = {
+          'suggestions': [_comment(9, 3), _comment(10, 0)],
+        };
         await tester.pumpWidget(
           MaterialApp(
             theme: appTheme,
@@ -288,6 +292,10 @@ void main() {
       addTearDown(store.dispose);
       api.documents['GetArticlesIdGuidanceAnnotations'] = {
         'items': [_comment(7, 2), _comment(8, 0)],
+      };
+      // Article views reload legacy suggestions from the server.
+      api.documents['GetArticlesIdGuidance'] = {
+        'suggestions': [_comment(9, 3)],
       };
       await tester.pumpWidget(
         MaterialApp(

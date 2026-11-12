@@ -72,8 +72,11 @@ void main() {
       await tester.pump();
       await tester.tap(find.byTooltip('发送评论'));
       await tester.pumpAndSettle();
+      // Comments are queued for moderation instead of joining the story at once.
       expect(api.calls, contains('PostArticlesIdComments'));
-      expect(article.comments.single.content, contains('这份复盘很有用'));
+      final queued = store.contentSubmissions.last;
+      expect(queued['_scope_id'], article.id);
+      expect(queued['content'], contains('这份复盘很有用'));
     },
   );
 

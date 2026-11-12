@@ -162,8 +162,9 @@ void main() {
     await tester.drag(find.byType(ListView).first, const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(focus.hasFocus, isFalse);
+    // Each section saves on its own; there is no separate editor save.
     await saveResumeSection(tester);
-    await tester.tap(find.text('保存'));
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(
       find.bySemanticsLabel(RegExp('简历第.*小简', dotAll: true)),
@@ -186,8 +187,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(editable(tester, field).focusNode.hasFocus, isFalse);
     expect(editable(tester, field).controller.text, isEmpty);
+    // Comments are queued for moderation instead of joining the story at once.
     final page = tester.widget<StoryDetail>(find.byType(StoryDetail));
-    expect(page.story.comments.last.content, contains('收起键盘也不能丢失这段话'));
+    final queued = page.store.contentSubmissions.last;
+    expect(queued['_method'], 'PostArticlesIdComments');
+    expect(queued['_scope_id'], page.story.id);
+    expect(queued['content'], contains('收起键盘也不能丢失这段话'));
     expect(tester.takeException(), isNull);
   });
 
@@ -195,7 +200,12 @@ void main() {
     tester,
   ) async {
     await launch(tester, guest: true);
-    await tester.tap(find.byKey(const ValueKey('discovery-create')));
+    // Writing now starts from the profile's posts tab.
+    await tester.tap(find.byKey(const ValueKey('nav-3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-tab-articles')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-publish-article')));
     await tester.pumpAndSettle();
     final editor = tester.widget<quill.QuillEditor>(
       find.byKey(const ValueKey('composer-body')),

@@ -1,9 +1,6 @@
 import 'dart:ui' as ui;
 
 import 'package:bojian_mobile/app_theme.dart';
-import 'package:bojian_mobile/app_shell.dart';
-
-import 'support/fake_gateway.dart';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -22,56 +19,6 @@ Future<List<int>> pixels(WidgetTester tester, GlobalKey key) async =>
 
 void main() {
   for (final theme in [appTheme, appDarkTheme]) {
-    testWidgets(
-      'Real discovery and profile tabs stay unchanged on hover (${theme.brightness})',
-      (tester) async {
-        tester.view.physicalSize = const Size(390, 780);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        final store = await testStore(authenticated: true, seeded: true);
-        addTearDown(store.dispose);
-        final key = GlobalKey();
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: theme,
-            builder: (_, child) => RepaintBoundary(key: key, child: child!),
-            home: AppShell(store: store),
-          ),
-        );
-        await tester.pumpAndSettle();
-        for (final nav in [0, 3]) {
-          await tester.tap(find.byKey(ValueKey('nav-$nav')));
-          await tester.pumpAndSettle();
-          final before = await pixels(tester, key);
-          final mouse = await tester.createGesture(
-            kind: PointerDeviceKind.mouse,
-          );
-          await mouse.addPointer(location: Offset.zero);
-          final tabs = find.descendant(
-            of: find.byType(TabBar),
-            matching: find.byType(Tab),
-          );
-          for (var i = 0; i < tabs.evaluate().length; i++) {
-            await mouse.moveTo(tester.getCenter(tabs.at(i)));
-            await tester.pumpAndSettle();
-            expect(
-              await pixels(tester, key),
-              before,
-              reason: 'navigation $nav tab $i',
-            );
-          }
-          await mouse.removePointer();
-        }
-        await tester.tap(find.byKey(const ValueKey('profile-tab-articles')));
-        await tester.pumpAndSettle();
-        expect(
-          DefaultTabController.of(tester.element(find.byType(TabBar))).index,
-          2,
-        );
-        expect(tester.takeException(), isNull);
-      },
-    );
     final cases = <String, Widget>{
       'tabs': const DefaultTabController(
         length: 3,

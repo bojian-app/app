@@ -4,16 +4,18 @@ import 'package:flutter_test/flutter_test.dart';
 Future<void> openResumeSection(WidgetTester tester, int section) async {
   final card = find.byKey(ValueKey('resume-overview-section-$section'));
   if (card.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(
-      card,
-      250,
-      scrollable: find
-          .descendant(
-            of: find.byKey(const ValueKey('resume-modules')),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const ValueKey('resume-modules')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    // The overview may be scrolled past the section, so search from the top.
+    tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+    await tester.pumpAndSettle();
+    if (card.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(card, 250, scrollable: scrollable);
+    }
   }
   await tester.ensureVisible(card);
   await tester.pumpAndSettle();

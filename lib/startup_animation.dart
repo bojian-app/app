@@ -71,51 +71,61 @@ class _StartupAnimationState extends State<StartupAnimation>
     return Scaffold(
       backgroundColor: context.colors.canvas,
       body: SafeArea(
-        child: Center(
-          child: Semantics(
-            label: '博简，正在准备应用',
-            child: ExcludeSemantics(
-              child: AnimatedBuilder(
-                animation: controller,
-                builder: (context, _) {
-                  final t = controller.value;
-                  final title = Curves.easeOutCubic.transform(
-                    _segment(t, .66, .88),
-                  );
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        height: otterSize * 1.62,
-                        child: CustomPaint(
-                          painter: _WaterOtterPainter(
-                            progress: t,
-                            otter: otter?.image,
-                            otterSize: otterSize,
-                            dark: dark,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Opacity(
-                        opacity: title,
-                        child: Transform.translate(
-                          offset: Offset(0, (1 - title) * 10),
-                          child: Text(
-                            '博简',
-                            style: TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 6,
-                              color: context.colors.ink,
+        // Short landscape windows with large text cannot fit the scene, so it
+        // scales down as a whole instead of overflowing; it never scales up.
+        child: LayoutBuilder(
+          builder: (context, constraints) => Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: SizedBox(
+                width: constraints.maxWidth,
+                child: Semantics(
+                  label: '博简，正在准备应用',
+                  child: ExcludeSemantics(
+                    child: AnimatedBuilder(
+                      animation: controller,
+                      builder: (context, _) {
+                        final t = controller.value;
+                        final title = Curves.easeOutCubic.transform(
+                          _segment(t, .66, .88),
+                        );
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: double.infinity,
+                              height: otterSize * 1.62,
+                              child: CustomPaint(
+                                painter: _WaterOtterPainter(
+                                  progress: t,
+                                  otter: otter?.image,
+                                  otterSize: otterSize,
+                                  dark: dark,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
+                            const SizedBox(height: 8),
+                            Opacity(
+                              opacity: title,
+                              child: Transform.translate(
+                                offset: Offset(0, (1 - title) * 10),
+                                child: Text(
+                                  '博简',
+                                  style: TextStyle(
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 6,
+                                    color: context.colors.ink,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ),
             ),
           ),

@@ -176,15 +176,12 @@ void main() {
             findsOneWidget,
           );
         }
-        expect(find.byKey(const ValueKey('my-articles-search')), findsNothing);
-        expect(find.byType(MyArticlesPage), findsOneWidget);
-        final author = find.byKey(const ValueKey('profile-story-1'));
-        expect(
-          find.descendant(of: author, matching: find.text(store.name)),
-          findsOneWidget,
-        );
-        expect(find.text('已发布'), findsNothing);
-        await capture(tester, 'profile-tabs-${config.name}');
+        // Tabs open on resumes, then saved articles, then the user's posts.
+        expect(find.text('创建简历'), findsNothing);
+        expect(find.text('导入简历'), findsNothing);
+        expect(find.text('找到适合你的模版'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await capture(tester, 'profile-resumes-${config.name}');
         final controller = DefaultTabController.of(
           tester.element(find.byKey(const ValueKey('profile-scroll'))),
         );
@@ -195,11 +192,16 @@ void main() {
         await capture(tester, 'profile-saved-${config.name}');
         controller.animateTo(2);
         await tester.pumpAndSettle();
-        expect(find.text('创建简历'), findsNothing);
-        expect(find.text('导入简历'), findsNothing);
-        expect(find.text('找到适合你的模版'), findsNothing);
+        expect(find.byKey(const ValueKey('my-articles-search')), findsNothing);
+        expect(find.byType(MyArticlesPage), findsOneWidget);
+        final author = find.byKey(const ValueKey('profile-story-1'));
+        expect(
+          find.descendant(of: author, matching: find.text(store.name)),
+          findsOneWidget,
+        );
+        expect(find.text('已发布'), findsNothing);
         expect(tester.takeException(), isNull);
-        await capture(tester, 'profile-resumes-${config.name}');
+        await capture(tester, 'profile-tabs-${config.name}');
         nested.outerController.jumpTo(0);
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('profile-identity-avatar')));

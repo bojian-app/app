@@ -1096,7 +1096,8 @@ class _RegionCommentsState extends State<_RegionComments>
                                 (items == null && groups.isEmpty) ||
                                 groups.isEmpty)
                               SliverFillRemaining(
-                                hasScrollBody: false,
+                                // EmptyState measures its available height and scrolls internally.
+                                hasScrollBody: true,
                                 child: error != null
                                     ? Center(
                                         child: Padding(

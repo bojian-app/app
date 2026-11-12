@@ -270,12 +270,12 @@ void main() {
       final document = tester.state<ResumeDocumentViewState>(
         find.byType(ResumeDocumentView),
       );
-      expect(
-        document.document!.pages
-            .expand((v) => v.ink)
-            .map((v) => v.text.text!.toPlainText()),
-        contains('负责网站开发与性能优化'),
-      );
+      // The submitter immediately sees their own rewrite in place.
+      final ink = document.document!.pages
+          .expand((v) => v.ink)
+          .map((v) => v.text.text!.toPlainText());
+      expect(ink, contains('前端研发'));
+      expect(ink, isNot(contains('负责网站开发与性能优化')));
       expect(tester.takeException(), isNull);
       store.dispose();
     },

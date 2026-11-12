@@ -32,8 +32,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AuthPage), findsOneWidget);
     expect(find.byKey(const ValueKey('startup-session-gate')), findsNothing);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    // Background and return along the lifecycle path a device reports.
+    for (final state in const [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('startup-session-gate')), findsNothing);
     expect(tester.takeException(), isNull);

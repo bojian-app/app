@@ -210,12 +210,19 @@ void main() {
     expect(find.text('删除照片'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('resume-photo-action-delete')));
     await tester.pumpAndSettle();
+    // Saving a section persists it, so the deletion now reaches the server.
     await saveResumeSection(tester);
+    for (var i = 0; i < 5; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pumpAndSettle();
+    }
     await openResumeSection(tester, 0);
     await openPanel();
     expect(find.text('删除照片'), findsNothing);
     expect(find.text('添加照片'), findsOneWidget);
-    expect(gateway.calls, isEmpty);
+    expect(gateway.calls, contains('DeleteResumesIdPhoto'));
     expect(tester.takeException(), isNull);
   });
 

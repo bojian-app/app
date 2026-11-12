@@ -1166,7 +1166,10 @@ void main() {
       expect(card, findsNothing);
       await capture(tester, boundary, 'guidance-scene-keyboard');
       await tap(tester, submit);
-      expect(find.text('我的未提交改写草稿'), findsOneWidget);
+      // Rewrites are queued; a failed send keeps the draft for retry.
+      final queued = store.contentSubmissions.last;
+      expect(queued['replacement'], '我的未提交改写草稿');
+      expect(queued['moderation_status'], 'FAILED');
       expect(find.text('提交给作者确认'), findsNothing);
       expect(
         await store.storage.read(

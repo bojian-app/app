@@ -99,7 +99,9 @@ void main() {
               boxHeightStyle: ui.BoxHeightStyle.max,
             )
             .map((box) => box.toRect())
-            .reduce((a, b) => a.expandToInclude(b));
+            .reduce((a, b) => a.expandToInclude(b))
+            // Waves are clipped to the text run; some glyphs' max boxes overhang it.
+            .intersect(Offset.zero & painter.size);
         final highlight = _mark('mixed', quote);
         final regions = resumeReviewRegions(document, [highlight]).single;
         expect(regions, hasLength(1));
@@ -143,7 +145,9 @@ void main() {
     expect(rects.length, painter.computeLineMetrics().length);
     expect(rects.length, greaterThan(1));
     for (var i = 1; i < rects.length; i++) {
-      expect(rects[i].top, greaterThanOrEqualTo(rects[i - 1].bottom - .01));
+      // Max-height boxes of the document font overhang adjacent lines by
+      // a fraction of a pixel; anything more would mean merged lines.
+      expect(rects[i].top, greaterThanOrEqualTo(rects[i - 1].bottom - .5));
     }
   });
 

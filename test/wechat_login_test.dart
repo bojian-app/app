@@ -3,6 +3,7 @@ import 'package:bojian_mobile/main.dart';
 import 'package:bojian_mobile/wechat_login.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fluwx_no_pay/fluwx_no_pay.dart';
 
@@ -109,6 +110,16 @@ void main() {
       'Native WeChat rejects $condition without accepting an identity',
       (tester) async {
         final sdk = _SDK();
+        // Without WeChat the authorizer opens a store; answer the launcher so
+        // the call cannot wait forever on an unmocked platform channel.
+        final launches = <String>[];
+        const launcher = MethodChannel('plugins.flutter.io/url_launcher');
+        final messenger = tester.binding.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(launcher, (call) async {
+          launches.add((call.arguments as Map)['url'] as String);
+          return false;
+        });
+        addTearDown(() => messenger.setMockMethodCallHandler(launcher, null));
         switch (condition) {
           case 'not-installed':
             sdk.installed = false;
@@ -124,6 +135,7 @@ void main() {
           throwsA(isA<ApiFailure>()),
         );
         expect(sdk.subscriber, isNull);
+        expect(launches, hasLength(condition == 'not-installed' ? 2 : 0));
       },
     );
   }
@@ -371,22 +383,31 @@ void main() {
         await tester.ensureVisible(wechat);
         await tester.tap(wechat);
         await tester.pumpAndSettle();
-        expect(find.text('正在等待微信授权…'), findsOneWidget);
-        expect(tester.widget<FilledButton>(wechat).onPressed, isNull);
-        expect(tester.widget<OutlinedButton>(douyin).onPressed, isNull);
+        // While waiting, both login buttons are disabled; labels stay the same.
+        expect(tester.widget<ButtonStyleButton>(wechat).onPressed, isNull);
+        expect(tester.widget<ButtonStyleButton>(douyin).onPressed, isNull);
 
-        tester.binding.handleAppLifecycleStateChanged(interruption);
-        tester.binding.handleAppLifecycleStateChanged(
-          AppLifecycleState.resumed,
-        );
+        // Walk the same lifecycle path a device reports when leaving and returning.
+        final path = interruption == AppLifecycleState.paused
+            ? const [
+                AppLifecycleState.inactive,
+                AppLifecycleState.hidden,
+                AppLifecycleState.paused,
+                AppLifecycleState.hidden,
+                AppLifecycleState.inactive,
+                AppLifecycleState.resumed,
+              ]
+            : const [AppLifecycleState.inactive, AppLifecycleState.resumed];
+        for (final state in path) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
         await tester.pump(const Duration(seconds: 1));
         await tester.pumpAndSettle();
-        expect(find.text('正在等待微信授权…'), findsNothing);
         expect(find.text('已取消微信登录'), findsNothing);
         expect(find.byKey(const ValueKey('auth-status')), findsNothing);
         expect(find.byKey(const ValueKey('auth-error')), findsNothing);
-        expect(tester.widget<FilledButton>(wechat).onPressed, isNotNull);
-        expect(tester.widget<OutlinedButton>(douyin).onPressed, isNotNull);
+        expect(tester.widget<ButtonStyleButton>(wechat).onPressed, isNotNull);
+        expect(tester.widget<ButtonStyleButton>(douyin).onPressed, isNotNull);
         expect(store.isAuthenticated, isFalse);
         expect(gateway.calls, isNot(contains('WeChatLogin')));
 
@@ -397,7 +418,7 @@ void main() {
         sdk.responseCode = -2;
         sdk.respond();
         await tester.pumpAndSettle();
-        expect(tester.widget<FilledButton>(wechat).onPressed, isNotNull);
+        expect(tester.widget<ButtonStyleButton>(wechat).onPressed, isNotNull);
         expect(tester.takeException(), isNull);
       },
     );

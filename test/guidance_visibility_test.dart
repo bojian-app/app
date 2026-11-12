@@ -73,7 +73,11 @@ void main() {
       );
       expect(view.resume.phone, '13800000000');
       expect(view.reviewHighlights, isEmpty);
-      expect(view.reviewNotes, isEmpty);
+      // Viewers see popular comments inline, but never rewrite cards.
+      expect(
+        view.reviewNotes.map((note) => note.key),
+        everyElement(startsWith('comments:')),
+      );
       expect(view.onAnnotate, isNull);
     },
   );
@@ -131,7 +135,11 @@ void main() {
           ),
           isFalse,
         );
-        expect(view.reviewNotes, isEmpty);
+        // Viewers see popular comments inline, but never rewrite cards.
+        expect(
+          view.reviewNotes.map((note) => note.key),
+          everyElement(startsWith('comments:')),
+        );
         expect(
           view.resume.source['work_experiences'][0]['description'],
           '负责我的改写与性能优化',
@@ -145,13 +153,20 @@ void main() {
         final mark = view.reviewHighlights.singleWhere(
           (mark) => mark.commentCount > 0,
         );
-        await tester.tap(find.byKey(ValueKey('comment-badge-${mark.key}')));
+        // The popular comment card replaces the count badge as the entry.
+        final hot = find.byKey(ValueKey('hot-comment-${mark.key}'));
+        await tester.ensureVisible(hot);
+        await tester.pumpAndSettle();
+        await tester.tap(hot);
         await tester.pumpAndSettle();
         expect(find.text('我的评论'), findsOneWidget);
         expect(find.text('他人的评论'), findsOneWidget);
-        await tester.tap(find.byIcon(Icons.close));
+        await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
-        await tester.tap(find.bySemanticsLabel('选中区域：负责我的改写与性能优化'));
+        final region = find.bySemanticsLabel('选中区域：负责我的改写与性能优化');
+        await tester.ensureVisible(region);
+        await tester.pumpAndSettle();
+        await tester.tap(region);
         await tester.pumpAndSettle();
         expect(find.text('查看评论'), findsOneWidget);
         expect(find.text('参与改写'), findsOneWidget);
@@ -221,8 +236,11 @@ void main() {
       expect(visible(), contains('负责自动化发布'));
       expect(visible(), isNot(contains('旧改写')));
       expect(visible(), isNot(contains('他人改写不可见')));
-      expect(view.reviewNotes, isEmpty);
-      expect(view.reviewNoteBuilder, isNull);
+      // Viewers see popular comments inline, but never rewrite cards.
+      expect(
+        view.reviewNotes.map((note) => note.key),
+        everyElement(startsWith('comments:')),
+      );
       expect(find.text('待采纳'), findsOneWidget);
       expect(find.text('已采纳'), findsOneWidget);
       expect(find.text('未采纳'), findsOneWidget);
@@ -259,10 +277,9 @@ void main() {
       await tester.pump();
       expect(visible(), contains('负责网站开发'));
       expect(visible(), contains('负责自动化发布'));
-      expect(
-        find.byKey(ValueKey('comment-badge-${comment.key}')),
-        findsOneWidget,
-      );
+      // The popular comment card stays while comparing with the original.
+      final hot = find.byKey(ValueKey('hot-comment-${comment.key}'));
+      expect(hot, findsOneWidget);
       expect(find.text('待采纳'), findsOneWidget);
       await gesture.moveBy(const Offset(70, 30));
       await tester.pump();
@@ -270,12 +287,17 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
       expect(visible(), contains('负责前端研发'));
-      await tester.tap(find.byKey(ValueKey('comment-badge-${comment.key}')));
+      await tester.ensureVisible(hot);
+      await tester.pumpAndSettle();
+      await tester.tap(hot);
       await tester.pumpAndSettle();
       expect(find.text('这段评论仍可见'), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.close));
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      await tester.tap(find.bySemanticsLabel('选中区域：负责前端研发'));
+      final region = find.bySemanticsLabel('选中区域：负责前端研发');
+      await tester.ensureVisible(region);
+      await tester.pumpAndSettle();
+      await tester.tap(region);
       await tester.pumpAndSettle();
       await tester.tap(find.text('参与改写'));
       await tester.pumpAndSettle();

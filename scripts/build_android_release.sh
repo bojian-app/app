@@ -10,7 +10,12 @@ mkdir -p "$release_dir/symbols"
   --dart-define=BOJIAN_ENV=production \
   --split-debug-info="$release_dir/symbols" \
   -P force-version-code-ignoring-abi=true "$@"
-for abi in armeabi-v7a arm64-v8a x86_64; do
+# Phones install arm64; set ARCHIVE_ALL_ABIS=1 to also archive armeabi-v7a and x86_64.
+abis=arm64-v8a
+if [ "${ARCHIVE_ALL_ABIS:-0}" = 1 ]; then
+  abis="armeabi-v7a arm64-v8a x86_64"
+fi
+for abi in $abis; do
   cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "$release_dir/"
 done
 printf 'Release APKs and matching Dart symbols: %s\n' "$release_dir"

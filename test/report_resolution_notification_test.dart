@@ -42,8 +42,8 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text(entry.value));
         await tester.pumpAndSettle();
-        expect(find.text('举报处理结果'), findsOneWidget);
-        expect(find.byType(SelectableText), findsOneWidget);
+        // The full result reads inline in the list; there is no detail sheet.
+        expect(find.text('经核查，相关内容已处理。处理说明：测试说明'), findsOneWidget);
         expect(store.inbox.single.read, isTrue);
         expect(api.calls, isNot(contains('GetArticlesId')));
         expect(tester.takeException(), isNull);

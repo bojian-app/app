@@ -187,15 +187,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('小林'), findsNWidgets(2));
       expect(find.text('我的面试复盘'), findsOneWidget);
-      api.failure = 'profile';
-      await tester.drag(
-        find.byKey(const ValueKey('public-profile-scroll')),
-        const Offset(0, 400),
-      );
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pumpAndSettle();
-      expect(find.byType(ProfileHeader), findsNothing);
-      expect(find.text('我的面试复盘'), findsNothing);
+      // Public profiles no longer offer pull-to-refresh, so there is no
+      // in-place reload to hide a profile that later becomes unavailable.
     },
   );
 

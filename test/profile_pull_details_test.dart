@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -108,7 +109,14 @@ Future<void> pull(WidgetTester tester, double amount) async {
 }
 
 Future<void> openDetails(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('profile-about-summary')));
+  final summary = tester.getRect(
+    find.byKey(const ValueKey('profile-about-summary')),
+  );
+  // In short landscape windows the summary straddles the fold; tap the part
+  // on screen without scrolling, which would collapse the header.
+  final height = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+  final bottom = math.min(summary.bottom, height);
+  await tester.tapAt(Offset(summary.center.dx, (summary.top + bottom) / 2));
   await tester.pumpAndSettle();
 }
 

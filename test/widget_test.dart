@@ -72,7 +72,8 @@ void main() {
     expect(store.isAuthenticated, isFalse);
     expect(api.calls, contains('PostAuthLogout'));
     expect(find.byKey(const ValueKey('auth-wechat')), findsOneWidget);
-    expect(find.byKey(const ValueKey('auth-phone')), findsNothing);
+    // The signed-out page offers phone sign-in alongside the third-party apps.
+    expect(find.byKey(const ValueKey('auth-phone')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -218,8 +219,9 @@ void main() {
     await tester.pumpAndSettle();
     await openResumeSection(tester, 0);
     await tester.enterText(find.byKey(const ValueKey('resume-name')), '李明');
+    // Each section saves on its own; there is no separate editor save.
     await saveResumeSection(tester);
-    await tester.tap(find.text('保存'));
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(
       find.bySemanticsLabel(RegExp('简历第.*李明', dotAll: true)),

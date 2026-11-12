@@ -340,7 +340,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     ),
                   if (articles.isEmpty && articleError == null)
                     SliverFillRemaining(
-                      hasScrollBody: false,
+                      // EmptyState measures its available height and scrolls internally.
+                      hasScrollBody: true,
                       child: loading
                           ? status('正在加载动态…')
                           : const Center(child: EmptyState('暂时没有公开动态', '')),
