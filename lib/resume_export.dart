@@ -10,7 +10,9 @@ import 'app_icons.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'panel_sheet.dart';
 import 'resume_editor_typography.dart';
+import 'resume_files.dart';
 import 'resume_native_export.dart';
 import 'resume_wechat_share.dart';
 
@@ -175,19 +177,8 @@ class ResumeExporter {
   }
 }
 
-Future<void> clearExportFile(XFile? file) async {
-  if (file == null) return;
-  final directory = File(file.path).parent;
-  if (!directory.path
-      .split(Platform.pathSeparator)
-      .last
-      .startsWith('bojian-resume-export-')) {
-    return;
-  }
-  try {
-    if (await directory.exists()) await directory.delete(recursive: true);
-  } catch (_) {}
-}
+Future<void> clearExportFile(XFile? file) =>
+    deleteTempFileDirectory(file, prefix: 'bojian-resume-export-');
 
 class ResumeExportSheet extends StatefulWidget {
   const ResumeExportSheet({
@@ -317,160 +308,83 @@ class _ResumeExportSheetState extends State<ResumeExportSheet> {
   }
 
   Widget action(String label, AppIconData icon, VoidCallback onPressed) =>
-      TextButton(
-        style: TextButton.styleFrom(
-          foregroundColor: context.colors.ink,
-          minimumSize: const Size.fromHeight(56),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          shape: const RoundedRectangleBorder(),
-          textStyle: ResumeEditorTypography.action,
-        ).withoutHover(),
-        onPressed: busy ? null : onPressed,
-        child: Row(
-          children: [
-            AppIcon(icon, size: 22),
-            const SizedBox(width: 16),
-            Expanded(child: Text(label)),
-          ],
-        ),
-      );
-
-  Widget actionCard(List<Widget> actions) => Material(
-    color: context.colors.surface,
-    borderRadius: BorderRadius.circular(12),
-    clipBehavior: Clip.antiAlias,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < actions.length; i++) ...[
-          if (i > 0)
-            Divider(
-              height: 1,
-              indent: 54,
-              endIndent: 16,
-              color: context.colors.border,
-            ),
-          actions[i],
-        ],
-      ],
-    ),
-  );
+      PanelAction(label: label, icon: icon, onPressed: busy ? null : onPressed);
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) => PanelSheet(
     key: const ValueKey('resume-export-sheet'),
-    color: context.colors.inset,
-    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-    clipBehavior: Clip.antiAlias,
-    child: SafeArea(
-      top: false,
-      child: SizedBox(
-        height: (MediaQuery.sizeOf(context).height * .4).clamp(260, 360),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            children: [
-              Row(
+    title: '下载简历',
+    closeKey: const ValueKey('resume-export-close'),
+    child: SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (file == null && !busy)
+            PanelGroup(
+              children: [
+                action('PDF', AppIcons.pdf, () => generate('PDF')),
+                action('Word', AppIcons.word, () => generate('DOCX')),
+              ],
+            ),
+          if (file == null && busy)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Row(
                 children: [
-                  const SizedBox(width: 48),
-                  const Expanded(
-                    child: Text(
-                      '下载简历',
-                      textAlign: TextAlign.center,
-                      style: ResumeEditorTypography.title,
-                    ),
+                  const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  IconButton(
-                    key: const ValueKey('resume-export-close'),
-                    tooltip: '关闭',
-                    constraints: const BoxConstraints.tightFor(
-                      width: 48,
-                      height: 48,
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                    icon: const AppIcon(AppIcons.close, size: 22),
-                  ),
+                  const SizedBox(width: 16),
+                  Expanded(child: Text(progress)),
                 ],
               ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (file == null && !busy)
-                        actionCard([
-                          action('PDF', AppIcons.pdf, () => generate('PDF')),
-                          action('Word', AppIcons.word, () => generate('DOCX')),
-                        ]),
-                      if (file == null && busy)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Row(
-                            children: [
-                              const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(child: Text(progress)),
-                            ],
-                          ),
-                        ),
-                      if (error != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Text(
-                            error!,
-                            style: const TextStyle(color: Colors.redAccent),
-                          ),
-                        ),
-                      if (file != null) ...[
-                        Text(
-                          file!.name,
-                          style: ResumeEditorTypography.entryTitle,
-                        ),
-                        if (notice != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            notice!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              height: 1.5,
-                              color: context.colors.muted,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        actionCard([
-                          if (Platform.isAndroid)
-                            action(
-                              '发送到微信',
-                              AppIcons.wechat,
-                              () => deliver(save: false, weChat: true),
-                            ),
-                          action(
-                            Platform.isAndroid ? '保存到本机' : '保存到文件',
-                            AppIcons.download,
-                            () => deliver(save: true),
-                          ),
-                          action(
-                            Platform.isAndroid ? '更多分享方式' : '分享文件',
-                            AppIcons.share,
-                            () => deliver(save: false),
-                          ),
-                        ]),
-                      ],
-                    ],
-                  ),
+            ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                error!,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ),
+          if (file != null) ...[
+            Text(file!.name, style: ResumeEditorTypography.entryTitle),
+            if (notice != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                notice!,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: context.colors.muted,
                 ),
               ),
             ],
-          ),
-        ),
+            const SizedBox(height: 12),
+            PanelGroup(
+              children: [
+                if (Platform.isAndroid)
+                  action(
+                    '发送到微信',
+                    AppIcons.wechat,
+                    () => deliver(save: false, weChat: true),
+                  ),
+                action(
+                  Platform.isAndroid ? '保存到本机' : '保存到文件',
+                  AppIcons.download,
+                  () => deliver(save: true),
+                ),
+                action(
+                  Platform.isAndroid ? '更多分享方式' : '分享文件',
+                  AppIcons.share,
+                  () => deliver(save: false),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     ),
   );

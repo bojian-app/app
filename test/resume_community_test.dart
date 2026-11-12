@@ -1,3 +1,4 @@
+import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/guidance_hot_comment.dart';
 import 'package:bojian_mobile/resume_photo_image.dart';
 import 'package:flutter_test/flutter_test.dart';

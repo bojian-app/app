@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/profile_points_card.dart';

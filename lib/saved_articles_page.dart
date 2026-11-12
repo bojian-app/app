@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
 import 'app_store.dart';
+import 'app_search_field.dart';
 import 'design.dart';
 import 'discovery.dart';
 import 'resume_updated_label.dart';
@@ -207,40 +208,12 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                           appPageHorizontalPadding,
                           18,
                         ),
-                        child: TextField(
-                          key: const ValueKey('saved-search'),
+                        child: AppSearchField(
+                          fieldKey: const ValueKey('saved-search'),
                           controller: search,
-                          onChanged: (value) =>
-                              setState(() => query = value.trim()),
-                          onSubmitted: (_) => dismissKeyboard(),
-                          textInputAction: TextInputAction.search,
-                          decoration: InputDecoration(
-                            hintText: '搜索收藏标题',
-                            fillColor: context.colors.surface,
-                            prefixIcon: Padding(
-                              padding: EdgeInsets.all(14),
-                              child: AppIcon(
-                                AppIcons.search,
-                                size: 20,
-                                color: context.colors.muted,
-                              ),
-                            ),
-                            suffixIcon: query.isEmpty
-                                ? null
-                                : IconButton(
-                                    tooltip: '清空搜索',
-                                    onPressed: () {
-                                      search.clear();
-                                      setState(() => query = '');
-                                      dismissKeyboard();
-                                    },
-                                    icon: AppIcon(
-                                      AppIcons.clear,
-                                      size: 18,
-                                      color: context.colors.muted,
-                                    ),
-                                  ),
-                          ),
+                          hintText: '搜索收藏标题',
+                          fillColor: context.colors.surface,
+                          onChanged: (value) => setState(() => query = value),
                         ),
                       ),
                     ),

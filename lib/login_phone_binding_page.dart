@@ -7,8 +7,8 @@ import 'api/generated/auth.pb.dart' as auth;
 import 'app_environment.dart';
 import 'app_page_bar.dart';
 import 'app_store.dart';
-import 'captcha_dialog.dart';
 import 'design.dart';
+import 'sms_code_flow.dart';
 import 'login_widgets.dart';
 
 /// The phone step of a WeChat or Douyin login. No session exists until the
@@ -29,20 +29,21 @@ class LoginPhoneBindingPage extends StatefulWidget {
   State<LoginPhoneBindingPage> createState() => _LoginPhoneBindingPageState();
 }
 
-class _LoginPhoneBindingPageState extends State<LoginPhoneBindingPage> {
+class _LoginPhoneBindingPageState extends State<LoginPhoneBindingPage>
+    with SmsCodeFlow<LoginPhoneBindingPage> {
+  @override
+  AppStore get smsStore => widget.store;
+
+  @override
   final phone = TextEditingController(text: AppEnvironment.defaultTestPhone);
+  @override
   final code = TextEditingController();
   late final int accountEpoch = widget.store.epoch;
-  Timer? resendTimer;
-  int countdown = 0;
-  String? requestedPhone;
-  String? status;
+  @override
   String? error;
-  bool requesting = false;
   bool submitting = false;
 
   bool get busy => requesting || submitting;
-  bool get validPhone => RegExp(r'^1[3-9]\d{9}$').hasMatch(phone.text);
   bool current() =>
       mounted &&
       widget.store.epoch == accountEpoch &&
@@ -50,83 +51,22 @@ class _LoginPhoneBindingPageState extends State<LoginPhoneBindingPage> {
 
   Future<void> requestCode() async {
     if (busy || countdown > 0) return;
-    if (!validPhone) {
-      setState(() => error = '请输入正确的 11 位手机号');
-      return;
-    }
-    final targetPhone = phone.text;
-    dismissKeyboard();
-    setState(() {
-      requesting = true;
-      error = null;
-      status = null;
-    });
-    try {
-      final outcome = await requestSmsCode(
-        context,
-        store: widget.store,
-        phone: targetPhone,
-        current: current,
-        send: (token) {
-          if (!current()) throw const ApiFailure('登录已取消');
-          return widget.store.api.sendSMS(
-            targetPhone,
-            token,
-            widget.store.headers,
-          );
-        },
-      );
-      if (!current() || outcome == null) return;
-      final failure = outcome.error;
-      if (failure != null) {
-        setState(() => error = '$failure');
-        return;
-      }
-      final response = outcome.response!;
-      resendTimer?.cancel();
-      setState(() {
-        requestedPhone = targetPhone;
-        countdown = response.retryAfterSeconds.clamp(1, 3600);
-        status = '短信验证码已发送，请注意查收';
-        final testCode = AppEnvironment.smsTestCode(
+    await sendSmsCode(
+      current: current,
+      send: (targetPhone, token) {
+        if (!current()) throw const ApiFailure('登录已取消');
+        return widget.store.api.sendSMS(
           targetPhone,
-          response.testCode,
+          token,
+          widget.store.headers,
         );
-        if (testCode.isNotEmpty) {
-          code.text = testCode;
-          status = '测试验证码已自动填入，未发送短信';
-        }
-      });
-      final availableAt = DateTime.now().add(Duration(seconds: countdown));
-      resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!current()) {
-          timer.cancel();
-          return;
-        }
-        setState(
-          () => countdown =
-              ((availableAt.difference(DateTime.now()).inMilliseconds + 999) ~/
-                      1000)
-                  .clamp(0, 3600),
-        );
-        if (countdown == 0) timer.cancel();
-      });
-    } catch (e) {
-      if (current()) setState(() => error = '$e');
-    } finally {
-      if (mounted) setState(() => requesting = false);
-    }
+      },
+    );
   }
 
   Future<void> submit() async {
     if (busy) return;
-    final message = !validPhone
-        ? '请输入正确的 11 位手机号'
-        : requestedPhone != phone.text
-        ? '请先获取当前手机号的验证码'
-        : !RegExp(r'^\d{6}$').hasMatch(code.text)
-        ? '请输入 6 位短信验证码'
-        : null;
+    final message = smsSubmitError;
     if (message != null) {
       setState(() => error = message);
       return;
@@ -242,7 +182,6 @@ class _LoginPhoneBindingPageState extends State<LoginPhoneBindingPage> {
 
   @override
   void dispose() {
-    resendTimer?.cancel();
     phone.dispose();
     code.dispose();
     super.dispose();

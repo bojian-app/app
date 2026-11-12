@@ -10,6 +10,7 @@ import 'app_page_bar.dart';
 import 'app_store.dart';
 import 'confirmation_dialog.dart';
 import 'content_moderation.dart';
+import 'form_page_layout.dart';
 import 'design.dart';
 
 class ResumePostComposer extends StatefulWidget {
@@ -142,89 +143,51 @@ class _ResumePostComposerState extends State<ResumePostComposer> {
           icon: const AppIcon(AppIcons.back, size: 22),
         ),
       ),
-      body: SafeArea(
-        top: false,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      appPageHorizontalPadding,
-                      20,
-                      appPageHorizontalPadding,
-                      24,
-                    ),
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    children: [
-                      TextField(
-                        key: const ValueKey('resume-post-content'),
-                        controller: content,
-                        enabled: !publishing,
-                        minLines: 6,
-                        maxLines: 12,
-                        maxLength: 1000,
-                        maxLengthEnforcement:
-                            MaxLengthEnforcement.truncateAfterCompositionEnds,
-                        style: const TextStyle(fontSize: 15, height: 1.6),
-                        decoration: const InputDecoration(
-                          hintText: ResumePostComposer.defaultText,
-                          counterText: '',
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                      if (error != null) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          error!,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    appPageHorizontalPadding,
-                    12,
-                    appPageHorizontalPadding,
-                    20,
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      key: const ValueKey('resume-post-submit'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      onPressed: publishing ? null : publish,
-                      child: Text(publishing ? '发表中…' : '发表'),
-                    ),
-                  ),
-                ),
-              ],
+      body: FormPageLayout(
+        contentPadding: const EdgeInsets.fromLTRB(
+          appPageHorizontalPadding,
+          20,
+          appPageHorizontalPadding,
+          24,
+        ),
+        action: PrimaryActionButton(
+          buttonKey: const ValueKey('resume-post-submit'),
+          label: publishing ? '发表中…' : '发表',
+          onPressed: publishing ? null : publish,
+        ),
+        children: [
+          TextField(
+            key: const ValueKey('resume-post-content'),
+            controller: content,
+            enabled: !publishing,
+            minLines: 6,
+            maxLines: 12,
+            maxLength: 1000,
+            maxLengthEnforcement:
+                MaxLengthEnforcement.truncateAfterCompositionEnds,
+            style: const TextStyle(fontSize: 15, height: 1.6),
+            decoration: const InputDecoration(
+              hintText: ResumePostComposer.defaultText,
+              counterText: '',
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
             ),
           ),
-        ),
+          if (error != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              error!,
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ],
+        ],
       ),
     ),
   );

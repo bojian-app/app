@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'app_icons.dart';
 import 'app_page_bar.dart';
 import 'app_store.dart';
+import 'form_page_layout.dart';
 import 'design.dart';
 import 'profile_avatar.dart';
 import 'user_display_name.dart';
@@ -330,184 +331,137 @@ class _ResumeUserShareState extends State<ResumeUserShare> {
     child: Scaffold(
       backgroundColor: context.colors.surface,
       appBar: AppPageBar(title: const Text('分享给指定用户')),
-      body: SafeArea(
-        top: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
+      body: FormPageLayout(
+        contentPadding: const EdgeInsets.fromLTRB(
+          appPageHorizontalPadding,
+          24,
+          appPageHorizontalPadding,
+          20,
+        ),
+        action: PrimaryActionButton(
+          buttonKey: const ValueKey('resume-user-share-submit'),
+          label: sending ? '正在分享…' : '分享简历',
+          onPressed: sending || selected == null ? null : submit,
+        ),
+        children: [
+          fieldLabel('接收人'),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('resume-share-user-id'),
+            controller: userID,
+            enabled: !sending,
+            maxLength: 80,
+            maxLengthEnforcement:
+                MaxLengthEnforcement.truncateAfterCompositionEnds,
+            keyboardType: TextInputType.text,
+            autocorrect: true,
+            enableSuggestions: true,
+            textInputAction: TextInputAction.next,
+            style: const TextStyle(fontSize: 14, height: 1.4),
+            decoration: InputDecoration(
+              hintText: '选择接收人',
+              counterText: '',
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              prefixIconConstraints: const BoxConstraints.tightFor(
+                width: 44,
+                height: 48,
+              ),
+              prefixIcon: Center(
+                child: AppIcon(
+                  AppIcons.search,
+                  size: 18,
+                  color: context.colors.muted,
+                ),
+              ),
+              suffixIcon: loading
+                  ? const SizedBox(
+                      width: 44,
+                      child: Center(
+                        widthFactor: 1,
+                        heightFactor: 1,
+                        child: SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 1.5),
+                        ),
+                      ),
+                    )
+                  : userID.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: '清空搜索',
+                      onPressed: sending ? null : clearRecipient,
+                      icon: AppIcon(
+                        AppIcons.close,
+                        size: 16,
+                        color: context.colors.muted,
+                      ),
+                    ),
+            ),
+          ),
+          searchFeedback(),
+          const SizedBox(height: 32),
+          fieldLabel('备注'),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: context.colors.inset,
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Column(
               children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      appPageHorizontalPadding,
-                      24,
-                      appPageHorizontalPadding,
-                      20,
-                    ),
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    children: [
-                      fieldLabel('接收人'),
-                      const SizedBox(height: 12),
-                      TextField(
-                        key: const ValueKey('resume-share-user-id'),
-                        controller: userID,
-                        enabled: !sending,
-                        maxLength: 80,
-                        maxLengthEnforcement:
-                            MaxLengthEnforcement.truncateAfterCompositionEnds,
-                        keyboardType: TextInputType.text,
-                        autocorrect: true,
-                        enableSuggestions: true,
-                        textInputAction: TextInputAction.next,
-                        style: const TextStyle(fontSize: 14, height: 1.4),
-                        decoration: InputDecoration(
-                          hintText: '选择接收人',
-                          counterText: '',
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                          prefixIconConstraints: const BoxConstraints.tightFor(
-                            width: 44,
-                            height: 48,
-                          ),
-                          prefixIcon: Center(
-                            child: AppIcon(
-                              AppIcons.search,
-                              size: 18,
-                              color: context.colors.muted,
-                            ),
-                          ),
-                          suffixIcon: loading
-                              ? const SizedBox(
-                                  width: 44,
-                                  child: Center(
-                                    widthFactor: 1,
-                                    heightFactor: 1,
-                                    child: SizedBox.square(
-                                      dimension: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 1.5,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : userID.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: '清空搜索',
-                                  onPressed: sending ? null : clearRecipient,
-                                  icon: AppIcon(
-                                    AppIcons.close,
-                                    size: 16,
-                                    color: context.colors.muted,
-                                  ),
-                                ),
-                        ),
-                      ),
-                      searchFeedback(),
-                      const SizedBox(height: 32),
-                      fieldLabel('备注'),
-                      const SizedBox(height: 12),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: context.colors.inset,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            TextField(
-                              key: const ValueKey('resume-share-remark'),
-                              controller: remark,
-                              enabled: !sending,
-                              minLines: 3,
-                              maxLines: 6,
-                              maxLength: 1000,
-                              style: const TextStyle(fontSize: 14, height: 1.6),
-                              decoration: const InputDecoration(
-                                hintText: ResumeUserShare.defaultRemark,
-                                counterText: '',
-                                filled: false,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
-                                contentPadding: EdgeInsets.fromLTRB(
-                                  16,
-                                  14,
-                                  16,
-                                  8,
-                                ),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: ValueListenableBuilder<TextEditingValue>(
-                                  valueListenable: remark,
-                                  builder: (_, value, _) => Text(
-                                    '${value.text.characters.length}/1000',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: context.colors.muted,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (sendError != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Text(
-                            sendError!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                          ),
-                        ),
-                    ],
+                TextField(
+                  key: const ValueKey('resume-share-remark'),
+                  controller: remark,
+                  enabled: !sending,
+                  minLines: 3,
+                  maxLines: 6,
+                  maxLength: 1000,
+                  style: const TextStyle(fontSize: 14, height: 1.6),
+                  decoration: const InputDecoration(
+                    hintText: ResumeUserShare.defaultRemark,
+                    counterText: '',
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.fromLTRB(16, 14, 16, 8),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    appPageHorizontalPadding,
-                    12,
-                    appPageHorizontalPadding,
-                    20,
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      key: const ValueKey('resume-user-share-submit'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        disabledBackgroundColor: context.colors.accentSoft,
-                        disabledForegroundColor: context.colors.accent
-                            .withValues(alpha: .5),
-                        textStyle: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: remark,
+                      builder: (_, value, _) => Text(
+                        '${value.text.characters.length}/1000',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.colors.muted,
                         ),
                       ),
-                      onPressed: sending || selected == null ? null : submit,
-                      child: Text(sending ? '正在分享…' : '分享简历'),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-        ),
+          if (sendError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                sendError!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+        ],
       ),
     ),
   );

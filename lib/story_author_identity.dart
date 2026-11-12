@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'app_store.dart';
 import 'design.dart';
+import 'profile_avatar.dart';
+import 'user_profile_page.dart';
 
 /// The public location comes from the author's authenticated IP lookup.
 class StoryAuthorIdentity extends StatelessWidget {
@@ -74,4 +76,58 @@ class StoryAuthorIdentity extends StatelessWidget {
       );
     },
   );
+}
+
+/// Author avatar on feed cards; opens the author's profile when allowed.
+class StoryAuthorAvatar extends StatelessWidget {
+  const StoryAuthorAvatar({
+    super.key,
+    required this.story,
+    required this.store,
+    required this.size,
+    this.flat = false,
+    this.name,
+    this.avatarURL,
+    this.navigationEnabled = true,
+  });
+
+  final Story story;
+  final AppStore store;
+  final double size;
+  final bool flat;
+  final String? name, avatarURL;
+  final bool navigationEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final canOpen =
+        navigationEnabled &&
+        story.authorID > 0 &&
+        story.authorID != store.userID;
+    return Semantics(
+      button: canOpen,
+      label: '${name ?? story.author}的头像',
+      child: InkWell(
+        key: ValueKey('story-author-avatar-${story.id}'),
+        borderRadius: BorderRadius.circular(13),
+        onTap: canOpen
+            ? () => openPage(
+                context,
+                UserProfilePage(store: store, userID: story.authorID),
+              )
+            : null,
+        child: Padding(
+          // Flat cards start the avatar on the text edge.
+          padding: flat
+              ? const EdgeInsets.fromLTRB(0, 7, 7, 7)
+              : const EdgeInsets.all(4),
+          child: ProfileAvatar(
+            seed: story.authorID > 0 ? '${story.authorID}' : story.author,
+            url: avatarURL ?? story.authorAvatarURL,
+            size: size,
+          ),
+        ),
+      ),
+    );
+  }
 }

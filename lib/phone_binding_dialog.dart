@@ -6,9 +6,9 @@ import 'package:flutter/services.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'app_environment.dart';
-import 'captcha_dialog.dart';
 import 'confirmation_dialog.dart';
 import 'design.dart';
+import 'sms_code_flow.dart';
 
 final _activeBindingDialogs = Expando<Future<bool?>>();
 
@@ -34,16 +34,18 @@ class PhoneBindingDialog extends StatefulWidget {
   State<PhoneBindingDialog> createState() => _PhoneBindingDialogState();
 }
 
-class _PhoneBindingDialogState extends State<PhoneBindingDialog> {
+class _PhoneBindingDialogState extends State<PhoneBindingDialog>
+    with SmsCodeFlow<PhoneBindingDialog> {
+  @override
+  AppStore get smsStore => widget.store;
+
+  @override
   final phone = TextEditingController(text: AppEnvironment.defaultTestPhone);
+  @override
   final code = TextEditingController();
   late final int accountEpoch;
-  Timer? timer;
-  int countdown = 0;
-  String? requestedPhone;
+  @override
   String? error;
-  String? status;
-  bool requesting = false;
   bool submitting = false;
 
   @override
@@ -57,77 +59,21 @@ class _PhoneBindingDialogState extends State<PhoneBindingDialog> {
       widget.store.isAuthenticated &&
       widget.store.epoch == accountEpoch;
   bool get busy => requesting || submitting;
-  bool get validPhone => RegExp(r'^1[3-9]\d{9}$').hasMatch(phone.text);
 
   Future<void> requestCode() async {
     if (busy || countdown > 0 || !current) return;
-    if (!validPhone) {
-      setState(() => error = '请输入正确的 11 位手机号');
-      return;
-    }
-    dismissKeyboard();
-    final targetPhone = phone.text;
-    setState(() {
-      requesting = true;
-      error = null;
-      status = null;
-    });
-    try {
-      final outcome = await requestSmsCode(
-        context,
-        store: widget.store,
-        phone: targetPhone,
-        current: () => current,
-        send: (token) {
-          if (!current) throw const ApiFailure('账号已切换，请重试');
-          return widget.store.sendPhoneBindingCode(targetPhone, token);
-        },
-      );
-      if (!current || outcome == null) return;
-      final failure = outcome.error;
-      if (failure != null) {
-        setState(() => error = '$failure');
-        return;
-      }
-      final response = outcome.response!;
-      timer?.cancel();
-      setState(() {
-        requestedPhone = targetPhone;
-        countdown = response.retryAfterSeconds.clamp(1, 3600);
-        status = '短信验证码已发送，请注意查收';
-        final testCode = AppEnvironment.smsTestCode(
-          targetPhone,
-          response.testCode,
-        );
-        if (testCode.isNotEmpty) {
-          code.text = testCode;
-          status = '测试验证码已自动填入，未发送短信';
-        }
-      });
-      timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!current) {
-          timer.cancel();
-          return;
-        }
-        setState(() => countdown--);
-        if (countdown == 0) timer.cancel();
-      });
-    } catch (e) {
-      if (current) setState(() => error = '$e');
-    } finally {
-      if (mounted) setState(() => requesting = false);
-    }
+    await sendSmsCode(
+      current: () => current,
+      send: (targetPhone, token) {
+        if (!current) throw const ApiFailure('账号已切换，请重试');
+        return widget.store.sendPhoneBindingCode(targetPhone, token);
+      },
+    );
   }
 
   Future<void> submit() async {
     if (busy || !current) return;
-    final message = !validPhone
-        ? '请输入正确的 11 位手机号'
-        : requestedPhone != phone.text
-        ? '请先获取当前手机号的验证码'
-        : !RegExp(r'^\d{6}$').hasMatch(code.text)
-        ? '请输入 6 位短信验证码'
-        : null;
+    final message = smsSubmitError;
     if (message != null) {
       setState(() => error = message);
       return;
@@ -287,7 +233,6 @@ class _PhoneBindingDialogState extends State<PhoneBindingDialog> {
 
   @override
   void dispose() {
-    timer?.cancel();
     phone.dispose();
     code.dispose();
     super.dispose();

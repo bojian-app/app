@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/account_pages.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/design.dart';

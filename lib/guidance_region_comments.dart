@@ -13,6 +13,7 @@ import 'app_store.dart';
 import 'app_icons.dart';
 import 'profile_avatar.dart';
 import 'resume_updated_label.dart';
+import 'comment_composer.dart';
 import 'design.dart';
 import 'resume_guidance_annotations.dart';
 import 'user_profile_page.dart';
@@ -89,7 +90,7 @@ String _commentKey(Map item) =>
     '${item['legacy'] == true ? 'legacy' : 'comment'}:${integer(item['id']) > 0 ? item['id'] : identityHashCode(item)}';
 
 class _RegionCommentsState extends State<_RegionComments>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, GuidanceLiveReload<_RegionComments> {
   final input = TextEditingController();
   final focus = FocusNode();
   final sheet = DraggableScrollableController();
@@ -98,8 +99,6 @@ class _RegionCommentsState extends State<_RegionComments>
   bool focusHandled = false;
   bool highlightFocus = true;
   Timer? highlightTimer;
-  Timer? moderationTimer;
-  StreamSubscription<Map<String, dynamic>>? removalSubscription;
   bool loading = false;
   void changed() {
     if (mounted) setState(() {});
@@ -135,29 +134,18 @@ class _RegionCommentsState extends State<_RegionComments>
     super.initState();
     load();
     widget.store.addListener(changed);
-    removalSubscription = widget.store.realtimeEvents.listen((event) {
-      if (mounted &&
-          guidanceRemovalAffects(event, widget.id, widget.notification)) {
-        load();
-      }
-    });
-    moderationTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (mounted &&
-          widget.store.foreground &&
-          ModalRoute.of(context)?.isCurrent == true &&
-          displayedItems.any(
-            (r) => {'SENDING', 'QUEUED', 'PENDING'}.contains(contentStatus(r)),
-          )) {
-        load();
-      }
-    });
+    watchGuidance(
+      store: widget.store,
+      id: widget.id,
+      notification: widget.notification,
+      items: () => displayedItems,
+      reload: load,
+    );
   }
 
   @override
   void dispose() {
     highlightTimer?.cancel();
-    moderationTimer?.cancel();
-    unawaited(removalSubscription?.cancel());
     widget.store.removeListener(changed);
     input.dispose();
     keyboardMotion.dispose();
@@ -596,30 +584,13 @@ class _RegionCommentsState extends State<_RegionComments>
                     ),
                   ),
                 ),
-                if (!contentVisible(item)) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    moderationLabel(contentStatus(item)),
-                    style: TextStyle(fontSize: 12, color: context.colors.muted),
+                if (!contentVisible(item))
+                  ModerationStatusNote(
+                    item: item,
+                    onRetry: () => contentStatus(item) == 'FAILED'
+                        ? widget.store.sendContent(item)
+                        : editRejected(item),
                   ),
-                  if ({'REJECTED', 'FAILED'}.contains(contentStatus(item))) ...[
-                    Text(
-                      '${item['review_reason'] ?? ''}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => contentStatus(item) == 'FAILED'
-                          ? widget.store.sendContent(item)
-                          : editRejected(item),
-                      child: Text(
-                        contentStatus(item) == 'FAILED' ? '重试' : '修改后重发',
-                      ),
-                    ),
-                  ],
-                ],
                 const SizedBox(height: 3),
                 Wrap(
                   spacing: 10,
@@ -737,52 +708,14 @@ class _RegionCommentsState extends State<_RegionComments>
                         nested: true,
                         parent: byID[integer(item['parent_id'])],
                       ),
-                  TextButton(
+                  ReplyThreadToggle(
                     key: ValueKey('region-thread-toggle-$key'),
+                    expanded: expanded,
+                    replyCount: thread.replies.length,
                     onPressed: () => setState(
                       () => expanded
                           ? expandedThreads.remove(key)
                           : expandedThreads.add(key),
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: (context.isDark
-                          ? context.colors.muted
-                          : const Color(0xFF7F8897)),
-                      overlayColor: Colors.transparent,
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 32),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      textStyle: TextStyle(
-                        fontFamily: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.fontFamily,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ).withoutHover(),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 18,
-                          height: 1,
-                          color: (context.isDark
-                              ? context.colors.accentSoft
-                              : const Color(0xFFD7DADE)),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          expanded ? '收起回复' : '展开 ${thread.replies.length} 条回复',
-                        ),
-                        const SizedBox(width: 2),
-                        Icon(
-                          expanded
-                              ? Icons.keyboard_arrow_up_rounded
-                              : Icons.keyboard_arrow_down_rounded,
-                          size: 16,
-                        ),
-                      ],
                     ),
                   ),
                 ],
@@ -900,90 +833,25 @@ class _RegionCommentsState extends State<_RegionComments>
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: TextField(
-                    key: const ValueKey('region-comment-input'),
+                  child: CommentInputField(
+                    fieldKey: const ValueKey('region-comment-input'),
                     controller: input,
                     focusNode: focus,
                     enabled: !sending,
-                    minLines: 1,
                     maxLines: availableHeight < 280 ? 1 : 3,
                     maxLength: 10000,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.4,
-                      color: (context.isDark
-                          ? context.colors.ink
-                          : Color(0xFF24262B)),
-                    ),
                     scrollPadding: const EdgeInsets.only(bottom: 20),
-                    decoration: InputDecoration(
-                      hintText: reply == null
-                          ? '写下评论…'
-                          : '回复 ${_commentAuthor(reply)}…',
-                      hintStyle: TextStyle(
-                        fontSize: 13,
-                        color: (context.isDark
-                            ? context.colors.muted
-                            : Color(0xFFA7ABB3)),
-                      ),
-                      counterText: '',
-                      filled: true,
-                      fillColor: (context.isDark
-                          ? context.colors.inset
-                          : const Color(0xFFF4F5F7)),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 11,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
+                    hintText: reply == null
+                        ? '写下评论…'
+                        : '回复 ${_commentAuthor(reply)}…',
                   ),
                 ),
                 const SizedBox(width: 8),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: input,
-                  builder: (_, value, _) => FilledButton(
-                    key: const ValueKey('region-comment-send'),
-                    onPressed: sending || value.text.trim().isEmpty
-                        ? null
-                        : send,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: blue,
-                      disabledBackgroundColor: (context.isDark
-                          ? context.colors.inset
-                          : const Color(0xFFF0F1F4)),
-                      disabledForegroundColor: (context.isDark
-                          ? context.colors.muted
-                          : const Color(0xFFB3B7BE)),
-                      minimumSize: const Size(52, 42),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(21),
-                      ),
-                      textStyle: TextStyle(
-                        fontFamily: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.fontFamily,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ).withoutHover(),
-                    child: Text(sending ? '发送中' : '发送'),
-                  ),
+                CommentSendButton(
+                  buttonKey: const ValueKey('region-comment-send'),
+                  controller: input,
+                  sending: sending,
+                  onPressed: send,
                 ),
               ],
             ),

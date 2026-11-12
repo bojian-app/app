@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'app_icons.dart';
 import 'app_store.dart';
 import 'design.dart';
-import 'profile_avatar.dart';
 import 'resume_guidance_view.dart';
 import 'resume_updated_label.dart';
 import 'story_author_identity.dart';
-import 'user_profile_page.dart';
 
 class GuidanceFeedCard extends StatelessWidget {
   const GuidanceFeedCard({
@@ -66,34 +64,14 @@ class GuidanceFeedCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  InkWell(
-                    key: ValueKey('story-author-avatar-${story.id}'),
-                    borderRadius: BorderRadius.circular(12),
-                    onTap:
-                        !authorNavigationEnabled ||
-                            story.authorID <= 0 ||
-                            story.authorID == store.userID
-                        ? null
-                        : () => openPage(
-                            context,
-                            UserProfilePage(
-                              store: store,
-                              userID: story.authorID,
-                            ),
-                          ),
-                    child: Padding(
-                      // Flat cards start the avatar on the text edge.
-                      padding: flat
-                          ? const EdgeInsets.fromLTRB(0, 7, 7, 7)
-                          : const EdgeInsets.all(4),
-                      child: ProfileAvatar(
-                        seed: story.authorID > 0
-                            ? '${story.authorID}'
-                            : story.author,
-                        url: authorAvatarURL ?? story.authorAvatarURL,
-                        size: flat ? 30 : 26,
-                      ),
-                    ),
+                  StoryAuthorAvatar(
+                    story: story,
+                    store: store,
+                    size: flat ? 30 : 26,
+                    flat: flat,
+                    name: authorName,
+                    avatarURL: authorAvatarURL,
+                    navigationEnabled: authorNavigationEnabled,
                   ),
                   const SizedBox(width: 6),
                   Expanded(

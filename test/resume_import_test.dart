@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/resume_importer.dart';
 import 'package:bojian_mobile/resume_files.dart';

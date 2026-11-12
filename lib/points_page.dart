@@ -661,7 +661,13 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-            child: _CheckInButton(
+            child: _GradientPill(
+              buttonKey: const ValueKey('points-check-in'),
+              minimumSize: const Size.fromHeight(44),
+              fontSize: 16,
+              shadowBlur: 12,
+              shadowOffset: 5,
+              singleLine: true,
               label: store.rewardClaimed
                   ? (tomorrow == null ? '今日已签到' : '今日已签到，明天可领 +$tomorrow')
                   : '立即签到 +${store.rewardPoints ?? integer(days[today.clamp(0, days.length - 1)]['points'])}',
@@ -750,8 +756,8 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
           Positioned(
             right: 16,
             top: 46,
-            child: _BlueButton(
-              key: const ValueKey('points-invite'),
+            child: _GradientPill.compact(
+              buttonKey: const ValueKey('points-invite'),
               label: '去邀请',
               onPressed: () async {
                 if (!store.isAuthenticated) {
@@ -1120,49 +1126,44 @@ class _SoftButton extends StatelessWidget {
   }
 }
 
-/// Brand-blue gradient pill with a soft coloured shadow.
-class _BlueButton extends StatelessWidget {
-  const _BlueButton({super.key, required this.label, this.onPressed});
+/// Brand-blue gradient pill used for every call to action on this page.
+/// Disabled pills turn flat pale blue.
+class _GradientPill extends StatelessWidget {
+  const _GradientPill({
+    this.buttonKey,
+    required this.label,
+    required this.onPressed,
+    required this.minimumSize,
+    this.fontSize = 14,
+    this.fontWeight = FontWeight.w600,
+    this.shadowBlur,
+    this.shadowOffset = 4,
+    this.singleLine = false,
+  }) : padding = null;
+
+  /// Small pill with a soft shadow, e.g. "去邀请".
+  const _GradientPill.compact({
+    this.buttonKey,
+    required this.label,
+    required this.onPressed,
+  }) : minimumSize = const Size(86, 34),
+       padding = const EdgeInsets.symmetric(horizontal: 20),
+       fontSize = 14,
+       fontWeight = FontWeight.w600,
+       shadowBlur = 10,
+       shadowOffset = 4,
+       singleLine = false;
+
+  final Key? buttonKey;
   final String label;
   final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(99),
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: _blueGradient,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: _accent.withValues(alpha: .3),
-          blurRadius: 10,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    ),
-    child: TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        foregroundColor: Colors.white,
-        minimumSize: const Size(86, 34),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        shape: const StadiumBorder(),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-      ),
-      child: Text(label),
-    ),
-  );
-}
-
-/// Full-width check-in call to action under the week; greys out once
-/// today is claimed and says what tomorrow brings.
-class _CheckInButton extends StatelessWidget {
-  const _CheckInButton({required this.label, this.onPressed});
-  final String label;
-  final VoidCallback? onPressed;
+  final Size minimumSize;
+  final EdgeInsets? padding;
+  final double fontSize;
+  final FontWeight fontWeight;
+  final double? shadowBlur;
+  final double shadowOffset;
+  final bool singleLine;
 
   @override
   Widget build(BuildContext context) {
@@ -1180,60 +1181,35 @@ class _CheckInButton extends StatelessWidget {
         color: enabled
             ? null
             : (context.isDark ? context.colors.inset : const Color(0xFFEFF4FF)),
-        boxShadow: enabled
+        boxShadow: enabled && shadowBlur != null
             ? [
                 BoxShadow(
                   color: _accent.withValues(alpha: .3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 5),
+                  blurRadius: shadowBlur!,
+                  offset: Offset(0, shadowOffset),
                 ),
               ]
             : null,
       ),
       child: TextButton(
-        key: const ValueKey('points-check-in'),
+        key: buttonKey,
         onPressed: onPressed,
         style: TextButton.styleFrom(
           foregroundColor: Colors.white,
           disabledForegroundColor: context.isDark
               ? context.colors.muted
               : const Color(0xFF6E8BC8),
-          minimumSize: const Size.fromHeight(44),
+          minimumSize: minimumSize,
+          padding: padding,
           shape: const StadiumBorder(),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: TextStyle(fontSize: fontSize, fontWeight: fontWeight),
         ),
-        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        child: singleLine
+            ? Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)
+            : Text(label),
       ),
     );
   }
-}
-
-class _GradientButton extends StatelessWidget {
-  const _GradientButton({required this.label, this.onPressed});
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(99),
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF5C9BFF), Color(0xFF2867EE)],
-      ),
-    ),
-    child: TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        foregroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(46),
-        shape: const StadiumBorder(),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-      ),
-      child: Text(label),
-    ),
-  );
 }
 
 /// The rendered 3D coin from the points artwork.
@@ -2027,9 +2003,12 @@ class _RulesSheet extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-          _GradientButton(
+          _GradientPill(
             label: '我知道了',
             onPressed: () => Navigator.pop(context),
+            minimumSize: const Size.fromHeight(46),
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
           ),
         ],
       ),

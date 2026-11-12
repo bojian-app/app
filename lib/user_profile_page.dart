@@ -305,26 +305,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     itemCount: articles.length,
                     itemBuilder: (context, index) => KeyedSubtree(
                       key: ValueKey('public-article-${articles[index].id}'),
-                      child: ColoredBox(
-                        color: context.colors.canvas,
-                        child: Container(
-                          color: context.colors.surface,
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: feedOuterPadding,
-                          ),
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 600),
-                              child: StoryCard(
-                                story: articles[index],
-                                store: widget.store,
-                                flat: true,
-                                compactTypography: true,
-                                authorNavigationEnabled: false,
-                              ),
-                            ),
-                          ),
+                      child: FeedRow(
+                        child: StoryCard(
+                          story: articles[index],
+                          store: widget.store,
+                          flat: true,
+                          compactTypography: true,
+                          authorNavigationEnabled: false,
                         ),
                       ),
                     ),

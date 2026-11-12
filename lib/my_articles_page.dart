@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'api/bojian_api.dart';
 import 'app_icons.dart';
 import 'app_store.dart';
+import 'app_search_field.dart';
 import 'design.dart';
 import 'discovery.dart';
 import 'resume_updated_label.dart';
@@ -238,28 +239,17 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
   Widget writeButton() =>
       TextButton(onPressed: _write, child: const Text('写文章'));
 
-  Widget _feedCard(Map<String, dynamic> row) => ColoredBox(
-    color: context.colors.canvas,
-    child: Container(
-      color: context.colors.surface,
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: feedOuterPadding),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: ListenableBuilder(
-            listenable: widget.store,
-            builder: (context, _) => StoryCard(
-              key: ValueKey('profile-story-${row['id']}'),
-              story: feedStories[integer(row['id'])]!,
-              store: widget.store,
-              flat: true,
-              compactTypography: true,
-              authorName: userDisplayName(widget.store.name),
-              authorAvatarURL: widget.store.avatarURL,
-            ),
-          ),
-        ),
+  Widget _feedCard(Map<String, dynamic> row) => FeedRow(
+    child: ListenableBuilder(
+      listenable: widget.store,
+      builder: (context, _) => StoryCard(
+        key: ValueKey('profile-story-${row['id']}'),
+        story: feedStories[integer(row['id'])]!,
+        store: widget.store,
+        flat: true,
+        compactTypography: true,
+        authorName: userDisplayName(widget.store.name),
+        authorAvatarURL: widget.store.avatarURL,
       ),
     ),
   );
@@ -302,28 +292,12 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                               appPageHorizontalPadding,
                               14,
                             ),
-                            child: TextField(
-                              key: const ValueKey('my-articles-search'),
+                            child: AppSearchField(
+                              fieldKey: const ValueKey('my-articles-search'),
+                              hintText: '搜索文章标题',
+                              fillColor: context.colors.surface,
                               onChanged: (value) =>
-                                  setState(() => query = value.trim()),
-                              onSubmitted: (_) => dismissKeyboard(),
-                              textInputAction: TextInputAction.search,
-                              decoration: InputDecoration(
-                                hintText: '搜索文章标题',
-                                fillColor: context.colors.surface,
-                                prefixIcon: Padding(
-                                  padding: EdgeInsets.all(14),
-                                  child: AppIcon(
-                                    AppIcons.search,
-                                    size: 20,
-                                    color: context.colors.muted,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 12,
-                                ),
-                              ),
+                                  setState(() => query = value),
                             ),
                           ),
                         if (!widget.publishedOnly && !widget.draftsOnly)

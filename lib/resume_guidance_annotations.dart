@@ -302,12 +302,11 @@ class GuidanceAnnotations extends StatefulWidget {
   State<GuidanceAnnotations> createState() => _GuidanceAnnotationsState();
 }
 
-class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
+class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
+    with GuidanceLiveReload<GuidanceAnnotations> {
   List<Map<String, dynamic>>? items;
   String? error;
   int? busy;
-  Timer? moderationTimer;
-  StreamSubscription<Map<String, dynamic>>? removalSubscription;
   bool loading = false;
   void changed() {
     if (mounted) setState(() {});
@@ -333,8 +332,6 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
           .toList();
   @override
   void dispose() {
-    moderationTimer?.cancel();
-    unawaited(removalSubscription?.cancel());
     widget.store.removeListener(changed);
     super.dispose();
   }
@@ -344,22 +341,13 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
     super.initState();
     items = widget.initialItems;
     widget.store.addListener(changed);
-    removalSubscription = widget.store.realtimeEvents.listen((event) {
-      if (mounted &&
-          guidanceRemovalAffects(event, widget.id, widget.notification)) {
-        load();
-      }
-    });
-    moderationTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (mounted &&
-          widget.store.foreground &&
-          ModalRoute.of(context)?.isCurrent == true &&
-          displayedItems.any(
-            (v) => {'SENDING', 'QUEUED', 'PENDING'}.contains(contentStatus(v)),
-          )) {
-        load();
-      }
-    });
+    watchGuidance(
+      store: widget.store,
+      id: widget.id,
+      notification: widget.notification,
+      items: () => displayedItems,
+      reload: load,
+    );
     load();
   }
 
@@ -643,26 +631,12 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
                 ),
               ),
             ],
-            if (!contentVisible(item)) ...[
-              const SizedBox(height: 10),
-              Text(
-                moderationLabel(contentStatus(item)),
-                style: TextStyle(fontSize: 12, color: context.colors.muted),
+            if (!contentVisible(item))
+              ModerationStatusNote(
+                item: item,
+                spacing: 10,
+                onRetry: () => retryRecord(item),
               ),
-              if ({'REJECTED', 'FAILED'}.contains(contentStatus(item))) ...[
-                Text(
-                  '${item['review_reason'] ?? ''}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => retryRecord(item),
-                  child: Text(contentStatus(item) == 'FAILED' ? '重试' : '修改后重发'),
-                ),
-              ],
-            ],
             if (isReplacement && contentVisible(item)) ...[
               const SizedBox(height: 12),
               const Divider(height: 1),

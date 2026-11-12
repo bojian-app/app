@@ -21,6 +21,8 @@ import 'package:flutter/material.dart';
 
 import 'app_store.dart';
 import 'discovery_banner.dart';
+import 'app_search_field.dart';
+import 'comment_composer.dart';
 import 'design.dart';
 import 'messages_button.dart';
 import 'my_articles_page.dart';
@@ -117,24 +119,11 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                 _FeedArticleEntrance(
                   key: ValueKey('discovery-story-${story.id}'),
                   animate: added.contains(story.id),
-                  child: ColoredBox(
-                    color: context.colors.canvas,
-                    child: Container(
-                      color: context.colors.surface,
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: feedOuterPadding,
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 600),
-                          child: StoryCard(
-                            story: story,
-                            store: widget.store,
-                            flat: true,
-                          ),
-                        ),
-                      ),
+                  child: FeedRow(
+                    child: StoryCard(
+                      story: story,
+                      store: widget.store,
+                      flat: true,
                     ),
                   ),
                 ),
@@ -470,6 +459,29 @@ class _FeedArticleEntranceState extends State<_FeedArticleEntrance>
   );
 }
 
+/// Full-bleed white feed row with a 6pt canvas gap, centring its card.
+class FeedRow extends StatelessWidget {
+  const FeedRow({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: context.colors.canvas,
+    child: Container(
+      color: context.colors.surface,
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: feedOuterPadding),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: child,
+        ),
+      ),
+    ),
+  );
+}
+
 class StoryCard extends StatelessWidget {
   const StoryCard({
     super.key,
@@ -505,41 +517,14 @@ class StoryCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Semantics(
-                    button:
-                        authorNavigationEnabled &&
-                        story.authorID > 0 &&
-                        story.authorID != store.userID,
-                    label: '${authorName ?? story.author}的头像',
-                    child: InkWell(
-                      key: ValueKey('story-author-avatar-${story.id}'),
-                      borderRadius: BorderRadius.circular(13),
-                      onTap:
-                          !authorNavigationEnabled ||
-                              story.authorID <= 0 ||
-                              story.authorID == store.userID
-                          ? null
-                          : () => openPage(
-                              context,
-                              UserProfilePage(
-                                store: store,
-                                userID: story.authorID,
-                              ),
-                            ),
-                      child: Padding(
-                        // Flat cards start the avatar on the text edge.
-                        padding: flat
-                            ? const EdgeInsets.fromLTRB(0, 7, 7, 7)
-                            : const EdgeInsets.all(4),
-                        child: ProfileAvatar(
-                          seed: story.authorID > 0
-                              ? '${story.authorID}'
-                              : story.author,
-                          url: authorAvatarURL ?? story.authorAvatarURL,
-                          size: 30,
-                        ),
-                      ),
-                    ),
+                  StoryAuthorAvatar(
+                    story: story,
+                    store: store,
+                    size: 30,
+                    flat: flat,
+                    name: authorName,
+                    avatarURL: authorAvatarURL,
+                    navigationEnabled: authorNavigationEnabled,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1077,8 +1062,10 @@ class _StoryDetailState extends State<StoryDetail> {
           if (root.replyCount > 0 ||
               threadComments(root.id).isNotEmpty ||
               expanded)
-            TextButton(
+            ReplyThreadToggle(
               key: ValueKey('article-thread-toggle-${root.id}'),
+              expanded: expanded,
+              replyCount: root.replyCount,
               onPressed: () {
                 if (expanded) {
                   setState(() => expandedThreads.remove(root.id));
@@ -1089,44 +1076,6 @@ class _StoryDetailState extends State<StoryDetail> {
                   loadThread(root.id);
                 }
               },
-              style: TextButton.styleFrom(
-                foregroundColor: (context.isDark
-                    ? context.colors.muted
-                    : const Color(0xFF7F8897)),
-                overlayColor: Colors.transparent,
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(0, 32),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: TextStyle(
-                  fontFamily: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.fontFamily,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ).withoutHover(),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 18,
-                    height: 1,
-                    color: (context.isDark
-                        ? context.colors.accentSoft
-                        : const Color(0xFFD7DADE)),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(expanded ? '收起回复' : '展开 ${root.replyCount} 条回复'),
-                  const SizedBox(width: 2),
-                  Icon(
-                    expanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    size: 16,
-                  ),
-                ],
-              ),
             ),
         ],
       ),
@@ -1545,14 +1494,15 @@ class _StoryDetailState extends State<StoryDetail> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Expanded(
-                              child: TextField(
-                                key: const ValueKey('article-comment-input'),
+                              child: CommentInputField(
+                                fieldKey: const ValueKey(
+                                  'article-comment-input',
+                                ),
                                 controller: comment,
                                 focusNode: commentFocus,
                                 enabled: !widget.store.pending.contains(
                                   'comment-${widget.story.id}',
                                 ),
-                                minLines: 1,
                                 maxLines:
                                     MediaQuery.sizeOf(context).height -
                                             MediaQuery.viewInsetsOf(context)
@@ -1560,94 +1510,26 @@ class _StoryDetailState extends State<StoryDetail> {
                                         280
                                     ? 1
                                     : 3,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  height: 1.4,
-                                  color: (context.isDark
-                                      ? context.colors.ink
-                                      : Color(0xFF24262B)),
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: replyTarget == null
-                                      ? '写下评论…'
-                                      : '回复 ${replyTarget!.author}…',
-                                  hintStyle: TextStyle(
-                                    fontSize: 13,
-                                    color: (context.isDark
-                                        ? context.colors.muted
-                                        : Color(0xFFA7ABB3)),
-                                  ),
-                                  filled: true,
-                                  fillColor: (context.isDark
-                                      ? context.colors.inset
-                                      : const Color(0xFFF4F5F7)),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 11,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(22),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(22),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(22),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
+                                hintText: replyTarget == null
+                                    ? '写下评论…'
+                                    : '回复 ${replyTarget!.author}…',
                                 textInputAction: TextInputAction.send,
                                 onSubmitted: (_) => _send(),
                               ),
                             ),
                             const SizedBox(width: 8),
-                            ValueListenableBuilder<TextEditingValue>(
-                              valueListenable: comment,
-                              builder: (_, value, _) {
-                                final sending = widget.store.pending.contains(
+                            Tooltip(
+                              message: '发送评论',
+                              child: CommentSendButton(
+                                buttonKey: const ValueKey(
+                                  'article-comment-send',
+                                ),
+                                controller: comment,
+                                sending: widget.store.pending.contains(
                                   'comment-${widget.story.id}',
-                                );
-                                return Tooltip(
-                                  message: '发送评论',
-                                  child: FilledButton(
-                                    key: const ValueKey('article-comment-send'),
-                                    onPressed:
-                                        sending || value.text.trim().isEmpty
-                                        ? null
-                                        : _send,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: blue,
-                                      disabledBackgroundColor: (context.isDark
-                                          ? context.colors.inset
-                                          : const Color(0xFFF0F1F4)),
-                                      disabledForegroundColor: (context.isDark
-                                          ? context.colors.muted
-                                          : const Color(0xFFB3B7BE)),
-                                      minimumSize: const Size(52, 42),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                      ),
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(21),
-                                      ),
-                                      textStyle: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        fontFamily: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.fontFamily,
-                                      ),
-                                    ).withoutHover(),
-                                    child: Text(sending ? '发送中' : '发送'),
-                                  ),
-                                );
-                              },
+                                ),
+                                onPressed: _send,
+                              ),
                             ),
                           ],
                         ),
@@ -1734,27 +1616,12 @@ class _StorySearchState extends State<StorySearch> {
               body: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-                  TextField(
-                    key: const ValueKey('story-search'),
+                  AppSearchField(
+                    fieldKey: const ValueKey('story-search'),
                     controller: search,
                     autofocus: !widget.savedOnly && !widget.mineOnly,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (_) => dismissKeyboard(),
-                    decoration: InputDecoration(
-                      hintText: '搜索',
-                      prefixIcon: const AppIcon(AppIcons.search),
-                      suffixIcon: query.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: '清空搜索',
-                              onPressed: () {
-                                search.clear();
-                                setState(() => query = '');
-                              },
-                              icon: const AppIcon(AppIcons.clear, size: 18),
-                            ),
-                    ),
-                    onChanged: (v) => setState(() => query = v.trim()),
+                    hintText: '搜索',
+                    onChanged: (v) => setState(() => query = v),
                   ),
                   const SizedBox(height: 20),
                   if (results.isEmpty)

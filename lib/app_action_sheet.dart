@@ -209,3 +209,136 @@ class AppActionSheet extends StatelessWidget {
     );
   }
 }
+
+/// Opens an [AppListSheet]: a stacked list of choices with a cancel row.
+Future<T?> showAppListSheet<T>(
+  BuildContext context, {
+  required AppListSheet<T> sheet,
+}) => showModalBottomSheet<T>(
+  context: context,
+  useRootNavigator: true,
+  useSafeArea: true,
+  isScrollControlled: true,
+  showDragHandle: false,
+  backgroundColor: Colors.transparent,
+  barrierColor: Colors.black.withValues(alpha: .3),
+  builder: (_) => sheet,
+);
+
+class AppListSheetItem<T> {
+  const AppListSheetItem({
+    required this.label,
+    required this.value,
+    this.key,
+    this.icon,
+  });
+
+  final String label;
+  final T value;
+  final Key? key;
+  final AppIconData? icon;
+}
+
+/// Shared design for full-width choice lists such as photo source pickers.
+class AppListSheet<T> extends StatelessWidget {
+  const AppListSheet({
+    super.key,
+    required this.items,
+    this.caption,
+    this.cancelKey,
+  });
+
+  final List<AppListSheetItem<T>> items;
+  final String? caption;
+  final Key? cancelKey;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(
+      String label,
+      Key? key,
+      VoidCallback onPressed, [
+      AppIconData? icon,
+    ]) => TextButton(
+      key: key,
+      style: TextButton.styleFrom(
+        foregroundColor: context.colors.ink,
+        minimumSize: const Size.fromHeight(58),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+        shape: const RoundedRectangleBorder(),
+      ).withoutHover(),
+      onPressed: onPressed,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (icon != null) ...[
+            AppIcon(icon, size: 22, color: context.colors.accent),
+            const SizedBox(width: 12),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final divider = Divider(
+      height: 1,
+      thickness: .5,
+      color: context.colors.border,
+    );
+    return Material(
+      color: context.colors.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (caption != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 18, 24, 8),
+                        child: Text(
+                          caption!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.colors.muted,
+                          ),
+                        ),
+                      ),
+                    for (final (index, item) in items.indexed) ...[
+                      if (index > 0) divider,
+                      row(
+                        item.label,
+                        item.key,
+                        () => Navigator.of(context).pop(item.value),
+                        item.icon,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            ColoredBox(
+              color: context.colors.canvas,
+              child: const SizedBox(height: 8),
+            ),
+            row('取消', cancelKey, () => Navigator.of(context).pop()),
+          ],
+        ),
+      ),
+    );
+  }
+}

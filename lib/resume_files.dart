@@ -69,3 +69,19 @@ class ResumeFiles {
 
   Future<void> openWeChat() => channel.invokeMethod<void>('openWeChat');
 }
+
+/// Deletes [file]'s private temp directory if it was created with [prefix].
+/// Failures are ignored; the OS reclaims temporary caches later.
+Future<void> deleteTempFileDirectory(
+  XFile? file, {
+  required String prefix,
+}) async {
+  if (file == null) return;
+  final directory = File(file.path).parent;
+  if (!directory.path.split(Platform.pathSeparator).last.startsWith(prefix)) {
+    return;
+  }
+  try {
+    if (await directory.exists()) await directory.delete(recursive: true);
+  } catch (_) {}
+}

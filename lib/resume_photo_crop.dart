@@ -8,6 +8,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'design.dart';
+import 'resume_files.dart';
 
 const resumePhotoAspectRatio = 5 / 6;
 
@@ -85,21 +86,8 @@ Future<XFile> writeResumePhotoCrop(
   }
 }
 
-Future<void> discardResumePhotoCrop(XFile? file) async {
-  if (file == null) return;
-  final directory = File(file.path).parent;
-  if (!directory.path
-      .split(Platform.pathSeparator)
-      .last
-      .startsWith('bojian-resume-photo-')) {
-    return;
-  }
-  try {
-    if (await directory.exists()) await directory.delete(recursive: true);
-  } catch (_) {
-    /* Temporary cache can be reclaimed later. */
-  }
-}
+Future<void> discardResumePhotoCrop(XFile? file) =>
+    deleteTempFileDirectory(file, prefix: 'bojian-resume-photo-');
 
 class ResumePhotoCropPage extends StatefulWidget {
   const ResumePhotoCropPage({
