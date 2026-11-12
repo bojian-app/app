@@ -120,6 +120,13 @@ abstract class ApiGateway {
     Map<String, String> agreementVersions,
     Map<String, String> headers,
   );
+  Future<auth.LoginResponse> confirmLoginPhoneBinding(
+    String phoneBindingToken,
+    String phone,
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  );
   Future<auth.TokenResponse> refresh(String token, Map<String, String> headers);
   Future<void> close();
 }
@@ -173,7 +180,7 @@ class BojianApi implements ApiGateway {
         request.followRedirects = false;
         request.headers.addAll({
           'accept': 'application/json',
-          'X-Template-Protocol': '2',
+          'X-Template-Protocol': '3',
           ...headers,
         });
         if (body != null) {
@@ -392,6 +399,27 @@ class BojianApi implements ApiGateway {
   );
 
   @override
+  Future<auth.LoginResponse> confirmLoginPhoneBinding(
+    String phoneBindingToken,
+    String phone,
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  ) async => _loginResponse(
+    (await send(
+      'POST',
+      '/auth/phone-binding/confirm',
+      body: {
+        'phone_binding_token': phoneBindingToken,
+        'phone': phone,
+        'code': code,
+        'agreement_versions': agreementVersions,
+      },
+      headers: headers,
+    )).data,
+  );
+
+  @override
   Future<auth.TokenResponse> refresh(
     String token,
     Map<String, String> headers,
@@ -427,6 +455,10 @@ auth.LoginResponse _loginResponse(Map<String, dynamic> value) {
     registrationToken: value['registration_token'] as String?,
     registrationExpiresInSeconds:
         value['registration_expires_in_seconds'] as int?,
+    phoneBindingRequired: value['phone_binding_required'] as bool?,
+    phoneBindingToken: value['phone_binding_token'] as String?,
+    phoneBindingExpiresInSeconds:
+        value['phone_binding_expires_in_seconds'] as int?,
   );
 }
 

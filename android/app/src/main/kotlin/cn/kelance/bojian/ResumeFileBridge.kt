@@ -2,6 +2,9 @@ package cn.kelance.bojian
 
 import android.app.Activity
 import android.content.Intent
+import android.content.ContentValues
+import android.os.Build
+import android.provider.MediaStore
 import android.net.Uri
 import android.provider.OpenableColumns
 import io.flutter.plugin.common.BinaryMessenger
@@ -36,6 +39,52 @@ class ResumeFileBridge(private val activity: Activity, messenger: BinaryMessenge
                             result.success(null)
                         } catch (_: Exception) {
                             result.error("WECHAT_UNAVAILABLE", "无法打开微信", null)
+                        }
+                    }
+                }
+                "saveInvitationImage" -> {
+                    val bytes = call.argument<ByteArray>("bytes")
+                    val png = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+                    if (bytes == null || bytes.size !in 8..5_000_000 || !bytes.copyOfRange(0, 8).contentEquals(png)) {
+                        result.error("IMAGE_INVALID", "二维码图片无效", null)
+                    } else if (saveResult != null) {
+                        result.error("SAVE_BUSY", "请先完成当前保存", null)
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        executor.execute {
+                            var uri: Uri? = null
+                            try {
+                                val resolver = activity.contentResolver
+                                val values = ContentValues().apply {
+                                    put(MediaStore.Images.Media.DISPLAY_NAME, "博简邀请-${System.currentTimeMillis()}.png")
+                                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/博简")
+                                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                                }
+                                uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                                    ?: throw IllegalStateException("Cannot create image")
+                                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                                    ?: throw IllegalStateException("Cannot write image")
+                                resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+                                activity.runOnUiThread { result.success(true) }
+                            } catch (_: Exception) {
+                                uri?.let { activity.contentResolver.delete(it, null, null) }
+                                activity.runOnUiThread { result.error("SAVE_FAILED", "无法保存二维码，请重试", null) }
+                            }
+                        }
+                    } else {
+                        val directory = File(activity.cacheDir, "invitation-images").apply { mkdirs() }
+                        val file = File(directory, "${UUID.randomUUID()}.png")
+                        try {
+                            file.writeBytes(bytes)
+                            saveResult = result; saveSource = file
+                            activity.startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "image/png"
+                                putExtra(Intent.EXTRA_TITLE, "博简邀请二维码.png")
+                            }, saveRequestCode)
+                        } catch (_: Exception) {
+                            file.delete(); saveResult = null; saveSource = null
+                            result.error("SAVE_FAILED", "无法打开图片保存窗口", null)
                         }
                     }
                 }
@@ -138,12 +187,16 @@ class ResumeFileBridge(private val activity: Activity, messenger: BinaryMessenge
         val source = saveSource
         saveResult = null; saveSource = null
         val uri = intent?.data
-        if (resultCode != Activity.RESULT_OK || uri == null || source == null) { result.success(false); return }
+        if (resultCode != Activity.RESULT_OK || uri == null || source == null) {
+            if (source?.parentFile?.name == "invitation-images") source.delete()
+            result.success(false); return
+        }
         executor.execute {
             try {
                 activity.contentResolver.openOutputStream(uri, "w")?.use { output -> source.inputStream().use { input -> input.copyTo(output) } } ?: throw IllegalStateException()
                 activity.runOnUiThread { result.success(true) }
             } catch (_: Exception) { activity.runOnUiThread { result.error("SAVE_FAILED", "文件保存失败，请重试", null) } }
+            finally { if (source.parentFile?.name == "invitation-images") source.delete() }
         }
     }
 

@@ -155,7 +155,7 @@ class NativeLayoutRenderer {
         for (final face in ['regular', 'medium', 'bold']) {
           final loader = FontLoader('Resume-$face');
           loader.addFont(
-            bundle.load('assets/fonts/alibaba-puhuiti-3-$face.ttf'),
+            bundle.load('assets/fonts/resume-sans-$face.ttf'),
           );
           await loader.load();
         }

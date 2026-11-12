@@ -19,6 +19,7 @@ abstract final class AppIcons {
   static const moveUp = HugeIcons.strokeRoundedArrowUp01;
   static const moveDown = HugeIcons.strokeRoundedArrowDown01;
   static const delete = HugeIcons.strokeRoundedDelete02;
+  static const sort = HugeIcons.strokeRoundedSortByDown02;
   static const location = HugeIcons.strokeRoundedLocation01;
   static const industry = HugeIcons.strokeRoundedBuilding03;
   static const filter = HugeIcons.strokeRoundedFilterHorizontal;
@@ -94,6 +95,9 @@ abstract final class AppIcons {
   static const avatarUpload = HugeIcons.strokeRoundedImageUpload;
   static const avatarEdit = HugeIcons.strokeRoundedImageAdd02;
   static const wechat = HugeIcons.strokeRoundedWechat;
+  static const moments = HugeIcons.strokeRoundedAperture;
+  static const link = HugeIcons.strokeRoundedLink01;
+  static const saveImage = HugeIcons.strokeRoundedDownload04;
   static const templateMarket = HugeIcons.strokeRoundedStore01;
   static const templatePreview = HugeIcons.strokeRoundedLayout01;
   static const error = HugeIcons.strokeRoundedAlertCircle;
@@ -106,6 +110,10 @@ abstract final class AppIcons {
   static const hideKeyboard = HugeIcons.strokeRoundedKeyboard;
   static const menu = HugeIcons.strokeRoundedMenu01;
   static const scan = HugeIcons.strokeRoundedScan;
+  static const done = HugeIcons.strokeRoundedCheckmarkCircle02;
+  static const alert = HugeIcons.strokeRoundedAlert02;
+  static const gift = HugeIcons.strokeRoundedGift;
+  static const accountChanged = HugeIcons.strokeRoundedUserBlock01;
   static const coins = HugeIcons.strokeRoundedCoins01;
 }
 

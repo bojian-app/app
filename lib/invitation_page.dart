@@ -41,7 +41,10 @@ class _InvitationPageState extends State<InvitationPage> {
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(
+          horizontal: appPageHorizontalPadding,
+          vertical: 24,
+        ),
         children: [
           const Text(
             '每邀请一位新人，得 500 积分',

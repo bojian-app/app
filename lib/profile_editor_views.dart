@@ -62,7 +62,12 @@ class ProfileAvatarEditorView extends StatelessWidget {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+          padding: const EdgeInsets.fromLTRB(
+            appPageHorizontalPadding,
+            16,
+            appPageHorizontalPadding,
+            20,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

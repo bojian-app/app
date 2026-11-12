@@ -17,7 +17,7 @@ String templatePreviewDocument({
   required String rendererScript,
   required String previewScript,
   String photo = '',
-  String author = '',
+  String watermark = '',
   int initialPage = 0,
   bool showPageActions = true,
 }) => marketDocumentHtml(
@@ -29,6 +29,6 @@ String templatePreviewDocument({
   rendererScript: rendererScript,
   marketplacePreview: true,
   previewScript:
-      'window.bojianPreviewOptions=${jsonEncode({'author': author, 'initialPage': initialPage, 'showPageActions': showPageActions}).replaceAll('<', r'\u003c')};\n$previewScript',
+      'window.bojianPreviewOptions=${jsonEncode({'watermark': watermark, 'initialPage': initialPage, 'showPageActions': showPageActions}).replaceAll('<', r'\u003c')};\n$previewScript',
   fontStyles: resumeDocumentFontStyles,
 );

@@ -15,7 +15,10 @@ class PublicProfileController extends ChangeNotifier {
   final int userID;
   ProfileIdentityData? profile;
   List<Story> articles = [];
-  bool loading = true;
+
+  /// Where the next page of article summaries starts; empty at the end.
+  String cursor = '';
+  bool loading = true, loadingMore = false;
   String? profileError, articleError;
   int generation = 0, viewerEpoch;
   bool disposed = false;
@@ -58,6 +61,7 @@ class PublicProfileController extends ChangeNotifier {
       if (error is ApiFailure && error.code == 'USER_NOT_FOUND') {
         profile = null;
         articles = [];
+        cursor = '';
         profileError = '该用户主页暂不可见';
       } else {
         profileError = '主页加载失败，请稍后重试';
@@ -67,58 +71,7 @@ class PublicProfileController extends ChangeNotifier {
       return;
     }
     try {
-      final response = await store.request(
-        'GetUsersFirstSecond',
-        path: {'first': '$userID', 'second': 'articles'},
-      );
-      if (!current(request, epoch)) return;
-      final rows = items(response.data);
-      final loaded = <Story>[];
-      var failed = false;
-      final identity = profile!;
-      // Summaries lack their body/type. Bounded batches preserve public order.
-      for (var start = 0; start < rows.length; start += 4) {
-        final batch = await Future.wait(
-          rows.skip(start).take(4).map((row) async {
-            final id = integer(row['id']);
-            if (id <= 0) return null;
-            try {
-              final detail = await store.request(
-                'GetArticlesId',
-                path: {'id': '$id'},
-              );
-              if (!current(request, epoch)) return null;
-              final data = detail.data;
-              final author = data['author'] as Map? ?? {};
-              if (integer(data['id']) != id ||
-                  integer(author['id'] ?? data['author_id']) != userID ||
-                  data['status'] != 'PUBLISHED' ||
-                  data['visibility'] != 'PUBLIC') {
-                failed = true;
-                return null;
-              }
-              return decodeStory({
-                ...row,
-                ...data,
-                'author': {
-                  ...author,
-                  'display_name': identity.name,
-                  'avatar_url': identity.avatarURL,
-                  'city': identity.ipLocation,
-                },
-              });
-            } catch (_) {
-              failed = true;
-              return null;
-            }
-          }),
-        );
-        if (!current(request, epoch)) return;
-        loaded.addAll(batch.whereType<Story>());
-      }
-      if (!current(request, epoch)) return;
-      articles = loaded;
-      if (failed) articleError = '部分动态加载失败，请稍后重试';
+      articles = await _page(request, epoch) ?? articles;
     } catch (_) {
       if (current(request, epoch)) articleError = '文章加载失败，请稍后重试';
     } finally {
@@ -127,6 +80,93 @@ class PublicProfileController extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  Future<void> loadMore() async {
+    if (disposed || loading || loadingMore || cursor.isEmpty) return;
+    final request = generation, epoch = store.epoch;
+    loadingMore = true;
+    articleError = null;
+    notifyListeners();
+    try {
+      final page = await _page(request, epoch, after: cursor);
+      if (page != null) {
+        articles = [
+          ...articles,
+          ...page.where((s) => !articles.any((a) => a.id == s.id)),
+        ];
+      }
+    } catch (_) {
+      if (current(request, epoch)) articleError = '文章加载失败，请稍后重试';
+    } finally {
+      if (current(request, epoch)) {
+        loadingMore = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// One page of the user's public articles with their full details, or
+  /// null once the request is stale.
+  Future<List<Story>?> _page(
+    int request,
+    int epoch, {
+    String after = '',
+  }) async {
+    final response = await store.request(
+      'GetUsersFirstSecond',
+      path: {'first': '$userID', 'second': 'articles'},
+      query: {'limit': '20', if (after.isNotEmpty) 'cursor': after},
+    );
+    if (!current(request, epoch)) return null;
+    final rows = items(response.data);
+    final loaded = <Story>[];
+    var failed = false;
+    final identity = profile!;
+    // Summaries lack their body/type. Bounded batches preserve public order.
+    for (var start = 0; start < rows.length; start += 4) {
+      final batch = await Future.wait(
+        rows.skip(start).take(4).map((row) async {
+          final id = integer(row['id']);
+          if (id <= 0) return null;
+          try {
+            final detail = await store.request(
+              'GetArticlesId',
+              path: {'id': '$id'},
+            );
+            if (!current(request, epoch)) return null;
+            final data = detail.data;
+            final author = data['author'] as Map? ?? {};
+            if (integer(data['id']) != id ||
+                integer(author['id'] ?? data['author_id']) != userID ||
+                data['status'] != 'PUBLISHED' ||
+                data['visibility'] != 'PUBLIC') {
+              failed = true;
+              return null;
+            }
+            return decodeStory({
+              ...row,
+              ...data,
+              'author': {
+                ...author,
+                'display_name': identity.name,
+                'avatar_url': identity.avatarURL,
+                'city': identity.ipLocation,
+              },
+            });
+          } catch (_) {
+            failed = true;
+            return null;
+          }
+        }),
+      );
+      if (!current(request, epoch)) return null;
+      loaded.addAll(batch.whereType<Story>());
+    }
+    if (!current(request, epoch)) return null;
+    cursor = response.nextCursor;
+    if (failed) articleError = '部分动态加载失败，请稍后重试';
+    return loaded;
   }
 
   @override

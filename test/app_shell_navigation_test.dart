@@ -114,7 +114,7 @@ void main() {
       final page = tester.element(find.byType(TemplateMarket));
       final field = find.byWidgetPredicate(
         (widget) =>
-            widget is TextField && widget.decoration?.hintText == '搜索模板或作者',
+            widget is TextField && widget.decoration?.hintText == '搜索模板',
       );
       await tester.enterText(field, '工程');
       await tester.testTextInput.receiveAction(TextInputAction.search);

@@ -334,7 +334,10 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
               ),
             )
           : ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(
+                horizontal: appPageHorizontalPadding,
+                vertical: 20,
+              ),
               children: [
                 if (error != null)
                   card([
@@ -489,7 +492,10 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
               child: SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: appPageHorizontalPadding,
+                    vertical: 16,
+                  ),
                   child: FilledButton(
                     key: const ValueKey('resume-ai-apply'),
                     onPressed: busy || count == 0 ? null : apply,

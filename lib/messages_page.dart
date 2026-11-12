@@ -10,7 +10,6 @@ import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
 import 'app_store.dart';
-import 'chat_history.dart';
 import 'design.dart';
 import 'my_articles_page.dart';
 import 'resume_updated_label.dart';
@@ -34,7 +33,7 @@ class MessagesPage extends StatefulWidget {
 }
 
 class _MessagesPageState extends State<MessagesPage> {
-  bool chats = false, marking = false;
+  bool marking = false;
   @override
   void initState() {
     super.initState();
@@ -44,7 +43,6 @@ class _MessagesPageState extends State<MessagesPage> {
           return;
         }
         unawaited(widget.store.load('messages'));
-        unawaited(widget.store.load('chats'));
       });
     }
   }
@@ -54,131 +52,87 @@ class _MessagesPageState extends State<MessagesPage> {
     listenable: widget.store,
     builder: (context, _) {
       final store = widget.store;
-      final section = chats ? 'chats' : 'messages';
-      final empty = chats ? store.conversations.isEmpty : store.inbox.isEmpty;
-      final content = PlayfulRefresh(
-        hasError: () => store.errors[section] != null,
-        onRefresh: () => store.load(section),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-          children: [
-            if (!widget.standalone) ...[
-              SizedBox(
-                height: 48,
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        '消息',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -.5,
+      const section = 'messages';
+      final empty = store.inbox.isEmpty;
+      _markPassiveRead(store);
+      final divider = Divider(
+        height: 1,
+        indent: appPageHorizontalPadding + 56,
+        endIndent: appPageHorizontalPadding,
+        color: context.isDark ? context.colors.border : const Color(0xFFF0F2F5),
+      );
+      const gutter = EdgeInsets.symmetric(horizontal: appPageHorizontalPadding);
+      final content = AutoPaginate.section(
+        store: store,
+        section: section,
+        child: PlayfulRefresh(
+          hasError: () => store.errors[section] != null,
+          onRefresh: () => store.load(section),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              if (!widget.standalone)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    appPageHorizontalPadding,
+                    18,
+                    appPageHorizontalPadding,
+                    8,
+                  ),
+                  child: SizedBox(
+                    height: 48,
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '消息',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -.5,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    if (!chats) _markAllReadButton(store),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: (context.isDark
-                    ? context.colors.accentSoft
-                    : const Color(0xFFEDEFF4)),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  _tab('系统通知', false, store.notificationUnreadCount),
-                  _tab(
-                    '聊天记录',
-                    true,
-                    store.conversations.fold<int>(
-                      0,
-                      (sum, row) => sum + integer(row['unread_count']),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            if (store.loading.contains(section) && empty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 80),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
-            if (store.errors[section] != null)
-              _status(
-                AppIcons.error,
-                store.errors[section]!,
-                action: '重新加载',
-                onTap: () => store.load(section),
-              ),
-            if (empty &&
-                !store.loading.contains(section) &&
-                store.errors[section] == null)
-              EmptyState(chats ? '暂无聊天记录' : '暂无系统通知', ''),
-            if (!empty)
-              Material(
-                color: context.colors.surface,
-                clipBehavior: Clip.antiAlias,
-                borderRadius: BorderRadius.circular(18),
-                child: Column(
-                  children: [
-                    if (chats)
-                      for (var i = 0; i < store.conversations.length; i++) ...[
-                        if (i > 0)
-                          Divider(
-                            height: 1,
-                            indent: 76,
-                            endIndent: 16,
-                            color: (context.isDark
-                                ? context.colors.border
-                                : Color(0xFFEDF1F7)),
-                          ),
-                        _conversation(store.conversations[i]),
-                      ]
-                    else
-                      for (var i = 0; i < store.inbox.length; i++) ...[
-                        if (i > 0)
-                          Divider(
-                            height: 1,
-                            indent: 76,
-                            endIndent: 16,
-                            color: (context.isDark
-                                ? context.colors.border
-                                : Color(0xFFEDF1F7)),
-                          ),
-                        _notification(store.inbox[i]),
+                        _markAllReadButton(store),
                       ],
-                  ],
-                ),
-              ),
-            if ((store.cursors[section] ?? '').isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: TextButton(
-                  onPressed: store.loading.contains(section)
-                      ? null
-                      : () => store.load(section, more: true),
-                  child: Text(
-                    store.loading.contains(section) ? '加载中…' : '加载更多',
+                    ),
                   ),
                 ),
-              ),
-          ],
+              if (store.loading.contains(section) && empty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 80),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              if (store.errors[section] != null)
+                _status(
+                  AppIcons.error,
+                  store.errors[section]!,
+                  action: '重新加载',
+                  onTap: () => store.load(section),
+                ),
+              if (empty &&
+                  !store.loading.contains(section) &&
+                  store.errors[section] == null)
+                Padding(padding: gutter, child: const EmptyState('暂无系统通知', '')),
+              for (var i = 0; i < store.inbox.length; i++) ...[
+                if (i > 0) divider,
+                _notification(store.inbox[i]),
+              ],
+              PageLoadingFooter(visible: store.loadingMore.contains(section)),
+            ],
+          ),
         ),
       );
       return widget.standalone
           ? Scaffold(
+              backgroundColor: context.colors.surface,
               appBar: AppPageBar(
+                backgroundColor: context.colors.surface,
                 title: const Text('消息'),
-                actions: [if (!chats) _markAllReadButton(store)],
+                actions: [_markAllReadButton(store)],
               ),
               body: content,
             )
@@ -201,68 +155,6 @@ class _MessagesPageState extends State<MessagesPage> {
             );
             if (mounted) setState(() => marking = false);
           },
-  );
-
-  Widget _tab(String title, bool value, int unread) => Expanded(
-    child: Material(
-      color: chats == value ? context.colors.surface : Colors.transparent,
-      borderRadius: BorderRadius.circular(11),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(11),
-        onTap: () {
-          dismissKeyboard();
-          setState(() => chats = value);
-          final section = value ? 'chats' : 'messages';
-          if (!widget.store.loading.contains(section)) {
-            widget.store.load(section);
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: chats == value
-                        ? FontWeight.w600
-                        : FontWeight.w400,
-                    color: chats == value
-                        ? context.colors.ink
-                        : context.colors.muted,
-                  ),
-                ),
-              ),
-              if (unread > 0) ...[const SizedBox(width: 6), _badge(unread)],
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-
-  Widget _badge(int count) => Container(
-    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-    decoration: BoxDecoration(
-      color: blue,
-      borderRadius: BorderRadius.circular(9),
-    ),
-    alignment: Alignment.center,
-    child: Text(
-      count > 99 ? '99+' : '$count',
-      style: const TextStyle(
-        fontSize: 10,
-        color: Colors.white,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
   );
 
   Widget _status(
@@ -324,48 +216,83 @@ class _MessagesPageState extends State<MessagesPage> {
     );
   }
 
-  Widget _notification(InboxItem item) => InkWell(
-    onTap: () => _openNotification(item),
-    child: Padding(
-      padding: const EdgeInsets.all(16),
+  /// Icon and tint that tell a notification's kind at a glance.
+  (AppIconData, Color) _kind(InboxItem item) => switch (item.type) {
+    'RESUME_CREATED' => (AppIcons.resume, context.colors.accent),
+    'ARTICLE_APPROVED' => (AppIcons.done, _green),
+    'ARTICLE_LIKE' => (AppIcons.like, const Color(0xFFF0587A)),
+    'ARTICLE_COMMENT' ||
+    'COMMENT_REPLY' ||
+    'RESUME_GUIDANCE' => (AppIcons.comment, context.colors.accent),
+    'RESUME_CREATION_FAILED' ||
+    'ARTICLE_REJECTED' ||
+    'CONTENT_REJECTED' => (AppIcons.alert, const Color(0xFFF08A24)),
+    _ => (AppIcons.notification, context.colors.accent),
+  };
+
+  static const _green = Color(0xFF1FAF7A);
+
+  Widget _unreadDot({required bool visible, required Widget child}) => Stack(
+    clipBehavior: Clip.none,
+    children: [
+      child,
+      if (visible)
+        Positioned(
+          top: -1,
+          right: -1,
+          child: Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF4D4F),
+              shape: BoxShape.circle,
+              border: Border.all(color: context.colors.surface, width: 2),
+            ),
+          ),
+        ),
+    ],
+  );
+
+  Widget _notification(InboxItem item) {
+    final actionable = _actionable(item);
+    final (icon, tone) = _kind(item);
+    final time = messageTime(item.time);
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: appPageHorizontalPadding,
+        vertical: 14,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (item.type == 'RESUME_GUIDANCE_FEEDBACK')
-            ProfileAvatar(
-              key: ValueKey('notification-actor-avatar-${item.id}'),
-              seed: '${item.actorID}',
-              url: item.actorAvatarURL,
-              size: 44,
-              onTap: item.actorID > 0
-                  ? () => openUserProfile(
-                      context,
-                      store: widget.store,
-                      userID: item.actorID,
-                    )
-                  : null,
-              semanticsLabel: '查看${userDisplayName(item.actorName)}的主页',
-            )
-          else
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: (context.isDark
-                    ? context.colors.accentSoft
-                    : const Color(0xFFEEF4FF)),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                child: AppIcon(
-                  item.type == 'ARTICLE_LIKE'
-                      ? AppIcons.like
-                      : AppIcons.notification,
-                  color: context.colors.accent,
-                  size: 22,
-                ),
-              ),
-            ),
+          _unreadDot(
+            visible: !item.read,
+            child: item.type == 'RESUME_GUIDANCE_FEEDBACK'
+                ? ProfileAvatar(
+                    key: ValueKey('notification-actor-avatar-${item.id}'),
+                    seed: '${item.actorID}',
+                    url: item.actorAvatarURL,
+                    size: 44,
+                    onTap: item.actorID > 0
+                        ? () => openUserProfile(
+                            context,
+                            store: widget.store,
+                            userID: item.actorID,
+                          )
+                        : null,
+                    semanticsLabel: '查看${userDisplayName(item.actorName)}的主页',
+                  )
+                : Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: tone.withValues(alpha: context.isDark ? .18 : .1),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: AppIcon(icon, color: tone, size: 22),
+                  ),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -376,55 +303,47 @@ class _MessagesPageState extends State<MessagesPage> {
                     Expanded(
                       child: Text(
                         item.title,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 15,
                           height: 1.4,
+                          color: context.colors.ink,
                           fontWeight: item.read
                               ? FontWeight.w500
-                              : FontWeight.w700,
+                              : FontWeight.w600,
                         ),
                       ),
                     ),
                     if (item.type == 'RESUME_GUIDANCE_FEEDBACK' &&
                         item.feedbackType.isNotEmpty) ...[
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       _guidanceTypeBadge(item.feedbackType),
                     ],
-                    if (!item.read) ...[
+                    if (time.isNotEmpty) ...[
                       const SizedBox(width: 8),
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: blue,
-                          shape: BoxShape.circle,
+                      Text(
+                        time,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.colors.muted,
                         ),
                       ),
                     ],
                   ],
                 ),
                 if (item.body.isNotEmpty) ...[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
+                  // Without a page to open, the list is the only place to
+                  // read the message, so it is shown in full.
                   Text(
                     item.body,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: actionable ? 2 : null,
+                    overflow: actionable ? TextOverflow.ellipsis : null,
                     style: TextStyle(
                       color: context.colors.muted,
-                      fontSize: 12,
+                      fontSize: 13,
                       height: 1.5,
-                    ),
-                  ),
-                ],
-                if (messageTime(item.time).isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    messageTime(item.time),
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      color: context.colors.muted,
                     ),
                   ),
                 ],
@@ -433,13 +352,65 @@ class _MessagesPageState extends State<MessagesPage> {
           ),
         ],
       ),
-    ),
-  );
+    );
+    return actionable
+        ? InkWell(onTap: () => _openNotification(item), child: row)
+        : row;
+  }
+
+  bool _opensResume(InboxItem item) =>
+      item.type == 'RESUME_CREATED' &&
+      item.subjectType == 'RESUME' &&
+      item.subjectID > 0;
+
+  bool _opensGuidance(InboxItem item) =>
+      (item.type == 'RESUME_GUIDANCE' ||
+          item.type == 'RESUME_GUIDANCE_FEEDBACK' ||
+          (item.type == 'CONTENT_REJECTED' &&
+              (item.annotationID > 0 ||
+                  item.subjectType == 'GUIDANCE_NOTIFICATION'))) &&
+      (item.subjectType == 'GUIDANCE_NOTIFICATION' ||
+          item.subjectType == 'ARTICLE');
+
+  bool _opensArticle(InboxItem item) =>
+      const {
+        'ARTICLE_LIKE',
+        'ARTICLE_APPROVED',
+        'ARTICLE_REJECTED',
+        'CONTENT_REJECTED',
+        'ARTICLE_COMMENT',
+        'COMMENT_REPLY',
+      }.contains(item.type) &&
+      item.subjectType == 'ARTICLE' &&
+      item.subjectID > 0;
+
+  bool _actionable(InboxItem item) =>
+      _opensResume(item) || _opensGuidance(item) || _opensArticle(item);
+
+  final _passiveReads = <int>{};
+
+  /// Messages with nothing to open count as read once they are listed.
+  void _markPassiveRead(AppStore store) {
+    final pending = [
+      for (final item in store.inbox)
+        if (!item.read && !_actionable(item) && _passiveReads.add(item.id))
+          item,
+    ];
+    if (pending.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      for (final item in pending) {
+        try {
+          await store.markRead(item);
+        } catch (_) {
+          // Shown again as unread next time, when the read is retried.
+          _passiveReads.remove(item.id);
+        }
+      }
+    });
+  }
 
   Future<void> _openNotification(InboxItem item) async {
-    if (item.type == 'RESUME_CREATED' &&
-        item.subjectType == 'RESUME' &&
-        item.subjectID > 0) {
+    if (_opensResume(item)) {
       final epoch = widget.store.epoch;
       await runRequest(context, () async {
         final result = await widget.store.request(
@@ -465,13 +436,7 @@ class _MessagesPageState extends State<MessagesPage> {
       return;
     }
 
-    if ((item.type == 'RESUME_GUIDANCE' ||
-            item.type == 'RESUME_GUIDANCE_FEEDBACK' ||
-            (item.type == 'CONTENT_REJECTED' &&
-                (item.annotationID > 0 ||
-                    item.subjectType == 'GUIDANCE_NOTIFICATION'))) &&
-        (item.subjectType == 'GUIDANCE_NOTIFICATION' ||
-            item.subjectType == 'ARTICLE')) {
+    if (_opensGuidance(item)) {
       final private = item.subjectType == 'GUIDANCE_NOTIFICATION';
       final guidanceID = item.subjectID > 0 ? item.subjectID : item.id;
       await runRequest(context, () async {
@@ -506,16 +471,7 @@ class _MessagesPageState extends State<MessagesPage> {
       });
       return;
     }
-    if (const {
-          'ARTICLE_LIKE',
-          'ARTICLE_APPROVED',
-          'ARTICLE_REJECTED',
-          'CONTENT_REJECTED',
-          'ARTICLE_COMMENT',
-          'COMMENT_REPLY',
-        }.contains(item.type) &&
-        item.subjectType == 'ARTICLE' &&
-        item.subjectID > 0) {
+    if (_opensArticle(item)) {
       await runRequest(context, () async {
         final result = await widget.store.request(
           'GetArticlesId',
@@ -560,390 +516,5 @@ class _MessagesPageState extends State<MessagesPage> {
       });
       return;
     }
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * .75,
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.subjectType == 'REPORT' ? '举报处理结果' : '系统通知',
-                  style: TextStyle(fontSize: 12, color: context.colors.accent),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  item.title,
-                  style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w700,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  messageTime(item.time),
-                  style: TextStyle(fontSize: 11, color: context.colors.muted),
-                ),
-                if (item.body.isNotEmpty) ...[
-                  const SizedBox(height: 22),
-                  SelectableText(
-                    item.body,
-                    style: const TextStyle(fontSize: 14, height: 1.8),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    if (!item.read) runRequest(context, () => widget.store.markRead(item));
-  }
-
-  Widget _conversation(Map<String, dynamic> row) {
-    final peer = row['peer'] is Map ? row['peer'] as Map : const {};
-    final name = userDisplayName(peer['display_name']);
-    final unread = integer(row['unread_count']);
-    final summary = row['last_message_id'] == null
-        ? '暂无消息'
-        : chatMessageText({
-            'type': row['last_message_type'],
-            'payload': row['last_message_payload'],
-          });
-    return InkWell(
-      onTap: () =>
-          openPage(context, ChatPage(store: widget.store, conversation: row)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            ProfileAvatar(
-              seed: '${peer['id'] ?? name}',
-              url: peer['avatar_url']?.toString() ?? '',
-              size: 44,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        messageTime(
-                          row['last_message_at'] ?? row['updated_at'],
-                        ),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: context.colors.muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 7),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          summary,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: context.colors.muted,
-                          ),
-                        ),
-                      ),
-                      if (unread > 0) ...[
-                        const SizedBox(width: 10),
-                        _badge(unread),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.store, required this.conversation});
-  final AppStore store;
-  final Map<String, dynamic> conversation;
-  @override
-  State<ChatPage> createState() => _ChatPageState();
-}
-
-class _ChatPageState extends State<ChatPage> {
-  late final history = ChatHistory(
-    widget.store,
-    integer(widget.conversation['id']),
-  );
-  final input = TextEditingController();
-  final scroll = ScrollController();
-  @override
-  void initState() {
-    super.initState();
-    history.addListener(_clearExpiredDraft);
-    history.load();
-  }
-
-  void _clearExpiredDraft() {
-    if (!history.valid) input.clear();
-  }
-
-  Future<void> _send() async {
-    final text = input.text;
-    final sent = await history.send(text);
-    if (!mounted || !sent) return;
-    if (input.text == text) input.clear();
-    await widget.store.load('chats');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final peer = widget.conversation['peer'] is Map
-        ? widget.conversation['peer'] as Map
-        : const {};
-    final name = userDisplayName(peer['display_name']);
-    return Scaffold(
-      appBar: AppPageBar(
-        title: Text(name),
-        actions: [
-          const DismissKeyboardButton(),
-          IconButton(
-            tooltip: '刷新聊天记录',
-            onPressed: () => history.load(),
-            icon: const AppIcon(AppIcons.refresh, size: 21),
-          ),
-        ],
-      ),
-      body: AnimatedBuilder(
-        animation: history,
-        builder: (context, _) => Column(
-          children: [
-            if (history.error != null || history.readError != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        history.error ?? '未能更新已读状态',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.colors.muted,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: history.loading ? null : () => history.load(),
-                      child: const Text('重试'),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: PlayfulRefresh(
-                onRefresh: () => history.load(),
-                hasError: () => history.error != null,
-                child: ListView.builder(
-                  controller: scroll,
-                  reverse: true,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: history.messages.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index < history.messages.length) {
-                      return _bubble(
-                        history.messages[history.messages.length - index - 1],
-                      );
-                    }
-                    if (history.loading) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      );
-                    }
-                    if (history.cursor.isNotEmpty) {
-                      return TextButton(
-                        onPressed: () => history.load(more: true),
-                        child: const Text('查看更早消息'),
-                      );
-                    }
-                    if (history.messages.isEmpty && history.error == null) {
-                      return const EmptyState('暂无聊天记录', '', compact: true);
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ),
-            ),
-            SafeArea(
-              top: false,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: context.colors.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: (context.isDark
-                          ? context.colors.border
-                          : Color(0xFFEDF1F7)),
-                    ),
-                  ),
-                ),
-                padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: input,
-                        enabled: history.valid && !history.sending,
-                        minLines: 1,
-                        maxLines: 4,
-                        maxLength: 4000,
-                        textInputAction: TextInputAction.newline,
-                        style: const TextStyle(fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: '输入消息',
-                          counterText: '',
-                          filled: true,
-                          fillColor: context.colors.canvas,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: input,
-                      builder: (_, value, _) => IconButton.filled(
-                        tooltip: '发送消息',
-                        onPressed:
-                            history.valid &&
-                                !history.sending &&
-                                value.text.trim().isNotEmpty
-                            ? _send
-                            : null,
-                        icon: history.sending
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const AppIcon(AppIcons.send, size: 20),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _bubble(Map row) {
-    final own = integer(row['sender_id']) == widget.store.userID;
-    final payload = row['payload'] is Map ? row['payload'] as Map : const {};
-    final url = payload['url']?.toString() ?? '';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: own
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
-        children: [
-          Text(
-            messageTime(row['created_at']),
-            style: TextStyle(fontSize: 10, color: context.colors.muted),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * .78,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            decoration: BoxDecoration(
-              color: own ? blue : context.colors.surface,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child:
-                row['type'] == 'IMAGE' && Uri.tryParse(url)?.scheme == 'https'
-                ? Image.network(
-                    url,
-                    cacheWidth: 540,
-                    width: 180,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => Text(
-                      '[图片无法加载]',
-                      style: TextStyle(
-                        color: own ? Colors.white : context.colors.muted,
-                      ),
-                    ),
-                  )
-                : SelectableText(
-                    chatMessageText(row),
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.6,
-                      color: own ? Colors.white : context.colors.ink,
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    history.removeListener(_clearExpiredDraft);
-    history.dispose();
-    input.dispose();
-    scroll.dispose();
-    super.dispose();
   }
 }

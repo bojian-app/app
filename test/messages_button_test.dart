@@ -37,8 +37,7 @@ void main() {
           );
         }
       }
-      store.notificationUnreadCount = 1;
-      store.conversations.add({'id': 1, 'unread_count': 2});
+      store.notificationUnreadCount = 3;
       store.changed();
       await tester.pumpAndSettle();
       expect(
@@ -49,45 +48,35 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Repeated taps open one message page with a back path and both message categories',
-    (tester) async {
-      final api = FakeGateway();
-      final store = await testStore(authenticated: true, api: api);
-      addTearDown(store.dispose);
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: appTheme,
-          home: Scaffold(body: MessagesButton(store: store)),
-        ),
-      );
-      api.calls.clear();
-      final entry = find.byType(MessagesButton);
-      await tester.tap(entry);
-      await tester.tap(entry);
-      await tester.pumpAndSettle();
-      expect(find.byType(MessagesPage), findsOneWidget);
-      expect(find.text('消息'), findsOneWidget);
-      expect(
-        api.calls.where((call) => call == 'GetNotifications'),
-        hasLength(1),
-      );
-      expect(
-        api.calls.where((call) => call == 'GetConversations'),
-        hasLength(1),
-      );
-      expect(find.text('暂无系统通知'), findsOneWidget);
-      await tester.tap(find.text('聊天记录'));
-      await tester.pumpAndSettle();
-      expect(find.text('暂无聊天记录'), findsOneWidget);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(find.byType(MessagesPage), findsNothing);
-      expect(entry.hitTestable(), findsOneWidget);
-      await tester.tap(entry);
-      await tester.pumpAndSettle();
-      expect(find.byType(MessagesPage), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('Repeated taps open one message page with a back path', (
+    tester,
+  ) async {
+    final api = FakeGateway();
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: Scaffold(body: MessagesButton(store: store)),
+      ),
+    );
+    api.calls.clear();
+    final entry = find.byType(MessagesButton);
+    await tester.tap(entry);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    expect(find.byType(MessagesPage), findsOneWidget);
+    expect(find.text('消息'), findsOneWidget);
+    expect(api.calls.where((call) => call == 'GetNotifications'), hasLength(1));
+    expect(api.calls, isNot(contains('GetConversations')));
+    expect(find.text('暂无系统通知'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(MessagesPage), findsNothing);
+    expect(entry.hitTestable(), findsOneWidget);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    expect(find.byType(MessagesPage), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -131,9 +131,6 @@ void main() {
       );
       if (result == 'success') {
         expect(find.byType(AppShell), findsOneWidget);
-        expect(find.byType(PhoneBindingDialog), findsOneWidget);
-        await tester.tap(find.byKey(const ValueKey('phone-binding-skip')));
-        await tester.pumpAndSettle();
         expect(find.byType(PhoneBindingDialog), findsNothing);
         expect(store.isAuthenticated, isTrue);
         expect(gateway.calls, isNot(contains('PostMePhone')));

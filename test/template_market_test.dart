@@ -121,7 +121,6 @@ void main() {
       'pricing_type': 'PAID',
       'revision': 3,
       'version': 1,
-      'creator_name': '模板作者',
       'compatible': true,
       'status': 'PUBLISHED',
     };
@@ -231,13 +230,11 @@ void main() {
     api.documents['GetMeTemplates'] = {
       'items': [
         {'id': 7, 'name': '已获取', 'source': 'ACQUIRED'},
-        {'id': 8, 'name': '自己的设计', 'source': 'PUBLISHED_BY_ME'},
       ],
     };
     await market.loadOwned();
     market.select(TemplateMarketFilter.owned);
     expect(market.visible.map((row) => row['id']), [7]);
-    expect(market.authored, {8});
   });
   test('Paid confirmation binds quote and reuses idempotency key after a failed request', () async {
     api.failOrderOnce = true;
@@ -350,99 +347,6 @@ void main() {
       expect(api.calls, isNot(contains('PostTemplateOrders')));
     },
   );
-  for (final price in [0, 80]) {
-    testWidgets('Author acquires own $price-point template and uses it', (
-      tester,
-    ) async {
-      api.documents['GetTemplatesId']!.addAll({
-        'price_points': price,
-        'pricing_type': price == 0 ? 'FREE' : 'PAID',
-      });
-      api.documents['GetMeTemplates'] = {
-        'items': [
-          {'id': 7, 'name': '商务设计', 'source': 'PUBLISHED_BY_ME'},
-        ],
-      };
-      api.failing = 'GetWallet';
-      int? usedID;
-      tester.view.physicalSize = const Size(320, 640);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.runAsync(() async {
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: appTheme,
-            home: TemplateMarketDetail(
-              market: market,
-              template: {'id': 7, 'name': '商务设计'},
-              onUseTemplate: (_, template) => usedID = template['id'] as int,
-            ),
-          ),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      });
-      await settlePreview(tester);
-      expect(find.text('免费获取'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.runAsync(() async {
-        await tester.tap(find.text('免费获取'));
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      });
-      await tester.pumpAndSettle();
-      expect(find.text('使用模板'), findsOneWidget);
-      expect(find.text('兑换模板'), findsNothing);
-      expect(api.calls, isNot(contains('PostTemplateOrders')));
-      expect(market.authored, {7});
-      expect(market.ownedIDs, {7});
-      market.select(TemplateMarketFilter.owned);
-      expect(market.visible.single['id'], 7);
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('使用模板'));
-      expect(usedID, 7);
-      await tester.runAsync(
-        () => market.acquire(
-          id: 7,
-          quotedPrice: price,
-          quotedRevision: 3,
-          idempotencyKey: 'retry-author',
-        ),
-      );
-      expect(
-        api.requests.where((r) => r.method == 'PostTemplatesIdAcquisitions'),
-        hasLength(1),
-      );
-      expect(tester.takeException(), isNull);
-    });
-  }
-  test(
-    'Author cannot acquire an unpublished or incompatible template',
-    () async {
-      api.documents['GetMeTemplates'] = {
-        'items': [
-          {'id': 7, 'source': 'PUBLISHED_BY_ME'},
-        ],
-      };
-      for (final changes in [
-        {'status': 'DRAFT', 'compatible': true},
-        {'status': 'PUBLISHED', 'compatible': false},
-      ]) {
-        api.documents['GetTemplatesId']!.addAll(changes);
-        await expectLater(
-          market.acquire(
-            id: 7,
-            quotedPrice: 80,
-            quotedRevision: 3,
-            idempotencyKey: 'unavailable-author',
-          ),
-          throwsA(isA<ApiFailure>()),
-        );
-      }
-      expect(api.calls, isNot(contains('PostTemplatesIdAcquisitions')));
-      expect(api.calls, isNot(contains('PostTemplateOrders')));
-    },
-  );
   testWidgets(
     'Market uses actual preview cards, supports filters and landscape layout',
     (tester) async {
@@ -451,7 +355,6 @@ void main() {
           {
             'id': 7,
             'name': '商务设计',
-            'creator_name': '模板作者',
             'price_points': 80,
             'preview_status': 'PENDING',
           },
@@ -471,6 +374,15 @@ void main() {
       expect(find.text('80'), findsOneWidget);
       expect(find.text('好设计，让重点自然被看见。'), findsNothing);
       expect(find.byType(SliverGrid), findsOneWidget);
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpAndSettle();
+      final searchRect = tester.getRect(find.byType(TextField));
+      expect(searchRect.left, appPageHorizontalPadding);
+      expect(390 - searchRect.right, appPageHorizontalPadding);
+      expect(tester.getTopLeft(find.text('模板市场')).dx, appPageHorizontalPadding);
+      expect(tester.getTopLeft(find.text('商务设计')).dx, appPageHorizontalPadding);
+      expect(tester.takeException(), isNull);
       tester.view.physicalSize = const Size(844, 390);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -479,6 +391,85 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('Horizontal swipes switch market filters and respect edges', (
+    tester,
+  ) async {
+    Future<void> drain() async {
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+      }
+      await tester.pumpAndSettle();
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: TemplateMarketView(store: store, onUseTemplate: (_, _) {}),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await drain();
+    final area = find.byKey(const ValueKey('template-market-swipe'));
+    Future<void> swipe(double dx) async {
+      await tester.drag(
+        area,
+        Offset(dx.sign * tester.getSize(area).width * .75, 0),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await drain();
+    }
+
+    TabController controller() => tester.widget<TabBarView>(area).controller!;
+    int selected() => controller().index;
+    final gesture = await tester.startGesture(tester.getCenter(area));
+    await gesture.moveBy(const Offset(-30, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(-70, 0));
+    await tester.pump();
+    expect(controller().animation!.value, greaterThan(0));
+    expect(controller().animation!.value, lessThan(1));
+    await gesture.moveBy(const Offset(100, 0));
+    await gesture.up();
+    await drain();
+    await swipe(-220);
+    expect(selected(), 1);
+    await swipe(-220);
+    expect(selected(), 2);
+    expect(find.byKey(const ValueKey('market-tab-owned')), findsNothing);
+    expect(controller().length, 3);
+    final count = api.requests.length;
+    await swipe(-220);
+    expect(api.requests.length, count);
+    await swipe(220);
+    expect(selected(), 1);
+    await tester.tap(find.byKey(const ValueKey('market-tab-all')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await drain();
+    expect(selected(), 0);
+    final firstCount = api.requests.length;
+    await swipe(220);
+    expect(api.requests.length, firstCount);
+    await tester.drag(area, const Offset(0, -120));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await drain();
+    expect(selected(), 0);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('Failed catalogue shows retry without invented templates', (
     tester,
   ) async {
@@ -549,7 +540,6 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       api.documents['GetTemplatesId']!.addAll({
         'name': '简洁清晰的个人简历模板，适用于不同工作阶段',
-        'creator_name': '一位名字很长的模板作者，认真设计每一份简历',
       });
       await tester.runAsync(() async {
         await tester.pumpWidget(
@@ -572,6 +562,20 @@ void main() {
       await settlePreview(tester);
       expect(find.byType(MarketTemplateArtwork), findsNothing);
       expect(find.byType(TemplateLivePreview), findsOneWidget);
+      final stage = find.byKey(const ValueKey('template-preview-stage'));
+      final author = find.byKey(const ValueKey('template-publisher-avatar'));
+      expect(
+        tester.getBottomLeft(author).dy,
+        lessThan(tester.getTopLeft(stage).dy),
+      );
+      expect(
+        find.ancestor(
+          of: find.byType(TemplateLivePreview),
+          matching: find.byType(Scrollable),
+        ),
+        findsNothing,
+      );
+      expect(tester.getSize(stage).height, greaterThan(100));
       expect(find.text('积分兑换'), findsOneWidget);
       expect(api.calls, isNot(contains('GetTemplatesIdPreviewAssets')));
       expect(tester.takeException(), isNull);

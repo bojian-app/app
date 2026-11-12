@@ -58,10 +58,10 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   String jobStatus = 'QUEUED';
   ResumeDraft? result;
 
-  Color get purple =>
-      context.isDark ? const Color(0xFFB79AFF) : const Color(0xFF8048F4);
+  Color get accent =>
+      context.isDark ? const Color(0xFF8AB4FF) : const Color(0xFF2867EE);
   Color get soft =>
-      context.isDark ? const Color(0xFF332744) : const Color(0xFFF4EEFF);
+      context.isDark ? const Color(0xFF1F2A44) : const Color(0xFFEAF1FF);
   Color get background =>
       context.isDark ? context.colors.canvas : const Color(0xFFF8F7FF);
   String get generationDescription {
@@ -216,7 +216,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
         showDragHandle: true,
         backgroundColor: context.colors.surface,
         builder: (context) =>
-            _SearchChoices(title: title, options: options, accent: purple),
+            _SearchChoices(title: title, options: options, accent: accent),
       );
 
   Set<String> tagSelection(_AnswerTags kind) => switch (kind) {
@@ -278,7 +278,12 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
         appBar: AppPageBar(title: const Text('AI生成简历')),
         bottomNavigationBar: SafeArea(
           top: false,
-          minimum: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          minimum: const EdgeInsets.fromLTRB(
+            appPageHorizontalPadding,
+            10,
+            appPageHorizontalPadding,
+            12,
+          ),
           child: generateButton(),
         ),
         body: SafeArea(
@@ -286,7 +291,12 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
           bottom: false,
           child: SingleChildScrollView(
             controller: scroll,
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+            padding: const EdgeInsets.fromLTRB(
+              appPageHorizontalPadding,
+              16,
+              appPageHorizontalPadding,
+              20,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -337,7 +347,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
                       error = null;
                     }),
               style: TextButton.styleFrom(
-                foregroundColor: quick == value ? purple : context.colors.ink,
+                foregroundColor: quick == value ? accent : context.colors.ink,
                 backgroundColor: quick == value
                     ? context.colors.surface
                     : Colors.transparent,
@@ -638,18 +648,18 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.auto_awesome_outlined, color: purple, size: 20),
+              Icon(Icons.auto_awesome_outlined, color: accent, size: 20),
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
                   '推荐词：${resumeProjectPrompts(answers.position)[prompt % 3]}',
-                  style: TextStyle(color: purple, height: 1.6),
+                  style: TextStyle(color: accent, height: 1.6),
                 ),
               ),
               IconButton(
                 tooltip: '换一个提示',
                 onPressed: () => setState(() => prompt++),
-                icon: Icon(Icons.refresh, color: purple),
+                icon: Icon(Icons.refresh, color: accent),
               ),
             ],
           ),
@@ -740,7 +750,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
               padding: const EdgeInsets.only(top: 3),
               child: Text(
                 '${index + 1}/7',
-                style: TextStyle(color: purple, fontSize: 14),
+                style: TextStyle(color: accent, fontSize: 14),
               ),
             ),
             const SizedBox(width: 10),
@@ -787,8 +797,8 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: context.isDark
-              ? [const Color(0xFF463156), const Color(0xFF3B2F5C)]
-              : [const Color(0xFFF1D9FF), const Color(0xFFDFC6FF)],
+              ? [const Color(0xFF233456), const Color(0xFF1F2E52)]
+              : [const Color(0xFFDCE9FF), const Color(0xFFC9DCFF)],
         ),
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
@@ -835,7 +845,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   }) => TextButton(
     onPressed: submission.submitting ? null : action,
     style: TextButton.styleFrom(
-      foregroundColor: selected ? purple : context.colors.ink,
+      foregroundColor: selected ? accent : context.colors.ink,
       backgroundColor: selected
           ? soft
           : context.colors.inset.withValues(alpha: .65),
@@ -844,7 +854,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
           color: selected
-              ? purple.withValues(alpha: .18)
+              ? accent.withValues(alpha: .18)
               : context.colors.border,
         ),
       ),
@@ -880,7 +890,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
           alignment: Alignment.centerLeft,
           foregroundColor: context.colors.muted,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
-          side: BorderSide(color: purple),
+          side: BorderSide(color: accent),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -919,8 +929,8 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
             onPressed: () => addChoice(kind),
-            icon: Icon(Icons.add, color: purple),
-            label: Text(tagAddLabel(kind), style: TextStyle(color: purple)),
+            icon: Icon(Icons.add, color: accent),
+            label: Text(tagAddLabel(kind), style: TextStyle(color: accent)),
           ),
         ),
       ],
@@ -933,7 +943,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
       alignment: Alignment.centerRight,
       child: FilledButton(
         style: FilledButton.styleFrom(
-          backgroundColor: purple,
+          backgroundColor: accent,
           foregroundColor: context.isDark ? Colors.black : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
         ),
@@ -948,8 +958,8 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     onPressed: submission.submitting || !canGenerate ? null : submit,
     style: FilledButton.styleFrom(
       foregroundColor: Colors.white,
-      backgroundColor: const Color(0xFF854DF5),
-      disabledBackgroundColor: purple.withValues(alpha: .3),
+      backgroundColor: const Color(0xFF2867EE),
+      disabledBackgroundColor: accent.withValues(alpha: .3),
       padding: const EdgeInsets.symmetric(vertical: 17, horizontal: 14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ).withoutHover(),
@@ -986,13 +996,16 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     body: SafeArea(
       child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(
+            horizontal: appPageHorizontalPadding,
+            vertical: 24,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (!failed && error == null && !delayed)
-                CircularProgressIndicator(color: purple),
-              if (failed) Icon(Icons.refresh, color: purple, size: 44),
+                CircularProgressIndicator(color: accent),
+              if (failed) Icon(Icons.refresh, color: accent, size: 44),
               const SizedBox(height: 24),
               Text(
                 failed
@@ -1131,7 +1144,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
             SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: purple),
+              child: CircularProgressIndicator(strokeWidth: 2, color: accent),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -1165,7 +1178,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
             children: [
               Text(
                 '已解析：$referenceName',
-                style: TextStyle(color: purple, fontWeight: FontWeight.w500),
+                style: TextStyle(color: accent, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 7),
               Text(

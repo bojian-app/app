@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/app_store.dart';
-import 'package:bojian_mobile/chat_history.dart';
 import 'package:bojian_mobile/realtime_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -185,17 +184,22 @@ void main() {
       await store.signIn('13812345678', '654321');
       await Future<void>.delayed(const Duration(milliseconds: 250));
       api.calls.clear();
-      api.documents['GetConversations'] = {
+      api.documents['GetNotifications'] = {
+        'unread_count': 3,
         'items': [
-          {'id': 7, 'unread_count': 3},
+          {
+            'id': 7,
+            'type': 'SYSTEM',
+            'payload': {'title': '通知'},
+          },
         ],
       };
       for (var i = 1; i <= 20; i++) {
-        sockets.last.event('message.created', i, {'conversation_id': 7});
+        sockets.last.event('notification.created', i, {});
       }
       await Future<void>.delayed(const Duration(milliseconds: 300));
-      expect(api.calls.where((value) => value == 'GetConversations').length, 1);
-      expect(store.conversations.single['unread_count'], 3);
+      expect(api.calls.where((value) => value == 'GetNotifications').length, 1);
+      expect(store.notificationUnreadCount, 3);
       sockets.last.event('SYSTEM_NOTIFICATION', 21, {'notification_id': 55});
       await Future<void>.delayed(const Duration(milliseconds: 250));
       expect(api.calls, contains('PostNotificationsIdDelivery'));
@@ -216,7 +220,7 @@ void main() {
       await flush();
       expect(store.isAuthenticated, false);
       expect(store.sessionNotice?['message'], '测试原因');
-      expect(store.conversations, isEmpty);
+      expect(store.inbox, isEmpty);
     },
   );
 
@@ -254,72 +258,4 @@ void main() {
       await expectation;
     },
   );
-
-  test(
-    'chat reconnect fills multiple pages and preserves older loaded messages',
-    () async {
-      final api = GapGateway();
-      api.documents['PostRealtimeToken'] = {
-        'token': 'test',
-        'websocket_path': '/api/v1/realtime',
-      };
-      final socket = TestSocket();
-      final store = AppStore(
-        api: api,
-        storage: MemoryStorage(),
-        realtimeConnector: (_) async => socket,
-      );
-      addTearDown(store.dispose);
-      await store.initialize();
-      await store.signIn('13812345678', '654321');
-      await flush();
-      final chat = ChatHistory(store, 7);
-      addTearDown(chat.dispose);
-      await chat.load();
-      expect(chat.messages.length, 2);
-      expect(chat.cursor, 'older');
-      api.latest = true;
-      socket.event('message.created', 1, {'conversation_id': 7});
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(chat.messages.map((m) => m['id']), [8, 9, 10, 11, 12, 13]);
-      expect(chat.cursor, 'older');
-      expect(api.pages, ['', '', '11']);
-    },
-  );
-}
-
-class GapGateway extends FakeGateway {
-  bool latest = false;
-  final pages = <String>[];
-  @override
-  Future<ApiDocument> call(
-    String method, {
-    Map<String, String> path = const {},
-    Map<String, String> query = const {},
-    Map<String, dynamic>? body,
-    Map<String, String> headers = const {},
-  }) async {
-    if (method == 'GetConversationsIdMessages') {
-      final cursor = query['cursor'] ?? '';
-      pages.add(cursor);
-      final ids = latest ? (cursor.isEmpty ? [13, 12] : [11, 10, 9]) : [9, 8];
-      return ApiDocument({
-        'items': [
-          for (final id in ids)
-            {
-              'id': id,
-              'type': 'TEXT',
-              'payload': {'text': '$id'},
-            },
-        ],
-      }, nextCursor: latest && cursor.isEmpty ? '11' : 'older');
-    }
-    return super.call(
-      method,
-      path: path,
-      query: query,
-      body: body,
-      headers: headers,
-    );
-  }
 }

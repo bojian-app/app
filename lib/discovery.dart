@@ -70,70 +70,81 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                   )),
         )
         .toList();
-    final known = _seenArticles.putIfAbsent(
-      category,
-      () => stories.map((story) => story.id).toSet(),
-    );
-    final added = stories
-        .where((story) => !known.contains(story.id))
-        .map((story) => story.id)
-        .toSet();
+    // Only refreshes animate newcomers in; the first batch a list shows (for
+    // example right after sign-in, when the feed was still empty) appears as is.
+    final known = _seenArticles.putIfAbsent(category, () => <int>{});
+    final added = known.isEmpty
+        ? const <int>{}
+        : stories
+              .where((story) => !known.contains(story.id))
+              .map((story) => story.id)
+              .toSet();
     known.addAll(stories.map((story) => story.id));
     return LayoutBuilder(
-      builder: (context, constraints) => PlayfulRefresh(
-        hasError: () => widget.store.errors['feed'] != null,
-        onRefresh: () => widget.store.load('feed'),
-        child: ListView(
-          key: PageStorageKey('discovery-feed-$category'),
-          physics: const AlwaysScrollableScrollPhysics(),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.only(bottom: 24),
-          children: [
-            if (stories.isEmpty)
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: (constraints.maxHeight - 24).clamp(
-                    0.0,
-                    double.infinity,
+      builder: (context, constraints) => AutoPaginate.section(
+        store: widget.store,
+        section: 'feed',
+        child: PlayfulRefresh(
+          hasError: () => widget.store.errors['feed'] != null,
+          onRefresh: () => widget.store.load('feed'),
+          child: ListView(
+            key: PageStorageKey('discovery-feed-$category'),
+            physics: const AlwaysScrollableScrollPhysics(),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              if (stories.isEmpty && widget.store.loading.contains('feed'))
+                const _FeedSkeleton()
+              else if (stories.isEmpty)
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (constraints.maxHeight - 24).clamp(
+                      0.0,
+                      double.infinity,
+                    ),
+                  ),
+                  child: Center(
+                    child: DataStatus(
+                      store: widget.store,
+                      section: 'feed',
+                      empty: stories.isEmpty,
+                      title: query.isEmpty ? '还没有发布的内容' : '没有找到相关内容',
+                      subtitle: query.isEmpty ? '' : '试试其他关键词。',
+                    ),
                   ),
                 ),
-                child: Center(
-                  child: DataStatus(
-                    store: widget.store,
-                    section: 'feed',
-                    empty: stories.isEmpty,
-                    title: query.isEmpty ? '还没有发布的内容' : '没有找到相关内容',
-                    subtitle: query.isEmpty ? '' : '试试其他关键词。',
-                  ),
-                ),
-              ),
-            for (final story in stories)
-              _FeedArticleEntrance(
-                key: ValueKey('discovery-story-${story.id}'),
-                animate: added.contains(story.id),
-                child: ColoredBox(
-                  color: context.colors.canvas,
-                  child: Container(
-                    color: context.colors.surface,
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 600),
-                        child: StoryCard(
-                          story: story,
-                          store: widget.store,
-                          flat: true,
+              for (final story in stories)
+                _FeedArticleEntrance(
+                  key: ValueKey('discovery-story-${story.id}'),
+                  animate: added.contains(story.id),
+                  child: ColoredBox(
+                    color: context.colors.canvas,
+                    child: Container(
+                      color: context.colors.surface,
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: feedOuterPadding,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 600),
+                          child: StoryCard(
+                            story: story,
+                            store: widget.store,
+                            flat: true,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
+              if (stories.isNotEmpty && widget.store.errors['feed'] != null)
+                DataStatus(store: widget.store, section: 'feed', empty: false),
+              PageLoadingFooter(
+                visible: widget.store.loadingMore.contains('feed'),
               ),
-            if (stories.isNotEmpty && widget.store.errors['feed'] != null)
-              DataStatus(store: widget.store, section: 'feed', empty: false),
-            MoreButton(store: widget.store, section: 'feed'),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -151,7 +162,14 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         );
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      // Icon artwork lands on the page gutter: a 44 button pads its 20
+      // glyph by 12, and the glyphs carry about 2.5 and 1 of their own.
+      padding: const EdgeInsets.fromLTRB(
+        appPageHorizontalPadding - 14.5,
+        0,
+        appPageHorizontalPadding - 13,
+        0,
+      ),
       child: SizedBox(
         key: const ValueKey('discovery-search-row'),
         height: rowHeight,
@@ -304,17 +322,23 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                 builder: (context, collapse) => ColoredBox(
                   color: context.colors.surface,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: EdgeInsets.zero,
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 600),
                         child: Stack(
                           children: [
                             Positioned(
+                              // Collapsed, the tabs sit between the two
+                              // 44 buttons of the search row.
                               left:
-                                  (widget.store.isAuthenticated ? 48 : 4) *
+                                  (widget.store.isAuthenticated
+                                      ? appPageHorizontalPadding - 14.5 + 44
+                                      : 4) *
                                   collapse,
-                              right: 48 * collapse,
+                              right:
+                                  (appPageHorizontalPadding - 13 + 44) *
+                                  collapse,
                               bottom:
                                   (((MediaQuery.textScalerOf(context)
                                                           .scale(13) *
@@ -326,7 +350,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                                   collapse,
                               child: ProfileContentTabs(
                                 tabBarKey: const ValueKey('discovery-tabs'),
-                                horizontalPadding: 8,
+                                horizontalPadding: appPageHorizontalPadding - 8,
                                 showDivider: false,
                                 tabs: [
                                   for (final category in categories)
@@ -503,7 +527,10 @@ class StoryCard extends StatelessWidget {
                               ),
                             ),
                       child: Padding(
-                        padding: EdgeInsets.all(flat ? 7 : 4),
+                        // Flat cards start the avatar on the text edge.
+                        padding: flat
+                            ? const EdgeInsets.fromLTRB(0, 7, 7, 7)
+                            : const EdgeInsets.all(4),
                         child: ProfileAvatar(
                           seed: story.authorID > 0
                               ? '${story.authorID}'
@@ -660,6 +687,63 @@ class StoryCard extends StatelessWidget {
         );
 }
 
+/// Stand-in feed cards shown, in the real cards' place, until the first page of
+/// articles arrives.
+class _FeedSkeleton extends StatelessWidget {
+  const _FeedSkeleton();
+
+  @override
+  Widget build(BuildContext context) => SkeletonPulse(
+    child: Column(
+      key: const ValueKey('discovery-feed-skeleton'),
+      children: [
+        for (var i = 0; i < 4; i++)
+          Container(
+            color: context.colors.surface,
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: feedOuterPadding + feedContentPadding,
+              vertical: 12,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                        children: [
+                          SkeletonBox(width: 30, height: 30, radius: 15),
+                          SizedBox(width: 15),
+                          SkeletonBox(width: 88, height: 12),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    FractionallySizedBox(
+                      widthFactor: i.isEven ? 0.72 : 0.56,
+                      child: const SkeletonBox(height: 18),
+                    ),
+                    const SizedBox(height: 10),
+                    const SkeletonBox(height: 12),
+                    const SizedBox(height: 8),
+                    const FractionallySizedBox(
+                      widthFactor: 0.82,
+                      child: SkeletonBox(height: 12),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
 class _StorySurface extends StatelessWidget {
   const _StorySurface({required this.flat, required this.child});
   final bool flat;
@@ -669,7 +753,10 @@ class _StorySurface extends StatelessWidget {
       ? Material(
           color: context.colors.surface,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: feedContentPadding,
+              vertical: 12,
+            ),
             child: child,
           ),
         )
@@ -1116,6 +1203,20 @@ class _StoryDetailState extends State<StoryDetail> {
     });
   }
 
+  bool loadingMoreComments = false;
+
+  Future<void> loadMoreComments() async {
+    setState(() => loadingMoreComments = true);
+    try {
+      await widget.store.article(widget.story, more: true);
+      if (mounted) setState(() => commentError = null);
+    } catch (e) {
+      if (mounted) setState(() => commentError = '$e');
+    } finally {
+      if (mounted) setState(() => loadingMoreComments = false);
+    }
+  }
+
   Future<void> loadComments({bool silent = false}) async {
     if (refreshingComments) {
       refreshCommentsPending = true;
@@ -1172,165 +1273,183 @@ class _StoryDetailState extends State<StoryDetail> {
       ),
       body: articleRemoved
           ? const Center(child: Text('该文章已撤回，暂时无法查看'))
-          : ListView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-              children: [
-                Text(
-                  widget.story.title,
-                  style: const TextStyle(
-                    fontSize: 26,
-                    height: 1.45,
-                    fontWeight: FontWeight.w700,
+          : AutoPaginate(
+              canLoad:
+                  widget.story.commentsCursor.isNotEmpty &&
+                  !commentsLoading &&
+                  !loadingMoreComments &&
+                  commentError == null,
+              onLoadMore: loadMoreComments,
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(
+                  appPageHorizontalPadding,
+                  12,
+                  appPageHorizontalPadding,
+                  24,
+                ),
+                children: [
+                  Text(
+                    widget.story.title,
+                    style: const TextStyle(
+                      fontSize: 26,
+                      height: 1.45,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    ProfileAvatar(
-                      seed: widget.story.authorID > 0
-                          ? '${widget.story.authorID}'
-                          : widget.story.author,
-                      url: widget.story.authorAvatarURL,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.story.author,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                            ),
-                          ),
-                          Text(
-                            widget.story.role,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: context.colors.muted,
-                            ),
-                          ),
-                        ],
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      ProfileAvatar(
+                        seed: widget.story.authorID > 0
+                            ? '${widget.story.authorID}'
+                            : widget.story.author,
+                        url: widget.story.authorAvatarURL,
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      widget.story.publishedAt.split('T').first,
-                      style: TextStyle(
-                        color: context.colors.muted,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 26),
-                if (widget.story.cover == 1) ...[
-                  _StoryCover(),
-                  const SizedBox(height: 24),
-                ],
-                if (widget.story.hasGuidance)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: OutlinedButton(
-                      onPressed: () => openPage(
-                        context,
-                        ResumeGuidanceView(
-                          store: widget.store,
-                          id: widget.story.id,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.story.author,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              widget.story.role,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.colors.muted,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: const Text('查看简历并指点'),
-                    ),
-                  ),
-                ArticleRichBody(
-                  content: bodyContent.isEmpty
-                      ? richContent(widget.story.paragraphs.join('\n'))
-                      : bodyContent,
-                ),
-                if (bodyError != null)
-                  TextButton(
-                    onPressed: loadBody,
-                    child: Text('$bodyError，点击重试'),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    key: const ValueKey('article-end-actions'),
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      ArticleReactionButton(
-                        key: const ValueKey('detail-like'),
-                        count: widget.story.likes,
-                        reaction: ArticleReaction.like,
-                        active: widget.story.liked,
-                        onTap:
-                            widget.store.pending.contains(
-                              'like-${widget.story.id}',
-                            )
-                            ? null
-                            : () => runRequest(
-                                context,
-                                () => widget.store.like(widget.story),
-                              ),
-                      ),
-                      const SizedBox(width: 8),
-                      ArticleReactionButton(
-                        key: const ValueKey('detail-bookmark'),
-                        reaction: ArticleReaction.bookmark,
-                        active: widget.story.saved,
-                        onTap:
-                            widget.store.pending.contains(
-                              'bookmark-${widget.story.id}',
-                            )
-                            ? null
-                            : () => runRequest(
-                                context,
-                                () => widget.store.bookmark(widget.story),
-                              ),
+                      const SizedBox(width: 10),
+                      Text(
+                        widget.story.publishedAt.split('T').first,
+                        style: TextStyle(
+                          color: context.colors.muted,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ),
-                ),
-                const Divider(),
-                const SizedBox(height: 18),
-                Text(
-                  '评论（${widget.story.commentCount}）',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(height: 26),
+                  if (widget.story.cover == 1) ...[
+                    _StoryCover(),
+                    const SizedBox(height: 24),
+                  ],
+                  if (widget.story.hasGuidance)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: OutlinedButton(
+                        onPressed: () => openPage(
+                          context,
+                          ResumeGuidanceView(
+                            store: widget.store,
+                            id: widget.story.id,
+                          ),
+                        ),
+                        child: const Text('查看简历并指点'),
+                      ),
+                    ),
+                  ArticleRichBody(
+                    content: bodyContent.isEmpty
+                        ? richContent(widget.story.paragraphs.join('\n'))
+                        : bodyContent,
                   ),
-                ),
-                const SizedBox(height: 4),
-                if (commentError != null) ...[
+                  if (bodyError != null)
+                    TextButton(
+                      onPressed: loadBody,
+                      child: Text('$bodyError，点击重试'),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      key: const ValueKey('article-end-actions'),
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ArticleReactionButton(
+                          key: const ValueKey('detail-like'),
+                          count: widget.story.likes,
+                          reaction: ArticleReaction.like,
+                          active: widget.story.liked,
+                          onTap:
+                              widget.store.pending.contains(
+                                'like-${widget.story.id}',
+                              )
+                              ? null
+                              : () => runRequest(
+                                  context,
+                                  () => widget.store.like(widget.story),
+                                ),
+                        ),
+                        const SizedBox(width: 8),
+                        ArticleReactionButton(
+                          key: const ValueKey('detail-bookmark'),
+                          reaction: ArticleReaction.bookmark,
+                          active: widget.story.saved,
+                          onTap:
+                              widget.store.pending.contains(
+                                'bookmark-${widget.story.id}',
+                              )
+                              ? null
+                              : () => runRequest(
+                                  context,
+                                  () => widget.store.bookmark(widget.story),
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 18),
                   Text(
-                    commentError!,
-                    style: TextStyle(color: context.colors.muted, fontSize: 12),
+                    '评论（${widget.story.commentCount}）',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  TextButton(
-                    onPressed: loadComments,
-                    child: const Text('重新加载评论'),
-                  ),
+                  const SizedBox(height: 4),
+                  if (commentError != null) ...[
+                    Text(
+                      commentError!,
+                      style: TextStyle(
+                        color: context.colors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: loadComments,
+                      child: const Text('重新加载评论'),
+                    ),
+                  ],
+                  if (commentsLoading)
+                    const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  if (displayedComments.isEmpty &&
+                      commentError == null &&
+                      !commentsLoading)
+                    const EmptyState('还没有评论，聊聊你的看法', '', compact: true),
+                  for (
+                    var index = 0;
+                    index < displayedComments.length;
+                    index++
+                  ) ...[
+                    commentTile(displayedComments[index]),
+                    thread(displayedComments[index]),
+                    const SizedBox(height: 10),
+                  ],
+                  PageLoadingFooter(visible: loadingMoreComments),
                 ],
-                if (commentsLoading)
-                  const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                if (displayedComments.isEmpty &&
-                    commentError == null &&
-                    !commentsLoading)
-                  const EmptyState('还没有评论，聊聊你的看法', '', compact: true),
-                for (
-                  var index = 0;
-                  index < displayedComments.length;
-                  index++
-                ) ...[
-                  commentTile(displayedComments[index]),
-                  thread(displayedComments[index]),
-                  const SizedBox(height: 10),
-                ],
-              ],
+              ),
             ),
       bottomNavigationBar: articleRemoved
           ? null

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'api/bojian_api.dart';
 import 'api/generated/auth.pb.dart' as auth;
+import 'app_environment.dart';
 import 'app_store.dart';
 import 'design.dart';
 
@@ -19,6 +20,33 @@ class SmsRequestOutcome {
 
   final auth.SMSResponse? response;
   final Object? error;
+}
+
+/// Sends an SMS code to [phone], first passing the slider captcha unless it is
+/// the local test phone. Returns null when the captcha is dismissed or
+/// [current] turns false while it loads.
+Future<SmsRequestOutcome?> requestSmsCode(
+  BuildContext context, {
+  required AppStore store,
+  required String phone,
+  required Future<auth.SMSResponse> Function(String captchaToken) send,
+  required bool Function() current,
+}) async {
+  if (AppEnvironment.isTestPhone(phone)) {
+    return SmsRequestOutcome.accepted(await send(''));
+  }
+  final challenge = await store.api.createCaptcha(store.headers);
+  if (!context.mounted || !current()) return null;
+  return showDialog<SmsRequestOutcome>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => CaptchaDialog(
+      store: store,
+      challenge: challenge,
+      phone: phone,
+      onSendSMS: send,
+    ),
+  );
 }
 
 class CaptchaDialog extends StatefulWidget {

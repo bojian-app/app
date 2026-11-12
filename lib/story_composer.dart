@@ -266,7 +266,12 @@ class _StoryComposerState extends State<StoryComposer> {
             child: ListView(
               key: const ValueKey('composer-page'),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              padding: const EdgeInsets.fromLTRB(
+                appPageHorizontalPadding,
+                12,
+                appPageHorizontalPadding,
+                32,
+              ),
               children: [
                 if ('${widget.draft?['review_reason'] ?? ''}'
                     .trim()

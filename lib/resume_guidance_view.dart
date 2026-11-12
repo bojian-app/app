@@ -983,7 +983,12 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
                   if (data!['is_owner'] != true &&
                       '${data!['question'] ?? ''}'.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                      padding: const EdgeInsets.fromLTRB(
+                        appPageHorizontalPadding,
+                        4,
+                        appPageHorizontalPadding,
+                        12,
+                      ),
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(

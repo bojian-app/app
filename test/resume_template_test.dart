@@ -211,7 +211,9 @@ void main() {
       await tester.tap(find.text('已购买设计'));
       await tester.pumpAndSettle();
       expect(api.calls, isNot(contains('PatchResumesId')));
-      final selection = tester.widgetList<Semantics>(find.byType(Semantics)).where((widget) => widget.properties.label == '已购买设计');
+      final selection = tester
+          .widgetList<Semantics>(find.byType(Semantics))
+          .where((widget) => widget.properties.label == '已购买设计');
       expect(selection.single.properties.selected, isTrue);
     },
   );

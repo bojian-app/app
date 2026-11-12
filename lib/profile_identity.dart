@@ -167,7 +167,7 @@ class ProfileHeader extends StatelessWidget {
       final avatarTop = inset + toolbar + 24 + pullProgress * pullExtent;
       final nameTop = avatarTop + 106;
       final nameWidth = ui.lerpDouble(
-        width - 32,
+        width - appPageHorizontalPadding * 2,
         (width - 204).clamp(0, width),
         t,
       )!;
@@ -230,7 +230,12 @@ class ProfileHeader extends StatelessWidget {
               ),
             ],
             Padding(
-              padding: EdgeInsets.fromLTRB(16, inset, 16, 16),
+              padding: EdgeInsets.fromLTRB(
+                appPageHorizontalPadding,
+                inset,
+                appPageHorizontalPadding,
+                16,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -335,7 +340,7 @@ class ProfileHeader extends StatelessWidget {
               ),
             ),
             Positioned(
-              left: ui.lerpDouble(16, 104, t),
+              left: ui.lerpDouble(appPageHorizontalPadding, 104, t),
               top: scrollOffset + nameY,
               width: nameWidth,
               child: Opacity(
@@ -362,8 +367,13 @@ class ProfileHeader extends StatelessWidget {
             ),
             Positioned(
               top: scrollOffset + inset,
-              left: 8,
-              right: 8,
+              // Glyphs and the actions capsule sit on the page gutter; a bare
+              // 44 button keeps 12 of padding around its 20 icon, whose
+              // artwork is inset a further 2.5.
+              left: appPageHorizontalPadding - 14.5,
+              right: identity == null
+                  ? appPageHorizontalPadding
+                  : appPageHorizontalPadding - 12,
               height: toolbar,
               child: IconButtonTheme(
                 data: IconButtonThemeData(style: buttonStyle),
@@ -480,16 +490,18 @@ class ProfileContentTabs extends StatelessWidget
     implements PreferredSizeWidget {
   const ProfileContentTabs({
     super.key,
+    this.controller,
     this.tabBarKey = const ValueKey('profile-tabs'),
-    this.horizontalPadding = 12,
+    this.horizontalPadding = appPageHorizontalPadding - 8,
     this.showDivider = true,
     this.trailing,
     this.tabs = const [
-      Tab(key: ValueKey('profile-tab-articles'), text: '动态', height: 36),
-      Tab(key: ValueKey('profile-tab-saved'), text: '收藏', height: 36),
       Tab(key: ValueKey('profile-tab-resumes'), text: '简历', height: 36),
+      Tab(key: ValueKey('profile-tab-saved'), text: '收藏', height: 36),
+      Tab(key: ValueKey('profile-tab-articles'), text: '动态', height: 36),
     ],
   });
+  final TabController? controller;
   final List<Widget> tabs;
   final Key? tabBarKey;
   final double horizontalPadding;
@@ -502,6 +514,7 @@ class ProfileContentTabs extends StatelessWidget
   @override
   Widget build(BuildContext context) {
     final bar = TabBar(
+      controller: controller,
       key: tabBarKey,
       isScrollable: true,
       tabAlignment: TabAlignment.start,
@@ -509,7 +522,7 @@ class ProfileContentTabs extends StatelessWidget
       labelPadding: const EdgeInsets.symmetric(horizontal: 8),
       dividerColor: context.colors.border,
       dividerHeight: showDivider && trailing == null ? 1 : 0,
-      indicatorColor: context.colors.ink,
+      indicatorColor: context.colors.accent,
       indicatorWeight: 2,
       indicatorSize: TabBarIndicatorSize.label,
       labelColor: context.colors.ink,
@@ -535,7 +548,10 @@ class ProfileContentTabs extends StatelessWidget
                 children: [
                   Expanded(child: bar),
                   Padding(
-                    padding: const EdgeInsets.only(right: 20),
+                    // The action's own 8 of padding completes the gutter.
+                    padding: const EdgeInsets.only(
+                      right: appPageHorizontalPadding - 8,
+                    ),
                     child: trailing!,
                   ),
                 ],
@@ -1083,7 +1099,12 @@ class _ProfileDetailsLayout extends StatelessWidget {
                         Expanded(
                           child: SingleChildScrollView(
                             controller: scroll,
-                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                            padding: const EdgeInsets.fromLTRB(
+                              appPageHorizontalPadding,
+                              24,
+                              appPageHorizontalPadding,
+                              32,
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [

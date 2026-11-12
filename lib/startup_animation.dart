@@ -281,8 +281,7 @@ class _WaterOtterPainter extends CustomPainter {
       final speed = power * (.8 + (i % 3) * .15);
       final dx = math.cos(angle) * speed * p * otterSize * .98;
       final dy =
-          math.sin(angle) * speed * p * otterSize +
-          p * p * otterSize * .89;
+          math.sin(angle) * speed * p * otterSize + p * p * otterSize * .89;
       canvas.drawCircle(
         Offset(cx + dx, water + dy),
         4.5 - (i % 2) * 1.5,

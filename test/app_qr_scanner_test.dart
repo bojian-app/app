@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:bojian_mobile/app_qr_login_page.dart';
 import 'package:bojian_mobile/app_qr_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,9 +7,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-import 'app_qr_login_page_test.dart' show CameraPlatformFake;
-import 'app_qr_login_test.dart' show QRGateway, qrContent;
-import 'support/fake_gateway.dart';
+const qrContent = 'https://bojian.kelance.cn?invite_code=A2B3C4D5';
+
+class CameraPlatformFake extends MobileScannerPlatform {
+  final captures = StreamController<BarcodeCapture>.broadcast();
+  bool denied = false;
+  int starts = 0, stops = 0, disposals = 0;
+  @override
+  Stream<BarcodeCapture?> get barcodesStream => captures.stream;
+  @override
+  Stream<TorchState> get torchStateStream =>
+      Stream.value(TorchState.unavailable);
+  @override
+  Stream<double> get zoomScaleStateStream => Stream.value(1);
+  @override
+  Future<MobileScannerViewAttributes> start(StartOptions options) async {
+    starts++;
+    if (denied) {
+      throw const MobileScannerException(
+        errorCode: MobileScannerErrorCode.permissionDenied,
+      );
+    }
+    return const MobileScannerViewAttributes(
+      cameraDirection: CameraFacing.back,
+      currentTorchMode: TorchState.unavailable,
+      size: Size(200, 200),
+      numberOfCameras: 1,
+    );
+  }
+
+  @override
+  Widget buildCameraView() => const ColoredBox(color: Colors.black);
+  @override
+  Future<void> stop() async {
+    stops++;
+  }
+
+  @override
+  Future<void> dispose() async {
+    disposals++;
+  }
+}
 
 BarcodeCapture capture(List<String> codes) => BarcodeCapture(
   barcodes: [
@@ -78,11 +115,11 @@ void main() {
     addTearDown(camera.captures.close);
   });
 
-  Future<void> mount(WidgetTester tester, {Widget? page}) async {
+  Future<void> mount(WidgetTester tester) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpWidget(
       MaterialApp(
-        home: page ?? Scaffold(body: AppQRScanner(onCode: delivered.add)),
+        home: Scaffold(body: AppQRScanner(onCode: delivered.add)),
       ),
     );
     await tester.pumpAndSettle();
@@ -99,26 +136,18 @@ void main() {
     expect(gallery.requests, 1);
   }
 
-  testWidgets(
-    'Gallery works without camera permission and requires confirmation',
-    (tester) async {
-      camera.denied = true;
-      final api = QRGateway();
-      final store = await testStore(authenticated: true, api: api);
-      addTearDown(store.dispose);
-      await mount(tester, page: AppQRLoginPage(store: store));
-      expect(find.textContaining('未获得相机权限'), findsOneWidget);
-      await openGallery(tester);
-      gallery.result.complete(XFile('/test/qr.png'));
-      camera.result.complete(capture([qrContent]));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('app-qr-confirm')), findsOneWidget);
-      expect(api.calls.where((s) => s.endsWith('SessionScan')), hasLength(1));
-      expect(api.calls.where((s) => s.endsWith('SessionConfirm')), isEmpty);
-      expect(camera.analyses, 1);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('Gallery works without camera permission', (tester) async {
+    camera.denied = true;
+    await mount(tester);
+    expect(find.textContaining('未获得相机权限'), findsOneWidget);
+    await openGallery(tester);
+    gallery.result.complete(XFile('/test/qr.png'));
+    camera.result.complete(capture([qrContent]));
+    await tester.pumpAndSettle();
+    expect(delivered, [qrContent]);
+    expect(camera.analyses, 1);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'Cancel restores camera and ignores live captures during picker',

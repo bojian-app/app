@@ -4,7 +4,7 @@
 
 作者上传目录包：`manifest.json`、`index.html`、`assets/`。**无需提供 `layout.json`**；服务端解析 HTML 字段和 CSS，生成 layout 并记录源文件与素材 SHA-256。上传包即使含旧 layout，也不会使用它。生成的 layout 使用 `format: bojian-native-layout`、`schemaVersion: 1.0`。目录包上限 8 MiB，解压上限 16 MiB，单文件 8 MiB，layout 256 KiB，素材 64 个。当前仅接受 A4 794×1123、PNG 和无外部引用的 SVG。
 
-支持组件：text、svg、image、column、row、wrap、richText、sectionHeading、section、repeat、gridRepeat、intentionCell。字段沿用 marketResumeFields。字体使用 App 随附的阿里巴巴普惠体；不加载模板自带字体或网络字体。
+支持组件：text、svg、image、column、row、wrap、richText、sectionHeading、section、repeat、gridRepeat、intentionCell。字段沿用 marketResumeFields。字体使用 App 随附的 Bojian Resume Sans；不加载模板自带字体或网络字体。
 
 旧 HTML 模板继续使用原有引擎。新目录包由服务端编译并同时保存 HTML 兼容版和 native 数据；新 App 使用 Flutter，旧 App 使用 HTML。编译器 `html-native-v1-20261031` 支持 V2 字段协议下的单栏 A4、弹性行、经历循环、证书网格、图标笔刷标题与富文本。当前不支持任意 HTML/CSS；定位、浮动、复杂网格等结构返回带元素位置的转换错误，不静默降级。字体统一使用 App 内置字体。转换完成后仍须执行同一 Flutter 渲染器的示例/空白检查并通过审核，才能发布。
 

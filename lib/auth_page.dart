@@ -7,15 +7,18 @@ import 'confirmation_dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart' show CupertinoTextField;
-import 'package:flutter/services.dart';
 
 import 'app_store.dart';
 import 'app_environment.dart';
+import 'app_icons.dart';
 import 'design.dart';
 import 'login_widgets.dart';
 import 'login_illustration.dart';
 import 'api/bojian_api.dart';
 import 'captcha_dialog.dart';
+import 'api/generated/auth.pb.dart' as auth;
+import 'login_phone_binding_page.dart';
+import 'invitation_scan_page.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key, required this.store});
@@ -84,13 +87,29 @@ class _AuthPageState extends State<AuthPage> {
     });
     try {
       if (!await confirmAgreement() || !mounted) return;
+      Future<({auth.LoginResponse response, String phone})?> bindPhone(
+        String token,
+      ) async {
+        if (!mounted) return null;
+        return openPage(
+          context,
+          LoginPhoneBindingPage(
+            store: widget.store,
+            token: token,
+            provider: provider,
+          ),
+        );
+      }
+
       if (douyin) {
         await widget.store.signInWithDouyin(
           confirmRegistration: confirmRegistration,
+          bindPhone: bindPhone,
         );
       } else {
         await widget.store.signInWithWeChat(
           confirmRegistration: confirmRegistration,
+          bindPhone: bindPhone,
         );
       }
     } catch (e) {
@@ -119,35 +138,21 @@ class _AuthPageState extends State<AuthPage> {
       smsStatus = null;
     });
     try {
-      if (!await confirmAgreement() || !current()) return;
-      SmsRequestOutcome? outcome;
-      if (AppEnvironment.isTestPhone(targetPhone)) {
-        outcome = SmsRequestOutcome.accepted(
-          await widget.store.api.sendSMS(targetPhone, '', widget.store.headers),
-        );
-      } else {
-        final challenge = await widget.store.api.createCaptcha(
-          widget.store.headers,
-        );
-        if (!mounted || !current()) return;
-        outcome = await showDialog<SmsRequestOutcome>(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => CaptchaDialog(
-            store: widget.store,
-            challenge: challenge,
-            phone: targetPhone,
-            onSendSMS: (token) {
-              if (!current()) throw const ApiFailure('登录已取消');
-              return widget.store.api.sendSMS(
-                targetPhone,
-                token,
-                widget.store.headers,
-              );
-            },
-          ),
-        );
-      }
+      if (!await confirmAgreement() || !mounted || !current()) return;
+      final outcome = await requestSmsCode(
+        context,
+        store: widget.store,
+        phone: targetPhone,
+        current: current,
+        send: (token) {
+          if (!current()) throw const ApiFailure('登录已取消');
+          return widget.store.api.sendSMS(
+            targetPhone,
+            token,
+            widget.store.headers,
+          );
+        },
+      );
       if (!current() || outcome == null) return;
       final failure = outcome.error;
       if (failure != null) {
@@ -239,13 +244,24 @@ class _AuthPageState extends State<AuthPage> {
                 key: const ValueKey('registration-invite-code'),
                 controller: inviteCode,
                 placeholder: '邀请码（选填）',
-                maxLength: 32,
+                maxLength: 8,
                 autocorrect: false,
+                textCapitalization: TextCapitalization.characters,
                 padding: const EdgeInsets.all(12),
+                suffix: IconButton(
+                  key: const ValueKey('registration-scan-invitation'),
+                  tooltip: '扫好友邀请二维码',
+                  onPressed: scanInvitation,
+                  icon: AppIcon(
+                    AppIcons.scan,
+                    size: 20,
+                    color: context.loginMuted,
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
-                '填写好友邀请码，绑定手机号后好友可得 500 积分。',
+                '填写好友邀请码，注册成功后好友可得 500 积分。',
                 style: TextStyle(fontSize: 12),
               ),
             ],
@@ -260,6 +276,13 @@ class _AuthPageState extends State<AuthPage> {
         ? inviteCode.text.trim()
         : '';
     return confirmed;
+  }
+
+  Future<void> scanInvitation() async {
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const InvitationScanPage()),
+    );
+    if (mounted && code != null) inviteCode.text = code;
   }
 
   Future<void> legal(bool privacy) async {
@@ -301,26 +324,6 @@ class _AuthPageState extends State<AuthPage> {
     ),
   );
 
-  InputDecoration fieldDecoration(String hint) => InputDecoration(
-    hintText: hint,
-    hintStyle: TextStyle(fontSize: 15, color: context.loginMuted),
-    filled: true,
-    fillColor: context.colors.surface,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: context.loginLine),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: context.loginLine),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: context.colors.accent, width: 1.4),
-    ),
-  );
-
   Widget buildIllustration() => const SizedBox(
     height: 112,
     child: LoginIllustration(key: ValueKey('auth-illustration')),
@@ -338,83 +341,20 @@ class _AuthPageState extends State<AuthPage> {
         ),
       ),
       const SizedBox(height: 20),
-      AutofillGroup(
-        child: Column(
-          children: [
-            TextField(
-              key: const ValueKey('auth-phone'),
-              controller: phone,
-              enabled: !disabled,
-              keyboardType: TextInputType.phone,
-              textInputAction: TextInputAction.next,
-              autofillHints: const [AutofillHints.telephoneNumberNational],
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(11),
-              ],
-              style: TextStyle(fontSize: 15, color: context.loginInk),
-              decoration: fieldDecoration('请输入手机号').copyWith(
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.only(left: 18, right: 12),
-                  child: Text(
-                    '+86',
-                    style: TextStyle(fontSize: 14, color: context.loginInk),
-                  ),
-                ),
-                prefixIconConstraints: const BoxConstraints(
-                  minWidth: 0,
-                  minHeight: 0,
-                ),
-              ),
-              onChanged: (_) => setState(() {
-                error = null;
-                smsStatus = null;
-                code.clear();
-              }),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('auth-code'),
-              controller: code,
-              enabled: !disabled,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.done,
-              autofillHints: const [AutofillHints.oneTimeCode],
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(6),
-              ],
-              style: TextStyle(fontSize: 15, color: context.loginInk),
-              decoration: fieldDecoration('验证码').copyWith(
-                suffixIcon: SizedBox(
-                  width: 124,
-                  child: TextButton(
-                    key: const ValueKey('auth-request-code'),
-                    onPressed: disabled || countdown > 0 ? null : requestCode,
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.accent,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 14,
-                      ),
-                    ).withoutHover(),
-                    child: Text(
-                      requestingCode
-                          ? '正在获取…'
-                          : countdown > 0
-                          ? '${countdown}s 后重试'
-                          : '获取验证码',
-                      style: const TextStyle(fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ),
-              onChanged: (_) => setState(() => error = null),
-              onSubmitted: (_) => signInWithPhone(),
-            ),
-          ],
-        ),
+      LoginPhoneCodeFields(
+        phone: phone,
+        code: code,
+        enabled: !disabled,
+        requesting: requestingCode,
+        countdown: countdown,
+        onRequestCode: requestCode,
+        onPhoneChanged: () => setState(() {
+          error = null;
+          smsStatus = null;
+          code.clear();
+        }),
+        onCodeChanged: () => setState(() => error = null),
+        onSubmitted: signInWithPhone,
       ),
       if (error != null || smsStatus != null) ...[
         const SizedBox(height: 10),
@@ -493,7 +433,7 @@ class _AuthPageState extends State<AuthPage> {
               MediaQuery.orientationOf(context) == Orientation.landscape &&
               constraints.maxWidth >= 600;
           final padding = EdgeInsets.symmetric(
-            horizontal: landscape ? 32 : 28,
+            horizontal: appPageHorizontalPadding,
             vertical: 24,
           );
           final contentHeight = (constraints.maxHeight - padding.vertical)

@@ -722,6 +722,9 @@ class LoginResponse extends $pb.GeneratedMessage {
     $core.bool? registrationRequired,
     $core.String? registrationToken,
     $core.int? registrationExpiresInSeconds,
+    $core.bool? phoneBindingRequired,
+    $core.String? phoneBindingToken,
+    $core.int? phoneBindingExpiresInSeconds,
   }) {
     final result = LoginResponse._();
     if (accessToken != null) result.accessToken = accessToken;
@@ -735,6 +738,11 @@ class LoginResponse extends $pb.GeneratedMessage {
     if (registrationToken != null) result.registrationToken = registrationToken;
     if (registrationExpiresInSeconds != null)
       result.registrationExpiresInSeconds = registrationExpiresInSeconds;
+    if (phoneBindingRequired != null)
+      result.phoneBindingRequired = phoneBindingRequired;
+    if (phoneBindingToken != null) result.phoneBindingToken = phoneBindingToken;
+    if (phoneBindingExpiresInSeconds != null)
+      result.phoneBindingExpiresInSeconds = phoneBindingExpiresInSeconds;
     return result;
   }
 
@@ -760,6 +768,9 @@ class LoginResponse extends $pb.GeneratedMessage {
     ..aOB(6, _omitFieldNames ? '' : 'registrationRequired')
     ..aOS(7, _omitFieldNames ? '' : 'registrationToken')
     ..aI(8, _omitFieldNames ? '' : 'registrationExpiresInSeconds')
+    ..aOB(9, _omitFieldNames ? '' : 'phoneBindingRequired')
+    ..aOS(10, _omitFieldNames ? '' : 'phoneBindingToken')
+    ..aI(11, _omitFieldNames ? '' : 'phoneBindingExpiresInSeconds')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -859,6 +870,35 @@ class LoginResponse extends $pb.GeneratedMessage {
   $core.bool hasRegistrationExpiresInSeconds() => $_has(7);
   @$pb.TagNumber(8)
   void clearRegistrationExpiresInSeconds() => $_clearField(8);
+
+  /// WeChat and Douyin logins must prove a phone before a session exists.
+  @$pb.TagNumber(9)
+  $core.bool get phoneBindingRequired => $_getBF(8);
+  @$pb.TagNumber(9)
+  set phoneBindingRequired($core.bool value) => $_setBool(8, value);
+  @$pb.TagNumber(9)
+  $core.bool hasPhoneBindingRequired() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearPhoneBindingRequired() => $_clearField(9);
+
+  @$pb.TagNumber(10)
+  $core.String get phoneBindingToken => $_getSZ(9);
+  @$pb.TagNumber(10)
+  set phoneBindingToken($core.String value) => $_setString(9, value);
+  @$pb.TagNumber(10)
+  $core.bool hasPhoneBindingToken() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearPhoneBindingToken() => $_clearField(10);
+
+  @$pb.TagNumber(11)
+  $core.int get phoneBindingExpiresInSeconds => $_getIZ(10);
+  @$pb.TagNumber(11)
+  set phoneBindingExpiresInSeconds($core.int value) =>
+      $_setSignedInt32(10, value);
+  @$pb.TagNumber(11)
+  $core.bool hasPhoneBindingExpiresInSeconds() => $_has(10);
+  @$pb.TagNumber(11)
+  void clearPhoneBindingExpiresInSeconds() => $_clearField(11);
 }
 
 class TokenResponse extends $pb.GeneratedMessage {

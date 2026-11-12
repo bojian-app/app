@@ -272,7 +272,12 @@ class _ResumeSectionEditorPageState extends State<ResumeSectionEditorPage> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                    padding: const EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      12,
+                      appPageHorizontalPadding,
+                      24,
+                    ),
                     children: [
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -381,7 +386,12 @@ class _ResumeEntryPagerState extends State<ResumeEntryPager> {
     key: index == null ? null : widget.itemKey(index),
     primary: false,
     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-    padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+    padding: const EdgeInsets.fromLTRB(
+      appPageHorizontalPadding,
+      12,
+      appPageHorizontalPadding,
+      24,
+    ),
     children: [
       // Keep the entire form laid out for validation and large text support.
       Column(

@@ -1,27 +1,37 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart';
 
 import 'app_icons.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'design_shapes.dart';
 import 'points_coin.dart';
 import 'discovery.dart' show DiscoveryPage;
-import 'invitation_page.dart';
-import 'resume_pages.dart';
+import 'invitation_dialog.dart';
 import 'resume_user_share.dart';
 import 'rewarded_ad.dart';
 import 'story_composer.dart';
-import 'template_market.dart' show MarketTemplateArtwork;
 
 const _displayFont = 'ResumeDocument';
 const _goldInk = Color(0xFFE07B00);
-const _orange = [Color(0xFFFF9A2E), Color(0xFFFF5A1F)];
+
+/// Warm red-orange for amounts, against the blue brand.
+const _rewardInk = Color(0xFFFF5A2C);
+const _rewardGradient = [Color(0xFFFF7E57), Color(0xFFFF482C)];
+const _blueGradient = [Color(0xFF5C9BFF), Color(0xFF2867EE)];
+const _accent = Color(0xFF2867EE);
+const _gutter = 14.0;
+
+/// Body text colour of the design; the dark theme keeps its own ink.
+Color _strong(BuildContext context) =>
+    context.isDark ? context.colors.ink : const Color(0xFF333333);
 const _dailyTasks = ['PUBLISH_ARTICLE', 'REQUEST_REVIEW', 'HELP_REVIEW'];
 
-/// Height of the coloured hero; the check-in card overlaps its lower edge.
-const _heroHeight = 300.0;
+/// Height of the tinted hero; the invite card overlaps its lower edge.
+const _heroHeight = 320.0;
 
 /// Plays [controller] forward [times] times and leaves it at the end.
 /// Idle motion draws the eye on arrival, then stops instead of looping.
@@ -47,7 +57,7 @@ class PointsPage extends StatefulWidget {
 
   /// Top colour of the hero gradient; the shell paints the status bar with it.
   static Color headerColor(BuildContext context) =>
-      context.isDark ? const Color(0xFF23356B) : const Color(0xFF3F86FF);
+      context.isDark ? const Color(0xFF1F3266) : const Color(0xFF8FB6FF);
 
   @override
   State<PointsPage> createState() => _PointsPageState();
@@ -55,7 +65,6 @@ class PointsPage extends StatefulWidget {
 
 class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
   final tasks = <String, Map<String, dynamic>>{};
-  final templates = <Map<String, dynamic>>[];
   final pageKey = GlobalKey();
   final balanceKey = GlobalKey();
   final todayKey = GlobalKey();
@@ -114,28 +123,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
           }
         } catch (_) {
           if (mounted) setState(() => adEnabled = false);
-        }
-      }(),
-      () async {
-        try {
-          final result = await store.request(
-            'GetTemplates',
-            query: {'pricing': 'PAID', 'limit': '3'},
-          );
-          if (!mounted || epoch != store.epoch) return;
-          setState(() {
-            templates
-              ..clear()
-              ..addAll(
-                (result.data['items'] as List? ?? [])
-                    .whereType<Map>()
-                    .map((row) => Map<String, dynamic>.from(row))
-                    .take(3),
-              );
-          });
-        } catch (_) {
-          // The market link stays available when the preview list fails.
-          if (mounted && epoch == store.epoch) setState(templates.clear);
         }
       }(),
     ]);
@@ -283,23 +270,36 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
         context: context,
         showDragHandle: true,
         builder: (context) => SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  '选择需要优化的简历',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                ),
+          child: ListenableBuilder(
+            listenable: store,
+            builder: (context, _) => AutoPaginate.section(
+              store: store,
+              section: 'resumes',
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      '选择需要优化的简历',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  for (final resume in store.resumes)
+                    ListTile(
+                      title: Text(resume.title),
+                      trailing: const AppIcon(AppIcons.forward, size: 18),
+                      onTap: () => Navigator.pop(context, resume),
+                    ),
+                  PageLoadingFooter(
+                    visible: store.loadingMore.contains('resumes'),
+                  ),
+                ],
               ),
-              for (final resume in store.resumes)
-                ListTile(
-                  title: Text(resume.title),
-                  trailing: const AppIcon(AppIcons.forward, size: 18),
-                  onTap: () => Navigator.pop(context, resume),
-                ),
-            ],
+            ),
           ),
         ),
       );
@@ -321,8 +321,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
       ),
     );
   }
-
-  void market() => openPage(context, TemplateMarket(store: store));
 
   void rules() => showModalBottomSheet<void>(
     context: context,
@@ -349,11 +347,10 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: store,
     builder: (context, _) {
-      final dark = context.isDark;
       final topInset = MediaQuery.paddingOf(context).top;
       return AnnotatedRegion<SystemUiOverlayStyle>(
-        // The hero is saturated blue in both themes.
         value: appSystemUiStyle(context).copyWith(
+          // The header is always midnight blue.
           statusBarIconBrightness: Brightness.light,
           statusBarBrightness: Brightness.dark,
           systemStatusBarContrastEnforced: false,
@@ -365,7 +362,7 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
             fit: StackFit.expand,
             children: [
               RefreshIndicator(
-                color: brandBlue,
+                color: _accent,
                 onRefresh: refresh,
                 child: SingleChildScrollView(
                   key: const PageStorageKey('points-scroll'),
@@ -377,25 +374,32 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
                         left: 0,
                         right: 0,
                         height: _heroHeight + topInset,
-                        child: _HeroBackground(dark: dark),
+                        child: const _HeroBackground(),
+                      ),
+                      Positioned(
+                        top: topInset + 82,
+                        right: 42,
+                        width: 96,
+                        child: Image.asset(
+                          'assets/points/coin-stack.webp',
+                          fit: BoxFit.contain,
+                          excludeFromSemantics: true,
+                        ),
                       ),
                       Column(
                         children: [
                           SizedBox(height: topInset),
-                          _topBar(),
                           _hero(),
                           DataStatus(
                             store: store,
                             section: 'profile',
                             empty: false,
                           ),
-                          if (showCheckIn) _checkIn(),
                           if (store.isAuthenticated) ...[
-                            if (!showCheckIn) const SizedBox(height: 4),
                             _invite(),
+                            if (showCheckIn) _checkIn(),
                             _tasks(),
                           ],
-                          _redeem(),
                           const SizedBox(height: 24),
                         ],
                       ),
@@ -416,43 +420,32 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
     },
   );
 
-  Widget _topBar() => SizedBox(
-    width: double.infinity,
-    height: 44,
-    child: Align(
-      alignment: Alignment.centerRight,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: _Pill(label: '规则', onTap: rules),
-      ),
-    ),
-  );
-
   Widget _hero() {
     final points = heldPoints ?? store.points;
-    const white = Colors.white;
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: showCheckIn ? 170 : 190),
+    return SizedBox(
+      height: 121,
       child: Stack(
-        clipBehavior: Clip.none,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 14, 22, 12),
+          Positioned(
+            left: 24,
+            top: 26,
+            right: 96,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const PointsCoin(size: 18),
-                    const SizedBox(width: 6),
+                    const _Coin(size: 16),
+                    const SizedBox(width: 4),
                     Flexible(
                       child: Text(
                         '我的积分',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 14,
-                          color: white.withValues(alpha: .85),
+                          height: 20 / 14,
+                          color: Color(0xE6FFFFFF),
                         ),
                       ),
                     ),
@@ -475,13 +468,24 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
-                if (store.isAuthenticated)
-                  _Pill(
+              ],
+            ),
+          ),
+          Positioned(
+            right: 0,
+            top: 30,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _EdgeTab(label: '积分规则', onTap: rules),
+                if (store.isAuthenticated) ...[
+                  const SizedBox(height: 9),
+                  _EdgeTab(
                     key: const ValueKey('points-ledger'),
-                    label: '积分明细 ›',
+                    label: '积分明细',
                     onTap: ledger,
                   ),
+                ],
               ],
             ),
           ),
@@ -490,162 +494,179 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _card({
-    required Widget child,
-    EdgeInsets padding = const EdgeInsets.fromLTRB(14, 16, 14, 6),
-  }) => Container(
+  Widget _card({required Widget child}) => Container(
     width: double.infinity,
-    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-    padding: padding,
+    margin: const EdgeInsets.fromLTRB(_gutter, 0, _gutter, 12),
+    clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
       color: context.colors.surface,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: context.isDark
+          ? null
+          : [
+              BoxShadow(
+                color: const Color(0xFF0B1A45).withValues(alpha: .06),
+                blurRadius: 20,
+                offset: const Offset(0, 6),
+              ),
+            ],
     ),
     child: child,
   );
 
-  /// Section title with a small gradient accent bar.
-  Widget _sectionHead(String title, Widget trailing) => Padding(
-    padding: const EdgeInsets.fromLTRB(2, 0, 2, 4),
-    child: Row(
+  /// Card heading; a soft brand-blue marker runs under the title's foot.
+  Widget _sectionHead(Widget title, [Widget? trailing]) => Container(
+    height: 52,
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          context.isDark ? const Color(0xFF1F2A44) : const Color(0xFFEFF5FF),
+          context.colors.surface,
+        ],
+      ),
+    ),
+    child: Stack(
       children: [
-        Container(
-          width: 4,
-          height: 16,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(2),
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF4F8DFF), Color(0xFF6A4CFF)],
-            ),
+        Positioned.fill(
+          child: Row(
+            children: [
+              Flexible(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: -1,
+                      right: -3,
+                      bottom: 1,
+                      height: 7,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          gradient: LinearGradient(
+                            colors: [
+                              _accent.withValues(alpha: .45),
+                              _accent.withValues(alpha: .12),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    DefaultTextStyle.merge(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 17,
+                        height: 24 / 17,
+                        fontWeight: FontWeight.w700,
+                        color: _strong(context),
+                      ),
+                      child: title,
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const Spacer(),
+                const SizedBox(width: 8),
+                trailing,
+              ],
+            ],
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-          ),
-        ),
-        trailing,
+        Positioned(left: 0, right: 0, bottom: 0, child: _rule()),
       ],
     ),
   );
 
+  Widget _rule() => Container(
+    height: 1,
+    color: context.isDark ? context.colors.border : const Color(0xFFF1F3F7),
+  );
+
+  /// Consecutive check-ins ending today, or yesterday while today is open.
+  int _streak(List<Map<String, dynamic>> days, int today) {
+    var day = today.clamp(-1, days.length - 1);
+    if (day >= 0 && days[day]['status'] != 'CLAIMED') day--;
+    var count = 0;
+    while (day >= 0 && days[day]['status'] == 'CLAIMED') {
+      count++;
+      day--;
+    }
+    return count;
+  }
+
   Widget _checkIn() {
     final days = store.rewardDays;
     final today = store.rewardDay - 1;
-    final signed = days.where((day) => day['status'] == 'CLAIMED').length;
-    final claimed = store.rewardClaimed;
-    final nextPoints = today >= 0 && today + 1 < days.length
+    final streak = _streak(days, today);
+    final tomorrow = today + 1 < days.length && today >= 0
         ? integer(days[today + 1]['points'])
-        : 0;
+        : null;
     final disabled =
-        claimed ||
+        store.rewardClaimed ||
         claiming ||
         store.rewardPoints == null ||
         store.pending.contains('reward');
-    final total = days.fold<int>(0, (sum, day) => sum + integer(day['points']));
-    Widget tile(int i) => _DayTile(
-      key: i == today ? todayKey : null,
-      points: integer(days[i]['points']),
-      status: '${days[i]['status']}',
-      label: i == today
-          ? '今天'
-          : today >= 0 && i == today + 1
-          ? '明天'
-          : '第${i + 1}天',
-      bonus: i == 6,
-    );
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF1E328C).withValues(alpha: .12),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+    final now = DateTime.now();
+    String date(int i) {
+      final day = DateTime(now.year, now.month, now.day + i - today);
+      return '${day.month.toString().padLeft(2, '0')}.'
+          '${day.day.toString().padLeft(2, '0')}';
+    }
+
+    return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _sectionHead(
+            Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: '已连续签到'),
+                  TextSpan(
+                    text: '$streak',
+                    style: const TextStyle(color: _rewardInk),
+                  ),
+                  const TextSpan(text: '天'),
+                ],
+              ),
+            ),
+          ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        const TextSpan(text: '已签到 '),
-                        TextSpan(
-                          text: '$signed',
-                          style: const TextStyle(
-                            fontFamily: _displayFont,
-                            fontSize: 26,
-                            color: brandBlue,
-                          ),
-                        ),
-                        const TextSpan(text: ' 天'),
-                      ],
-                    ),
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
+                for (var i = 0; i < days.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 7.5),
+                  Expanded(
+                    child: _DayTile(
+                      key: i == today ? todayKey : null,
+                      actionKey: i == today
+                          ? const ValueKey('profile-claim-reward')
+                          : null,
+                      points: integer(days[i]['points']),
+                      status: '${days[i]['status']}',
+                      label: today >= 0 ? date(i) : '第${i + 1}天',
+                      bonus: i == days.length - 1,
+                      onTap: i == today && !disabled ? checkIn : null,
                     ),
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.isDark
-                        ? const Color(0xFF3A2C12)
-                        : const Color(0xFFFFF1DA),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    '7 天共 $total 积分',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFB15A00),
-                    ),
-                  ),
-                ),
+                ],
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              for (var i = 0; i < 7; i++) ...[
-                if (i > 0) const SizedBox(width: 6),
-                Expanded(flex: i == 6 ? 2 : 1, child: tile(i)),
-              ],
-            ],
-          ),
-          const SizedBox(height: 16),
-          _GoldButton(
-            key: const ValueKey('profile-claim-reward'),
-            label: claimed
-                ? nextPoints > 0
-                      ? '今日已签到，明天再来领 $nextPoints'
-                      : '今日已签到'
-                : claiming
-                ? '签到中…'
-                : '立即签到 领 ${store.rewardPoints ?? '—'} 积分',
-            onPressed: disabled ? null : checkIn,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            child: _CheckInButton(
+              label: store.rewardClaimed
+                  ? (tomorrow == null ? '今日已签到' : '今日已签到，明天可领 +$tomorrow')
+                  : '立即签到 +${store.rewardPoints ?? integer(days[today.clamp(0, days.length - 1)]['points'])}',
+              onPressed: disabled ? null : checkIn,
+            ),
           ),
         ],
       ),
@@ -653,80 +674,99 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
   }
 
   Widget _invite() => Container(
-    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-    padding: const EdgeInsets.all(16),
-    clipBehavior: Clip.antiAlias,
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(20),
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: context.isDark
-            ? const [Color(0xFF4A3410), Color(0xFF5E3A0E)]
-            : const [Color(0xFFFFE9B8), Color(0xFFFFC56B)],
+    height: 112,
+    margin: const EdgeInsets.fromLTRB(_gutter, 0, _gutter, 12),
+    child: CustomPaint(
+      painter: _InviteCardPainter(dark: context.isDark),
+      child: Stack(
+        children: [
+          Positioned(
+            left: 18,
+            top: 14,
+            right: 120,
+            child: Text(
+              '邀请好友',
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 16,
+                height: 22 / 16,
+                fontWeight: FontWeight.w600,
+                color: _strong(context),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 18,
+            top: 37,
+            right: 120,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: ShaderMask(
+                blendMode: BlendMode.srcIn,
+                shaderCallback: const LinearGradient(
+                  begin: Alignment(-1, -.44),
+                  end: Alignment(1, .49),
+                  colors: _rewardGradient,
+                ).createShader,
+                child: const Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '500',
+                        style: TextStyle(fontSize: 36, letterSpacing: -.5),
+                      ),
+                      TextSpan(text: ' 积分/人'),
+                    ],
+                  ),
+                  style: TextStyle(
+                    fontFamily: _displayFont,
+                    fontSize: 17,
+                    height: 1.05,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 18,
+            top: 78,
+            right: 120,
+            child: Text(
+              '好友注册并绑定手机号后到账',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                height: 16.5 / 12,
+                color: context.isDark
+                    ? context.colors.muted
+                    : const Color(0xFF8A8F99),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 16,
+            top: 46,
+            child: _BlueButton(
+              key: const ValueKey('points-invite'),
+              label: '去邀请',
+              onPressed: () async {
+                if (!store.isAuthenticated) {
+                  store.endSession();
+                  return;
+                }
+                await showInvitationDialog(context, store);
+                if (mounted) await refresh();
+              },
+            ),
+          ),
+        ],
       ),
     ),
-    child: Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '邀请好友',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: _inviteInk(context).withValues(alpha: .75),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text.rich(
-                TextSpan(
-                  children: [
-                    const TextSpan(
-                      text: '500',
-                      style: TextStyle(
-                        fontFamily: _displayFont,
-                        fontSize: 32,
-                        height: 1.1,
-                        color: Color(0xFFE5450F),
-                      ),
-                    ),
-                    TextSpan(
-                      text: ' 积分/人',
-                      style: TextStyle(color: _inviteInk(context)),
-                    ),
-                  ],
-                ),
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '好友注册并绑定手机号后到账',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _inviteInk(context).withValues(alpha: .7),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        _OrangeButton(
-          key: const ValueKey('points-invite'),
-          label: '去邀请',
-          onPressed: () => _openTask(() => InvitationPage(store: store)),
-        ),
-      ],
-    ),
   );
-
-  static Color _inviteInk(BuildContext context) =>
-      context.isDark ? const Color(0xFFFFD98A) : const Color(0xFF5A2E00);
 
   Widget _tasks() {
     final done = _dailyTasks
@@ -737,27 +777,32 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionHead(
-            '每日任务',
+            const Text('每日任务'),
             Row(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: BorderRadius.circular(4),
                   child: SizedBox(
-                    width: 64,
-                    height: 6,
+                    width: 90,
+                    height: 8,
                     child: LinearProgressIndicator(
                       value: done / 3,
-                      backgroundColor: context.colors.inset,
-                      valueColor: const AlwaysStoppedAnimation(
-                        Color(0xFFFFA22E),
-                      ),
+                      backgroundColor: context.isDark
+                          ? context.colors.inset
+                          : const Color(0xFFEEF1F7),
+                      valueColor: const AlwaysStoppedAnimation(_accent),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 22),
                 Text(
                   '$done/3',
-                  style: TextStyle(fontSize: 12, color: context.colors.muted),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: context.isDark
+                        ? context.colors.muted
+                        : const Color(0xFF999999),
+                  ),
                 ),
               ],
             ),
@@ -765,7 +810,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
           _dailyTask(
             'PUBLISH_ARTICLE',
             '发一篇求职经验',
-            '审核通过后可领',
             'assets/points/tasks/publish-material.webp',
             () => _openTask(() => StoryComposer(store: store)),
           ),
@@ -773,7 +817,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
           _dailyTask(
             'REQUEST_REVIEW',
             '请大家帮你改简历',
-            '发出一份简历求助',
             'assets/points/tasks/request-material.webp',
             _requestOptimization,
           ),
@@ -781,7 +824,6 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
           _dailyTask(
             'HELP_REVIEW',
             '帮别人改简历',
-            '留一条有用的修改建议',
             'assets/points/tasks/review-material.webp',
             _helpOthers,
           ),
@@ -790,10 +832,9 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
             _TaskRow(
               actionKey: adKey,
               title: '看一段视频',
-              note: '每次都能领',
+              progress: '每次都能领',
               reward: 20,
-              icon: Icons.play_circle_outline_rounded,
-              colors: const [Color(0xFFB38BFF), Color(0xFF7A4CFF)],
+              iconAsset: 'assets/points/tasks/icons/video.svg',
               state: watchingAd ? _TaskState.busy : _TaskState.todo,
               action: watchingAd ? '播放中…' : '去观看',
               onPressed: watchingAd ? null : watchAd,
@@ -804,13 +845,15 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _divider() => Divider(height: 1, color: context.colors.border);
+  Widget _divider() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: _rule(),
+  );
 
   Widget _dailyTask(
     String task,
     String title,
-    String note,
-    String imageAsset,
+    String iconAsset,
     VoidCallback go,
   ) {
     final row = tasks[task];
@@ -827,10 +870,8 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
     return _TaskRow(
       actionKey: taskKeys[task],
       title: title,
-      progress: claimed || claimable ? '(1/1)' : '(0/1)',
-      note: claimable || claimed ? null : note,
       reward: 100,
-      imageAsset: imageAsset,
+      iconAsset: iconAsset,
       state: state,
       action: switch (state) {
         _TaskState.done => '已领取',
@@ -845,74 +886,86 @@ class _PointsPageState extends State<PointsPage> with TickerProviderStateMixin {
       },
     );
   }
-
-  Widget _redeem() {
-    final points = heldPoints ?? store.points ?? 0;
-    return _card(
-      padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHead(
-            '积分兑模版',
-            TextButton(
-              key: const ValueKey('points-market'),
-              onPressed: market,
-              style: TextButton.styleFrom(
-                foregroundColor: context.colors.muted,
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(44, 32),
-              ),
-              child: const Text('全部 ›', style: TextStyle(fontSize: 13)),
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (templates.isEmpty)
-            InkWell(
-              onTap: market,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: context.colors.inset,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  '去模版市场看看',
-                  style: TextStyle(fontSize: 14, color: context.colors.muted),
-                ),
-              ),
-            )
-          else
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < 3; i++) ...[
-                  if (i > 0) const SizedBox(width: 8),
-                  Expanded(
-                    child: i < templates.length
-                        ? _TemplateTile(
-                            template: templates[i],
-                            balance: points,
-                            onTap: market,
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ],
-              ],
-            ),
-        ],
-      ),
-    );
-  }
 }
 
-/// Saturated blue-violet gradient with soft highlights and a fading dot grid.
-class _HeroBackground extends StatelessWidget {
-  const _HeroBackground({required this.dark});
+/// Invite card with a notched top right where the coin stack rests, the
+/// way card-style layouts let a 3D object break out of the frame.
+class _InviteCardPainter extends CustomPainter {
+  const _InviteCardPainter({required this.dark});
   final bool dark;
+
+  static Path outline(Size size) {
+    final w = size.width, h = size.height;
+    return roundedPolygon([
+      (Offset.zero, 16),
+      (Offset(w - 172.8, 0), 24),
+      (Offset(w - 139.2, 20), 24),
+      (Offset(w, 20), 16),
+      (Offset(w, h), 16),
+      (Offset(0, h), 16),
+    ]);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final card = outline(size);
+    final bounds = card.getBounds();
+    canvas.drawPath(
+      card.shift(const Offset(0, 6)),
+      Paint()
+        ..color = const Color(0xFF1C4FD8).withValues(alpha: dark ? .3 : .16)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
+    canvas.drawPath(
+      card,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: dark
+              ? const [Color(0xFF24304D), Color(0xFF1B2232)]
+              : const [Color(0xFFEAF2FF), Colors.white, Colors.white],
+        ).createShader(bounds),
+    );
+    // A warm wash behind the amount ties it to the reward colour.
+    canvas.save();
+    canvas.clipPath(card);
+    canvas.drawCircle(
+      Offset(size.width * .22, size.height * .62),
+      size.width * .3,
+      Paint()
+        ..shader =
+            RadialGradient(
+              colors: [
+                const Color(0xFFFFE3D6).withValues(alpha: dark ? .08 : .6),
+                const Color(0xFFFFE3D6).withValues(alpha: 0),
+              ],
+            ).createShader(
+              Rect.fromCircle(
+                center: Offset(size.width * .22, size.height * .62),
+                radius: size.width * .3,
+              ),
+            ),
+    );
+    canvas.restore();
+    canvas.drawPath(
+      card,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: dark ? .08 : 1),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_InviteCardPainter oldDelegate) =>
+      oldDelegate.dark != dark;
+}
+
+/// Saturated brand-blue header that melts into the page, lit from the top
+/// right where the coin stack sits.
+class _HeroBackground extends StatelessWidget {
+  const _HeroBackground();
 
   @override
   Widget build(BuildContext context) => Stack(
@@ -921,18 +974,21 @@ class _HeroBackground extends StatelessWidget {
       DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: dark
-                ? const [
-                    Color(0xFF23356B),
-                    Color(0xFF1C2C66),
-                    Color(0xFF2E2470),
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: const [0, .42, .78, 1],
+            colors: context.isDark
+                ? [
+                    const Color(0xFF1C3F9E),
+                    const Color(0xFF1A3474),
+                    const Color(0xFF16213D),
+                    context.colors.canvas,
                   ]
-                : const [
-                    Color(0xFF3F86FF),
-                    Color(0xFF2E5BF0),
-                    Color(0xFF5A44E8),
+                : [
+                    const Color(0xFF2A66F5),
+                    const Color(0xFF4C8BFF),
+                    const Color(0xFFB4CFFF),
+                    context.colors.canvas,
                   ],
           ),
         ),
@@ -940,55 +996,49 @@ class _HeroBackground extends StatelessWidget {
       DecoratedBox(
         decoration: BoxDecoration(
           gradient: RadialGradient(
-            center: const Alignment(.75, -.55),
+            center: const Alignment(.7, -.55),
             radius: .7,
             colors: [
-              Colors.white.withValues(alpha: dark ? .1 : .25),
+              Colors.white.withValues(alpha: context.isDark ? .1 : .32),
               Colors.white.withValues(alpha: 0),
             ],
           ),
         ),
       ),
-      DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(-1, 1),
-            radius: .9,
-            colors: [
-              const Color(0xFF8C5AFF).withValues(alpha: dark ? .3 : .55),
-              const Color(0xFF8C5AFF).withValues(alpha: 0),
-            ],
-          ),
-        ),
-      ),
-      const CustomPaint(painter: _DotsPainter()),
+      const CustomPaint(painter: _RingsPainter()),
     ],
   );
 }
 
-class _DotsPainter extends CustomPainter {
-  const _DotsPainter();
+class _RingsPainter extends CustomPainter {
+  const _RingsPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint();
-    for (var y = 8.0; y < size.height * .7; y += 16) {
-      // Dots fade out towards the bottom of the hero.
-      paint.color = Colors.white.withValues(
-        alpha: .18 * (1 - y / (size.height * .7)),
+    final center = Offset(size.width * .78, size.height * .22);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (final (radius, alpha) in const [
+      (62.0, .16),
+      (104.0, .11),
+      (150.0, .07),
+    ]) {
+      canvas.drawCircle(
+        center,
+        radius,
+        paint..color = Colors.white.withValues(alpha: alpha),
       );
-      for (var x = 8.0; x < size.width; x += 16) {
-        canvas.drawCircle(Offset(x, y), 1.2, paint);
-      }
     }
   }
 
   @override
-  bool shouldRepaint(_DotsPainter oldDelegate) => false;
+  bool shouldRepaint(_RingsPainter oldDelegate) => false;
 }
 
-class _Pill extends StatelessWidget {
-  const _Pill({super.key, required this.label, required this.onTap});
+/// Frosted half pill docked against the right edge of the header.
+class _EdgeTab extends StatelessWidget {
+  const _EdgeTab({super.key, required this.label, required this.onTap});
   final String label;
   final VoidCallback onTap;
 
@@ -998,146 +1048,81 @@ class _Pill extends StatelessWidget {
     style: TextButton.styleFrom(
       backgroundColor: Colors.white.withValues(alpha: .2),
       foregroundColor: Colors.white,
-      minimumSize: const Size(0, 30),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      shape: const StadiumBorder(),
-      textStyle: const TextStyle(fontSize: 13),
+      minimumSize: const Size(72, 26),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.horizontal(left: Radius.circular(13)),
+        side: BorderSide(color: Colors.white.withValues(alpha: .3), width: .5),
+      ),
+      textStyle: const TextStyle(fontSize: 12),
     ),
     child: Text(label),
   );
 }
 
-/// The check-in call to action: gold with a light sweep while it can be
-/// pressed.
-class _GoldButton extends StatefulWidget {
-  const _GoldButton({super.key, required this.label, this.onPressed});
+/// Tinted brand-blue pill for task actions; [filled] makes it the solid
+/// gradient for an action that pays out now.
+class _SoftButton extends StatelessWidget {
+  const _SoftButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.filled = false,
+  });
   final String label;
   final VoidCallback? onPressed;
-
-  @override
-  State<_GoldButton> createState() => _GoldButtonState();
-}
-
-class _GoldButtonState extends State<_GoldButton>
-    with SingleTickerProviderStateMixin {
-  late final shine = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2400),
-  );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    sync();
-  }
-
-  @override
-  void didUpdateWidget(_GoldButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    sync();
-  }
-
-  bool played = false;
-
-  void sync() {
-    final on =
-        widget.onPressed != null && !MediaQuery.disableAnimationsOf(context);
-    if (on && !played) {
-      played = true;
-      _playTimes(shine, 4);
-    } else if (!on && shine.isAnimating) {
-      shine
-        ..stop()
-        ..value = 1;
-    }
-  }
-
-  @override
-  void dispose() {
-    shine.dispose();
-    super.dispose();
-  }
+  final bool filled;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = widget.onPressed != null;
-    final button = TextButton(
-      onPressed: widget.onPressed,
-      style: TextButton.styleFrom(
-        foregroundColor: const Color(0xFF5A2E00),
-        disabledForegroundColor: context.colors.muted,
-        minimumSize: const Size.fromHeight(52),
-        shape: const StadiumBorder(),
-        textStyle: TextStyle(
-          fontSize: enabled ? 17 : 15,
-          fontWeight: enabled ? FontWeight.w800 : FontWeight.w600,
-        ),
-      ),
-      child: Text(widget.label, textAlign: TextAlign.center),
-    );
-    if (!enabled) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          color: context.colors.inset,
-          borderRadius: BorderRadius.circular(99),
-        ),
-        child: button,
-      );
-    }
+    final enabled = onPressed != null;
+    final solid = filled && enabled;
+    final blue = context.isDark ? context.colors.accent : _accent;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(99),
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFD54F), Color(0xFFFFA21F)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFF9614).withValues(alpha: .4),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(99),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: shine,
-                  builder: (context, _) {
-                    // Sweeps across in the second half of each cycle.
-                    final t = ((shine.value - .5) / .3).clamp(0.0, 1.0);
-                    return FractionalTranslation(
-                      translation: Offset(-1 + t * 2.2, 0),
-                      child: Transform(
-                        transform: Matrix4.skewX(-.35),
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Container(
-                            width: 40,
-                            color: Colors.white.withValues(alpha: .55),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+        gradient: solid
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _blueGradient,
+              )
+            : null,
+        color: solid
+            ? null
+            : enabled
+            ? blue.withValues(alpha: context.isDark ? .16 : .1)
+            : context.colors.inset,
+        boxShadow: solid
+            ? [
+                BoxShadow(
+                  color: _accent.withValues(alpha: .3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
-              ),
-            ),
-            button,
-          ],
+              ]
+            : null,
+      ),
+      child: TextButton(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          foregroundColor: solid ? Colors.white : blue,
+          disabledForegroundColor: context.colors.muted,
+          minimumSize: const Size(76, 31),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: const StadiumBorder(),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
+        child: Text(label, maxLines: 1),
       ),
     );
   }
 }
 
-class _OrangeButton extends StatelessWidget {
-  const _OrangeButton({super.key, required this.label, this.onPressed});
+/// Brand-blue gradient pill with a soft coloured shadow.
+class _BlueButton extends StatelessWidget {
+  const _BlueButton({super.key, required this.label, this.onPressed});
   final String label;
   final VoidCallback? onPressed;
 
@@ -1146,11 +1131,13 @@ class _OrangeButton extends StatelessWidget {
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(99),
       gradient: const LinearGradient(
-        colors: [Color(0xFFFF7A2E), Color(0xFFFF4D3A)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: _blueGradient,
       ),
       boxShadow: [
         BoxShadow(
-          color: const Color(0xFFFF4D3A).withValues(alpha: .35),
+          color: _accent.withValues(alpha: .3),
           blurRadius: 10,
           offset: const Offset(0, 4),
         ),
@@ -1160,14 +1147,65 @@ class _OrangeButton extends StatelessWidget {
       onPressed: onPressed,
       style: TextButton.styleFrom(
         foregroundColor: Colors.white,
-        minimumSize: const Size(0, 34),
-        padding: const EdgeInsets.symmetric(horizontal: 15),
+        minimumSize: const Size(86, 34),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         shape: const StadiumBorder(),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
       child: Text(label),
     ),
   );
+}
+
+/// Full-width check-in call to action under the week; greys out once
+/// today is claimed and says what tomorrow brings.
+class _CheckInButton extends StatelessWidget {
+  const _CheckInButton({required this.label, this.onPressed});
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(99),
+        gradient: enabled
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _blueGradient,
+              )
+            : null,
+        color: enabled
+            ? null
+            : (context.isDark ? context.colors.inset : const Color(0xFFEFF4FF)),
+        boxShadow: enabled
+            ? [
+                BoxShadow(
+                  color: _accent.withValues(alpha: .3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
+                ),
+              ]
+            : null,
+      ),
+      child: TextButton(
+        key: const ValueKey('points-check-in'),
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.white,
+          disabledForegroundColor: context.isDark
+              ? context.colors.muted
+              : const Color(0xFF6E8BC8),
+          minimumSize: const Size.fromHeight(44),
+          shape: const StadiumBorder(),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
 }
 
 class _GradientButton extends StatelessWidget {
@@ -1179,7 +1217,11 @@ class _GradientButton extends StatelessWidget {
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(99),
-      gradient: const LinearGradient(colors: [brandBlue, Color(0xFF4F8DFF)]),
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF5C9BFF), Color(0xFF2867EE)],
+      ),
     ),
     child: TextButton(
       onPressed: onPressed,
@@ -1194,25 +1236,33 @@ class _GradientButton extends StatelessWidget {
   );
 }
 
+/// The rendered 3D coin from the points artwork.
+class _Coin extends StatelessWidget {
+  const _Coin({required this.size});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+    'assets/points/coin-3d.webp',
+    width: size,
+    height: size,
+    fit: BoxFit.contain,
+    excludeFromSemantics: true,
+  );
+}
+
 /// Balance digits that roll to their new value like an odometer.
 class _Odometer extends StatelessWidget {
   const _Odometer({required this.value});
   final int value;
-  static const _height = 52.0;
+  static const _height = 42.0;
 
   static TextStyle style(BuildContext context) => TextStyle(
     fontFamily: _displayFont,
-    fontSize: 46,
-    height: _height / 46,
+    fontSize: 36,
+    height: _height / 36,
     fontWeight: FontWeight.w700,
     color: Colors.white,
-    shadows: [
-      Shadow(
-        color: const Color(0xFF141E78).withValues(alpha: .3),
-        blurRadius: 14,
-        offset: const Offset(0, 4),
-      ),
-    ],
     fontFeatures: const [FontFeature.tabularFigures()],
   );
 
@@ -1299,19 +1349,25 @@ class _DigitColumn extends StatelessWidget {
   }
 }
 
-/// One day of the newcomer gift. Today glows; the tile flips to its claimed
-/// face when the claim is confirmed.
+/// One day of the newcomer gift. Today glows and can be tapped to check in;
+/// the tile flips to its claimed face when the claim is confirmed.
 class _DayTile extends StatefulWidget {
   const _DayTile({
     super.key,
     required this.points,
     required this.status,
     required this.label,
-    required this.bonus,
+    this.actionKey,
+    this.bonus = false,
+    this.onTap,
   });
   final int points;
   final String status, label;
+  final Key? actionKey;
+
+  /// The week's last, largest reward gets a warm highlight.
   final bool bonus;
+  final VoidCallback? onTap;
 
   @override
   State<_DayTile> createState() => _DayTileState();
@@ -1379,47 +1435,21 @@ class _DayTileState extends State<_DayTile> with TickerProviderStateMixin {
     final today = widget.status == 'AVAILABLE';
     final missed = widget.status == 'MISSED';
     final dark = context.isDark;
+    const grey = Color(0xFF999999);
 
     Widget face({required bool claimed}) {
-      final Color ink = claimed
-          ? (dark ? const Color(0xFF8FB0F5) : const Color(0xFF6B8BD8))
-          : today
-          ? const Color(0xFF7A4300)
-          : widget.bonus
-          ? const Color(0xFFB15A00)
-          : colors.ink;
-      final Gradient? gradient = claimed
-          ? null
-          : today
-          ? const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFFFFE68E), Color(0xFFFFBE2E)],
-            )
-          : widget.bonus
-          ? LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: dark
-                  ? const [Color(0xFF4A3410), Color(0xFF5E3A0E)]
-                  : const [Color(0xFFFFF3D6), Color(0xFFFFDFA6)],
-            )
-          : null;
-      final Widget icon = claimed
+      final faded = claimed || missed;
+      final highlight = today && !claimed;
+      final warm = widget.bonus && !faded && !highlight;
+      final Widget coin = claimed
           ? Container(
-              width: 24,
-              height: 24,
+              width: 18,
+              height: 18,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: brandBlue,
+                color: Color(0xFFD6D6D6),
               ),
-              child: const Icon(Icons.check, size: 15, color: Colors.white),
-            )
-          : widget.bonus
-          ? Image.asset(
-              'assets/points/rewards-transparent.webp',
-              height: 40,
-              excludeFromSemantics: true,
+              child: const Icon(Icons.check, size: 12, color: Colors.white),
             )
           : missed
           ? const ColorFiltered(
@@ -1429,153 +1459,159 @@ class _DayTileState extends State<_DayTile> with TickerProviderStateMixin {
                 .33, .33, .33, 0, 0, //
                 0, 0, 0, 1, 0,
               ]),
-              child: PointsCoin(size: 24),
+              child: _Coin(size: 18),
             )
-          : const PointsCoin(size: 24);
+          : const _Coin(size: 18);
       return Container(
-        padding: const EdgeInsets.all(4),
+        height: 67,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          color: gradient == null
-              ? claimed
-                    ? (dark ? const Color(0xFF1F2A40) : const Color(0xFFEAF1FF))
-                    : colors.inset
+          borderRadius: BorderRadius.circular(99),
+          color: highlight || warm
+              ? null
+              : faded
+              ? (dark ? const Color(0xFF2A2F38) : const Color(0xFFF2F3F5))
+              : (dark ? const Color(0xFF242B3D) : const Color(0xFFEFF4FF)),
+          border: warm
+              ? Border.all(color: const Color(0xFFFFB08A), width: 1)
               : null,
-          gradient: gradient,
-          boxShadow: today && !claimed
+          boxShadow: highlight
               ? [
                   BoxShadow(
-                    color: const Color(0xFFFFAA14).withValues(alpha: .45),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
+                    color: _accent.withValues(alpha: .35),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
                 ]
               : null,
+          gradient: warm
+              ? LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: dark
+                      ? const [Color(0xFF4A2E22), Color(0xFF3A241C)]
+                      : const [Color(0xFFFFF3EC), Color(0xFFFFE0D0)],
+                )
+              : highlight
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF2867EE), Color(0xFF0F2A78)],
+                )
+              : null,
         ),
-        child: Opacity(
-          opacity: missed ? .55 : 1,
-          // Scales as one block so enlarged text never overflows the tile.
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 23,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
                   '+${widget.points}',
+                  maxLines: 1,
                   style: TextStyle(
-                    fontFamily: _displayFont,
-                    fontSize: widget.bonus && !claimed ? 15 : 13,
-                    fontWeight: FontWeight.w700,
-                    color: ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: highlight
+                        ? Colors.white
+                        : faded
+                        ? grey
+                        : warm
+                        ? _rewardInk
+                        : (dark ? colors.ink : const Color(0xFF333333)),
                   ),
                 ),
-                const SizedBox(height: 3),
-                icon,
-                const SizedBox(height: 3),
-                Text(
-                  claimed
-                      ? '已签'
-                      : missed
-                      ? '漏签'
-                      : widget.bonus
-                      ? '第7天大奖'
-                      : widget.label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: today && !claimed
-                        ? FontWeight.w700
-                        : FontWeight.w400,
-                    color: claimed || today || widget.bonus
-                        ? ink
-                        : colors.muted,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(height: 4.5),
+            coin,
+          ],
         ),
       );
     }
 
+    final claimedNow = widget.status == 'CLAIMED';
+    final label = claimedNow
+        ? '已签'
+        : missed
+        ? '漏签'
+        : widget.label;
     return Semantics(
+      button: widget.onTap != null,
       label:
-          '${widget.label} ${widget.points} 积分 ${widget.status == 'CLAIMED'
+          '${widget.label} ${widget.points} 积分 ${claimedNow
               ? '已签'
               : missed
               ? '漏签'
               : ''}',
       excludeSemantics: true,
-      child: SizedBox(
-        height: 80,
-        child: Stack(
-          clipBehavior: Clip.none,
+      child: GestureDetector(
+        key: widget.actionKey,
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
           children: [
-            if (today)
-              Positioned.fill(
-                child: AnimatedBuilder(
-                  animation: glow,
-                  builder: (context, _) => flip.value > 0
-                      ? const SizedBox.shrink()
-                      : Transform.scale(
-                          scale: 1 + glow.value * .12,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                width: 2,
-                                color: const Color(0xFFFFC93D)
-                                    .withValues(alpha: .9 * (1 - glow.value)),
+            SizedBox(
+              height: 67,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  if (today)
+                    Positioned.fill(
+                      child: AnimatedBuilder(
+                        animation: glow,
+                        builder: (context, _) => flip.value > 0
+                            ? const SizedBox.shrink()
+                            : Transform.scale(
+                                scale: 1 + glow.value * .12,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      width: 2,
+                                      color: const Color(0xFF5C9BFF).withValues(
+                                        alpha: .9 * (1 - glow.value),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-            Positioned.fill(
-              child: AnimatedBuilder(
-                animation: flip,
-                builder: (context, _) {
-                  final angle = flip.value * math.pi;
-                  final back = angle > math.pi / 2;
-                  return Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()
-                      ..setEntry(3, 2, .002)
-                      ..rotateY(back ? angle - math.pi : angle),
-                    child: face(claimed: back),
-                  );
-                },
+                      ),
+                    ),
+                  Positioned.fill(
+                    child: AnimatedBuilder(
+                      animation: flip,
+                      builder: (context, _) {
+                        final angle = flip.value * math.pi;
+                        final back = angle > math.pi / 2;
+                        return Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()
+                            ..setEntry(3, 2, .002)
+                            ..rotateY(back ? angle - math.pi : angle),
+                          child: face(claimed: back),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (widget.bonus)
-              Positioned(
-                top: -9,
-                right: -2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFF4D4D),
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(8),
-                      topRight: Radius.circular(8),
-                      bottomRight: Radius.circular(8),
-                      bottomLeft: Radius.circular(2),
-                    ),
-                  ),
-                  child: const Text(
-                    '大礼',
-                    style: TextStyle(
-                      fontSize: 10,
-                      height: 1.2,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
+            const SizedBox(height: 6),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 15 / 11,
+                  color: claimedNow || missed
+                      ? grey
+                      : (dark ? colors.ink : const Color(0xFF333333)),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -1590,22 +1626,17 @@ class _TaskRow extends StatefulWidget {
     required this.actionKey,
     required this.title,
     this.progress,
-    this.note,
     required this.reward,
-    this.icon,
-    this.imageAsset,
-    this.colors = const [],
+    required this.iconAsset,
     required this.state,
     required this.action,
     required this.onPressed,
   });
   final Key? actionKey;
   final String title, action;
-  final String? progress, note;
+  final String? progress;
   final int reward;
-  final IconData? icon;
-  final String? imageAsset;
-  final List<Color> colors;
+  final String iconAsset;
   final _TaskState state;
   final VoidCallback? onPressed;
 
@@ -1660,105 +1691,111 @@ class _TaskRowState extends State<_TaskRow>
     final colors = context.colors;
     final done = widget.state == _TaskState.done;
     final claim = widget.state == _TaskState.claim;
-    final button = TextButton(
+    final button = _SoftButton(
       key: widget.actionKey,
+      label: widget.action,
+      filled: claim,
       onPressed: widget.onPressed,
-      style: TextButton.styleFrom(
-        foregroundColor: claim ? Colors.white : brandBlue,
-        disabledForegroundColor: done ? colors.muted : brandBlue,
-        backgroundColor: claim
-            ? null
-            : done
-            ? colors.inset
-            : colors.accentSoft,
-        minimumSize: const Size(80, 32),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        shape: const StadiumBorder(),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-      ),
-      child: Text(widget.action),
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 2),
+      padding: const EdgeInsets.fromLTRB(16, 14.5, 16, 14.5),
       child: Row(
         children: [
           Opacity(
             opacity: done ? .45 : 1,
-            child: widget.imageAsset != null
-                ? Image.asset(
-                    widget.imageAsset!,
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.contain,
-                    excludeFromSemantics: true,
-                  )
-                : Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: done
-                            ? [colors.muted, colors.muted]
-                            : widget.colors,
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: context.isDark
+                      ? Colors.white.withValues(alpha: .06)
+                      : const Color(0xFFDCE7FF),
+                  width: .8,
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: context.isDark
+                      ? const [Color(0xFF243050), Color(0xFF1C2640)]
+                      : const [Color(0xFFF5F8FF), Color(0xFFE4EDFF)],
+                ),
+              ),
+              child: widget.iconAsset.endsWith('.svg')
+                  ? SvgPicture.asset(
+                      widget.iconAsset,
+                      width: 22,
+                      height: 22,
+                      theme: SvgTheme(
+                        currentColor: context.isDark
+                            ? context.colors.accent
+                            : _accent,
                       ),
+                      excludeFromSemantics: true,
+                    )
+                  : Image.asset(
+                      widget.iconAsset,
+                      width: 34,
+                      height: 34,
+                      fit: BoxFit.contain,
+                      excludeFromSemantics: true,
                     ),
-                    child: Icon(widget.icon, size: 22, color: Colors.white),
-                  ),
+            ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(text: widget.title),
-                      if (widget.progress != null)
-                        TextSpan(
-                          text: ' ${widget.progress}',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w400,
-                            color: colors.muted,
-                          ),
-                        ),
-                    ],
-                  ),
+                Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: done ? colors.muted : colors.ink,
+                    height: 21 / 15,
+                    color: done
+                        ? colors.muted
+                        : (context.isDark
+                              ? colors.ink
+                              : const Color(0xFF333333)),
                   ),
                 ),
-                const SizedBox(height: 5),
+                if (widget.progress != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.progress!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 16 / 12,
+                      color: context.isDark
+                          ? colors.muted
+                          : const Color(0xFF999999),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 7),
                 Row(
                   children: [
-                    const PointsCoin(size: 15),
-                    const SizedBox(width: 3),
-                    Text(
-                      '+${widget.reward}',
-                      style: const TextStyle(
-                        fontFamily: _displayFont,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: _goldInk,
-                      ),
-                    ),
-                    if (widget.note != null) ...[
-                      const SizedBox(width: 6),
-                      Flexible(
+                    const _Coin(size: 16),
+                    const SizedBox(width: 2),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
                         child: Text(
-                          widget.note!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: colors.muted),
+                          '+${widget.reward}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            height: 22.5 / 16,
+                            fontWeight: FontWeight.w600,
+                            color: _rewardInk,
+                          ),
                         ),
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ],
@@ -1775,105 +1812,11 @@ class _TaskRowState extends State<_TaskRow>
                     : 1 + math.sin((t - .7) / .3 * math.pi * 2) * .06;
                 return Transform.scale(scale: scale, child: child);
               },
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(99),
-                  gradient: const LinearGradient(colors: _orange),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _orange.last.withValues(alpha: .35),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: button,
-              ),
+              child: button,
             )
           else
             button,
         ],
-      ),
-    );
-  }
-}
-
-class _TemplateTile extends StatelessWidget {
-  const _TemplateTile({
-    required this.template,
-    required this.balance,
-    required this.onTap,
-  });
-  final Map<String, dynamic> template;
-  final int balance;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final price = integer(template['price_points']);
-    final affordable = balance >= price;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Ink(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-        decoration: BoxDecoration(
-          color: context.colors.inset,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 104,
-              width: double.infinity,
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: MarketTemplateArtwork(template: template),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${template['name'] ?? ''}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const PointsCoin(size: 14),
-                const SizedBox(width: 2),
-                Flexible(
-                  child: Text(
-                    '$price',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: _displayFont,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: _goldInk,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              affordable ? '可兑换' : '还差 ${price - balance}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: affordable ? brandBlue : context.colors.muted,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -2022,7 +1965,12 @@ class _RulesSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SafeArea(
     child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
+      padding: const EdgeInsets.fromLTRB(
+        appPageHorizontalPadding,
+        0,
+        appPageHorizontalPadding,
+        20,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2098,17 +2046,44 @@ class _LedgerSheet extends StatefulWidget {
 }
 
 class _LedgerSheetState extends State<_LedgerSheet> {
-  late Future<List<Map<String, dynamic>>> rows = load();
+  final rows = <Map<String, dynamic>>[];
+  String cursor = '';
+  bool loading = true, loadingMore = false;
+  String? error;
 
-  Future<List<Map<String, dynamic>>> load() async {
-    final result = await widget.store.request(
-      'GetWalletTransactions',
-      query: {'limit': '50'},
-    );
-    return (result.data['items'] as List? ?? [])
-        .whereType<Map>()
-        .map((row) => Map<String, dynamic>.from(row))
-        .toList();
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load({bool more = false}) async {
+    if (more && (cursor.isEmpty || loadingMore || loading)) return;
+    setState(() {
+      more ? loadingMore = true : loading = true;
+      error = null;
+    });
+    try {
+      final result = await widget.store.request(
+        'GetWalletTransactions',
+        query: {'limit': '30', if (more) 'cursor': cursor},
+      );
+      if (!mounted) return;
+      final page = items(result.data);
+      setState(() {
+        if (!more) rows.clear();
+        rows.addAll(
+          page.where((row) => !more || !rows.any((v) => v['id'] == row['id'])),
+        );
+        cursor = result.nextCursor;
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) {
+        setState(() => more ? loadingMore = false : loading = false);
+      }
+    }
   }
 
   static String when(Object? value) {
@@ -2130,28 +2105,23 @@ class _LedgerSheetState extends State<_LedgerSheet> {
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: FutureBuilder(
-              future: rows,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
+            child: Builder(
+              builder: (context) {
+                if (loading) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (snapshot.hasError) {
+                if (error != null && rows.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('${snapshot.error}'),
-                        TextButton(
-                          onPressed: () => setState(() => rows = load()),
-                          child: const Text('重新加载'),
-                        ),
+                        Text(error!),
+                        TextButton(onPressed: load, child: const Text('重新加载')),
                       ],
                     ),
                   );
                 }
-                final items = snapshot.data!;
-                if (items.isEmpty) {
+                if (rows.isEmpty) {
                   return Center(
                     child: Text(
                       '还没有积分记录，去签到或做任务吧',
@@ -2159,52 +2129,69 @@ class _LedgerSheetState extends State<_LedgerSheet> {
                     ),
                   );
                 }
-                return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) =>
-                      Divider(height: 1, color: context.colors.border),
-                  itemBuilder: (context, index) {
-                    final row = items[index];
-                    final income = row['direction'] == 'IN';
-                    final amount = integer(row['amount_points']);
-                    final title = '${row['description'] ?? ''}'.trim();
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title.isEmpty ? '积分变动' : title,
-                                  style: const TextStyle(fontSize: 15),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  when(row['created_at']),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: context.colors.muted,
+                return AutoPaginate(
+                  canLoad: cursor.isNotEmpty && !loadingMore && error == null,
+                  onLoadMore: () => load(more: true),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      0,
+                      appPageHorizontalPadding,
+                      16,
+                    ),
+                    itemCount: rows.length + 1,
+                    separatorBuilder: (_, _) =>
+                        Divider(height: 1, color: context.colors.border),
+                    itemBuilder: (context, index) {
+                      if (index == rows.length) {
+                        return error == null
+                            ? PageLoadingFooter(visible: loadingMore)
+                            : TextButton(
+                                onPressed: () => load(more: true),
+                                child: const Text('加载失败，点击重试'),
+                              );
+                      }
+                      final row = rows[index];
+                      final income = row['direction'] == 'IN';
+                      final amount = integer(row['amount_points']);
+                      final title = '${row['description'] ?? ''}'.trim();
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title.isEmpty ? '积分变动' : title,
+                                    style: const TextStyle(fontSize: 15),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    when(row['created_at']),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: context.colors.muted,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          Text(
-                            '${income ? '+' : '-'}$amount',
-                            style: TextStyle(
-                              fontFamily: _displayFont,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: income ? _goldInk : context.colors.ink,
+                            Text(
+                              '${income ? '+' : '-'}$amount',
+                              style: TextStyle(
+                                fontFamily: _displayFont,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: income ? _goldInk : context.colors.ink,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),

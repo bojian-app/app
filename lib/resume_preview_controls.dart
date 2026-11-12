@@ -181,11 +181,12 @@ class ResumeEntryActionsSheet extends StatelessWidget {
   const ResumeEntryActionsSheet({
     super.key,
     required this.canDelete,
+    this.canSort = false,
     this.entryKind = 'work',
     this.entryLabel = '工作经历',
   });
 
-  final bool canDelete;
+  final bool canDelete, canSort;
   final String entryKind, entryLabel;
 
   @override
@@ -203,6 +204,14 @@ class ResumeEntryActionsSheet extends StatelessWidget {
         icon: AppIcons.add,
         key: ValueKey('$entryKind-action-add'),
       ),
+      if (canSort)
+        AppSheetAction(
+          value: 'sort',
+          label: '按时间排序',
+          semanticLabel: '按时间排序$entryLabel',
+          icon: AppIcons.sort,
+          key: ValueKey('$entryKind-action-sort'),
+        ),
       if (canDelete)
         AppSheetAction(
           value: 'delete',

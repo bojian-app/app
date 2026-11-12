@@ -163,6 +163,7 @@ void main() {
     'Fast profile flings continue into content after collapsing the header',
     (tester) async {
       await mount(tester, ProfileContentGateway());
+      await select(tester, 'articles');
       await tester.flingFrom(
         const Offset(300, 540),
         const Offset(0, -120),
@@ -260,7 +261,7 @@ void main() {
     expect(add, findsNothing);
     await gesture.moveBy(const Offset(250, 0));
     await tester.pump(const Duration(milliseconds: 16));
-    expect(publish, findsOneWidget);
+    expect(add, findsOneWidget);
     await gesture.up();
     await tester.pumpAndSettle();
 
@@ -272,17 +273,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.index, 1);
     expect(controller.animation!.value, greaterThan(1.5));
-    expect(add, findsOneWidget);
+    expect(publish, findsOneWidget);
     await gesture.moveBy(const Offset(250, 0));
     await tester.pump(const Duration(milliseconds: 16));
-    expect(add, findsNothing);
+    expect(publish, findsNothing);
     await gesture.up();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
+    await tester.tap(find.byKey(const ValueKey('profile-tab-articles')));
     await tester.pump();
     expect(controller.indexIsChanging, isTrue);
-    expect(add, findsOneWidget);
+    expect(publish, findsOneWidget);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('profile-tab-saved')));
     await tester.pump();
@@ -297,40 +298,32 @@ void main() {
     'Profile tab actions align with tabs and open their matching creation flow',
     (tester) async {
       await mount(tester, ProfileContentGateway());
-      final publish = find.byKey(const ValueKey('profile-publish-article'));
-      expect(publish, findsOneWidget);
-      expect(
-        tester.getCenter(publish).dy,
-        closeTo(
-          tester.getCenter(find.byKey(const ValueKey('profile-tabs'))).dy,
-          1,
-        ),
-      );
-      await tester.tap(publish);
-      await tester.pumpAndSettle();
-      expect(find.byType(StoryComposer), findsOneWidget);
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await select(tester, 'saved');
-      expect(find.text('发表动态').hitTestable(), findsNothing);
-      expect(find.text('添加简历').hitTestable(), findsNothing);
-      await select(tester, 'resumes');
+      final tabBar = find.byKey(const ValueKey('profile-tabs'));
       final add = find.byKey(const ValueKey('profile-add-resume'));
       expect(add, findsOneWidget);
       expect(
         find.descendant(of: find.byType(ResumeLibrary), matching: add),
         findsNothing,
       );
-      expect(
-        tester.getCenter(add).dy,
-        closeTo(
-          tester.getCenter(find.byKey(const ValueKey('profile-tabs'))).dy,
-          1,
-        ),
-      );
+      expect(tester.getCenter(add).dy, closeTo(tester.getCenter(tabBar).dy, 1));
       await tester.tap(add);
       await tester.pumpAndSettle();
       expect(find.text('手动添加'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await select(tester, 'saved');
+      expect(find.text('发表动态').hitTestable(), findsNothing);
+      expect(find.text('添加简历').hitTestable(), findsNothing);
+      await select(tester, 'articles');
+      final publish = find.byKey(const ValueKey('profile-publish-article'));
+      expect(publish, findsOneWidget);
+      expect(
+        tester.getCenter(publish).dy,
+        closeTo(tester.getCenter(tabBar).dy, 1),
+      );
+      await tester.tap(publish);
+      await tester.pumpAndSettle();
+      expect(find.byType(StoryComposer), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -500,13 +493,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
       expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(api.calls, ['GetMeArticles']);
+      expect(api.calls, ['GetResumes']);
       final header = tester.getRect(
         find.byKey(const ValueKey('profile-header')),
       );
       await pullAt(tester, Offset(header.left + 60, header.top + 120));
       expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(api.calls, ['GetMeArticles']);
+      expect(api.calls, ['GetResumes']);
       expect(tester.takeException(), isNull);
     },
   );
@@ -529,7 +522,7 @@ void main() {
     final bar = tester.getRect(find.byKey(const ValueKey('profile-tabs')));
     await pullAt(tester, Offset(bar.center.dx, bar.bottom + 35));
     expect(find.byType(ProfileDetailsPage), findsNothing);
-    expect(api.calls, ['GetMeArticles']);
+    expect(api.calls, ['GetResumes']);
     expect(tester.takeException(), isNull);
   });
 
@@ -538,6 +531,7 @@ void main() {
     (tester) async {
       final api = ProfileContentGateway();
       await mount(tester, api);
+      await select(tester, 'articles');
       nested(tester).outerController
           .jumpTo(nested(tester).outerController.position.maxScrollExtent);
       await tester.pumpAndSettle();
@@ -605,6 +599,7 @@ void main() {
     (tester) async {
       final api = ProfileContentGateway();
       await mount(tester, api);
+      await select(tester, 'articles');
       expect(find.byType(MyArticlesPage), findsOneWidget);
       expect(find.text('动态'), findsOneWidget);
       expect(find.text('收藏'), findsOneWidget);
@@ -637,7 +632,7 @@ void main() {
           .position;
       articlePosition().jumpTo(120);
       await tester.pumpAndSettle();
-      await tester.dragFrom(const Offset(280, 450), const Offset(-300, 0));
+      await tester.dragFrom(const Offset(80, 450), const Offset(300, 0));
       await tester.pumpAndSettle();
       expect(tabs(tester).index, 1);
       expect(find.byType(SavedArticlesPage), findsOneWidget);
@@ -648,9 +643,9 @@ void main() {
       expect(find.byKey(const ValueKey('saved-search')), findsNothing);
       expect(find.byType(TextField), findsNothing);
       expect(find.text('收藏的经验分享'), findsOneWidget);
-      await tester.dragFrom(const Offset(280, 450), const Offset(-300, 0));
+      await tester.dragFrom(const Offset(80, 450), const Offset(300, 0));
       await tester.pumpAndSettle();
-      expect(tabs(tester).index, 2);
+      expect(tabs(tester).index, 0);
       expect(find.byType(ResumeLibrary), findsOneWidget);
       expect(find.text('添加简历'), findsOneWidget);
       expect(find.text('创建简历'), findsNothing);
@@ -703,6 +698,7 @@ void main() {
     (tester) async {
       final api = ProfileContentGateway();
       final store = await mount(tester, api);
+      await select(tester, 'articles');
       nested(tester).outerController
           .jumpTo(nested(tester).outerController.position.maxScrollExtent);
       await tester.pumpAndSettle();
@@ -774,6 +770,7 @@ void main() {
     (tester) async {
       final api = ProfileContentGateway()..paginateArticles = true;
       await mount(tester, api);
+      await select(tester, 'articles');
       nested(tester).outerController
           .jumpTo(nested(tester).outerController.position.maxScrollExtent);
       await tester.pumpAndSettle();
@@ -887,10 +884,7 @@ void main() {
             .data,
         '积分余额：321',
       );
-      final close = find.byKey(const ValueKey('profile-menu-close'));
-      final scan = find.byKey(const ValueKey('profile-menu-scan'));
-      expect(tester.getCenter(close).dx, lessThan(tester.getCenter(scan).dx));
-      expect(tester.widget<IconButton>(scan).onPressed, isNotNull);
+      expect(find.byKey(const ValueKey('profile-menu-scan')), findsNothing);
       final calls = List<String>.of(api.calls);
       expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
       expect(api.calls, calls);
@@ -928,6 +922,7 @@ void main() {
     (tester) async {
       final api = ProfileContentGateway();
       await mount(tester, api);
+      await select(tester, 'articles');
       expect(find.text('草稿箱'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('profile-menu')));
       await tester.pumpAndSettle();
@@ -961,7 +956,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
       await tester.pumpAndSettle();
-      expect(tabs(tester).index, 0);
+      expect(tabs(tester).index, 2);
       expect(
         tester
             .widget<MyArticlesPage>(find.byType(MyArticlesPage))
@@ -1039,6 +1034,7 @@ void main() {
     'Scrolling article content collapses the header and leaves tabs below it',
     (tester) async {
       await mount(tester, ProfileContentGateway());
+      await select(tester, 'articles');
       final viewport = tester.getRect(
         find.byKey(const ValueKey('profile-scroll')),
       );

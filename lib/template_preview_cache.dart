@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'api/bojian_api.dart';
 import 'app_store.dart';
+import 'resume_theme.dart';
 import 'template_dom_storage.dart';
 
 final _caches = Expando<_TemplateDomCache>();
@@ -129,7 +130,9 @@ Future<ApiDocument> loadTemplatePreviewDOM(
             (version > 0 && actualVersion != version)) {
           throw const ApiFailure('模板已更新，请刷新详情');
         }
-        if ((value.data['html'] as String? ?? '').trim().isEmpty) {
+        final schema = value.data['schema'] ?? value.data['manifest'];
+        if ((value.data['html'] as String? ?? '').trim().isEmpty &&
+            !isResumeThemeSchema(schema)) {
           throw const ApiFailure('模板预览正在准备，请稍后重试');
         }
         // Both DOM endpoints feed this cache; discard resume_data and URLs.
@@ -138,7 +141,7 @@ Future<ApiDocument> loadTemplatePreviewDOM(
           'version': actualVersion,
           'html': value.data['html'],
           'css': value.data['css'] ?? '',
-          'schema': value.data['schema'] ?? value.data['manifest'],
+          'schema': schema,
         });
         if (version > 0 && identical(current.pending[key], request)) {
           current.save(key, normalized);
@@ -172,7 +175,7 @@ Future<void> predownloadAcquiredTemplate(
   }
 }
 
-/// Verify the current owned/authored version using metadata, then reuse the
+/// Verify the current owned version using metadata, then reuse the
 /// same assets as acquisition and template switching. Existing bound resumes
 /// retain the original endpoint as a fallback (including delisted templates).
 Future<ApiDocument> loadResumeTemplateDOM(

@@ -132,7 +132,7 @@ void main() {
       expect(tables.first.rows.map((row) => row.first), [
         '网络（INTERNET）',
         '系统文件选择器',
-        '扫一扫相机',
+        '扫码相机',
         '系统相机与照片选择器',
         '系统分享面板',
         '剪贴板写入',

@@ -101,7 +101,10 @@ void main() {
           find.byKey(const ValueKey('profile-identity-name')),
           find.byKey(const ValueKey('profile-account-summary')),
         ]) {
-          expect(tester.getTopLeft(item).dx, closeTo(16, .01));
+          expect(
+            tester.getTopLeft(item).dx,
+            closeTo(appPageHorizontalPadding, .01),
+          );
         }
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.light);
         expect(statusStyle(tester).statusBarColor, Colors.transparent);

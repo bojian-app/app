@@ -61,7 +61,8 @@ class AppPageBar extends StatelessWidget implements PreferredSizeWidget {
         bottom: bottom,
         automaticallyImplyLeading: automaticallyImplyLeading,
         centerTitle: false,
-        titleSpacing: titleSpacing ?? (hasLeading ? 0 : 16),
+        titleSpacing:
+            titleSpacing ?? (hasLeading ? 0 : appPageHorizontalPadding),
         toolbarHeight: kToolbarHeight,
         leadingWidth: 56,
         titleTextStyle: style,

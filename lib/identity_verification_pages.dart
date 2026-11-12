@@ -289,7 +289,10 @@ class _IdentityScaffold extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
           child: ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(
+              horizontal: appPageHorizontalPadding,
+              vertical: 24,
+            ),
             children: children,
           ),
         ),

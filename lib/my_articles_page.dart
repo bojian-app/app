@@ -243,7 +243,7 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
     child: Container(
       color: context.colors.surface,
       margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: feedOuterPadding),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
@@ -276,209 +276,210 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
         constraints: BoxConstraints(
           maxWidth: feedLayout ? double.infinity : 680,
         ),
-        child: PlayfulRefresh(
-          onRefresh: _load,
-          hasError: () => error != null,
-          child: CustomScrollView(
-            key: PageStorageKey(
-              widget.embedded ? 'profile-articles' : 'my-articles',
-            ),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              if (!widget.embedded || !widget.publishedOnly)
-                SliverToBoxAdapter(
-                  child: Column(
-                    children: [
-                      if (!widget.embedded)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-                          child: TextField(
-                            key: const ValueKey('my-articles-search'),
-                            onChanged: (value) =>
-                                setState(() => query = value.trim()),
-                            onSubmitted: (_) => dismissKeyboard(),
-                            textInputAction: TextInputAction.search,
-                            decoration: InputDecoration(
-                              hintText: '搜索文章标题',
-                              fillColor: context.colors.surface,
-                              prefixIcon: Padding(
-                                padding: EdgeInsets.all(14),
-                                child: AppIcon(
-                                  AppIcons.search,
-                                  size: 20,
-                                  color: context.colors.muted,
+        child: AutoPaginate(
+          canLoad:
+              cursor.isNotEmpty && !loading && !loadingMore && error == null,
+          onLoadMore: () => _load(more: true),
+          child: PlayfulRefresh(
+            onRefresh: _load,
+            hasError: () => error != null,
+            child: CustomScrollView(
+              key: PageStorageKey(
+                widget.embedded ? 'profile-articles' : 'my-articles',
+              ),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                if (!widget.embedded || !widget.publishedOnly)
+                  SliverToBoxAdapter(
+                    child: Column(
+                      children: [
+                        if (!widget.embedded)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              appPageHorizontalPadding,
+                              16,
+                              appPageHorizontalPadding,
+                              14,
+                            ),
+                            child: TextField(
+                              key: const ValueKey('my-articles-search'),
+                              onChanged: (value) =>
+                                  setState(() => query = value.trim()),
+                              onSubmitted: (_) => dismissKeyboard(),
+                              textInputAction: TextInputAction.search,
+                              decoration: InputDecoration(
+                                hintText: '搜索文章标题',
+                                fillColor: context.colors.surface,
+                                prefixIcon: Padding(
+                                  padding: EdgeInsets.all(14),
+                                  child: AppIcon(
+                                    AppIcons.search,
+                                    size: 20,
+                                    color: context.colors.muted,
+                                  ),
                                 ),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      if (!widget.publishedOnly && !widget.draftsOnly)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: (context.isDark
-                                  ? context.colors.inset
-                                  : const Color(0xFFEDEFF3)),
-                              borderRadius: BorderRadius.circular(14),
+                        if (!widget.publishedOnly && !widget.draftsOnly)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: appPageHorizontalPadding,
                             ),
-                            child: Row(
-                              children: [
-                                for (final entry in _statuses.entries)
-                                  Expanded(
-                                    child: Semantics(
-                                      selected: status == entry.key,
-                                      child: TextButton(
-                                        key: ValueKey('articles-${entry.key}'),
-                                        style: TextButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 3,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: (context.isDark
+                                    ? context.colors.inset
+                                    : const Color(0xFFEDEFF3)),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Row(
+                                children: [
+                                  for (final entry in _statuses.entries)
+                                    Expanded(
+                                      child: Semantics(
+                                        selected: status == entry.key,
+                                        child: TextButton(
+                                          key: ValueKey(
+                                            'articles-${entry.key}',
                                           ),
-                                          minimumSize: const Size(0, 40),
-                                          backgroundColor: status == entry.key
-                                              ? context.colors.surface
-                                              : Colors.transparent,
-                                          foregroundColor: status == entry.key
-                                              ? context.colors.ink
-                                              : context.colors.muted,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
+                                          style: TextButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 3,
                                             ),
-                                          ),
-                                          textStyle: Theme.of(context)
-                                              .textTheme
-                                              .labelLarge
-                                              ?.copyWith(
-                                                fontSize: 13,
-                                                fontWeight: status == entry.key
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w500,
-                                              ),
-                                        ).withoutHover(),
-                                        onPressed: () {
-                                          if (status == entry.key) return;
-                                          setState(() {
-                                            status = entry.key;
-                                            articles = [];
-                                            cursor = '';
-                                          });
-                                          _load();
-                                        },
-                                        child: Text(entry.value),
+                                            minimumSize: const Size(0, 40),
+                                            backgroundColor: status == entry.key
+                                                ? context.colors.surface
+                                                : Colors.transparent,
+                                            foregroundColor: status == entry.key
+                                                ? context.colors.ink
+                                                : context.colors.muted,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            textStyle: Theme.of(context)
+                                                .textTheme
+                                                .labelLarge
+                                                ?.copyWith(
+                                                  fontSize: 13,
+                                                  fontWeight:
+                                                      status == entry.key
+                                                      ? FontWeight.w700
+                                                      : FontWeight.w500,
+                                                ),
+                                          ).withoutHover(),
+                                          onPressed: () {
+                                            if (status == entry.key) return;
+                                            setState(() {
+                                              status = entry.key;
+                                              articles = [];
+                                              cursor = '';
+                                            });
+                                            _load();
+                                          },
+                                          child: Text(entry.value),
+                                        ),
                                       ),
                                     ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    feedLayout ? 0 : appPageHorizontalPadding,
+                    feedLayout ? 0 : 12,
+                    feedLayout ? 0 : appPageHorizontalPadding,
+                    24,
+                  ),
+                  sliver: SliverList.list(
+                    children: [
+                      if (loading)
+                        const Padding(
+                          padding: EdgeInsets.all(40),
+                          child: Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      else ...[
+                        if (status == 'SUBMITTED' && articles.isNotEmpty)
+                          Padding(
+                            padding: EdgeInsets.only(left: 2, bottom: 16),
+                            child: Text(
+                              '审核通过后，文章将公开展示。',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: context.colors.muted,
+                              ),
+                            ),
+                          ),
+                        if (error != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            child: Column(
+                              children: [
+                                Text(
+                                  error!,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: context.colors.muted,
+                                    fontSize: 13,
                                   ),
+                                ),
+                                TextButton(
+                                  onPressed: () => _load(
+                                    more:
+                                        articles.isNotEmpty &&
+                                        cursor.isNotEmpty,
+                                  ),
+                                  child: const Text('重新加载'),
+                                ),
                               ],
                             ),
                           ),
-                        ),
-                      const SizedBox(height: 8),
+                        if (visible.isEmpty && error == null)
+                          EmptyState(
+                            query.isNotEmpty
+                                ? '没有找到这篇文章'
+                                : feedLayout
+                                ? '暂无已发表的动态'
+                                : '暂无${_statuses[status]}的文章',
+                            query.isNotEmpty
+                                ? '试试其他标题关键词'
+                                : status == 'SUBMITTED'
+                                ? '提交后的文章会显示在这里'
+                                : '下拉刷新，查看最新状态',
+                          ),
+                        for (final row in visible)
+                          if (feedLayout)
+                            _feedCard(row)
+                          else
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 14),
+                              child: _ArticleCard(
+                                row: row,
+                                busy: opening == '${row['id']}',
+                                onTap: () => _open(row),
+                              ),
+                            ),
+                        PageLoadingFooter(visible: loadingMore),
+                      ],
                     ],
                   ),
                 ),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(
-                  feedLayout ? 0 : 20,
-                  feedLayout ? 0 : 12,
-                  feedLayout ? 0 : 20,
-                  24,
-                ),
-                sliver: SliverList.list(
-                  children: [
-                    if (loading)
-                      const Padding(
-                        padding: EdgeInsets.all(40),
-                        child: Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    else ...[
-                      if (status == 'SUBMITTED' && articles.isNotEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(left: 2, bottom: 16),
-                          child: Text(
-                            '审核通过后，文章将公开展示。',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: context.colors.muted,
-                            ),
-                          ),
-                        ),
-                      if (error != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Column(
-                            children: [
-                              Text(
-                                error!,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: context.colors.muted,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () => _load(
-                                  more:
-                                      articles.isNotEmpty && cursor.isNotEmpty,
-                                ),
-                                child: const Text('重新加载'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (visible.isEmpty && error == null)
-                        EmptyState(
-                          query.isNotEmpty
-                              ? '没有找到这篇文章'
-                              : feedLayout
-                              ? '暂无已发表的动态'
-                              : '暂无${_statuses[status]}的文章',
-                          query.isNotEmpty
-                              ? '试试其他标题关键词'
-                              : status == 'SUBMITTED'
-                              ? '提交后的文章会显示在这里'
-                              : '下拉刷新，查看最新状态',
-                        ),
-                      for (final row in visible)
-                        if (feedLayout)
-                          _feedCard(row)
-                        else
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
-                            child: _ArticleCard(
-                              row: row,
-                              busy: opening == '${row['id']}',
-                              onTap: () => _open(row),
-                            ),
-                          ),
-                      if (cursor.isNotEmpty)
-                        TextButton(
-                          onPressed: loadingMore
-                              ? null
-                              : () => _load(more: true),
-                          child: loadingMore
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('加载更多'),
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -651,7 +652,12 @@ class OwnArticlePreview extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+          padding: const EdgeInsets.fromLTRB(
+            appPageHorizontalPadding,
+            16,
+            appPageHorizontalPadding,
+            40,
+          ),
           children: [
             Text(
               _statuses['${row['status']}'] ?? '',

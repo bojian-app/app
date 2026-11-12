@@ -135,19 +135,8 @@ void main() {
     expect(text, contains('mso-fit-shape-to-text:t'));
     expect(text, isNot(contains('w:lineRule="exact"')));
     expect(text, isNot(contains('<w:b/>')));
-    expect(text, contains(resumeWordMediumTypeface));
+    expect(text, contains(resumeWordTypeface));
     expect(text, contains('margin-top:43.400pt'));
-    final table = utf8.decode(zip.findFile('word/fontTable.xml')!.content);
-    expect(table, contains('w:name="$resumeWordMediumTypeface"'));
-    // The embedded face must be the original font, rather than a mislabeled
-    // regular/bold face. Deobfuscation is symmetric over the first 32 bytes.
-    final embedded = Uint8List.fromList(
-      zip.findFile('word/fonts/medium.odttf')!.content,
-    );
-    for (var i = 0; i < 32; i++) {
-      embedded[i] ^= (15 - i % 16) * 17;
-    }
-    expect(embedded, medium);
   });
 
   test(
@@ -372,16 +361,11 @@ void main() {
       zip.files.any((f) => RegExp(r'page\d+\.png').hasMatch(f.name)),
       isFalse,
     );
-    expect(zip.findFile('word/fonts/regular.odttf'), isNotNull);
-    // Embed both real faces so printing does not depend on installed fonts.
-    expect(xml, contains('w:eastAsia="$resumeWordRegularTypeface"'));
-    final fontTable = utf8.decode(zip.findFile('word/fontTable.xml')!.content);
-    expect(fontTable, contains('w:name="$resumeWordRegularTypeface"'));
-    expect(fontTable, contains('w:name="$resumeWordMediumTypeface"'));
-    expect(fontTable, contains('<w:embedRegular '));
-    expect(fontTable, contains('<w:embedBold '));
-    expect(zip.findFile('word/fonts/bold.odttf'), isNotNull);
-    expect(zip.findFile('word/fonts/medium.odttf'), isNotNull);
+    // A common system face, so readers without embedded-font support still
+    // show the text.
+    expect(xml, contains('w:eastAsia="$resumeWordTypeface"'));
+    expect(zip.files.any((f) => f.name.startsWith('word/fonts/')), isFalse);
+    expect(zip.findFile('word/fontTable.xml'), isNull);
     final pdf = await encodeNativeResume(
       layout,
       'PDF',

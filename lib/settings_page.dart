@@ -131,7 +131,12 @@ class _SettingsPageState extends State<SettingsPage> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+              padding: const EdgeInsets.fromLTRB(
+                appPageHorizontalPadding,
+                16,
+                appPageHorizontalPadding,
+                32,
+              ),
               children: [
                 if (store.isAuthenticated) ...[
                   Padding(
@@ -495,7 +500,10 @@ class _FeedbackPageState extends State<_FeedbackPage> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680),
         child: ListView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(
+            horizontal: appPageHorizontalPadding,
+            vertical: 24,
+          ),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             if (widget.appeal)
@@ -762,7 +770,12 @@ class _SecurityPageState extends State<_SecurityPage> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          padding: const EdgeInsets.fromLTRB(
+            appPageHorizontalPadding,
+            16,
+            appPageHorizontalPadding,
+            32,
+          ),
           children: [
             _SettingsGroup(
               '登录设备',

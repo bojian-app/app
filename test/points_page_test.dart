@@ -1,6 +1,5 @@
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/points_page.dart';
-import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/story_composer.dart';
 import 'package:bojian_mobile/resume_user_share.dart';
 import 'package:flutter/material.dart';
@@ -57,9 +56,8 @@ void main() {
       MaterialApp(
         theme: appDarkTheme,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: const TextScaler.linear(2)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
           child: child!,
         ),
         home: PointsPage(store: store),
@@ -75,7 +73,7 @@ void main() {
     expect(find.text('服务器暂不可用'), findsNothing);
     expect(store.points, 123);
     expect(find.bySemanticsLabel('可用积分 123'), findsOneWidget);
-    expect(find.text('立即签到 领 125 积分'), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-claim-reward')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -88,21 +86,25 @@ void main() {
     addTearDown(store.dispose);
     await tester.pumpWidget(host(PointsPage(store: store)));
     await tester.pumpAndSettle();
-    expect(find.textContaining('已签到 2 天', findRichText: true), findsOneWidget);
-    expect(find.text('7 天共 1000 积分'), findsOneWidget);
-    expect(find.text('今天签到领 125！'), findsNothing);
+    // The missed day breaks the streak: only day 3 counts.
+    expect(find.textContaining('已连续签到1天', findRichText: true), findsOneWidget);
     expect(find.text('已签'), findsNWidgets(2));
     expect(find.text('漏签'), findsOneWidget);
-    expect(find.text('今天'), findsOneWidget);
-    expect(find.text('明天'), findsOneWidget);
-    expect(find.text('大礼'), findsOneWidget);
-    expect(find.text('第7天大奖'), findsOneWidget);
+    final now = DateTime.now();
+    String date(int offset) {
+      final day = DateTime(now.year, now.month, now.day + offset);
+      return '${day.month.toString().padLeft(2, '0')}.'
+          '${day.day.toString().padLeft(2, '0')}';
+    }
+
+    for (var offset = 0; offset <= 3; offset++) {
+      expect(find.text(date(offset)), findsOneWidget);
+    }
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'Check in confirms once, rolls the balance after the coins land and '
-    'opens the real market',
+    'Tapping today checks in once and rolls the balance after the coins land',
     (tester) async {
       final api = FakeGateway();
       api.documents['GetWalletDailyReward'] = newcomer(_active);
@@ -134,23 +136,17 @@ void main() {
       expect(find.bySemanticsLabel('可用积分 0'), findsOneWidget);
       await tester.pumpAndSettle();
       expect(find.bySemanticsLabel('可用积分 125'), findsOneWidget);
-      expect(find.text('今日已签到，明天再来领 150'), findsOneWidget);
+      expect(find.text('已签'), findsNWidgets(3));
       expect(
-        find.textContaining('已签到 3 天', findRichText: true),
+        find.textContaining('已连续签到2天', findRichText: true),
         findsOneWidget,
       );
-      expect(find.text('明天再来领 150～'), findsNothing);
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(
         api.calls.where((c) => c == 'PostWalletDailyRewardClaims'),
         hasLength(1),
       );
-      final market = find.byKey(const ValueKey('points-market'));
-      await tester.ensureVisible(market);
-      await tester.tap(market);
-      await tester.pumpAndSettle();
-      expect(find.byType(TemplateMarket), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -296,15 +292,19 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('points-ledger')));
     await tester.pumpAndSettle();
-    expect(find.text('积分明细'), findsOneWidget);
-    expect(find.text('新人奖励'), findsOneWidget);
-    expect(find.text('+125'), findsOneWidget);
-    expect(find.text('-500'), findsOneWidget);
+    Finder sheet(String text) => find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.text(text),
+    );
+    expect(sheet('积分明细'), findsOneWidget);
+    expect(sheet('新人奖励'), findsOneWidget);
+    expect(sheet('+125'), findsOneWidget);
+    expect(sheet('-500'), findsOneWidget);
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('规则'));
+    await tester.tap(find.text('积分规则'));
     await tester.pumpAndSettle();
-    expect(find.text('积分规则'), findsOneWidget);
+    expect(sheet('积分规则'), findsOneWidget);
     expect(find.textContaining('积分不能提现或转让'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -60,152 +60,174 @@ class ResumeLibrary extends StatelessWidget {
   final AppStore store;
   final bool embedded;
   @override
-  Widget build(BuildContext context) => PlayfulRefresh(
-    hasError: () => store.errors['resumes'] != null,
-    onRefresh: () => store.load('resumes'),
-    child: ListView(
-      key: PageStorageKey(embedded ? 'profile-resumes' : 'resume-library'),
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.only(top: embedded ? 8 : 0, bottom: 24),
-      children: [
-        if (!embedded) ...[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(24, 18, 24, 16),
-            child: Text(
-              '我的简历',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -.5,
+  Widget build(BuildContext context) => AutoPaginate.section(
+    store: store,
+    section: 'resumes',
+    child: PlayfulRefresh(
+      hasError: () => store.errors['resumes'] != null,
+      onRefresh: () => store.load('resumes'),
+      child: ListView(
+        key: PageStorageKey(embedded ? 'profile-resumes' : 'resume-library'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(top: embedded ? 8 : 0, bottom: 24),
+        children: [
+          if (!embedded) ...[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(
+                appPageHorizontalPadding,
+                18,
+                appPageHorizontalPadding,
+                16,
+              ),
+              child: Text(
+                '我的简历',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -.5,
+                ),
               ),
             ),
-          ),
-        ],
-        if (!embedded)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _actionCard(
-                    context,
-                    label: '创建简历',
-                    icon: AppIcons.add,
-                    onTap: () => _create(context),
+          ],
+          if (!embedded)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: appPageHorizontalPadding,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _actionCard(
+                      context,
+                      label: '创建简历',
+                      icon: AppIcons.add,
+                      onTap: () => _create(context),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _actionCard(
-                    context,
-                    label: '导入简历',
-                    icon: AppIcons.importResume,
-                    onTap: () => _import(context),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _actionCard(
+                      context,
+                      label: '导入简历',
+                      icon: AppIcons.importResume,
+                      onTap: () => _import(context),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        if (!embedded) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-            child: InkWell(
-              onTap: () => openPage(context, TemplateMarket(store: store)),
-              borderRadius: BorderRadius.circular(18),
-              child: Panel(
-                padding: EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: (context.isDark
-                            ? context.colors.warningSoft
-                            : Color(0xFFFFF4E5)),
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(10),
-                        child: AppIcon(
-                          AppIcons.templateMarket,
-                          color: Color(0xFFD69B4C),
-                          size: 22,
+          if (!embedded) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                appPageHorizontalPadding,
+                14,
+                appPageHorizontalPadding,
+                18,
+              ),
+              child: InkWell(
+                onTap: () => openPage(context, TemplateMarket(store: store)),
+                borderRadius: BorderRadius.circular(18),
+                child: Panel(
+                  padding: EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: (context.isDark
+                              ? context.colors.warningSoft
+                              : Color(0xFFFFF4E5)),
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.all(10),
+                          child: AppIcon(
+                            AppIcons.templateMarket,
+                            color: Color(0xFFD69B4C),
+                            size: 22,
+                          ),
                         ),
                       ),
-                    ),
-                    SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '找到适合你的模版',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
+                      SizedBox(width: 13),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '找到适合你的模版',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            '逛逛模板市场，让经历更出彩',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: context.colors.muted,
+                            SizedBox(height: 4),
+                            Text(
+                              '逛逛模板市场，让经历更出彩',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.colors.muted,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    AppIcon(
-                      AppIcons.forward,
-                      color: context.colors.muted,
-                      size: 14,
-                    ),
-                  ],
+                      AppIcon(
+                        AppIcons.forward,
+                        color: context.colors.muted,
+                        size: 14,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-            child: Row(
-              children: [
-                const Text(
-                  '简历库',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${store.resumes.length} 份',
-                  style: TextStyle(color: context.colors.muted, fontSize: 11),
-                ),
-                const Spacer(),
-                Text(
-                  '最近更新',
-                  style: TextStyle(color: context.colors.muted, fontSize: 11),
-                ),
-              ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                appPageHorizontalPadding,
+                0,
+                appPageHorizontalPadding,
+                12,
+              ),
+              child: Row(
+                children: [
+                  const Text(
+                    '简历库',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${store.resumes.length} 份',
+                    style: TextStyle(color: context.colors.muted, fontSize: 11),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '最近更新',
+                    style: TextStyle(color: context.colors.muted, fontSize: 11),
+                  ),
+                ],
+              ),
             ),
+          ],
+          if (embedded) const SizedBox(height: 4),
+          DataStatus(
+            store: store,
+            section: 'resumes',
+            empty: store.resumes.isEmpty,
+            title: embedded ? '这里还没有内容' : '创建你的第一份简历',
+            subtitle: embedded ? '下拉刷新，查看最新内容。' : '从一份空白简历开始，逐步整理你的经历。',
           ),
+          for (final resume in store.resumes)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                appPageHorizontalPadding,
+                0,
+                appPageHorizontalPadding,
+                12,
+              ),
+              child: _resumeCard(context, resume),
+            ),
+          PageLoadingFooter(visible: store.loadingMore.contains('resumes')),
         ],
-        if (embedded) const SizedBox(height: 4),
-        DataStatus(
-          store: store,
-          section: 'resumes',
-          empty: store.resumes.isEmpty,
-          title: embedded ? '这里还没有内容' : '创建你的第一份简历',
-          subtitle: embedded ? '下拉刷新，查看最新内容。' : '从一份空白简历开始，逐步整理你的经历。',
-        ),
-        for (final resume in store.resumes)
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              embedded ? 20 : 32,
-              0,
-              embedded ? 20 : 32,
-              12,
-            ),
-            child: _resumeCard(context, resume),
-          ),
-      ],
+      ),
     ),
   );
   Widget _actionCard(
@@ -1473,7 +1495,12 @@ class _ResumeEditorState extends State<ResumeEditor> {
               color: context.colors.surface,
               child: SafeArea(
                 top: false,
-                minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                minimum: const EdgeInsets.fromLTRB(
+                  appPageHorizontalPadding,
+                  12,
+                  appPageHorizontalPadding,
+                  12,
+                ),
                 child: FilledButton(
                   key: const ValueKey('resume-import-save'),
                   onPressed: saving || pickingPhoto
@@ -1511,9 +1538,9 @@ class _ResumeEditorState extends State<ResumeEditor> {
               : const ScrollCacheExtent.pixels(10000),
           buildDefaultDragHandles: false,
           padding: EdgeInsets.fromLTRB(
-            8,
+            appPageHorizontalPadding,
             12,
-            8,
+            appPageHorizontalPadding,
             12 + MediaQuery.paddingOf(context).bottom,
           ),
           header: Column(
@@ -1743,6 +1770,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
         sectionContext,
         builder: (_) => ResumeEntryActionsSheet(
           canDelete: entry != null,
+          canSort: key != 'skills' && list.length > 1,
           entryKind: kind,
           entryLabel: label,
         ),
@@ -1758,6 +1786,16 @@ class _ResumeEditorState extends State<ResumeEditor> {
       });
     } else if (action == 'delete' && entry != null && list.contains(entry)) {
       await _removeAdditional(key, entry, label);
+    } else if (action == 'sort') {
+      final dated = key == 'certifications';
+      await _sortEntries(
+        list,
+        label,
+        (e) => e.fields[dated ? 'date' : 'start_date']!.text,
+        dated ? null : (ResumeEntryFields e) => e.fields['end_date']!.text,
+        entry,
+        (index) => _setAdditionalIndex(key, index),
+      );
     }
   }
 
@@ -2330,7 +2368,10 @@ class _ResumeEditorState extends State<ResumeEditor> {
     try {
       action = await showAppActionSheet(
         sectionContext,
-        builder: (_) => ResumeEntryActionsSheet(canDelete: entry != null),
+        builder: (_) => ResumeEntryActionsSheet(
+          canDelete: entry != null,
+          canSort: workEntries.length > 1,
+        ),
       );
     } finally {
       _entryActionsOpen = false;
@@ -2345,7 +2386,40 @@ class _ResumeEditorState extends State<ResumeEditor> {
         entry != null &&
         workEntries.contains(entry)) {
       await _removeWork(entry);
+    } else if (action == 'sort') {
+      await _sortEntries(
+        workEntries,
+        '工作经历',
+        (e) => e.fields['start_date']!.text,
+        (e) => e.fields['end_date']!.text,
+        entry,
+        (index) => _workIndex = index,
+      );
     }
+  }
+
+  Future<void> _sortEntries<T>(
+    List<T> list,
+    String label,
+    String Function(T entry) start,
+    String Function(T entry)? end,
+    T? current,
+    void Function(int index) setIndex,
+  ) async {
+    final session = _sectionSession;
+    final confirmed = await showAppConfirmation(
+      context,
+      title: '按时间排序$label？',
+      content: Text('将按时间由近到远重新排列全部$label，保存本页后生效。'),
+      confirmLabel: '排序',
+    );
+    if (!mounted || confirmed != true || session != _sectionSession) return;
+    if (saving) return;
+    _update(() {
+      sortByRecency(list, start, end);
+      final index = current == null ? -1 : list.indexOf(current);
+      setIndex(index < 0 ? 0 : index);
+    });
   }
 
   Widget _workEntry(int index) {
@@ -2480,6 +2554,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
         sectionContext,
         builder: (_) => ResumeEntryActionsSheet(
           canDelete: entry != null,
+          canSort: educationEntries.length > 1,
           entryKind: 'education',
           entryLabel: '教育经历',
         ),
@@ -2497,6 +2572,15 @@ class _ResumeEditorState extends State<ResumeEditor> {
         entry != null &&
         educationEntries.contains(entry)) {
       await _removeEducation(entry);
+    } else if (action == 'sort') {
+      await _sortEntries(
+        educationEntries,
+        '教育经历',
+        (e) => e.fields['start_date']!.text,
+        (e) => e.fields['end_date']!.text,
+        entry,
+        (index) => _educationIndex = index,
+      );
     }
   }
 
@@ -2947,7 +3031,12 @@ class _ResumeSwitchSheet extends StatelessWidget {
       child: SizedBox(
         height: (MediaQuery.sizeOf(context).height * .4).clamp(260, 360),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(
+            appPageHorizontalPadding,
+            8,
+            appPageHorizontalPadding,
+            16,
+          ),
           child: Column(
             children: [
               Row(
@@ -3152,7 +3241,12 @@ class _MarketResumeChooserState extends State<_MarketResumeChooser> {
       child: Column(
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(20, 0, 20, 16),
+            padding: EdgeInsets.fromLTRB(
+              appPageHorizontalPadding,
+              0,
+              appPageHorizontalPadding,
+              16,
+            ),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -3163,7 +3257,9 @@ class _MarketResumeChooserState extends State<_MarketResumeChooser> {
           ),
           if (error != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(
+                horizontal: appPageHorizontalPadding,
+              ),
               child: Text(
                 error!,
                 style: const TextStyle(color: Colors.redAccent, fontSize: 12),
@@ -3172,40 +3268,57 @@ class _MarketResumeChooserState extends State<_MarketResumeChooser> {
           Expanded(
             child: loading
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                : ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    children: [
-                      if (widget.store.errors.containsKey('resumes'))
-                        TextButton(onPressed: load, child: const Text('重新加载'))
-                      else
-                        for (final resume in widget.store.resumes)
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              resume.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              resume.templateTitle,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: context.colors.muted,
-                              ),
-                            ),
-                            trailing: busy
-                                ? null
-                                : const AppIcon(AppIcons.forward, size: 18),
-                            onTap: busy ? null : () => use(resume),
-                          ),
-                      if (!widget.store.errors.containsKey('resumes') &&
-                          widget.store.resumes.isEmpty)
-                        const EmptyState(
-                          '你还没有简历',
-                          '可以用这套模板创建一份。',
-                          compact: true,
+                : ListenableBuilder(
+                    listenable: widget.store,
+                    builder: (context, _) => AutoPaginate.section(
+                      store: widget.store,
+                      section: 'resumes',
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: appPageHorizontalPadding,
                         ),
-                    ],
+                        children: [
+                          if (widget.store.errors.containsKey('resumes'))
+                            TextButton(
+                              onPressed: load,
+                              child: const Text('重新加载'),
+                            )
+                          else
+                            for (final resume in widget.store.resumes)
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  resume.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  resume.templateTitle,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.colors.muted,
+                                  ),
+                                ),
+                                trailing: busy
+                                    ? null
+                                    : const AppIcon(AppIcons.forward, size: 18),
+                                onTap: busy ? null : () => use(resume),
+                              ),
+                          if (!widget.store.errors.containsKey('resumes') &&
+                              widget.store.resumes.isEmpty)
+                            const EmptyState(
+                              '你还没有简历',
+                              '可以用这套模板创建一份。',
+                              compact: true,
+                            ),
+                          PageLoadingFooter(
+                            visible: widget.store.loadingMore.contains(
+                              'resumes',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
           ),
           if (busy)
@@ -3218,7 +3331,12 @@ class _MarketResumeChooserState extends State<_MarketResumeChooser> {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            padding: const EdgeInsets.fromLTRB(
+              appPageHorizontalPadding,
+              12,
+              appPageHorizontalPadding,
+              16,
+            ),
             child: SizedBox(
               width: double.infinity,
               child: TextButton(
@@ -3468,7 +3586,12 @@ class _ImportResumeState extends State<ImportResume> {
       isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          padding: const EdgeInsets.fromLTRB(
+            appPageHorizontalPadding,
+            8,
+            appPageHorizontalPadding,
+            24,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,

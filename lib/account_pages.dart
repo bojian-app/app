@@ -16,7 +16,6 @@ import 'package:file_selector/file_selector.dart';
 import 'app_store.dart';
 import 'app_photo_picker.dart';
 import 'developer_verification_page.dart';
-import 'app_qr_login_page.dart';
 import 'design.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
@@ -146,7 +145,7 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
   }
 }
 
-enum _ProfileMenuPage { drafts, settings, points, developerVerification, scan }
+enum _ProfileMenuPage { drafts, settings, points, developerVerification }
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.store});
@@ -419,7 +418,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         0,
                         controller.length - 1,
                       );
-                final isResume = index == 2;
+                final isResume = index == 0;
                 return Visibility(
                   visible: index != 1,
                   maintainSize: true,
@@ -591,10 +590,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   children: [
                                     _ProfileContentTab(
                                       index: 0,
-                                      child: MyArticlesPage(
+                                      child: ResumeLibrary(
                                         store: store,
                                         embedded: true,
-                                        publishedOnly: true,
                                       ),
                                     ),
                                     _ProfileContentTab(
@@ -606,9 +604,10 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ),
                                     _ProfileContentTab(
                                       index: 2,
-                                      child: ResumeLibrary(
+                                      child: MyArticlesPage(
                                         store: store,
                                         embedded: true,
+                                        publishedOnly: true,
                                       ),
                                     ),
                                   ],
@@ -657,7 +656,6 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
           draftsOnly: true,
         ),
         _ProfileMenuPage.settings => SettingsPage(store: store),
-        _ProfileMenuPage.scan => AppQRLoginPage(store: store),
         _ProfileMenuPage.developerVerification => DeveloperVerificationPage(
           store: store,
         ),
@@ -741,33 +739,6 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
                                   onPressed: () =>
                                       Navigator.of(menuContext).pop(),
                                   icon: const AppIcon(AppIcons.close, size: 18),
-                                ),
-                              ),
-                              const Spacer(),
-                              Semantics(
-                                label: '扫一扫',
-                                button: true,
-                                enabled: true,
-                                excludeSemantics: true,
-                                onTap: () => openDestination(
-                                  menuContext,
-                                  _ProfileMenuPage.scan,
-                                ),
-                                child: IconButton(
-                                  key: const ValueKey('profile-menu-scan'),
-                                  style: IconButton.styleFrom(
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  constraints: const BoxConstraints.tightFor(
-                                    width: 44,
-                                    height: 44,
-                                  ),
-                                  onPressed: () => openDestination(
-                                    menuContext,
-                                    _ProfileMenuPage.scan,
-                                  ),
-                                  icon: const AppIcon(AppIcons.scan, size: 20),
                                 ),
                               ),
                             ],
@@ -1068,7 +1039,12 @@ class _ProfileEditorState extends State<ProfileEditor> {
             maxHeight: MediaQuery.sizeOf(context).height * .78,
           ),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            padding: const EdgeInsets.fromLTRB(
+              appPageHorizontalPadding,
+              0,
+              appPageHorizontalPadding,
+              24,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1459,7 +1435,12 @@ class _ProfileEditorState extends State<ProfileEditor> {
                 builder: (context, constraints) => ListView(
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                  padding: const EdgeInsets.fromLTRB(
+                    appPageHorizontalPadding,
+                    16,
+                    appPageHorizontalPadding,
+                    24,
+                  ),
                   children: [
                     if (constraints.maxWidth >= 600)
                       Row(
@@ -1499,7 +1480,12 @@ class _ProfileEditorState extends State<ProfileEditor> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 760),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+                    padding: const EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      12,
+                      appPageHorizontalPadding,
+                      12,
+                    ),
                     child: SizedBox(
                       width: double.infinity,
                       child: FilledButton(
@@ -1561,7 +1547,10 @@ class _VerificationPageState extends State<VerificationPage> {
     body: FutureBuilder(
       future: result,
       builder: (context, snapshot) => ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(
+          horizontal: appPageHorizontalPadding,
+          vertical: 24,
+        ),
         children: [
           AppIcon(
             AppIcons.identityVerification,

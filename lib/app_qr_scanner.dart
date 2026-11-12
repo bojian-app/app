@@ -11,8 +11,13 @@ import 'design.dart';
 
 /// Owns camera operations and stops capture before handing a QR to login logic.
 class AppQRScanner extends StatefulWidget {
-  const AppQRScanner({super.key, required this.onCode});
+  const AppQRScanner({
+    super.key,
+    required this.onCode,
+    this.hint = '对准好友分享的邀请二维码，自动识别',
+  });
   final ValueChanged<String> onCode;
+  final String hint;
   @override
   State<AppQRScanner> createState() => _AppQRScannerState();
 }
@@ -215,8 +220,8 @@ class _AppQRScannerState extends State<AppQRScanner>
                           valueListenable: camera,
                           builder: (context, state, _) => state.error != null
                               ? const SizedBox.shrink()
-                              : const Text(
-                                  '对准博简官网登录二维码，自动扫描',
+                              : Text(
+                                  widget.hint,
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white,

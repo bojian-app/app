@@ -66,9 +66,7 @@ class _StructuredWord {
   Map<String, dynamic> style(dynamic key) => m(m(layout['textStyles'])[key]);
   String run(String text, Map style, [Map span = const {}]) {
     final weight = n(style['fontWeight'], 400);
-    final family = weight >= 500 && weight < 700
-        ? resumeWordMediumTypeface
-        : resumeWordRegularTypeface;
+    const family = resumeWordTypeface;
     final size = (n(style['fontSizePt'], 8.5) * 2).round();
     final color = '${style['color'] ?? '#262B27'}'.replaceFirst('#', '');
     return '<w:r><w:rPr><w:rFonts w:ascii="${_xml(family)}" w:hAnsi="${_xml(family)}" w:eastAsia="${_xml(family)}"/>'
@@ -85,7 +83,7 @@ class _StructuredWord {
     String align = 'left',
   }) =>
       '<w:p><w:pPr>${keep ? '<w:keepNext/>' : ''}<w:widowControl/><w:jc w:val="$align"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/>'
-      '<w:spacing w:before="${_twip(before * .75)}" w:after="${_twip(after * .75)}" w:line="${_twip(n(style['fontSizePt'], 8.5) * n(style['lineHeight'], 1.5))}" w:lineRule="atLeast"/><w:rPr><w:rFonts w:ascii="$resumeWordRegularTypeface" w:hAnsi="$resumeWordRegularTypeface" w:eastAsia="$resumeWordRegularTypeface"/><w:sz w:val="${(n(style['fontSizePt'], 8.5) * 2).round()}"/></w:rPr></w:pPr>$runs</w:p>';
+      '<w:spacing w:before="${_twip(before * .75)}" w:after="${_twip(after * .75)}" w:line="${_twip(n(style['fontSizePt'], 8.5) * n(style['lineHeight'], 1.5))}" w:lineRule="atLeast"/><w:rPr><w:rFonts w:ascii="$resumeWordTypeface" w:hAnsi="$resumeWordTypeface" w:eastAsia="$resumeWordTypeface"/><w:sz w:val="${(n(style['fontSizePt'], 8.5) * 2).round()}"/></w:rPr></w:pPr>$runs</w:p>';
   String empty() =>
       '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/></w:rPr></w:pPr></w:p>';
   String spacer(double height) =>

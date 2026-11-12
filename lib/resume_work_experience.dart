@@ -84,3 +84,38 @@ DateTime? parseWorkDate(String value, {DateTime? today}) {
       ? result
       : null;
 }
+
+/// Orders entries from the most recent to the earliest by end date, then start
+/// date. Entries without valid dates keep their relative order at the end.
+void sortByRecency<T>(
+  List<T> entries,
+  String Function(T entry) start, [
+  String Function(T entry)? end,
+]) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  DateTime? date(String text) => parseWorkDate(
+    text.trim().replaceAll('/', '-').replaceAll('.', '-'),
+    today: today,
+  );
+  final ranked = [
+    for (final (index, entry) in entries.indexed)
+      (
+        index,
+        entry,
+        date(end?.call(entry) ?? '') ?? date(start(entry)),
+        date(start(entry)),
+      ),
+  ];
+  int compare(DateTime? a, DateTime? b) =>
+      a == b ? 0 : (a == null ? 1 : (b == null ? -1 : b.compareTo(a)));
+  ranked.sort((a, b) {
+    final order = compare(a.$3, b.$3);
+    if (order != 0) return order;
+    final startOrder = compare(a.$4, b.$4);
+    return startOrder != 0 ? startOrder : a.$1.compareTo(b.$1);
+  });
+  entries
+    ..clear()
+    ..addAll(ranked.map((item) => item.$2));
+}

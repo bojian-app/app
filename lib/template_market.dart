@@ -1,5 +1,5 @@
+import 'profile_identity.dart' show ProfileContentTabs;
 import 'app_page_bar.dart';
-import 'user_display_name.dart';
 import 'playful_refresh.dart';
 
 import 'dart:async';
@@ -17,6 +17,9 @@ import 'profile_avatar.dart';
 import 'points_coin.dart';
 import 'points_page.dart';
 
+/// Every market template is published by the platform.
+const officialTemplatePublisher = '博简官方';
+
 class TemplateMarketView extends StatefulWidget {
   const TemplateMarketView({
     super.key,
@@ -30,256 +33,302 @@ class TemplateMarketView extends StatefulWidget {
   State<TemplateMarketView> createState() => _TemplateMarketViewState();
 }
 
-class _TemplateMarketViewState extends State<TemplateMarketView> {
-  late final market = TemplateMarketStore(widget.store);
+class _TemplateMarketViewState extends State<TemplateMarketView>
+    with SingleTickerProviderStateMixin {
+  static const filters = [
+    TemplateMarketFilter.all,
+    TemplateMarketFilter.free,
+    TemplateMarketFilter.paid,
+  ];
+  late final tabs = TabController(length: filters.length, vsync: this);
+  late final markets = [
+    for (final filter in filters)
+      TemplateMarketStore(widget.store)..filter = filter,
+  ];
+  final loaded = <int>{};
+  int activeIndex = 0;
+  TemplateMarketStore get market => markets[tabs.index];
+
+  void loadNearby() {
+    for (final index in [tabs.index - 1, tabs.index, tabs.index + 1]) {
+      if (index >= 0 && index < markets.length && loaded.add(index)) {
+        unawaited(markets[index].refresh());
+      }
+    }
+    if (activeIndex != tabs.index) {
+      activeIndex = tabs.index;
+      FocusManager.instance.primaryFocus?.unfocus();
+      unawaited(market.loadOwned());
+    }
+  }
+
+  void searchAll(String value, {bool immediately = false}) {
+    for (final entry in markets) {
+      entry.search(value, immediately: immediately);
+    }
+  }
+
   final search = TextEditingController();
   @override
   void initState() {
     super.initState();
-    market.refresh();
+    tabs.addListener(loadNearby);
+    loadNearby();
   }
 
   @override
   void dispose() {
     search.dispose();
-    market.dispose();
+    tabs.removeListener(loadNearby);
+    tabs.dispose();
+    for (final entry in markets) {
+      entry.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: market,
+    animation: Listenable.merge([tabs, ...markets]),
     builder: (context, _) => Scaffold(
+      backgroundColor: context.colors.surface,
       appBar: AppPageBar(
+        titleSpacing: appPageHorizontalPadding,
         title: const Text('模板市场'),
         actions: [_BalancePill(store: widget.store)],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: TextField(
-              controller: search,
-              maxLength: 100,
-              onChanged: market.search,
-              onSubmitted: (value) => market.search(value, immediately: true),
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: market.filter == TemplateMarketFilter.owned
-                    ? '搜索已获取模板'
-                    : '搜索模板或作者',
-                counterText: '',
-                filled: true,
-                fillColor: (context.isDark
-                    ? context.colors.accentSoft
-                    : const Color(0xFFF2F3F5)),
-                isDense: true,
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: AppIcon(
-                    AppIcons.search,
-                    size: 18,
-                    color: context.colors.muted,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 600 + 2 * appPageHorizontalPadding,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  appPageHorizontalPadding,
+                  8,
+                  appPageHorizontalPadding,
+                  4,
+                ),
+                child: TextField(
+                  controller: search,
+                  maxLength: 100,
+                  onChanged: searchAll,
+                  onSubmitted: (value) => searchAll(value, immediately: true),
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: '搜索模板',
+                    counterText: '',
+                    filled: true,
+                    fillColor: (context.isDark
+                        ? context.colors.accentSoft
+                        : const Color(0xFFF2F3F5)),
+                    isDense: true,
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: AppIcon(
+                        AppIcons.search,
+                        size: 18,
+                        color: context.colors.muted,
+                      ),
+                    ),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 38),
+                    suffixIcon: search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: '清空搜索',
+                            onPressed: () {
+                              search.clear();
+                              searchAll('', immediately: true);
+                            },
+                            icon: AppIcon(
+                              AppIcons.clear,
+                              size: 18,
+                              color: context.colors.muted,
+                            ),
+                          ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
                 ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 38),
-                suffixIcon: search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: '清空搜索',
-                        onPressed: () {
-                          search.clear();
-                          market.search('', immediately: true);
-                        },
-                        icon: AppIcon(
-                          AppIcons.clear,
-                          size: 18,
-                          color: context.colors.muted,
-                        ),
-                      ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
               ),
-            ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: context.colors.border)),
-            ),
-            child: SingleChildScrollView(
-              key: const ValueKey('template-market-filters'),
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-              child: Row(
-                children: [
-                  for (final filter in TemplateMarketFilter.values)
-                    _MarketTab(
+              ProfileContentTabs(
+                controller: tabs,
+                tabBarKey: const ValueKey('template-market-filters'),
+                horizontalPadding: appPageHorizontalPadding - 8,
+                tabs: [
+                  for (final filter in filters)
+                    Tab(
                       key: ValueKey('market-tab-${filter.name}'),
-                      label: filter.label,
-                      selected: market.filter == filter,
-                      onTap: () {
-                        FocusManager.instance.primaryFocus?.unfocus();
-                        market.select(filter);
-                      },
+                      text: filter.label,
+                      height: 36,
                     ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: PlayfulRefresh(
-              onRefresh: market.refresh,
-              hasError: () => market.error != null || market.ownedError != null,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final rows = market.visible;
-                  final own = market.filter == TemplateMarketFilter.owned;
-                  final loading = own ? market.loadingOwned : market.loading;
-                  final failure = own ? market.ownedError : market.error;
-                  return CustomScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    slivers: [
-                      if (!own && market.ownedError != null)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '购买状态暂时无法同步',
-                                    style: TextStyle(
-                                      color: context.colors.muted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: market.loadOwned,
-                                  child: const Text('重试'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      if (rows.isEmpty)
-                        SliverFillRemaining(
-                          // EmptyState measures its available height and scrolls internally.
-                          hasScrollBody: true,
-                          child: _MarketStatus(
-                            loading: loading,
-                            error: failure,
-                            title: search.text.trim().isNotEmpty
-                                ? '没有找到相关模板'
-                                : own
-                                ? '暂无已获取模板'
-                                : '暂无上架模板',
-                            subtitle: search.text.trim().isNotEmpty
-                                ? '试试其他关键词，或切换筛选条件。'
-                                : own
-                                ? '获取的市场模板会显示在这里。'
-                                : '新的模板上架后会显示在这里。',
-                            retry: market.refresh,
-                          ),
-                        )
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                          sliver: SliverGrid(
-                            gridDelegate: _TemplateCard.gridDelegate(
-                              context,
-                              constraints.maxWidth,
-                            ),
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              final item = rows[index],
-                                  acquired = market.ownedIDs.contains(
-                                    integer(item['id']),
-                                  );
-                              return _TemplateCard(
-                                template: item,
-                                acquired: acquired,
-                                onTap: () {
-                                  FocusManager.instance.primaryFocus?.unfocus();
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => TemplateMarketDetail(
-                                        market: market,
-                                        template: item,
-                                        onUseTemplate: widget.onUseTemplate,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              );
-                            }, childCount: rows.length),
-                          ),
-                        ),
-                      if (rows.isNotEmpty && failure != null)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                            child: Column(
-                              children: [
-                                Text(
-                                  failure,
-                                  style: TextStyle(
-                                    color: context.colors.muted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => market.load(
-                                    more: market.cursor.isNotEmpty,
-                                  ),
-                                  child: const Text('重新加载'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      if (!own &&
-                          rows.isNotEmpty &&
-                          market.cursor.isNotEmpty &&
-                          failure == null)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 24),
-                            child: Center(
-                              child: market.loadingMore
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : TextButton(
-                                      onPressed: () => market.load(more: true),
-                                      child: const Text('加载更多'),
-                                    ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
+              const SizedBox(height: 12),
+              Expanded(
+                child: TabBarView(
+                  key: const ValueKey('template-market-swipe'),
+                  controller: tabs,
+                  children: [for (final entry in markets) catalogue(entry)],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
+      ),
+    ),
+  );
+  Widget catalogue(TemplateMarketStore market) => AutoPaginate(
+    canLoad:
+        market.filter != TemplateMarketFilter.owned &&
+        market.cursor.isNotEmpty &&
+        !market.loading &&
+        !market.loadingMore &&
+        market.error == null,
+    onLoadMore: () => market.load(more: true),
+    child: PlayfulRefresh(
+      onRefresh: market.refresh,
+      hasError: () => market.error != null || market.ownedError != null,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final rows = market.visible;
+          final own = market.filter == TemplateMarketFilter.owned;
+          final loading = own ? market.loadingOwned : market.loading;
+          final failure = own ? market.ownedError : market.error;
+          return CustomScrollView(
+            key: PageStorageKey('market-scroll-${market.filter.name}'),
+            physics: const AlwaysScrollableScrollPhysics(),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              if (!own && market.ownedError != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      0,
+                      appPageHorizontalPadding,
+                      12,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '购买状态暂时无法同步',
+                            style: TextStyle(
+                              color: context.colors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: market.loadOwned,
+                          child: const Text('重试'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (rows.isEmpty)
+                SliverFillRemaining(
+                  // EmptyState measures its available height and scrolls internally.
+                  hasScrollBody: true,
+                  child: _MarketStatus(
+                    loading: loading,
+                    error: failure,
+                    title: search.text.trim().isNotEmpty
+                        ? '没有找到相关模板'
+                        : own
+                        ? '暂无已获取模板'
+                        : '暂无上架模板',
+                    subtitle: search.text.trim().isNotEmpty
+                        ? '试试其他关键词，或切换筛选条件。'
+                        : own
+                        ? '获取的市场模板会显示在这里。'
+                        : '新的模板上架后会显示在这里。',
+                    retry: market.refresh,
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    appPageHorizontalPadding,
+                    0,
+                    appPageHorizontalPadding,
+                    20,
+                  ),
+                  sliver: SliverGrid(
+                    gridDelegate: _TemplateCard.gridDelegate(
+                      context,
+                      constraints.maxWidth,
+                    ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final item = rows[index],
+                          acquired = market.ownedIDs.contains(
+                            integer(item['id']),
+                          );
+                      return _TemplateCard(
+                        template: item,
+                        acquired: acquired,
+                        onTap: () {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => TemplateMarketDetail(
+                                market: market,
+                                template: item,
+                                onUseTemplate: widget.onUseTemplate,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }, childCount: rows.length),
+                  ),
+                ),
+              if (rows.isNotEmpty && failure != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      0,
+                      appPageHorizontalPadding,
+                      16,
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          failure,
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              market.load(more: market.cursor.isNotEmpty),
+                          child: const Text('重新加载'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (!own && rows.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: PageLoadingFooter(visible: market.loadingMore),
+                ),
+            ],
+          );
+        },
       ),
     ),
   );
@@ -352,8 +401,13 @@ class _MarketStatus extends StatelessWidget {
 }
 
 class MarketTemplateArtwork extends StatelessWidget {
-  const MarketTemplateArtwork({super.key, required this.template});
+  const MarketTemplateArtwork({
+    super.key,
+    required this.template,
+    this.fit = BoxFit.contain,
+  });
   final Map<String, dynamic> template;
+  final BoxFit fit;
   @override
   Widget build(BuildContext context) {
     final url = template['thumbnail_url'] as String? ?? '';
@@ -380,7 +434,7 @@ class MarketTemplateArtwork extends StatelessWidget {
         : Image.network(
             url,
             cacheWidth: 720,
-            fit: BoxFit.contain,
+            fit: fit,
             loadingBuilder: (context, child, progress) => progress == null
                 ? child
                 : const Center(
@@ -409,7 +463,7 @@ class _BalancePill extends StatelessWidget {
         return const SizedBox.shrink();
       }
       return Padding(
-        padding: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.only(right: appPageHorizontalPadding),
         child: TextButton(
           key: const ValueKey('market-balance'),
           onPressed: () => openPage(
@@ -454,55 +508,8 @@ class _BalancePill extends StatelessWidget {
   );
 }
 
-class _MarketTab extends StatelessWidget {
-  const _MarketTab({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    button: true,
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                color: selected ? context.colors.ink : context.colors.muted,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: 18,
-              height: 3,
-              decoration: BoxDecoration(
-                color: selected ? context.colors.accent : Colors.transparent,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-/// A market card: the template's own page is the hero; tags stay small on
-/// its corners, with the name, author and price underneath.
+/// A market card: just the template's own page, with small tags on its
+/// corners.
 class _TemplateCard extends StatelessWidget {
   const _TemplateCard({
     required this.template,
@@ -513,7 +520,7 @@ class _TemplateCard extends StatelessWidget {
   final bool acquired;
   final VoidCallback onTap;
 
-  static const _stageRatio = .72;
+  static const _pageRatio = 595 / 842;
 
   static int columns(double width) => width >= 1000
       ? 5
@@ -523,18 +530,16 @@ class _TemplateCard extends StatelessWidget {
       ? 3
       : 2;
 
-  /// Rows are as tall as the page preview plus the two text lines, so the
-  /// grid fits any width and text size.
+  /// Rows are as tall as the page preview, so the grid fits any width.
   static SliverGridDelegate gridDelegate(BuildContext context, double width) {
     final count = columns(width);
-    final item = (width - 32 - 12 * (count - 1)) / count;
-    final text = MediaQuery.textScalerOf(context);
+    final item =
+        (width - 2 * appPageHorizontalPadding - 12 * (count - 1)) / count;
     return SliverGridDelegateWithFixedCrossAxisCount(
       crossAxisCount: count,
       crossAxisSpacing: 12,
       mainAxisSpacing: 16,
-      mainAxisExtent:
-          item / _stageRatio + 14 + text.scale(14) * 1.4 + text.scale(12) * 1.4,
+      mainAxisExtent: item / _pageRatio,
     );
   }
 
@@ -546,125 +551,62 @@ class _TemplateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final price = integer(template['price_points']);
-    final dark = context.isDark;
-    Widget tag(String text, Color background, BorderRadius radius) =>
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          decoration: BoxDecoration(color: background, borderRadius: radius),
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 11,
-              height: 1.1,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-        );
+    Widget tag(String text, Color background, BorderRadius radius) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(color: background, borderRadius: radius),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 11,
+          height: 1.1,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+      ),
+    );
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: _stageRatio,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: dark ? context.colors.inset : const Color(0xFFF3F4F7),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: dark ? context.colors.border : const Color(0xFFECEEF2),
-                ),
-              ),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Center(
-                    child: FractionallySizedBox(
-                      widthFactor: .78,
-                      heightFactor: .84,
-                      child: DecoratedBox(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Color(0x14141E3C),
-                              blurRadius: 4,
-                              offset: Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                        child: MarketTemplateArtwork(template: template),
-                      ),
-                    ),
-                  ),
-                  if (recent && !acquired)
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      child: tag(
-                        '新',
-                        const Color(0xFFF5483B),
-                        const BorderRadius.only(
-                          topLeft: Radius.circular(8),
-                          bottomRight: Radius.circular(6),
-                        ),
-                      ),
-                    ),
-                  if (acquired)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: tag(
-                        '已获取',
-                        const Color(0x8C1A2233),
-                        BorderRadius.circular(4),
-                      ),
-                    ),
-                ],
-              ),
+      borderRadius: BorderRadius.circular(4),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(4),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14141E3C),
+              blurRadius: 4,
+              offset: Offset(0, 1),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${template['name']}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          Row(
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Expanded(
-                child: Text(
-                  userDisplayName(template['creator_name']),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: context.colors.muted),
-                ),
-              ),
-              const SizedBox(width: 6),
-              if (acquired)
-                Text(
-                  '已获取',
-                  style: TextStyle(fontSize: 12, color: context.colors.muted),
-                )
-              else if (price == 0)
-                const Text(
-                  '免费',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF13A58C),
+              MarketTemplateArtwork(template: template, fit: BoxFit.cover),
+              if (recent && !acquired)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  child: tag(
+                    '新',
+                    const Color(0xFFF5483B),
+                    const BorderRadius.only(bottomRight: Radius.circular(6)),
                   ),
-                )
-              else
-                _PointsPrice(points: price, size: 13),
+                ),
+              if (acquired)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: tag(
+                    '已获取',
+                    const Color(0x8C1A2233),
+                    BorderRadius.circular(4),
+                  ),
+                ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -722,7 +664,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
   late Map<String, dynamic> design = {...widget.template};
   late final purchaseKey = 'template-${widget.template['id']}-${newDeviceID()}';
   bool loading = true, detailsReady = false, busy = false, previewOpen = false;
-  final detailScroll = ScrollController();
   bool previewTransitioning = false, closePreviewRequested = false;
   late final previewTransition = AnimationController(
     vsync: this,
@@ -739,16 +680,13 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
     begin: const Offset(0, 0.012),
     end: Offset.zero,
   ).animate(previewOpacity);
-  double inlineScrollOffset = 0;
   int previewPage = 0;
   String? error;
   int? balance;
   int operation = 0;
-  Map<String, dynamic> creator = {};
   TemplateMarketStore get market => widget.market;
   int get id => integer(widget.template['id']);
   bool get acquired => market.ownedIDs.contains(id);
-  bool get authored => market.authored.contains(id);
   @override
   void initState() {
     super.initState();
@@ -762,7 +700,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
       detailsReady = false;
       error = null;
       balance = null;
-      creator = {};
     });
     try {
       final ownership = Future<void>.microtask(market.loadOwned);
@@ -776,14 +713,13 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
         design = data;
         detailsReady = true;
       });
-      unawaited(loadCreator(data, request));
       // Preview can render while ownership and balance are checked. Acquisition
       // remains disabled by `loading` until those checks finish successfully.
       await ownership;
       if (!mounted || request != operation) return;
       if (!market.valid) throw const ApiFailure('登录状态已变化，请返回后重试');
       if (market.ownedError != null) throw ApiFailure(market.ownedError!);
-      if (integer(data['price_points']) > 0 && !acquired && !authored) {
+      if (integer(data['price_points']) > 0 && !acquired) {
         final wallet = await market.store.request('GetWallet');
         if (wallet.data['available_points'] == null) {
           throw const ApiFailure('积分余额暂不可用，请重试');
@@ -808,7 +744,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
       return;
     }
     final price = integer(design['price_points']);
-    if (price > 0 && !authored) {
+    if (price > 0) {
       final confirmed = await showAppConfirmation(
         context,
         title: '兑换模板',
@@ -851,42 +787,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
     }
   }
 
-  Future<void> loadCreator(Map<String, dynamic> data, int request) async {
-    final creatorID = integer(data['creator_id']);
-    if (creatorID <= 0) return;
-    try {
-      final response = await market.store.request(
-        'GetTemplateAuthorsId',
-        path: {'id': '$creatorID'},
-      );
-      if (mounted && request == operation && market.valid) {
-        setState(() => creator = response.data);
-      }
-    } catch (_) {
-      // An unavailable/private profile must not block preview or acquisition.
-      // Refreshing details also refreshes the avatar's signed URL.
-    }
-  }
-
-  String get authorName {
-    final nickname = '${creator['nickname'] ?? ''}'.trim();
-    if (nickname.isNotEmpty) return nickname;
-    final name = '${design['creator_name'] ?? ''}'.trim();
-    return name.isNotEmpty && name != '模板作者' ? name : userDisplayName(null);
-  }
-
-  String get authorAvatar {
-    final url = '${creator['avatar_url'] ?? ''}'.trim();
-    return url.isNotEmpty
-        ? url
-        : authored
-        ? market.store.avatarURL
-        : '';
-  }
-
-  String get authorProvince =>
-      '${creator['city'] ?? ''}'.trim().replaceFirst(RegExp(r'省$'), '');
-
   String get usageLabel {
     final count = int.tryParse('${design['usage_count'] ?? ''}');
     if (count == null || count < 0) {
@@ -907,7 +807,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
     if (previewOpen || previewTransitioning || !mounted || !market.valid) {
       return;
     }
-    inlineScrollOffset = detailScroll.hasClients ? detailScroll.offset : 0;
     unawaited(transitionPreview(true, page));
   }
 
@@ -929,7 +828,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
         previewPage = page;
         previewOpen = expanded;
       });
-      restoreDetailScroll(expanded ? 0 : inlineScrollOffset);
       if (!reduceMotion) {
         // Change the native viewport once, while hidden. Allow its resize and
         // page positioning to settle before revealing it; don't resize per tick.
@@ -951,20 +849,10 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
     }
   }
 
-  void restoreDetailScroll(double offset) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !detailScroll.hasClients) return;
-      detailScroll.jumpTo(
-        offset.clamp(0, detailScroll.position.maxScrollExtent),
-      );
-    });
-  }
-
   @override
   void dispose() {
     previewOpacity.dispose();
     previewTransition.dispose();
-    detailScroll.dispose();
     super.dispose();
   }
 
@@ -1006,215 +894,223 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-                  final previewHeight = previewOpen
-                      ? (constraints.maxHeight - bottomInset).clamp(
-                          0.0,
-                          double.infinity,
-                        )
-                      : (constraints.maxHeight - 100).clamp(350.0, 760.0);
-                  return SingleChildScrollView(
-                    controller: detailScroll,
-                    physics: previewOpen
-                        ? const NeverScrollableScrollPhysics()
-                        : null,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: previewOpen ? double.infinity : 860,
-                        ),
-                        child: Padding(
-                          padding: previewOpen
-                              ? EdgeInsets.only(bottom: bottomInset)
-                              : const EdgeInsets.fromLTRB(20, 10, 20, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // The stage stays in the tree when expanding (only
-                              // its colour and padding change): recreating the
-                              // preview's WebView repeats font loading and pagination.
-                              DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: previewOpen
-                                      ? Colors.transparent
-                                      : context.isDark
-                                      ? context.colors.inset
-                                      : const Color(0xFFF3F4F7),
-                                  borderRadius: BorderRadius.circular(
-                                    previewOpen ? 0 : 10,
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: EdgeInsets.all(previewOpen ? 0 : 12),
-                                  child: SizedBox(
-                                height: previewHeight,
-                                child: !detailsReady && loading
-                                    ? const Center(
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : detailsReady &&
-                                          design['compatible'] == true &&
-                                          market.valid
-                                    ? TemplateLivePreview(
-                                        key: ValueKey('preview-$id-$operation'),
-                                        store: market.store,
-                                        templateID: id,
-                                        version: integer(design['version']),
-                                        author: authorName,
-                                        fullscreen: previewOpen,
-                                        initialPage: previewPage,
-                                      )
-                                    : Center(
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(24),
-                                          child: Text(
-                                            error ?? '模板正在准备，暂时无法预览',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: context.colors.muted,
-                                            ),
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: previewOpen ? double.infinity : 860,
+                      ),
+                      child: Padding(
+                        padding: previewOpen
+                            ? EdgeInsets.only(bottom: bottomInset)
+                            : const EdgeInsets.fromLTRB(
+                                appPageHorizontalPadding,
+                                10,
+                                appPageHorizontalPadding,
+                                0,
+                              ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: Builder(
+                                builder: (context) {
+                                  final info = Padding(
+                                    key: const ValueKey('template-detail-info'),
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (!previewOpen) ...[
+                                          Row(
+                                            children: [
+                                              const ProfileAvatar(
+                                                key: ValueKey(
+                                                  'template-publisher-avatar',
+                                                ),
+                                                seed: 'official',
+                                                url: '',
+                                                size: 30,
+                                                borderRadius: 15,
+                                              ),
+                                              const SizedBox(width: 9),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      officialTemplatePublisher,
+                                                      maxLines: 2,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 13,
+                                                        height: 1.4,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                        color:
+                                                            context.colors.ink,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 3),
+                                                    DefaultTextStyle.merge(
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        height: 1.25,
+                                                        color: context
+                                                            .colors
+                                                            .muted,
+                                                      ),
+                                                      child: Wrap(
+                                                        spacing: 10,
+                                                        runSpacing: 3,
+                                                        children: [
+                                                          Text(
+                                                            usageLabel,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                      ),
-                                ),
-                              ),
-                              ),
-                              if (!previewOpen) ...[
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    ProfileAvatar(
-                                      key: const ValueKey(
-                                        'template-author-avatar',
-                                      ),
-                                      seed:
-                                          '${creator['public_id'] ?? design['creator_id'] ?? authorName}',
-                                      url: authorAvatar,
-                                      size: 30,
-                                      borderRadius: 15,
-                                    ),
-                                    const SizedBox(width: 9),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
+                                          const SizedBox(height: 12),
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 6,
+                                            children: [
+                                              for (final chip in [
+                                                integer(
+                                                          design['price_points'],
+                                                        ) ==
+                                                        0
+                                                    ? '免费'
+                                                    : '${integer(design['price_points'])} 积分',
+                                                if (acquired) '已获取',
+                                                if (_publishedLabel(design)
+                                                    .isNotEmpty)
+                                                  _publishedLabel(design),
+                                              ])
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: context.colors.inset,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          4,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    chip,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color:
+                                                          context.colors.muted,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                        if (!previewOpen) ...[
+                                          const SizedBox(height: 24),
                                           Text(
-                                            authorName,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
+                                            '关于这个模板',
                                             style: TextStyle(
-                                              fontSize: 13,
-                                              height: 1.4,
-                                              fontWeight: FontWeight.w500,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
                                               color: context.colors.ink,
                                             ),
                                           ),
-                                          const SizedBox(height: 3),
-                                          DefaultTextStyle.merge(
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            '${design['description'] ?? ''}'
+                                                    .trim()
+                                                    .isEmpty
+                                                ? '暂无介绍'
+                                                : '${design['description']}'
+                                                      .trim(),
                                             style: TextStyle(
-                                              fontSize: 10,
-                                              height: 1.25,
+                                              fontSize: 13,
+                                              height: 1.7,
                                               color: context.colors.muted,
-                                            ),
-                                            child: Wrap(
-                                              spacing: 10,
-                                              runSpacing: 3,
-                                              children: [
-                                                if (authorProvince.isNotEmpty)
-                                                  Text(
-                                                    'IP属地：$authorProvince',
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                Text(
-                                                  usageLabel,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ],
                                             ),
                                           ),
                                         ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: [
-                                    for (final chip in [
-                                      if (integer(design['version']) > 0)
-                                        '版本 v${design['version']}',
-                                      if (_publishedLabel(design).isNotEmpty)
-                                        _publishedLabel(design),
-                                    ])
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: context.colors.inset,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          chip,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: context.colors.muted,
+                                        if (!previewOpen && error != null) ...[
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            error!,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              height: 1.5,
+                                              color: context.colors.muted,
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                              if (!previewOpen &&
-                                  '${design['description'] ?? ''}'
-                                      .trim()
-                                      .isNotEmpty) ...[
-                                const SizedBox(height: 24),
-                                Text(
-                                  '关于这个模板',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: context.colors.ink,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${design['description']}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    height: 1.7,
-                                    color: context.colors.muted,
-                                  ),
-                                ),
-                              ],
-                              if (!previewOpen && error != null) ...[
-                                const SizedBox(height: 16),
-                                Text(
-                                  error!,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    height: 1.5,
-                                    color: context.colors.muted,
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: busy ? null : load,
-                                  child: const Text('重试'),
-                                ),
-                              ],
-                            ],
-                          ),
+                                          TextButton(
+                                            onPressed: busy ? null : load,
+                                            child: const Text('重试'),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  );
+                                  final header = previewOpen ? null : info;
+                                  return !detailsReady && loading
+                                      ? PreviewWithHeader(
+                                          header: header,
+                                          child: const Center(
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                        )
+                                      : detailsReady &&
+                                            design['compatible'] == true &&
+                                            market.valid
+                                      ? TemplateLivePreview(
+                                          key: ValueKey(
+                                            'preview-$id-$operation',
+                                          ),
+                                          store: market.store,
+                                          templateID: id,
+                                          version: integer(design['version']),
+                                          watermark: '未经授权，商用追责',
+                                          fullscreen: previewOpen,
+                                          header: header,
+                                          initialPage: previewPage,
+                                        )
+                                      : PreviewWithHeader(
+                                          header: header,
+                                          child: Center(
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(24),
+                                              child: Text(
+                                                error ?? '模板正在准备，暂时无法预览',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: context.colors.muted,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -1244,7 +1140,12 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 860),
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                            padding: const EdgeInsets.fromLTRB(
+                              appPageHorizontalPadding,
+                              12,
+                              appPageHorizontalPadding,
+                              12,
+                            ),
                             child: Row(
                               children: [
                                 if (!acquired) ...[
@@ -1254,9 +1155,8 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        if (authored ||
-                                            integer(design['price_points']) ==
-                                                0)
+                                        if (integer(design['price_points']) ==
+                                            0)
                                           const Text(
                                             '免费',
                                             style: TextStyle(
@@ -1267,13 +1167,17 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                                             ),
                                           )
                                         else
-                                          _PointsPrice(
-                                            points: integer(
-                                              design['price_points'],
+                                          FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: _PointsPrice(
+                                              points: integer(
+                                                design['price_points'],
+                                              ),
+                                              size: 20,
                                             ),
-                                            size: 20,
                                           ),
-                                        if (balance != null && !authored) ...[
+                                        if (balance != null) ...[
                                           const SizedBox(height: 4),
                                           Text(
                                             '我的积分 $balance',
@@ -1309,11 +1213,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                                           ? '正在处理…'
                                           : acquired
                                           ? '使用模板'
-                                          : authored ||
-                                                integer(
-                                                      design['price_points'],
-                                                    ) ==
-                                                    0
+                                          : integer(design['price_points']) == 0
                                           ? '免费获取'
                                           : '积分兑换',
                                       textAlign: TextAlign.center,

@@ -52,7 +52,12 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                padding: const EdgeInsets.fromLTRB(
+                  appPageHorizontalPadding,
+                  0,
+                  appPageHorizontalPadding,
+                  12,
+                ),
                 child: Text(
                   '${document.title}目录',
                   style: const TextStyle(
@@ -63,7 +68,12 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
               ),
               Expanded(
                 child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  padding: const EdgeInsets.fromLTRB(
+                    appPageHorizontalPadding,
+                    0,
+                    appPageHorizontalPadding,
+                    16,
+                  ),
                   itemCount: document.sections.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
@@ -133,7 +143,12 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
           child: SingleChildScrollView(
             key: const ValueKey('legal-document-scroll'),
             controller: scroll,
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
+            padding: const EdgeInsets.fromLTRB(
+              appPageHorizontalPadding,
+              16,
+              appPageHorizontalPadding,
+              36,
+            ),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 680),

@@ -93,7 +93,7 @@ void main() {
       final api = ArticleGateway();
       await launch(tester, api);
       expect(find.byType(MyArticlesPage), findsOneWidget);
-      expect(api.queries.single['status'], 'SUBMITTED');
+      expect(api.queries.first['status'], 'SUBMITTED');
       expect(find.text('SUBMITTED 的文章'), findsOneWidget);
       expect(api.calls, isNot(contains('GetArticlesId')));
       await tester.tap(find.text('SUBMITTED 的文章'));
@@ -122,12 +122,10 @@ void main() {
   });
 
   testWidgets(
-    'Pagination retains pending articles and carries status and cursor',
+    'A short first page loads the next one by itself, keeping status and cursor',
     (tester) async {
       final api = ArticleGateway();
       await launch(tester, api);
-      await tester.tap(find.text('加载更多'));
-      await tester.pumpAndSettle();
       expect(api.queries.last, containsPair('status', 'SUBMITTED'));
       expect(api.queries.last, containsPair('cursor', 'page-2'));
       expect(find.text('SUBMITTED 的文章'), findsOneWidget);

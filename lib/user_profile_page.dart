@@ -237,112 +237,131 @@ class _UserProfilePageState extends State<UserProfilePage> {
           length: 1,
           child: SizedBox.expand(
             key: viewportKey,
-            child: CustomScrollView(
-              key: const ValueKey('public-profile-scroll'),
-              controller: scroll,
-              physics: const ClampingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: ProfileHeaderSliver(
-                    expandedHeight: headerHeight,
-                    collapsedHeight:
-                        ProfileHeader.toolbarHeight(context) +
-                        MediaQuery.paddingOf(context).top,
-                    collapseExtent: collapseExtent,
-                    headerBuilder: (offset, progress) => Listener(
-                      behavior: HitTestBehavior.translucent,
-                      child: ProfileHeader(
-                        key: headerKey,
-                        nameKey: nameKey,
-                        surfaceKey: surfaceKey,
-                        store: widget.store,
-                        identity: profile,
-                        scrollOffset: offset,
-                        collapseProgress: progress,
-                        onMenu: () => Navigator.of(context).maybePop(),
-                        onEdit: () {},
-                        onAvatar: showDetails,
-                        onDetails: showDetails,
+            child: AutoPaginate(
+              canLoad:
+                  publicProfile.cursor.isNotEmpty &&
+                  !publicProfile.loading &&
+                  !publicProfile.loadingMore &&
+                  articleError == null,
+              onLoadMore: publicProfile.loadMore,
+              child: CustomScrollView(
+                key: const ValueKey('public-profile-scroll'),
+                controller: scroll,
+                physics: const ClampingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                slivers: [
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: ProfileHeaderSliver(
+                      expandedHeight: headerHeight,
+                      collapsedHeight:
+                          ProfileHeader.toolbarHeight(context) +
+                          MediaQuery.paddingOf(context).top,
+                      collapseExtent: collapseExtent,
+                      headerBuilder: (offset, progress) => Listener(
+                        behavior: HitTestBehavior.translucent,
+                        child: ProfileHeader(
+                          key: headerKey,
+                          nameKey: nameKey,
+                          surfaceKey: surfaceKey,
+                          store: widget.store,
+                          identity: profile,
+                          scrollOffset: offset,
+                          collapseProgress: progress,
+                          onMenu: () => Navigator.of(context).maybePop(),
+                          onEdit: () {},
+                          onAvatar: showDetails,
+                          onDetails: showDetails,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                SliverAppBar(
-                  primary: false,
-                  pinned: true,
-                  toolbarHeight: 0,
-                  automaticallyImplyLeading: false,
-                  backgroundColor: context.colors.surface,
-                  elevation: 0,
-                  scrolledUnderElevation: 0,
-                  surfaceTintColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  bottom: const ProfileContentTabs(
-                    tabs: [
-                      Tab(
-                        key: ValueKey('profile-tab-articles'),
-                        text: '动态',
-                        height: 36,
-                      ),
-                    ],
+                  SliverAppBar(
+                    primary: false,
+                    pinned: true,
+                    toolbarHeight: 0,
+                    automaticallyImplyLeading: false,
+                    backgroundColor: context.colors.surface,
+                    elevation: 0,
+                    scrolledUnderElevation: 0,
+                    surfaceTintColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    bottom: const ProfileContentTabs(
+                      tabs: [
+                        Tab(
+                          key: ValueKey('profile-tab-articles'),
+                          text: '动态',
+                          height: 36,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                if (profileError != null)
-                  SliverToBoxAdapter(child: status(profileError!, retry: true)),
-                SliverList.builder(
-                  itemCount: articles.length,
-                  itemBuilder: (context, index) => KeyedSubtree(
-                    key: ValueKey('public-article-${articles[index].id}'),
-                    child: ColoredBox(
-                      color: context.colors.canvas,
-                      child: Container(
-                        color: context.colors.surface,
-                        margin: const EdgeInsets.only(bottom: 6),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 600),
-                            child: StoryCard(
-                              story: articles[index],
-                              store: widget.store,
-                              flat: true,
-                              compactTypography: true,
-                              authorNavigationEnabled: false,
+                  if (profileError != null)
+                    SliverToBoxAdapter(
+                      child: status(profileError!, retry: true),
+                    ),
+                  SliverList.builder(
+                    itemCount: articles.length,
+                    itemBuilder: (context, index) => KeyedSubtree(
+                      key: ValueKey('public-article-${articles[index].id}'),
+                      child: ColoredBox(
+                        color: context.colors.canvas,
+                        child: Container(
+                          color: context.colors.surface,
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: feedOuterPadding,
+                          ),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 600),
+                              child: StoryCard(
+                                story: articles[index],
+                                store: widget.store,
+                                flat: true,
+                                compactTypography: true,
+                                authorNavigationEnabled: false,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                if (articleError != null)
-                  SliverToBoxAdapter(child: status(articleError!, retry: true)),
-                if (articles.isEmpty && articleError == null)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: loading
-                        ? status('正在加载动态…')
-                        : const Center(child: EmptyState('暂时没有公开动态', '')),
-                  ),
-                SliverLayoutBuilder(
-                  builder: (context, constraints) => SliverToBoxAdapter(
-                    // Short or empty feeds still allow the shared header
-                    // to collapse, without adding a whole empty screen.
-                    child: SizedBox(
-                      height:
-                          (constraints.viewportMainAxisExtent -
-                                  ProfileHeader.toolbarHeight(context) -
-                                  MediaQuery.paddingOf(context).top +
-                                  headerHeight -
-                                  constraints.precedingScrollExtent)
-                              .clamp(28.0, double.infinity),
+                  SliverToBoxAdapter(
+                    child: PageLoadingFooter(
+                      visible: publicProfile.loadingMore,
                     ),
                   ),
-                ),
-              ],
+                  if (articleError != null)
+                    SliverToBoxAdapter(
+                      child: status(articleError!, retry: true),
+                    ),
+                  if (articles.isEmpty && articleError == null)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: loading
+                          ? status('正在加载动态…')
+                          : const Center(child: EmptyState('暂时没有公开动态', '')),
+                    ),
+                  SliverLayoutBuilder(
+                    builder: (context, constraints) => SliverToBoxAdapter(
+                      // Short or empty feeds still allow the shared header
+                      // to collapse, without adding a whole empty screen.
+                      child: SizedBox(
+                        height:
+                            (constraints.viewportMainAxisExtent -
+                                    ProfileHeader.toolbarHeight(context) -
+                                    MediaQuery.paddingOf(context).top +
+                                    headerHeight -
+                                    constraints.precedingScrollExtent)
+                                .clamp(28.0, double.infinity),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

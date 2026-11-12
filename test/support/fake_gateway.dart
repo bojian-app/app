@@ -47,6 +47,7 @@ class FakeDouyinAuthorizer implements DouyinAuthorizer {
 class FakeGateway implements ApiGateway {
   String? failing;
   bool rejectLogin = false;
+  bool requirePhoneBinding = false;
   final calls = <String>[];
   final documents = <String, Map<String, dynamic>>{};
   Map<String, dynamic>? lastBody;
@@ -224,6 +225,13 @@ class FakeGateway implements ApiGateway {
     Map<String, String> headers,
   ) async {
     calls.add('WeChatLogin');
+    if (requirePhoneBinding) {
+      return auth.LoginResponse(
+        phoneBindingRequired: true,
+        phoneBindingToken: 'phone-binding-token',
+        phoneBindingExpiresInSeconds: 600,
+      );
+    }
     if (failing == 'WeChatLogin') throw const ApiFailure('微信登录失败，请稍后重试');
     return login('', code, headers);
   }
@@ -235,6 +243,13 @@ class FakeGateway implements ApiGateway {
     Map<String, String> headers,
   ) async {
     calls.add('DouyinLogin');
+    if (requirePhoneBinding) {
+      return auth.LoginResponse(
+        phoneBindingRequired: true,
+        phoneBindingToken: 'phone-binding-token',
+        phoneBindingExpiresInSeconds: 600,
+      );
+    }
     if (failing == 'DouyinLogin') throw const ApiFailure('抖音登录失败，请稍后重试');
     return login('', code, headers);
   }
@@ -248,6 +263,19 @@ class FakeGateway implements ApiGateway {
   }) async {
     calls.add('ConfirmRegistration');
     return login('', '', headers);
+  }
+
+  @override
+  Future<auth.LoginResponse> confirmLoginPhoneBinding(
+    String phoneBindingToken,
+    String phone,
+    String code,
+    Map<String, String> agreementVersions,
+    Map<String, String> headers,
+  ) async {
+    calls.add('ConfirmLoginPhoneBinding');
+    if (rejectLogin) throw const ApiFailure('验证码错误或已过期，请重新获取');
+    return login(phone, code, headers);
   }
 
   @override

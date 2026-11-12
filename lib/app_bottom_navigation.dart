@@ -52,7 +52,7 @@ class AppBottomNavigation extends StatelessWidget {
   Widget _destination(int index, Duration duration) {
     final destination = _destinations[index];
     final active = selectedIndex == index;
-    const inactiveColor = Color(0xFF9AA3AF);
+    const inactiveColor = Color(0xFFB4B4B4);
     return Semantics(
       selected: active,
       button: true,
@@ -70,9 +70,10 @@ class AppBottomNavigation extends StatelessWidget {
           duration: duration,
           curve: Curves.easeOutCubic,
           builder: (context, progress, _) {
+            final activeColor = context.colors.accent;
             final foreground = Color.lerp(
               context.isDark ? context.colors.muted : inactiveColor,
-              context.colors.accent,
+              activeColor,
               progress,
             )!;
             return Padding(
@@ -107,11 +108,10 @@ class AppBottomNavigation extends StatelessWidget {
                           color: Color.lerp(
                             context.isDark
                                 ? context.colors.muted
-                                : const Color(0xFF697586),
-                            context.colors.accent,
+                                : const Color(0xFF999999),
+                            activeColor,
                             progress,
                           ),
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),

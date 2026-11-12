@@ -12,6 +12,8 @@ import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
 import 'resume_native_market.dart';
+import 'resume_theme.dart';
+import 'resume_thumbnail.dart';
 import 'template_preview_document.dart';
 import 'template_preview_resources.dart';
 import 'template_preview_cache.dart';
@@ -22,17 +24,22 @@ class TemplateLivePreview extends StatefulWidget {
     required this.store,
     required this.templateID,
     required this.version,
-    required this.author,
+    required this.watermark,
     this.initialPage = 0,
     this.fullscreen = false,
     this.onOpenPage,
+    this.header,
   });
   final AppStore store;
   final int templateID, version;
-  final String author;
+  final String watermark;
   final int initialPage;
   final bool fullscreen;
   final ValueChanged<int>? onOpenPage;
+
+  /// Details shown above the pages. A native document scrolls it away with
+  /// the pages; the browser renderer, which scrolls itself, keeps it above.
+  final Widget? header;
 
   @override
   State<TemplateLivePreview> createState() => _TemplateLivePreviewState();
@@ -41,6 +48,7 @@ class TemplateLivePreview extends StatefulWidget {
 class _TemplateLivePreviewState extends State<TemplateLivePreview> {
   WebViewController? controller;
   NativeMarketDocument? nativeDocument;
+  ResumeTheme? theme;
   File? document;
   Timer? timeout;
   int operation = 0, pages = 0;
@@ -83,7 +91,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
   @override
   void didUpdateWidget(covariant TemplateLivePreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.author != oldWidget.author) unawaited(updateAuthor());
+    if (widget.watermark != oldWidget.watermark) unawaited(updateWatermark());
     if (widget.fullscreen != oldWidget.fullscreen ||
         widget.initialPage != oldWidget.initialPage) {
       unawaited(updatePreviewMode());
@@ -101,13 +109,13 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
     }
   }
 
-  Future<void> updateAuthor() async {
+  Future<void> updateWatermark() async {
     try {
       await controller?.runJavaScript(
-        'window.updatePreviewAuthor?.(${jsonEncode(widget.author)});',
+        'window.updatePreviewWatermark?.(${jsonEncode(widget.watermark)});',
       );
     } on PlatformException {
-      // The next page-finished callback applies the latest author.
+      // The next page-finished callback applies the latest watermark.
     }
   }
 
@@ -209,6 +217,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
     timeout?.cancel();
     pageActions.value = [];
     releaseNativeDocument();
+    theme = null;
     final previous = document;
     document = null;
     setState(() {
@@ -227,15 +236,25 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
       );
       trace('dom-ready');
       if (!current(request)) return;
-      if ((result.data['html'] as String? ?? '').trim().isEmpty) {
-        throw const ApiFailure('模板预览正在准备，请稍后重试');
-      }
       if (integer(result.data['template_id']) != widget.templateID ||
           (widget.version > 0 &&
               integer(result.data['version']) != widget.version)) {
         throw const ApiFailure('模板已更新，请刷新详情');
       }
       final schema = result.data['schema'];
+      if (isResumeThemeSchema(schema)) {
+        final value = await resumeThemeOf(widget.templateID, schema as Map);
+        if (!current(request)) return;
+        setState(() {
+          theme = value;
+          ready = true;
+        });
+        trace('theme-display-ready');
+        return;
+      }
+      if ((result.data['html'] as String? ?? '').trim().isEmpty) {
+        throw const ApiFailure('模板预览正在准备，请稍后重试');
+      }
       final payload = schema is Map ? schema['native'] : null;
       if (payload is Map) {
         // The market uses the same fictional fields and native renderer as
@@ -270,7 +289,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
           dom: result.data,
           rendererScript: resources.renderer,
           previewScript: resources.preview,
-          author: widget.author,
+          watermark: widget.watermark,
           initialPage: widget.initialPage,
           showPageActions: widget.onOpenPage != null,
           photo: resources.portrait,
@@ -319,7 +338,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
           onPageFinished: (_) {
             if (current(request)) {
               unawaited(updateBackground());
-              unawaited(updateAuthor());
+              unawaited(updateWatermark());
               unawaited(updatePreviewMode());
             }
           },
@@ -356,20 +375,34 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
   }
 
   @override
-  Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      if (nativeDocument != null && error == null)
-        Semantics(
-          label: '$pages 页简历预览，作者水印：${widget.author}',
+  Widget build(BuildContext context) => theme != null && error == null
+      ? Semantics(
+          label: '简历模板预览',
+          child: ResumeThemeSamplePages(
+            theme: theme!,
+            watermark: widget.watermark,
+            header: widget.header,
+          ),
+        )
+      : nativeDocument != null && error == null
+      ? Semantics(
+          label: '$pages 页简历预览，水印：${widget.watermark}',
           child: NativeMarketPages(
             value: nativeDocument!,
-            watermark: widget.author,
+            watermark: widget.watermark,
+            header: widget.header,
+            zoomable: false,
           ),
-        ),
+        )
+      : PreviewWithHeader(header: widget.header, child: _browser(context));
+
+  Widget _browser(BuildContext context) => Stack(
+    key: const ValueKey('template-preview-stage'),
+    fit: StackFit.expand,
+    children: [
       if (controller != null && error == null)
         Semantics(
-          label: ready ? '$pages 页简历预览，作者水印：${widget.author}' : '简历预览',
+          label: ready ? '$pages 页简历预览，水印：${widget.watermark}' : '简历预览',
           child: WebViewWidget(
             controller: controller!,
             gestureRecognizers: {
@@ -468,4 +501,30 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
         ),
     ],
   );
+}
+
+/// [header] above [child], taking at most a third of the height so the
+/// preview below stays usable on short screens.
+class PreviewWithHeader extends StatelessWidget {
+  const PreviewWithHeader({super.key, this.header, required this.child});
+  final Widget? header;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => header == null
+      ? child
+      : LayoutBuilder(
+          builder: (context, constraints) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: constraints.maxHeight * .35,
+                ),
+                child: SingleChildScrollView(child: header),
+              ),
+              Expanded(child: child),
+            ],
+          ),
+        );
 }

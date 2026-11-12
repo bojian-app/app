@@ -38,10 +38,10 @@ class _NavigationPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
     final body = Paint()
       ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+        stops: const [0, .59, 1],
         colors: [
           const Color(0xFF72B2FF).withValues(alpha: progress),
+          const Color(0xFF4A8BF7).withValues(alpha: progress),
           const Color(0xFF2867EE).withValues(alpha: progress),
         ],
       ).createShader(const Rect.fromLTWH(2, 2, 28, 28));

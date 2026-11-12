@@ -45,7 +45,7 @@ void main() {
               store: store,
               templateID: 7,
               version: 3,
-              author: '模板作者 A',
+              watermark: '模板作者 A',
               onOpenPage: onOpenPage,
             ),
           ),
@@ -140,7 +140,7 @@ void main() {
         find.byKey(const ValueKey('live-template-webview')),
         findsOneWidget,
       );
-      expect(find.bySemanticsLabel('2 页简历预览，作者水印：模板作者 A'), findsOneWidget);
+      expect(find.bySemanticsLabel('2 页简历预览，水印：模板作者 A'), findsOneWidget);
       final controller = web.controllers.single;
       expect(controller.html, contains('林晓'));
       expect(controller.html, isNot(contains('测试账号')));
@@ -183,7 +183,7 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 30));
       });
       await tester.pumpAndSettle();
-      expect(find.bySemanticsLabel('2 页简历预览，作者水印：模板作者 A'), findsOneWidget);
+      expect(find.bySemanticsLabel('2 页简历预览，水印：模板作者 A'), findsOneWidget);
       expect(api.calls.where((c) => c == 'GetTemplatesIdDom'), hasLength(2));
       store.epoch++;
       store.changed();
@@ -191,7 +191,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('登录状态已变化，请返回后重试'), findsOneWidget);
       expect(find.byKey(const ValueKey('live-template-webview')), findsNothing);
-      expect(find.bySemanticsLabel('4 页简历预览，作者水印：模板作者 A'), findsNothing);
+      expect(find.bySemanticsLabel('4 页简历预览，水印：模板作者 A'), findsNothing);
     },
   );
 
@@ -207,7 +207,7 @@ void main() {
               store: store,
               templateID: 7,
               version: 3,
-              author: '作者',
+              watermark: '作者',
             ),
           ),
         ),

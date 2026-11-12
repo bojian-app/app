@@ -14,6 +14,7 @@ import 'legal_document.dart';
 import 'wechat_login.dart';
 import 'douyin_login.dart';
 import 'resume_templates.dart';
+import 'resume_theme.dart';
 import 'resume_editor_progress.dart';
 import 'resume_generated_text.dart';
 import 'template_preview_cache.dart';
@@ -138,6 +139,9 @@ class Story {
   int likes;
   bool liked, saved;
   List<ArticleComment> comments;
+
+  /// Where the next page of top-level comments starts; empty at the end.
+  String commentsCursor = '';
   int commentCount;
   int? guidanceParticipantCount;
 }
@@ -384,6 +388,13 @@ ResumeDraft decodeResume(Map<String, dynamic> v) {
   return draft;
 }
 
+/// Shows the in-login phone step for [token]. Returns the next login response
+/// and the proved phone, or null when the user backs out.
+typedef LoginPhoneBinding =
+    Future<({auth.LoginResponse response, String phone})?> Function(
+      String token,
+    );
+
 class AppStore extends ChangeNotifier {
   AppStore({
     ApiGateway? api,
@@ -531,7 +542,6 @@ class AppStore extends ChangeNotifier {
             _scheduleRealtimeRefresh({
               if (errors.containsKey('feed')) 'feed',
               'messages',
-              'chats',
               'resumes',
               'profile',
               'templates',
@@ -599,13 +609,12 @@ class AppStore extends ChangeNotifier {
     }
     _realtimeEvents.add(event);
     final sections = switch (type) {
-      'message.created' || 'message.read' => {'chats'},
       'SYSTEM_NOTIFICATION' ||
       'notification.created' ||
       'notification.read' => {'messages'},
       'friend_request.created' ||
       'friend_request.updated' ||
-      'friendship.ended' => {'messages', 'chats'},
+      'friendship.ended' => {'messages'},
       'job.updated' || 'resume.updated' => {'resumes'},
       'content.removed' ||
       'article.updated' ||
@@ -722,7 +731,6 @@ class AppStore extends ChangeNotifier {
   final resumes = <ResumeDraft>[];
   bool resumesLoaded = false;
   final inbox = <InboxItem>[];
-  final conversations = <Map<String, dynamic>>[];
   int notificationUnreadCount = 0;
   final friends = <Map<String, dynamic>>[];
   final friendRequests = <Map<String, dynamic>>[];
@@ -731,6 +739,9 @@ class AppStore extends ChangeNotifier {
   final sectionRequests = <String, Future<void>>{};
   final errors = <String, String>{};
   final cursors = <String, String>{};
+
+  /// Sections fetching a further page, as opposed to a first load or refresh.
+  final loadingMore = <String>{};
   final pending = <String>{};
   Future<void>? initialization;
   DeviceMetadata deviceMetadata = const DeviceMetadata();
@@ -920,6 +931,7 @@ class AppStore extends ChangeNotifier {
 
   Future<bool> signInWithWeChat({
     Future<bool> Function()? confirmRegistration,
+    LoginPhoneBinding? bindPhone,
   }) async {
     await initialize();
     final version = epoch;
@@ -935,11 +947,13 @@ class AppStore extends ChangeNotifier {
       response,
       version,
       confirmRegistration: confirmRegistration,
+      bindPhone: bindPhone,
     );
   }
 
   Future<bool> signInWithDouyin({
     Future<bool> Function()? confirmRegistration,
+    LoginPhoneBinding? bindPhone,
   }) async {
     await initialize();
     final version = epoch;
@@ -955,6 +969,7 @@ class AppStore extends ChangeNotifier {
       response,
       version,
       confirmRegistration: confirmRegistration,
+      bindPhone: bindPhone,
     );
   }
 
@@ -1011,14 +1026,47 @@ class AppStore extends ChangeNotifier {
     });
   }
 
+  /// Proves [phone] for a pending WeChat or Douyin login.
+  Future<auth.LoginResponse> confirmLoginPhoneBinding(
+    String token,
+    String phone,
+    String code,
+  ) => api.confirmLoginPhoneBinding(
+    token,
+    phone,
+    code,
+    legalAgreementVersions,
+    headers,
+  );
+
   Future<bool> _resolveSignIn(
     auth.LoginResponse response,
     int version, {
     String? nickname,
     String? verifiedPhone,
     Future<bool> Function()? confirmRegistration,
+    LoginPhoneBinding? bindPhone,
   }) async {
     if (version != epoch || !alive) throw const ApiFailure('登录已取消');
+    if (response.phoneBindingRequired) {
+      if (response.phoneBindingToken.isEmpty ||
+          response.phoneBindingExpiresInSeconds <= 0 ||
+          response.registrationRequired ||
+          response.accessToken.isNotEmpty ||
+          response.refreshToken.isNotEmpty ||
+          response.hasUser()) {
+        throw const ApiFailure('服务器返回的手机号验证信息无效');
+      }
+      if (bindPhone == null) throw const ApiFailure('请先验证手机号后再登录');
+      final bound = await bindPhone(response.phoneBindingToken);
+      if (version != epoch || !alive) throw const ApiFailure('登录已取消');
+      if (bound == null) return false;
+      response = bound.response;
+      verifiedPhone = bound.phone;
+      if (response.phoneBindingRequired) {
+        throw const ApiFailure('服务器返回的登录信息无效');
+      }
+    }
     if (response.registrationRequired) {
       if (response.registrationToken.isEmpty ||
           response.registrationExpiresInSeconds <= 0 ||
@@ -1148,7 +1196,6 @@ class AppStore extends ChangeNotifier {
     resumes.clear();
     resumesLoaded = false;
     inbox.clear();
-    conversations.clear();
     notificationUnreadCount = 0;
     friends.clear();
     friendRequests.clear();
@@ -1156,6 +1203,7 @@ class AppStore extends ChangeNotifier {
     errors.clear();
     cursors.clear();
     loading.clear();
+    loadingMore.clear();
     sectionRequests.clear();
     pending.clear();
     changed();
@@ -1181,7 +1229,6 @@ class AppStore extends ChangeNotifier {
       'feed',
       'resumes',
       'messages',
-      'chats',
       'profile',
       'identity',
       'templates',
@@ -1190,6 +1237,7 @@ class AppStore extends ChangeNotifier {
   Future<void> load(String section, {bool more = false}) {
     final existing = sectionRequests[section];
     if (existing != null) return existing;
+    if (more && (cursors[section] ?? '').isEmpty) return Future.value();
     final version = epoch;
     final future = _load(section, more: more);
     sectionRequests[section] = future;
@@ -1206,6 +1254,7 @@ class AppStore extends ChangeNotifier {
     }
     final version = epoch;
     loading.add(section);
+    if (more) loadingMore.add(section);
     errors.remove(section);
     changed();
     final query = <String, String>{
@@ -1282,21 +1331,6 @@ class AppStore extends ChangeNotifier {
               ? inbox.where((item) => !item.read).length
               : integer(v.data['unread_count']);
           cursors[section] = v.nextCursor;
-        case 'chats':
-          final v = await request('GetConversations', query: query);
-          if (version != epoch || !alive) return;
-          if (!more) conversations.clear();
-          for (final row in items(v.data)) {
-            final existing = conversations.indexWhere(
-              (value) => integer(value['id']) == integer(row['id']),
-            );
-            if (existing >= 0) {
-              conversations[existing] = row;
-            } else {
-              conversations.add(row);
-            }
-          }
-          cursors[section] = v.nextCursor;
         case 'identity':
           final revision = _identityRevision;
           final result = await request('GetMeIdentityVerification');
@@ -1364,17 +1398,13 @@ class AppStore extends ChangeNotifier {
     } finally {
       if (version == epoch) {
         loading.remove(section);
+        loadingMore.remove(section);
         changed();
       }
     }
   }
 
-  int get unread =>
-      notificationUnreadCount +
-      conversations.fold<int>(
-        0,
-        (count, row) => count + integer(row['unread_count']),
-      );
+  int get unread => notificationUnreadCount;
   Future<T?> perform<T>(String key, Future<T> Function() action) async {
     if (pending.contains(key)) return null;
     pending.add(key);
@@ -1488,16 +1518,25 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<void> article(Story story) async {
+  Future<void> article(Story story, {bool more = false}) async {
     final version = epoch;
+    final cursor = more ? story.commentsCursor : '';
+    if (more && cursor.isEmpty) return;
     final v = await request(
       'GetArticlesIdComments',
       path: {'id': '${story.id}'},
-      query: {'limit': '50'},
+      query: {'limit': '30', if (cursor.isNotEmpty) 'cursor': cursor},
     );
     if (!alive || version != epoch) return;
     mergeContent('PostArticlesIdComments', story.id, items(v.data));
-    story.comments = items(v.data).map(ArticleComment.fromJson).toList();
+    final page = items(v.data).map(ArticleComment.fromJson);
+    story.comments = more
+        ? [
+            ...story.comments,
+            ...page.where((c) => !story.comments.any((v) => v.id == c.id)),
+          ]
+        : page.toList();
+    story.commentsCursor = v.nextCursor;
     story.commentCount = v.data.containsKey('total')
         ? integer(v.data['total'])
         : story.comments.fold<int>(
@@ -1683,23 +1722,6 @@ class AppStore extends ChangeNotifier {
       item.read = true;
     }
     notificationUnreadCount = 0;
-    changed();
-  }
-
-  Future<void> readConversation(int id, int messageID) async {
-    final version = epoch;
-    await request(
-      'PostConversationsIdRead',
-      path: {'id': '$id'},
-      body: {'message_id': messageID},
-    );
-    if (!alive || version != epoch) return;
-    for (final row in conversations) {
-      if (integer(row['id']) == id &&
-          integer(row['last_message_id']) <= messageID) {
-        row['unread_count'] = 0;
-      }
-    }
     changed();
   }
 
@@ -1997,7 +2019,8 @@ class AppStore extends ChangeNotifier {
       integer(design['version']),
       persist: true,
     );
-    if ((dom.data['html'] as String? ?? '').trim().isEmpty) {
+    if ((dom.data['html'] as String? ?? '').trim().isEmpty &&
+        !isResumeThemeSchema(dom.data['schema'])) {
       throw const ApiFailure('模板尚未生成可用版面，请稍后重试');
     }
     final detail = await request('GetResumesId', path: {'id': '$id'});

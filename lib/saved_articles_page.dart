@@ -25,8 +25,9 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
   final search = TextEditingController();
   List<Map<String, dynamic>> rows = [];
   String query = '';
-  String? error, opening;
-  bool loading = true;
+  String? error, moreError, opening;
+  String cursor = '';
+  bool loading = true, loadingMore = false;
   final busy = <String>{};
   int generation = 0;
 
@@ -42,24 +43,43 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    final request = ++generation;
+  Future<void> _load({bool more = false}) async {
+    if (more && (cursor.isEmpty || loadingMore || loading)) return;
+    final request = more ? generation : ++generation;
     setState(() {
-      loading = true;
-      error = null;
+      if (more) {
+        loadingMore = true;
+        moreError = null;
+      } else {
+        loading = true;
+        error = null;
+      }
     });
     try {
       final result = await widget.store.request(
         'GetMeFavorites',
-        query: {'limit': '50'},
+        query: {'limit': '30', if (more) 'cursor': cursor},
       );
       if (mounted && request == generation) {
-        setState(() => rows = items(result.data));
+        final page = items(result.data);
+        setState(() {
+          rows = [
+            if (more) ...rows,
+            ...page.where(
+              (row) => !more || !rows.any((v) => v['id'] == row['id']),
+            ),
+          ];
+          cursor = result.nextCursor;
+        });
       }
     } catch (e) {
-      if (mounted && request == generation) setState(() => error = '$e');
+      if (mounted && request == generation) {
+        setState(() => more ? moreError = '$e' : error = '$e');
+      }
     } finally {
-      if (mounted && request == generation) setState(() => loading = false);
+      if (mounted && request == generation) {
+        setState(() => more ? loadingMore = false : loading = false);
+      }
     }
   }
 
@@ -159,139 +179,162 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 680),
-          child: PlayfulRefresh(
-            onRefresh: _load,
-            hasError: () => error != null,
-            child: CustomScrollView(
-              key: PageStorageKey(
-                widget.embedded ? 'profile-saved' : 'saved-articles',
-              ),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                if (!widget.embedded)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-                      child: TextField(
-                        key: const ValueKey('saved-search'),
-                        controller: search,
-                        onChanged: (value) =>
-                            setState(() => query = value.trim()),
-                        onSubmitted: (_) => dismissKeyboard(),
-                        textInputAction: TextInputAction.search,
-                        decoration: InputDecoration(
-                          hintText: '搜索收藏标题',
-                          fillColor: context.colors.surface,
-                          prefixIcon: Padding(
-                            padding: EdgeInsets.all(14),
-                            child: AppIcon(
-                              AppIcons.search,
-                              size: 20,
-                              color: context.colors.muted,
+          child: AutoPaginate(
+            canLoad:
+                cursor.isNotEmpty &&
+                !loading &&
+                !loadingMore &&
+                error == null &&
+                moreError == null,
+            onLoadMore: () => _load(more: true),
+            child: PlayfulRefresh(
+              onRefresh: _load,
+              hasError: () => error != null,
+              child: CustomScrollView(
+                key: PageStorageKey(
+                  widget.embedded ? 'profile-saved' : 'saved-articles',
+                ),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  if (!widget.embedded)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          appPageHorizontalPadding,
+                          16,
+                          appPageHorizontalPadding,
+                          18,
+                        ),
+                        child: TextField(
+                          key: const ValueKey('saved-search'),
+                          controller: search,
+                          onChanged: (value) =>
+                              setState(() => query = value.trim()),
+                          onSubmitted: (_) => dismissKeyboard(),
+                          textInputAction: TextInputAction.search,
+                          decoration: InputDecoration(
+                            hintText: '搜索收藏标题',
+                            fillColor: context.colors.surface,
+                            prefixIcon: Padding(
+                              padding: EdgeInsets.all(14),
+                              child: AppIcon(
+                                AppIcons.search,
+                                size: 20,
+                                color: context.colors.muted,
+                              ),
                             ),
-                          ),
-                          suffixIcon: query.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: '清空搜索',
-                                  onPressed: () {
-                                    search.clear();
-                                    setState(() => query = '');
-                                    dismissKeyboard();
-                                  },
-                                  icon: AppIcon(
-                                    AppIcons.clear,
-                                    size: 18,
-                                    color: context.colors.muted,
+                            suffixIcon: query.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: '清空搜索',
+                                    onPressed: () {
+                                      search.clear();
+                                      setState(() => query = '');
+                                      dismissKeyboard();
+                                    },
+                                    icon: AppIcon(
+                                      AppIcons.clear,
+                                      size: 18,
+                                      color: context.colors.muted,
+                                    ),
                                   ),
-                                ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    widget.embedded ? 16 : 0,
-                    20,
-                    28,
-                  ),
-                  sliver: SliverList.builder(
-                    itemCount: loading || error != null || visible.isEmpty
-                        ? 1
-                        : visible.length + 1,
-                    itemBuilder: (context, index) {
-                      if (loading) {
-                        return const Padding(
-                          padding: EdgeInsets.all(48),
-                          child: Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        );
-                      }
-                      if (error != null) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 48),
-                          child: Column(
-                            children: [
-                              AppIcon(
-                                AppIcons.refresh,
-                                size: 32,
-                                color: context.colors.muted,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                error!,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 13,
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      widget.embedded ? 16 : 0,
+                      appPageHorizontalPadding,
+                      28,
+                    ),
+                    sliver: SliverList.builder(
+                      itemCount: loading || error != null || visible.isEmpty
+                          ? 1
+                          : visible.length + 2,
+                      itemBuilder: (context, index) {
+                        if (loading) {
+                          return const Padding(
+                            padding: EdgeInsets.all(48),
+                            child: Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        }
+                        if (error != null) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 48),
+                            child: Column(
+                              children: [
+                                AppIcon(
+                                  AppIcons.refresh,
+                                  size: 32,
                                   color: context.colors.muted,
                                 ),
-                              ),
-                              TextButton(
-                                onPressed: _load,
-                                child: const Text('重新加载'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      if (visible.isEmpty) {
-                        return EmptyState(
-                          query.isEmpty ? '还没有收藏的文章' : '没有找到这篇收藏',
-                          query.isEmpty ? '文章中的书签按钮，可以把内容留在这里。' : '试试其他标题关键词',
-                        );
-                      }
-                      if (index == 0) {
-                        return Padding(
-                          padding: EdgeInsets.fromLTRB(2, 0, 2, 14),
-                          child: Text(
-                            '最近收藏',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: context.colors.muted,
+                                const SizedBox(height: 16),
+                                Text(
+                                  error!,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: context.colors.muted,
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _load,
+                                  child: const Text('重新加载'),
+                                ),
+                              ],
                             ),
+                          );
+                        }
+                        if (visible.isEmpty) {
+                          return EmptyState(
+                            query.isEmpty ? '还没有收藏的文章' : '没有找到这篇收藏',
+                            query.isEmpty ? '文章中的书签按钮，可以把内容留在这里。' : '试试其他标题关键词',
+                          );
+                        }
+                        if (index == 0) {
+                          return Padding(
+                            padding: EdgeInsets.fromLTRB(2, 0, 2, 14),
+                            child: Text(
+                              '最近收藏',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: context.colors.muted,
+                              ),
+                            ),
+                          );
+                        }
+                        if (index > visible.length) {
+                          return moreError == null
+                              ? PageLoadingFooter(visible: loadingMore)
+                              : TextButton(
+                                  onPressed: () => _load(more: true),
+                                  child: const Text('加载失败，点击重试'),
+                                );
+                        }
+                        final row = visible[index - 1];
+                        final id = '${row['id']}';
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: _SavedCard(
+                            row: row,
+                            removing: busy.contains(id),
+                            opening: opening == id,
+                            onOpen: () => _open(row),
+                            onRemove: () => _remove(row),
                           ),
                         );
-                      }
-                      final row = visible[index - 1];
-                      final id = '${row['id']}';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: _SavedCard(
-                          row: row,
-                          removing: busy.contains(id),
-                          opening: opening == id,
-                          onOpen: () => _open(row),
-                          onRemove: () => _remove(row),
-                        ),
-                      );
-                    },
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

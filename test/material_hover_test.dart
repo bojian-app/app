@@ -63,7 +63,7 @@ void main() {
           }
           await mouse.removePointer();
         }
-        await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
+        await tester.tap(find.byKey(const ValueKey('profile-tab-articles')));
         await tester.pumpAndSettle();
         expect(
           DefaultTabController.of(tester.element(find.byType(TabBar))).index,

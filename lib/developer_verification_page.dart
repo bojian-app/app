@@ -94,7 +94,12 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
                     padding: const EdgeInsets.only(bottom: 32),
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 26),
+                        padding: const EdgeInsets.fromLTRB(
+                          appPageHorizontalPadding,
+                          16,
+                          appPageHorizontalPadding,
+                          26,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -133,7 +138,10 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
                       ColoredBox(
                         color: context.colors.surface,
                         child: Padding(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: appPageHorizontalPadding,
+                            vertical: 20,
+                          ),
                           child: Column(
                             children: [
                               LayoutBuilder(
@@ -227,7 +235,12 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 20, 0),
+                        padding: const EdgeInsets.fromLTRB(
+                          appPageHorizontalPadding,
+                          12,
+                          appPageHorizontalPadding,
+                          0,
+                        ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
@@ -286,7 +299,12 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        padding: const EdgeInsets.fromLTRB(
+                          appPageHorizontalPadding,
+                          12,
+                          appPageHorizontalPadding,
+                          0,
+                        ),
                         child: FilledButton(
                           key: const ValueKey('developer-verification-next'),
                           onPressed: controller.canContinue ? next : null,
@@ -317,7 +335,12 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 48, 12, 4),
+                        padding: const EdgeInsets.fromLTRB(
+                          appPageHorizontalPadding,
+                          48,
+                          appPageHorizontalPadding,
+                          4,
+                        ),
                         child: Row(
                           children: [
                             Expanded(
@@ -354,7 +377,9 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: appPageHorizontalPadding,
+                        ),
                         child: _PhotoExamples(accent: accent),
                       ),
                     ],
@@ -404,7 +429,12 @@ class _PhotoTile extends StatelessWidget {
           key: ValueKey('developer-photo-${side.name}'),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+            padding: const EdgeInsets.fromLTRB(
+              appPageHorizontalPadding,
+              12,
+              appPageHorizontalPadding,
+              10,
+            ),
             child: Column(
               children: [
                 SizedBox(

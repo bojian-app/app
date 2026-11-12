@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'app_environment.dart';
+import 'resume_theme.dart';
 
 /// Disposable, account-scoped template assets. Never stores resume content,
 /// user photos, credentials or signed preview URLs.
@@ -37,7 +38,8 @@ class TemplateDomStorage {
           data['template_id'] != id ||
           data['version'] != version ||
           data['html'] is! String ||
-          (data['html'] as String).trim().isEmpty ||
+          ((data['html'] as String).trim().isEmpty &&
+              !isResumeThemeSchema(data['schema'])) ||
           data['css'] is! String) {
         await file.delete();
         return null;

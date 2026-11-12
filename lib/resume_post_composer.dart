@@ -152,7 +152,12 @@ class _ResumePostComposerState extends State<ResumePostComposer> {
               children: [
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                    padding: const EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      20,
+                      appPageHorizontalPadding,
+                      24,
+                    ),
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
@@ -191,7 +196,12 @@ class _ResumePostComposerState extends State<ResumePostComposer> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                  padding: const EdgeInsets.fromLTRB(
+                    appPageHorizontalPadding,
+                    12,
+                    appPageHorizontalPadding,
+                    20,
+                  ),
                   child: SizedBox(
                     width: double.infinity,
                     child: FilledButton(

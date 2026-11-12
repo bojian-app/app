@@ -177,7 +177,10 @@ void main() {
     final controller = web.controllers.single;
     expect(controller.html, contains('filter:none!important'));
     await action(tester, 'monochrome-preview');
-    expect(controller.scripts.last, contains("'grayscale(1)', 'important'"));
+    expect(
+      controller.scripts.last,
+      contains("'url(#print-gray)', 'important'"),
+    );
     await action(tester, 'monochrome-preview');
     expect(controller.scripts.last, contains("'none', 'important'"));
     expect(controller.loadCount, 1);

@@ -454,7 +454,7 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
             fontSize: 11,
             color: color == null
                 ? context.colors.muted
-                : const Color(0xFF7A63AC),
+                : const Color(0xFF4A6FB5),
           ),
         ),
         const SizedBox(height: 6),
@@ -609,7 +609,7 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
                     style: TextStyle(
                       fontSize: 11,
                       color: isReplacement
-                          ? const Color(0xFF7A63AC)
+                          ? const Color(0xFF4A6FB5)
                           : const Color(0xFF408C77),
                     ),
                   ),
@@ -789,7 +789,12 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations> {
                     )
                   : ListView.separated(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                      padding: const EdgeInsets.fromLTRB(
+                        appPageHorizontalPadding,
+                        12,
+                        appPageHorizontalPadding,
+                        24,
+                      ),
                       itemCount: displayedItems.length,
                       separatorBuilder: (_, index) =>
                           const SizedBox(height: 12),

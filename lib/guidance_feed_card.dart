@@ -56,7 +56,10 @@ class GuidanceFeedCard extends StatelessWidget {
         },
         child: Padding(
           padding: flat
-              ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
+              ? const EdgeInsets.symmetric(
+                  horizontal: feedContentPadding,
+                  vertical: 12,
+                )
               : const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,7 +82,10 @@ class GuidanceFeedCard extends StatelessWidget {
                             ),
                           ),
                     child: Padding(
-                      padding: EdgeInsets.all(flat ? 7 : 4),
+                      // Flat cards start the avatar on the text edge.
+                      padding: flat
+                          ? const EdgeInsets.fromLTRB(0, 7, 7, 7)
+                          : const EdgeInsets.all(4),
                       child: ProfileAvatar(
                         seed: story.authorID > 0
                             ? '${story.authorID}'

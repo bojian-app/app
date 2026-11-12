@@ -197,7 +197,7 @@ class _RetainedTabState extends State<_RetainedTab> {
                   child: RepaintBoundary(
                     child: ColoredBox(
                       color: switch (widget.index) {
-                        0 => context.colors.surface,
+                        0 || 1 => context.colors.surface,
                         2 => PointsPage.headerColor(context),
                         _ => context.colors.canvas,
                       },

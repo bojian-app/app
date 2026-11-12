@@ -25,6 +25,9 @@ import 'app_store.dart';
 import 'design.dart';
 import 'template_preview_resources.dart';
 import 'template_preview_cache.dart';
+import 'resume_document.dart';
+import 'resume_theme.dart';
+import 'resume_thumbnail.dart';
 
 /// Same marketplace field contract as desktop template filling.
 Map<String, dynamic> marketResumeFields(ResumeDraft resume) {
@@ -196,7 +199,7 @@ String marketDocumentHtml({
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src file: data:">
 <style>$fontStyles</style><style>$css</style><style>
 html,body{margin:0!important;padding:0!important;background:#f5f7fa!important;font-family:var(--resume-font,system-ui,-apple-system,sans-serif)!important}
-#pages{padding:16px;width:794px;margin:0 auto;filter:${monochrome ? 'grayscale(1)' : 'none'}!important}
+#pages{padding:16px;width:794px;margin:0 auto;filter:${monochrome ? resumePrintGrayCss : 'none'}!important}
 .paper{width:794px;height:1123px;position:relative;background:white;overflow:hidden;margin-bottom:16px}
 .inner{position:absolute;left:61.5px;top:61.5px;width:671px;height:1000px;overflow:hidden}
 #flow,.flow{position:absolute;left:0;top:0;width:671px;height:1000px;column-width:671px;column-gap:32px;column-fill:auto}
@@ -209,7 +212,7 @@ html,body{overflow:hidden!important;background:white!important}
 #pages>.paper{margin:0}
 #pages>.paper~.paper{display:none}
 ''' : ''}
-</style></head><body><div id="flow"></div><div id="pages"></div>
+</style></head><body>$resumePrintGraySvg<div id="flow"></div><div id="pages"></div>
 ${thumbnail ? '''<script>
 function fitThumbnail(){document.getElementById('pages').style.transform='scale('+window.innerWidth/794+')';}
 fitThumbnail();window.addEventListener('resize',fitThumbnail);
@@ -239,6 +242,9 @@ class ResumeMarketDocumentView extends StatefulWidget {
 class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
   WebViewController? controller;
   NativeMarketDocument? nativeDocument;
+  // Theme packages style the built-in typesetter instead of a template DOM.
+  ResumeTheme? theme;
+  final themeDocumentKey = GlobalKey<ResumeDocumentViewState>();
   bool ready = false;
   String? error;
   int pages = 0, operation = 0, captureToken = 0;
@@ -281,7 +287,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
     try {
       await web.runJavaScript(
         "document.getElementById('pages')?.style.setProperty('filter', "
-        "'${widget.monochrome ? 'grayscale(1)' : 'none'}', 'important');",
+        "'${widget.monochrome ? resumePrintGrayCss : 'none'}', 'important');",
       );
     } on PlatformException {
       // Reapply to the replacement DOM when navigation finishes.
@@ -400,13 +406,38 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       if (integer(dom.data['template_id']) != resume.marketTemplateID) {
         throw const ApiFailure('模板已更新，请刷新预览');
       }
+      final schema = dom.data['schema'];
+      if (isResumeThemeSchema(schema)) {
+        final value = await resumeThemeOf(
+          resume.marketTemplateID,
+          schema as Map,
+        );
+        if (!mounted || request != operation || epoch != widget.store.epoch) {
+          return;
+        }
+        final oldNative = nativeDocument;
+        setState(() {
+          theme = value;
+          nativeDocument = null;
+          controller = null;
+          ready = true;
+          pages = 0;
+        });
+        loadTimeout?.cancel();
+        if (oldNative != null) {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => oldNative.dispose(),
+          );
+        }
+        return;
+      }
+      if (theme != null) setState(() => theme = null);
       if ((dom.data['html'] as String? ?? '').trim().isEmpty) {
         throw const ApiFailure('模板版面暂不可用');
       }
       final photo = !widget.thumbnail && resume.photoFileID > 0
           ? await photoData(detail!.data['photo_url'] as String? ?? '')
           : '';
-      final schema = dom.data['schema'];
       final nativePayload = schema is Map ? schema['native'] : null;
       if (nativePayload is Map) {
         final nativePhoto = widget.thumbnail
@@ -606,7 +637,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
     // Grayscale is a viewing preference, not a change to exported artwork.
     await controller!.runJavaScript(
       "document.getElementById('pages')?.style.setProperty('filter', "
-      "'${!enabled && widget.monochrome ? 'grayscale(1)' : 'none'}', 'important');",
+      "'${!enabled && widget.monochrome ? resumePrintGrayCss : 'none'}', 'important');",
     );
     final waiting = Completer<int>();
     fontReady = waiting;
@@ -644,6 +675,14 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
   }) async {
+    if (theme != null && ready) {
+      final view = themeDocumentKey.currentState;
+      if (view == null) throw const ApiFailure('请等待预览加载完成');
+      return view.captureLayout(
+        isCancelled: isCancelled,
+        onProgress: onProgress,
+      );
+    }
     final value = nativeDocument;
     if (value != null && ready) {
       final request = operation, epoch = widget.store.epoch;
@@ -701,6 +740,14 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
   }) async {
+    if (theme != null && ready && error == null) {
+      final view = themeDocumentKey.currentState;
+      if (view == null) throw const ApiFailure('请等待模板预览加载完成');
+      return view.capturePages(
+        isCancelled: isCancelled,
+        onProgress: onProgress,
+      );
+    }
     final value = nativeDocument;
     if (value != null && ready && error == null) {
       final request = operation, epoch = widget.store.epoch;
@@ -756,6 +803,26 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
   @override
   Widget build(BuildContext context) => Stack(
     children: [
+      if (theme case final ResumeTheme theme when error == null)
+        Positioned.fill(
+          child: widget.thumbnail
+              ? StandardResumeThumbnail(
+                  resume: templateThumbnailResume,
+                  photo: const AssetImage(
+                    'assets/templates/preview_portrait.png',
+                  ),
+                  theme: theme,
+                )
+              : ResumePreviewColor(
+                  monochrome: widget.monochrome,
+                  child: ResumeDocumentView(
+                    key: themeDocumentKey,
+                    resume: widget.resume,
+                    store: widget.store,
+                    theme: theme,
+                  ),
+                ),
+        ),
       if (nativeDocument != null)
         Positioned.fill(
           child: ResumePreviewColor(

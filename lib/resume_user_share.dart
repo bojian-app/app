@@ -339,7 +339,12 @@ class _ResumeUserShareState extends State<ResumeUserShare> {
               children: [
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                    padding: const EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      24,
+                      appPageHorizontalPadding,
+                      20,
+                    ),
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
@@ -471,7 +476,12 @@ class _ResumeUserShareState extends State<ResumeUserShare> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                  padding: const EdgeInsets.fromLTRB(
+                    appPageHorizontalPadding,
+                    12,
+                    appPageHorizontalPadding,
+                    20,
+                  ),
                   child: SizedBox(
                     width: double.infinity,
                     child: FilledButton(

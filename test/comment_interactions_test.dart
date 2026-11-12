@@ -289,7 +289,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('收起回复'));
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(ListView).first,const Offset(0,-180));
+      await tester.drag(find.byType(ListView).first, const Offset(0, -180));
       await tester.pumpAndSettle();
       await tester.tap(find.text('收起回复'));
       await tester.pumpAndSettle();

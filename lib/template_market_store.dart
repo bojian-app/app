@@ -27,7 +27,6 @@ class TemplateMarketStore extends ChangeNotifier {
   String? error, ownedError;
   TemplateMarketFilter filter = TemplateMarketFilter.all;
   List<Map<String, dynamic>> templates = [], owned = [];
-  Set<int> authored = {};
   int generation = 0;
   Timer? debounce;
   bool get valid => alive && store.alive && store.epoch == epoch;
@@ -48,7 +47,6 @@ class TemplateMarketStore extends ChangeNotifier {
       debounce?.cancel();
       templates = [];
       owned = [];
-      authored = {};
       cursor = '';
       loading = false;
       loadingOwned = false;
@@ -160,8 +158,8 @@ class TemplateMarketStore extends ChangeNotifier {
     try {
       final result = await store.request('GetMeTemplates');
       if (!valid || version != ownershipGeneration) return;
-      final all = items(result.data), seen = <int>{};
-      owned = all
+      final seen = <int>{};
+      owned = items(result.data)
           .where(
             (row) =>
                 row['source'] == 'ACQUIRED' &&
@@ -169,10 +167,6 @@ class TemplateMarketStore extends ChangeNotifier {
                 seen.add(integer(row['id'])),
           )
           .toList();
-      authored = all
-          .where((row) => row['source'] == 'PUBLISHED_BY_ME')
-          .map((row) => integer(row['id']))
-          .toSet();
     } catch (e) {
       if (valid && version == ownershipGeneration) {
         ownedError = e is ApiFailure ? e.message : '购买记录加载失败';
@@ -197,8 +191,10 @@ class TemplateMarketStore extends ChangeNotifier {
     if (ownedError != null) throw ApiFailure(ownedError!);
     if (ownedIDs.contains(id)) {
       final template = owned.firstWhere((row) => integer(row['id']) == id);
-      unawaited(predownloadAcquiredTemplate(store, id, integer(template['version'])));
-      if (quotedPrice > 0 && !authored.contains(id)) await syncWallet();
+      unawaited(
+        predownloadAcquiredTemplate(store, id, integer(template['version'])),
+      );
+      if (quotedPrice > 0) await syncWallet();
       return;
     }
     final detail = await store.request('GetTemplatesId', path: {'id': '$id'});
@@ -211,8 +207,7 @@ class TemplateMarketStore extends ChangeNotifier {
         detail.data['status'] != 'PUBLISHED') {
       throw const ApiFailure('模板暂不可用');
     }
-    if (authored.contains(id) ||
-        (quotedPrice == 0 && detail.data['pricing_type'] == 'FREE')) {
+    if (quotedPrice == 0 && detail.data['pricing_type'] == 'FREE') {
       await store.request(
         'PostTemplatesIdAcquisitions',
         path: {'id': '$id'},
@@ -244,7 +239,9 @@ class TemplateMarketStore extends ChangeNotifier {
       }
     }
     if (!valid) return;
-    unawaited(predownloadAcquiredTemplate(store, id, integer(detail.data['version'])));
+    unawaited(
+      predownloadAcquiredTemplate(store, id, integer(detail.data['version'])),
+    );
     await loadOwned();
   }
 

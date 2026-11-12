@@ -4,7 +4,9 @@ import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/api/generated/auth.pb.dart' as auth;
 import 'package:bojian_mobile/app_environment.dart';
 import 'package:bojian_mobile/captcha_dialog.dart';
+import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/main.dart';
+import 'package:bojian_mobile/phone_binding_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -86,6 +88,15 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        if (!login) {
+          unawaited(
+            showPhoneBindingDialog(
+              tester.element(find.byType(AppShell)),
+              store: store,
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
         final prefix = login ? 'auth' : 'phone-binding';
         expect(fieldText(tester, '$prefix-phone'), '13800138000');
         expect(fieldText(tester, '$prefix-code'), isEmpty);

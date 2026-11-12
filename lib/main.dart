@@ -11,7 +11,6 @@ import 'app_environment.dart';
 import 'auth_page.dart';
 import 'app_store.dart';
 import 'confirmation_dialog.dart';
-import 'phone_binding_dialog.dart';
 import 'design.dart';
 import 'banner_ads.dart';
 import 'startup_animation.dart';
@@ -49,8 +48,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final files = ResumeFiles.instance;
   bool openingImport = false;
   bool entryAllowed = false;
-  int? phoneBindingPromptEpoch;
-  bool showingPhoneBinding = false;
   bool preparingStartup = true;
 
   @override
@@ -84,7 +81,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       BannerAds.ready.value = mounted && widget.bannerAdsEnabled;
       if (mounted) {
         setState(() => preparingStartup = false);
-        maybeShowPhoneBinding();
         sharedFileChanged();
       }
     }
@@ -111,52 +107,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         );
       });
     }
-    if (store.isAuthenticated) {
-      maybeShowPhoneBinding();
-      sharedFileChanged();
-    }
-  }
-
-  void maybeShowPhoneBinding() {
-    if (preparingStartup ||
-        !store.foreground ||
-        !store.isAuthenticated ||
-        !store.phoneBindingChecked ||
-        store.hasBoundPhone ||
-        phoneBindingPromptEpoch == store.epoch ||
-        showingPhoneBinding) {
-      return;
-    }
-    final version = store.epoch;
-    phoneBindingPromptEpoch = version;
-    showingPhoneBinding = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final context = navigatorKey.currentContext;
-      try {
-        if (!mounted ||
-            context == null ||
-            !store.isAuthenticated ||
-            store.epoch != version ||
-            store.hasBoundPhone) {
-          return;
-        }
-        await showPhoneBindingDialog(context, store: store);
-      } finally {
-        showingPhoneBinding = false;
-        if (mounted) {
-          maybeShowPhoneBinding();
-          sharedFileChanged();
-        }
-      }
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
+    if (store.isAuthenticated) sharedFileChanged();
   }
 
   void sharedFileChanged() {
     if (preparingStartup ||
         !store.foreground ||
         !store.isAuthenticated ||
-        showingPhoneBinding ||
         files.activeImports > 0 ||
         files.incoming.value == null ||
         openingImport) {
@@ -223,7 +180,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       store.setForeground(true);
-      maybeShowPhoneBinding();
       sharedFileChanged();
     }
     if (state == AppLifecycleState.paused ||

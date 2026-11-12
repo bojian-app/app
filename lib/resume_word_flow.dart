@@ -39,8 +39,8 @@ class _WordFlowParagraph {
 String _flowWord(
   ResumeExportLayout layout,
   List<String> pictures,
-  bool hasMedium,
   String Function(ResumeExportRule, double) inlineRule,
+  Map<String, String Function(double top)> art,
 ) {
   final paragraphs = <String, _WordFlowParagraph>{};
   final events =
@@ -57,7 +57,7 @@ String _flowWord(
     for (final line in sheet.lines) {
       // Page numbers belong in a real footer; native content always has an ID.
       final key = line.paragraphId;
-      if (key == null || line.spans.isEmpty) continue;
+      if (key == null || line.spans.isEmpty || line.fixed) continue;
       final previous = paragraphs[key];
       if (previous != null) {
         previous.lines.add(line);
@@ -99,14 +99,11 @@ String _flowWord(
       b.paragraph?.first.paragraphLeft ?? 0,
     );
   });
-  String font(ResumeExportSpan span) =>
-      hasMedium && span.fontWeight >= 500 && span.fontWeight < 700
-      ? resumeWordMediumTypeface
-      : resumeWordRegularTypeface;
+  String font(ResumeExportSpan span) => resumeWordTypeface;
   String run(ResumeExportSpan span) {
     if (span.wordTabStop != null) return '<w:r><w:tab/></w:r>';
     final family = font(span), size = (span.size * 2).round();
-    return '<w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${span.fontWeight >= 700 ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.underline ? '<w:u w:val="single"/>' : ''}<w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${resumeExportText(span.text).split("\n").map(_xml).join('</w:t><w:br/><w:t xml:space="preserve">')}</w:t></w:r>';
+    return '<w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${span.fontWeight >= 700 ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.letterSpacing == 0 ? '' : '<w:spacing w:val="${_twip(span.letterSpacing)}"/>'}${span.underline ? '<w:u w:val="single"/>' : ''}<w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${resumeExportText(span.text).split("\n").map(_xml).join('</w:t><w:br/><w:t xml:space="preserve">')}</w:t></w:r>';
   }
 
   final result = StringBuffer();
@@ -164,6 +161,94 @@ String _flowWord(
     final spans = paragraph.spans;
     if (spans.isEmpty) continue;
     field(paragraph.field);
+    if (layout.wordRows) {
+      // Side-by-side blocks, such as a header with contacts beside the name
+      // or a date beside a title, become a borderless table: paragraphs that
+      // overlap vertically form a band, and each column of it a cell.
+      final band = [paragraph];
+      var bottom = paragraph.bottom;
+      for (var j = i + 1; j < events.length; j++) {
+        final next = events[j].paragraph;
+        if (next == null ||
+            next.page != paragraph.page ||
+            next.endPage != next.page ||
+            paragraph.endPage != paragraph.page ||
+            next.top >= bottom - 1) {
+          break;
+        }
+        band.add(next);
+        bottom = math.max(bottom, next.bottom);
+      }
+      double left(_WordFlowParagraph value) =>
+          value.first.paragraphLeft ?? value.first.spans.first.x;
+      double right(_WordFlowParagraph value) => value.lines
+          .map((line) => line.spans.last.x + line.spans.last.width)
+          .reduce(math.max);
+      final columns = <List<_WordFlowParagraph>>[];
+      for (final value in [
+        ...band,
+      ]..sort((a, b) => left(a).compareTo(left(b)))) {
+        final column = columns.where(
+          (column) => column.any(
+            (other) => left(value) < right(other) && left(other) < right(value),
+          ),
+        );
+        if (column.isEmpty) {
+          columns.add([value]);
+        } else {
+          column.first.add(value);
+        }
+      }
+      if (columns.length > 1) {
+        i += band.length - 1;
+        final marginLeft = layout.wordMargins['left']!;
+        final contentRight = layout.width - layout.wordMargins['right']!;
+        final lefts = [
+          for (final column in columns)
+            math.max(marginLeft, column.map(left).reduce(math.min)),
+        ];
+        final widths = [
+          for (var c = 0; c < columns.length; c++)
+            _twip(
+              math.max(
+                12.0,
+                (c + 1 < columns.length ? lefts[c + 1] : contentRight) -
+                    lefts[c],
+              ),
+            ),
+        ];
+        // Artwork anchored inside a cell is placed differently by each reader,
+        // so the band's artwork rides on the spacer paragraph above the table.
+        final spacer = math.max(1, _twip(before));
+        final spacerTop = paragraph.top - spacer / 20;
+        result.write(
+          '<w:p><w:pPr><w:keepNext/>$pageBreak<w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="$spacer" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr>${pagePictures(event.page)}${band.map((value) => art[value.first.paragraphId]?.call(spacerTop) ?? '').join()}</w:p>',
+        );
+        final cells = StringBuffer();
+        for (var c = 0; c < columns.length; c++) {
+          cells.write(
+            '<w:tc><w:tcPr><w:tcW w:w="${widths[c]}" w:type="dxa"/></w:tcPr>',
+          );
+          var above = paragraph.top;
+          for (final value
+              in columns[c]..sort((a, b) => a.top.compareTo(b.top))) {
+            final lead = value.spans.first;
+            final indent = left(value) - lefts[c];
+            cells.write(
+              '<w:p><w:pPr><w:keepNext/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="${_twip(math.max(0.0, value.top - above))}" w:after="0" w:line="${_twip(value.first.height)}" w:lineRule="atLeast"/>${indent > .1 ? '<w:ind w:left="${_twip(indent)}"/>' : ''}${value.first.paragraphAlignRight ? '<w:jc w:val="right"/>' : ''}<w:rPr><w:rFonts w:ascii="${font(lead)}" w:hAnsi="${font(lead)}" w:eastAsia="${font(lead)}"/><w:sz w:val="${(lead.size * 2).round()}"/></w:rPr></w:pPr>${value.spans.map(run).join()}</w:p>',
+            );
+            above = value.bottom;
+          }
+          cells.write('</w:tc>');
+        }
+        result.write(
+          '<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((a, b) => a + b)}" w:type="dxa"/><w:tblInd w:w="${_twip(lefts.first - marginLeft)}" w:type="dxa"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${widths.map((w) => '<w:gridCol w:w="$w"/>').join()}</w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr>$cells</w:tr></w:tbl>',
+        );
+        previousPage = paragraph.page;
+        previousBottom = bottom;
+        continue;
+      }
+    }
     final first = spans.first;
     final heading = paragraph.field == null && first.fontWeight >= 500;
     _WordFlowParagraph? right;
@@ -246,10 +331,24 @@ String _flowWord(
                 layout.wordMargins['left']!,
           )
         : 0.0;
+    final decoration =
+        art[paragraph.first.paragraphId]?.call(paragraph.top) ?? '';
+    var spacing = before;
+    var paragraphBreak = pageBreak;
+    if (decoration.isNotEmpty && (before > .1 || startsPage)) {
+      // Readers disagree on whether a paragraph's top includes its spacing,
+      // so the gap above decorated text is a paragraph of its own.
+      result.write(
+        '<w:p><w:pPr><w:keepNext/>$pageBreak<w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="${math.max(1, _twip(before))}" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr>${pagePictures(event.page)}</w:p>',
+      );
+      spacing = 0;
+      paragraphBreak = '';
+    }
     result.write(
-      '<w:p><w:pPr>${heading ? '<w:keepNext/>' : ''}$pageBreak$tabs<w:widowControl/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="${_twip(before)}" w:after="0" w:line="${_twip(paragraph.first.height)}" w:lineRule="atLeast"/>${rightInset > .1 || leftInset > .1 ? '<w:ind w:left="${_twip(leftInset)}" w:right="${_twip(rightInset)}"/>' : ''}${paragraph.first.paragraphAlignRight ? '<w:jc w:val="right"/>' : ''}<w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/><w:sz w:val="$size"/></w:rPr></w:pPr>',
+      '<w:p><w:pPr>${heading ? '<w:keepNext/>' : ''}$paragraphBreak$tabs<w:widowControl/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="${_twip(spacing)}" w:after="0" w:line="${_twip(paragraph.first.height)}" w:lineRule="atLeast"/>${rightInset > .1 || leftInset > .1 ? '<w:ind w:left="${_twip(leftInset)}" w:right="${_twip(rightInset)}"/>' : ''}${paragraph.first.paragraphAlignRight ? '<w:jc w:val="right"/>' : ''}<w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/><w:sz w:val="$size"/></w:rPr></w:pPr>',
     );
     result.write(pagePictures(event.page));
+    result.write(decoration);
     for (final span in spans) {
       result.write(run(span));
     }

@@ -118,6 +118,50 @@ void main() {
     },
   );
 
+  testWidgets(
+    'An empty feed loads behind a skeleton, then appears without entering',
+    (tester) async {
+      final api = DelayedFeed();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      store.stories.clear();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: Scaffold(
+            body: AnimatedBuilder(
+              animation: store,
+              builder: (_, _) => DiscoveryPage(store: store),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('discovery-story-1')), findsNothing);
+      api.pending = Completer<void>();
+      final loading = store.load('feed');
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('discovery-feed-skeleton')),
+        findsOneWidget,
+      );
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      api.pending!.complete();
+      await tester.runAsync(() => loading);
+      await tester.pump();
+      final card = find.byKey(const ValueKey('discovery-story-1'));
+      expect(card, findsOneWidget);
+      final height = tester.getSize(card).height;
+      expect(height, greaterThan(0));
+      expect(
+        find.byKey(const ValueKey('discovery-feed-skeleton')),
+        findsNothing,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(card).height, height);
+    },
+  );
+
   for (final fails in [false, true]) {
     testWidgets(
       'Cached feed stays visible and stable during ${fails ? 'failed' : 'successful'} refresh',
@@ -145,12 +189,14 @@ void main() {
         final request = store.load('feed');
         await tester.pump();
         expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.byType(SkeletonPulse), findsNothing);
         expect(tester.element(card), same(element));
         expect(tester.getTopLeft(card), position);
         api.pending!.complete();
         await request;
         await tester.pumpAndSettle();
         expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.byType(SkeletonPulse), findsNothing);
         expect(tester.element(card), same(element));
         expect(tester.getTopLeft(card), position);
         expect(tester.takeException(), isNull);

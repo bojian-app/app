@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show showDialog;
 import 'package:flutter/services.dart';
 
 import 'api/bojian_api.dart';
@@ -74,30 +73,16 @@ class _PhoneBindingDialogState extends State<PhoneBindingDialog> {
       status = null;
     });
     try {
-      SmsRequestOutcome? outcome;
-      if (AppEnvironment.isTestPhone(targetPhone)) {
-        outcome = SmsRequestOutcome.accepted(
-          await widget.store.sendPhoneBindingCode(targetPhone, ''),
-        );
-      } else {
-        final challenge = await widget.store.api.createCaptcha(
-          widget.store.headers,
-        );
-        if (!mounted || !current) return;
-        outcome = await showDialog<SmsRequestOutcome>(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => CaptchaDialog(
-            store: widget.store,
-            challenge: challenge,
-            phone: targetPhone,
-            onSendSMS: (token) {
-              if (!current) throw const ApiFailure('账号已切换，请重试');
-              return widget.store.sendPhoneBindingCode(targetPhone, token);
-            },
-          ),
-        );
-      }
+      final outcome = await requestSmsCode(
+        context,
+        store: widget.store,
+        phone: targetPhone,
+        current: () => current,
+        send: (token) {
+          if (!current) throw const ApiFailure('账号已切换，请重试');
+          return widget.store.sendPhoneBindingCode(targetPhone, token);
+        },
+      );
       if (!current || outcome == null) return;
       final failure = outcome.error;
       if (failure != null) {
@@ -290,7 +275,7 @@ class _PhoneBindingDialogState extends State<PhoneBindingDialog> {
             ],
           ],
         ),
-        cancelLabel: '暂时跳过',
+        cancelLabel: '取消',
         cancelKey: const ValueKey('phone-binding-skip'),
         confirmLabel: submitting ? '绑定中…' : '绑定并合并账号',
         confirmKey: const ValueKey('phone-binding-confirm'),

@@ -18,13 +18,15 @@ part 'resume_word_flow.dart';
 part 'resume_word_structure.dart';
 
 const resumeDocumentFontFamily = 'ResumeDocument';
-const resumeDocumentTypeface = '阿里巴巴普惠体 3.0';
-// Word resolves embedded fonts by the legacy family name (name ID 1).
-const resumeWordRegularTypeface = '阿里巴巴普惠体 3.0 55 Regular';
-const resumeWordMediumTypeface = '阿里巴巴普惠体 3.0 65 Medium';
-const resumeFontRegularAsset = 'assets/fonts/alibaba-puhuiti-3-regular.ttf';
-const resumeFontMediumAsset = 'assets/fonts/alibaba-puhuiti-3-medium.ttf';
-const resumeFontBoldAsset = 'assets/fonts/alibaba-puhuiti-3-bold.ttf';
+// Word documents name a common system face instead of embedding fonts, which
+// many readers, including phones, never display.
+const resumeWordTypeface = '微软雅黑';
+// Word draws the text in [resumeWordTypeface], so its boxes sit by that face's
+// ascent (2167/2048 em), not by the embedded document font's.
+const _wordTypefaceAscent = 1.06;
+const resumeFontRegularAsset = 'assets/fonts/resume-sans-regular.ttf';
+const resumeFontMediumAsset = 'assets/fonts/resume-sans-medium.ttf';
+const resumeFontBoldAsset = 'assets/fonts/resume-sans-bold.ttf';
 const resumeDocumentFontAssets = {
   'regular.ttf': resumeFontRegularAsset,
   'medium.ttf': resumeFontMediumAsset,
@@ -67,6 +69,7 @@ class ResumeExportSpan {
     this.italic = false,
     this.underline = false,
     this.strike = false,
+    this.letterSpacing = 0,
   });
   final String text;
   // Logical whitespace may have no painted width at a browser soft wrap.
@@ -78,6 +81,8 @@ class ResumeExportSpan {
   final int color;
   final bool bold, italic, underline, strike;
   final int? weight;
+  // Extra advance after every character, in points.
+  final double letterSpacing;
   int get fontWeight => weight ?? (bold ? 700 : 400);
 }
 
@@ -93,6 +98,7 @@ class ResumeExportLine {
     this.paragraphAlignRight = false,
     this.paragraphField,
     this.paragraphBottom,
+    this.fixed = false,
   });
   final double top, height, baseline;
   final List<ResumeExportSpan> spans;
@@ -103,6 +109,8 @@ class ResumeExportLine {
   final bool paragraphAlignRight;
   final String? paragraphField;
   final double? paragraphBottom;
+  // Kept at its page position in a flowing Word document, such as a sidebar.
+  final bool fixed;
 }
 
 class ResumeExportRule {
@@ -130,6 +138,13 @@ class ResumeExportPicture {
   final double x, y, width, height;
 }
 
+/// Artwork that travels with a Word paragraph instead of the page.
+class ResumeExportArt {
+  const ResumeExportArt(this.paragraphId, this.picture);
+  final String paragraphId;
+  final ResumeExportPicture picture;
+}
+
 class ResumeExportPage {
   const ResumeExportPage({
     this.lines = const [],
@@ -137,6 +152,7 @@ class ResumeExportPage {
     this.pictures = const [],
     this.background,
     this.wordFlow = false,
+    this.art = const [],
   });
   final List<ResumeExportLine> lines;
   final List<ResumeExportRule> rules;
@@ -145,6 +161,7 @@ class ResumeExportPage {
   final ResumeExportPicture? background;
   // Native templates have a semantic reading order and can reflow in Word.
   final bool wordFlow;
+  final List<ResumeExportArt> art;
 }
 
 class ResumeExportLayout {
@@ -155,6 +172,7 @@ class ResumeExportLayout {
     this.wordLayout,
     this.requiresWordFlow = false,
     this.nativeFlowGeometry = false,
+    this.wordRows = false,
     this.wordStructure,
     this.wordMargins = const {"top": 46, "right": 46, "bottom": 50, "left": 46},
   });
@@ -164,6 +182,8 @@ class ResumeExportLayout {
   // Required by native and V2 templates; never silently use positioned boxes.
   final bool requiresWordFlow;
   final bool nativeFlowGeometry;
+  // Paragraphs sharing a line in the preview become one borderless table row.
+  final bool wordRows;
   final Map<String, dynamic>? wordStructure;
   final Map<String, double> wordMargins;
 }
@@ -179,6 +199,7 @@ Future<XFile> exportNativeResume({
   required String format,
   required bool Function() isCancelled,
   required void Function(String) onProgress,
+  void Function(String)? onNotice,
 }) async {
   if (format != 'PDF' && format != 'DOCX') {
     throw const ApiFailure('请选择 Word 或 PDF');
@@ -196,6 +217,20 @@ Future<XFile> exportNativeResume({
       .asUint8List();
   final medium = (await rootBundle.load(resumeFontMediumAsset)).buffer
       .asUint8List();
+  if (format == 'PDF' && onNotice != null) {
+    final cmap = TtfParser(ByteData.sublistView(regular)).charToGlyphIndexMap;
+    final missing = [
+      for (final rune in _exportCharacters(layout))
+        if (rune > 0x20 && (cmap[rune] ?? 0) == 0) String.fromCharCode(rune),
+    ];
+    if (missing.isNotEmpty) {
+      onNotice(
+        '字库里没有“${missing.take(10).join('、')}”'
+        '${missing.length > 10 ? '等${missing.length}个字' : ''}，'
+        'PDF 中会显示为“□”，Word 不受影响。',
+      );
+    }
+  }
   final bytes = await Isolate.run(
     () => encodeNativeResume(layout, format, regular, bold, medium: medium),
   );
@@ -247,6 +282,12 @@ Future<Uint8List> encodeNativeResume(
   }
   throw const ApiFailure('请选择 Word 或 PDF');
 }
+
+Set<int> _exportCharacters(ResumeExportLayout layout) => layout.pages
+    .expand((page) => page.lines)
+    .expand((line) => line.spans)
+    .expand((span) => resumeExportText(span.text).runes)
+    .toSet();
 
 PdfColor _color(int argb) => PdfColor.fromInt(argb & 0xFFFFFF);
 
@@ -310,11 +351,7 @@ Future<Uint8List> _pdf(
 ) async {
   final document = PdfDocument();
   final synthesizeBold = listEquals(regular, bold);
-  final characters = layout.pages
-      .expand((page) => page.lines)
-      .expand((line) => line.spans)
-      .expand((span) => resumeExportText(span.text).runes)
-      .toSet();
+  final characters = _exportCharacters(layout);
   final regularTypeface = _PdfTypeface(document, regular, characters);
   final fonts = [
     regularTypeface,
@@ -361,14 +398,27 @@ Future<Uint8List> _pdf(
         canvas.strokePath();
       }
     }
+    // The photo sits below the text, which a theme may lay over it.
+    for (final picture in sheet.pictures) {
+      final image = PdfImage.file(document, bytes: picture.bytes);
+      canvas.drawImage(
+        image,
+        picture.x,
+        layout.height - picture.y - picture.height,
+        picture.width,
+        picture.height,
+      );
+    }
     for (final line in sheet.lines) {
       for (final span in line.spans) {
         if (span.text.isEmpty || (span.color >> 24) == 0) continue;
         final text = resumeExportText(span.text);
         final weight = span.fontWeight;
         final typeface = fonts[weight >= 700 ? 2 : (weight >= 500 ? 1 : 0)];
+        final spacing = span.letterSpacing;
         final advance =
-            typeface.font(0).stringMetrics(text).advanceWidth * span.size;
+            typeface.font(0).stringMetrics(text).advanceWidth * span.size +
+            spacing * text.runes.length;
         final scale = advance > 0 && span.width > 0
             ? span.width / advance
             : 1.0;
@@ -398,12 +448,16 @@ Future<Uint8List> _pdf(
             span.italic ? 0 : x,
             span.italic ? 0 : baseline,
             scale: scale,
+            charSpace: spacing == 0 ? null : spacing,
             mode: strokeBold
                 ? PdfTextRenderingMode.fillAndStroke
                 : PdfTextRenderingMode.fill,
           );
           if (span.italic) canvas.restoreContext();
-          x += font.stringMetrics(piece.text).advanceWidth * span.size * scale;
+          x +=
+              (font.stringMetrics(piece.text).advanceWidth * span.size +
+                  spacing * piece.text.runes.length) *
+              scale;
         }
         if (strokeBold) canvas.restoreContext();
         if (span.underline || span.strike) {
@@ -423,16 +477,6 @@ Future<Uint8List> _pdf(
         }
       }
     }
-    for (final picture in sheet.pictures) {
-      final image = PdfImage.file(document, bytes: picture.bytes);
-      canvas.drawImage(
-        image,
-        picture.x,
-        layout.height - picture.y - picture.height,
-        picture.width,
-        picture.height,
-      );
-    }
   }
   return document.save();
 }
@@ -447,14 +491,6 @@ String _xml(String value) => value
 String _rgb(int color) =>
     (color & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase();
 int _twip(double value) => (value * 20).round();
-
-Uint8List _obfuscated(Uint8List bytes, List<int> key) {
-  final result = Uint8List.fromList(bytes);
-  for (var i = 0; i < 32; i++) {
-    result[i] ^= key[15 - i % 16];
-  }
-  return result;
-}
 
 List<ResumeExportSpan> _mergeWordSpans(List<ResumeExportSpan> spans) {
   final result = <ResumeExportSpan>[];
@@ -473,6 +509,7 @@ List<ResumeExportSpan> _mergeWordSpans(List<ResumeExportSpan> spans) {
             italic: original.italic,
             underline: original.underline,
             strike: original.strike,
+            letterSpacing: original.letterSpacing,
           );
     final previous = result.isEmpty ? null : result.last;
     if (previous != null &&
@@ -483,7 +520,8 @@ List<ResumeExportSpan> _mergeWordSpans(List<ResumeExportSpan> spans) {
         previous.color == span.color &&
         previous.italic == span.italic &&
         previous.underline == span.underline &&
-        previous.strike == span.strike) {
+        previous.strike == span.strike &&
+        previous.letterSpacing == span.letterSpacing) {
       result[result.length - 1] = ResumeExportSpan(
         text: previous.text + span.text,
         x: previous.x,
@@ -494,6 +532,7 @@ List<ResumeExportSpan> _mergeWordSpans(List<ResumeExportSpan> spans) {
         italic: span.italic,
         underline: span.underline,
         strike: span.strike,
+        letterSpacing: span.letterSpacing,
       );
     } else {
       result.add(span);
@@ -575,7 +614,7 @@ Uint8List _word(
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships" xmlns:wp="${ns}drawingml/2006/wordprocessingDrawing" xmlns:a="${ns}drawingml/2006/main" xmlns:pic="${ns}drawingml/2006/picture" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="wps" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w10="urn:schemas-microsoft-com:office:word"><w:body>',
   );
   final relations = StringBuffer(
-    '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="fonts" Type="${rel}fontTable" Target="fontTable.xml"/><Relationship Id="settings" Type="${rel}settings" Target="settings.xml"/>',
+    '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="settings" Type="${rel}settings" Target="settings.xml"/>',
   );
   var id = 1;
   int emu(double value) => (value * 12700).round();
@@ -666,7 +705,7 @@ Uint8List _word(
               .replaceFirst('relativeFrom="page"', 'relativeFrom="column"')
               .replaceFirst(
                 '<wp:positionV relativeFrom="page">',
-                '<wp:positionV relativeFrom="paragraph">',
+                '<wp:positionV relativeFrom="line">',
               );
       return '<w:r>$drawing</w:r>';
     }
@@ -688,10 +727,7 @@ Uint8List _word(
             header: true,
           );
     // Header owns its own image relationships and repeats on every actual Word page.
-    final headerRelations = relations.toString().replaceFirst(
-      'Target="fontTable.xml"',
-      'Target="fontTable.xml"',
-    );
+    final headerRelations = relations.toString();
     text(
       'word/header.xml',
       '<?xml version="1.0"?><w:hdr xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships" xmlns:wp="${ns}drawingml/2006/wordprocessingDrawing" xmlns:a="${ns}drawingml/2006/main" xmlns:pic="${ns}drawingml/2006/picture"><w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/></w:pPr>$art</w:p></w:hdr>',
@@ -701,7 +737,61 @@ Uint8List _word(
       '<Relationship Id="header" Type="${rel}header" Target="header.xml"/>',
     );
   }
+  // One text box per source paragraph: Word wraps it, and an edit stays
+  // inside its paragraph instead of breaking every visual line apart.
+  String paragraphBox(List<ResumeExportLine> paragraph) {
+    paragraph.sort((a, b) {
+      final baseline = a.baseline - b.baseline;
+      return baseline.abs() > .5
+          ? baseline.sign.toInt()
+          : a.spans.first.x.compareTo(b.spans.first.x);
+    });
+    final first = paragraph.first;
+    final spans = paragraph
+        .expand((line) => line.spans)
+        .where((span) => span.text.isNotEmpty && (span.color >> 24) != 0)
+        .toList();
+    if (spans.isEmpty) return '';
+    final leading = spans.first;
+    final top =
+        first.baseline - (leading.size * 2).round() / 2 * _wordTypefaceAscent;
+    final left = first.paragraphLeft ?? spans.map((s) => s.x).reduce(math.min);
+    final measuredWidth = first.paragraphWidth ?? layout.width - left;
+    final width = math.max(1.0, math.min(layout.width - left, measuredWidth));
+    final height = math.max(
+      first.height,
+      paragraph.map((line) => line.top + line.height).reduce(math.max) - top,
+    );
+    final runs = StringBuffer();
+    // These are formatting runs within ONE paragraph, never text boxes or
+    // forced breaks for each visual line. Word can reflow edited text.
+    final groups = [_mergeWordSpans(spans)];
+    for (var lineIndex = 0; lineIndex < groups.length; lineIndex++) {
+      if (lineIndex > 0) runs.write('<w:r><w:br/></w:r>');
+      for (final span in groups[lineIndex]) {
+        final isBold = span.fontWeight >= 700;
+        const family = resumeWordTypeface;
+        final size = (span.size * 2).round();
+        runs.write(
+          '<w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${isBold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.letterSpacing == 0 ? '' : '<w:spacing w:val="${_twip(span.letterSpacing)}"/>'}${span.underline ? '<w:u w:val="single"/>' : ''}<w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${_xml(resumeExportText(span.text))}</w:t></w:r>',
+        );
+      }
+    }
+    const paragraphFamily = resumeWordTypeface;
+    final content =
+        '<w:txbxContent><w:p><w:pPr><w:widowControl w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="${_twip(first.height)}" w:lineRule="atLeast"/>${first.paragraphAlignRight ? '<w:jc w:val="right"/>' : ''}<w:rPr><w:rFonts w:ascii="$paragraphFamily" w:hAnsi="$paragraphFamily" w:eastAsia="$paragraphFamily" w:cs="$paragraphFamily"/><w:sz w:val="${(leading.size * 2).round()}"/></w:rPr></w:pPr>$runs</w:p></w:txbxContent>';
+    return rectangle(
+      left,
+      top,
+      width,
+      height,
+      textContent: content,
+      wrap: true,
+    );
+  }
+
   final flowPictures = <String>[];
+  final paragraphArt = <String, String Function(double top)>{};
   for (var page = 0; structured == null && page < layout.pages.length; page++) {
     final sheet = layout.pages[page];
     // A page has one small anchor paragraph. Every text fragment retains its
@@ -754,6 +844,31 @@ Uint8List _word(
       drawings.write('</w:r>');
     }
     if (flowing) {
+      final fixed = <String, List<ResumeExportLine>>{};
+      for (final line in sheet.lines) {
+        if (line.fixed && line.paragraphId != null) {
+          (fixed[line.paragraphId!] ??= []).add(line);
+        }
+      }
+      for (final paragraph in fixed.values) {
+        drawings.write(paragraphBox(paragraph));
+      }
+      for (final art in sheet.art) {
+        final picture = art.picture;
+        final imageId = 'image${id++}';
+        add('word/media/$imageId.png', picture.bytes);
+        relations.write(
+          '<Relationship Id="$imageId" Type="${rel}image" Target="media/$imageId.png"/>',
+        );
+        final current = id++;
+        final pictureXml =
+            '<pic:pic><pic:nvPicPr><pic:cNvPr id="$current" name="模板装饰"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="$imageId"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(picture.width)}" cy="${emu(picture.height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>';
+        // Positioned from the line that carries it, given as a page offset,
+        // so it moves with the text when Word reflows the page.
+        final earlier = paragraphArt[art.paragraphId];
+        paragraphArt[art.paragraphId] = (top) =>
+            '${earlier?.call(top) ?? ''}<w:r>${anchor(current, pictureXml, '${ns}drawingml/2006/picture', picture.x, picture.y - top, picture.width, picture.height, background: true).replaceFirst('<wp:positionV relativeFrom="page">', '<wp:positionV relativeFrom="line">')}</w:r>';
+      }
       flowPictures.add(drawings.toString());
       continue;
     }
@@ -773,65 +888,7 @@ Uint8List _word(
     }
     for (final paragraph in paragraphs.values) {
       if (paragraph.first.paragraphId != null) {
-        paragraph.sort((a, b) {
-          final baseline = a.baseline - b.baseline;
-          return baseline.abs() > .5
-              ? baseline.sign.toInt()
-              : a.spans.first.x.compareTo(b.spans.first.x);
-        });
-        final first = paragraph.first;
-        final spans = paragraph
-            .expand((line) => line.spans)
-            .where((span) => span.text.isNotEmpty && (span.color >> 24) != 0)
-            .toList();
-        if (spans.isEmpty) continue;
-        final leading = spans.first;
-        final face =
-            metrics[leading.fontWeight >= 700
-                ? 2
-                : (leading.fontWeight >= 500 && medium != null ? 1 : 0)];
-        final top =
-            first.baseline - (leading.size * 2).round() / 2 * face.ascent;
-        final left =
-            first.paragraphLeft ?? spans.map((s) => s.x).reduce(math.min);
-        final measuredWidth = first.paragraphWidth ?? layout.width - left;
-        final width = math.max(
-          1.0,
-          math.min(layout.width - left, measuredWidth),
-        );
-        final height = math.max(
-          first.height,
-          paragraph.map((line) => line.top + line.height).reduce(math.max) -
-              top,
-        );
-        final runs = StringBuffer();
-        // These are formatting runs within ONE paragraph, never text boxes or
-        // forced breaks for each visual line. Word can reflow edited text.
-        final groups = [_mergeWordSpans(spans)];
-        for (var lineIndex = 0; lineIndex < groups.length; lineIndex++) {
-          if (lineIndex > 0) runs.write('<w:r><w:br/></w:r>');
-          for (final span in groups[lineIndex]) {
-            final isBold = span.fontWeight >= 700;
-            final family = span.fontWeight >= 500 && !isBold && medium != null
-                ? resumeWordMediumTypeface
-                : resumeWordRegularTypeface;
-            final size = (span.size * 2).round();
-            runs.write(
-              '<w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${isBold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.underline ? '<w:u w:val="single"/>' : ''}<w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${_xml(resumeExportText(span.text))}</w:t></w:r>',
-            );
-          }
-        }
-        final paragraphFamily =
-            leading.fontWeight >= 500 &&
-                leading.fontWeight < 700 &&
-                medium != null
-            ? resumeWordMediumTypeface
-            : resumeWordRegularTypeface;
-        final content =
-            '<w:txbxContent><w:p><w:pPr><w:widowControl w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="${_twip(first.height)}" w:lineRule="atLeast"/>${first.paragraphAlignRight ? '<w:jc w:val="right"/>' : ''}<w:rPr><w:rFonts w:ascii="$paragraphFamily" w:hAnsi="$paragraphFamily" w:eastAsia="$paragraphFamily" w:cs="$paragraphFamily"/><w:sz w:val="${(leading.size * 2).round()}"/></w:rPr></w:pPr>$runs</w:p></w:txbxContent>';
-        body.write(
-          rectangle(left, top, width, height, textContent: content, wrap: true),
-        );
+        body.write(paragraphBox(paragraph));
         continue;
       }
       for (final line in paragraph) {
@@ -839,13 +896,9 @@ Uint8List _word(
           if (span.text.isEmpty || (span.color >> 24) == 0) continue;
           final weight = span.fontWeight;
           final isBold = weight >= 700;
-          final isMedium = weight >= 500 && !isBold && medium != null;
-          final family = isMedium
-              ? resumeWordMediumTypeface
-              : resumeWordRegularTypeface;
+          const family = resumeWordTypeface;
           final text = resumeExportText(span.text);
           final size = (span.size * 2).round();
-          final face = metrics[isBold ? 2 : (isMedium ? 1 : 0)];
           final height = math.max(line.height, size / 2 * 1.5);
           final width = math.max(
             .1,
@@ -854,11 +907,11 @@ Uint8List _word(
               math.max(span.width * 1.15, span.width + span.size * 2),
             ),
           );
-          // Use the measured baseline and font ascender, rather than the DOM ink
-          // box, for vertical placement (all packaged faces have a 1.06 em ascent).
-          final top = line.baseline - size / 2 * face.ascent;
+          // Use the measured baseline and Word's font ascender, rather than the
+          // DOM ink box, for vertical placement.
+          final top = line.baseline - size / 2 * _wordTypefaceAscent;
           final content =
-              '<w:txbxContent><w:p><w:pPr><w:widowControl w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/><w:sz w:val="$size"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${isBold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.underline ? '<w:u w:val="single"/>' : ''}<w:fitText w:val="${math.max(1, _twip(span.width))}" w:id="$id"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${_xml(text)}</w:t></w:r></w:p></w:txbxContent>';
+              '<w:txbxContent><w:p><w:pPr><w:widowControl w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/><w:sz w:val="$size"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="$family" w:hAnsi="$family" w:eastAsia="$family" w:cs="$family"/>${isBold ? '<w:b/><w:bCs/>' : ''}${span.italic ? '<w:i/><w:iCs/>' : ''}${span.strike ? '<w:strike/>' : ''}<w:color w:val="${_rgb(span.color)}"/><w:sz w:val="$size"/><w:szCs w:val="$size"/>${span.letterSpacing == 0 ? '' : '<w:spacing w:val="${_twip(span.letterSpacing)}"/>'}${span.underline ? '<w:u w:val="single"/>' : ''}<w:fitText w:val="${math.max(1, _twip(span.width))}" w:id="$id"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr><w:t xml:space="preserve">${_xml(text)}</w:t></w:r></w:p></w:txbxContent>';
           body.write(
             rectangle(span.x, top, width, height, textContent: content),
           );
@@ -890,7 +943,7 @@ Uint8List _word(
 
     body.write(
       structured == null
-          ? _flowWord(layout, flowPictures, medium != null, inlineRule)
+          ? _flowWord(layout, flowPictures, inlineRule, paragraphArt)
           : _StructuredWord(
               structured,
               (asset, width, height, {bool behindParagraph = false}) =>
@@ -932,31 +985,15 @@ Uint8List _word(
   text('word/_rels/document.xml.rels', relations.toString());
   text(
     '[Content_Types].xml',
-    '<?xml version="1.0"?><Types xmlns="${ns}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>${structured != null ? '<Override PartName="/word/header.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${flowing ? '<Override PartName="/word/footer.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : ''}</Types>',
+    '<?xml version="1.0"?><Types xmlns="${ns}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>${structured != null ? '<Override PartName="/word/header.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${flowing ? '<Override PartName="/word/footer.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : ''}</Types>',
   );
   text(
     '_rels/.rels',
     '<?xml version="1.0"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="document" Type="${rel}officeDocument" Target="word/document.xml"/></Relationships>',
   );
-  const key = '{00112233-4455-6677-8899-AABBCCDDEEFF}';
-  final keyBytes = List<int>.generate(16, (i) => i * 17);
-  final hasBoldFace = !listEquals(regular, bold);
-  add('word/fonts/regular.odttf', _obfuscated(regular, keyBytes));
-  if (hasBoldFace) add('word/fonts/bold.odttf', _obfuscated(bold, keyBytes));
-  if (medium != null) {
-    add('word/fonts/medium.odttf', _obfuscated(medium, keyBytes));
-  }
-  text(
-    'word/fontTable.xml',
-    '<?xml version="1.0"?><w:fonts xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships"><w:font w:name="$resumeWordRegularTypeface"><w:family w:val="swiss"/><w:embedRegular r:id="regular" w:fontKey="$key"/>${hasBoldFace ? '<w:embedBold r:id="bold" w:fontKey="$key"/>' : ''}</w:font>${medium == null ? '' : '<w:font w:name="$resumeWordMediumTypeface"><w:family w:val="swiss"/><w:embedRegular r:id="medium" w:fontKey="$key"/></w:font>'}</w:fonts>',
-  );
-  text(
-    'word/_rels/fontTable.xml.rels',
-    '<?xml version="1.0"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="regular" Type="${rel}font" Target="fonts/regular.odttf"/>${hasBoldFace ? '<Relationship Id="bold" Type="${rel}font" Target="fonts/bold.odttf"/>' : ''}${medium == null ? '' : '<Relationship Id="medium" Type="${rel}font" Target="fonts/medium.odttf"/>'}</Relationships>',
-  );
   text(
     'word/settings.xml',
-    '<?xml version="1.0"?><w:settings xmlns:w="${ns}wordprocessingml/2006/main"><w:embedTrueTypeFonts/><w:saveSubsetFonts w:val="0"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>',
+    '<?xml version="1.0"?><w:settings xmlns:w="${ns}wordprocessingml/2006/main"><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>',
   );
   return Uint8List.fromList(ZipEncoder().encode(zip));
 }

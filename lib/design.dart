@@ -9,8 +9,15 @@ import 'app_theme.dart';
 
 export 'app_theme.dart';
 export 'empty_state.dart';
+export 'skeleton.dart';
 
 import 'empty_state.dart';
+import 'skeleton.dart';
+
+/// Side gutter of every page, in line with the status bar's own inset.
+const appPageHorizontalPadding = 24.0;
+const feedOuterPadding = 12.0;
+const feedContentPadding = appPageHorizontalPadding - feedOuterPadding;
 
 const blue = Color(0xFF2867EE);
 const ink = Color(0xFF202C41);
@@ -83,11 +90,7 @@ class DataStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (store.loading.contains(section)) {
-      if (!empty) return const SizedBox.shrink();
-      return const Padding(
-        padding: EdgeInsets.all(28),
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      );
+      return empty ? const ListSkeleton() : const SizedBox.shrink();
     }
     final error = store.errors[section];
     if (!store.isAuthenticated || error != null) {
@@ -124,19 +127,118 @@ class DataStatus extends StatelessWidget {
   }
 }
 
-class MoreButton extends StatelessWidget {
-  const MoreButton({super.key, required this.store, required this.section});
-  final AppStore store;
-  final String section;
+/// Fetches the next page as the reader nears the end of [child]'s
+/// scroll view, and when the loaded rows are too few to scroll at all.
+class AutoPaginate extends StatefulWidget {
+  const AutoPaginate({
+    super.key,
+    required this.canLoad,
+    required this.onLoadMore,
+    required this.child,
+  });
+
+  /// Another page exists and no request or unresolved failure is pending.
+  final bool canLoad;
+  final VoidCallback onLoadMore;
+  final Widget child;
+
+  /// Paging through an [AppStore] section.
+  factory AutoPaginate.section({
+    Key? key,
+    required AppStore store,
+    required String section,
+    required Widget child,
+  }) => AutoPaginate(
+    key: key,
+    canLoad:
+        (store.cursors[section] ?? '').isNotEmpty &&
+        !store.loading.contains(section) &&
+        store.errors[section] == null,
+    onLoadMore: () => store.load(section, more: true),
+    child: child,
+  );
+
   @override
-  Widget build(BuildContext context) => (store.cursors[section] ?? '').isEmpty
-      ? const SizedBox.shrink()
-      : TextButton(
-          onPressed: store.loading.contains(section)
-              ? null
-              : () => store.load(section, more: true),
-          child: const Text('加载更多'),
-        );
+  State<AutoPaginate> createState() => _AutoPaginateState();
+}
+
+class _AutoPaginateState extends State<AutoPaginate> {
+  bool _scheduled = false;
+
+  bool _near(ScrollMetrics metrics) =>
+      metrics.axis == Axis.vertical &&
+      metrics.hasContentDimensions &&
+      metrics.extentAfter < 800;
+
+  /// One request per frame, issued after it so the owner's rebuild already
+  /// reports loading when the next notification arrives.
+  void _schedule() {
+    if (_scheduled || !widget.canLoad) return;
+    _scheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduled = false;
+      if (mounted && widget.canLoad) widget.onLoadMore();
+    });
+  }
+
+  bool _check(ScrollMetrics metrics, int depth) {
+    if (depth == 0 && _near(metrics)) _schedule();
+    return false;
+  }
+
+  /// The scroll view this widget wraps; the first one below it.
+  ScrollPosition? _position() {
+    ScrollPosition? found;
+    void visit(Element element) {
+      if (found != null) return;
+      if (element is StatefulElement && element.state is ScrollableState) {
+        found = (element.state as ScrollableState).position;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    context.visitChildElements(visit);
+    return found;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // A first page shorter than the screen never scrolls, and the first
+    // layout sends no metrics notification, so look once it is laid out.
+    if (widget.canLoad) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final position = mounted ? _position() : null;
+        if (position != null && _near(position)) _schedule();
+      });
+    }
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (n) => _check(n.metrics, n.depth),
+      child: NotificationListener<ScrollUpdateNotification>(
+        onNotification: (n) => _check(n.metrics, n.depth),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// Spinner shown under a list while its next page loads.
+class PageLoadingFooter extends StatelessWidget {
+  const PageLoadingFooter({super.key, required this.visible});
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) => visible
+      ? const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(
+            child: SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        )
+      : const SizedBox.shrink();
 }
 
 Future<T?> openPage<T>(BuildContext context, Widget page) {
@@ -230,7 +332,12 @@ class PageHeading extends StatelessWidget {
   final Widget? action;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(22, 18, 14, 20),
+    padding: const EdgeInsets.fromLTRB(
+      appPageHorizontalPadding,
+      18,
+      appPageHorizontalPadding,
+      20,
+    ),
     child: Row(
       children: [
         Expanded(

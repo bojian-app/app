@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:bojian_mobile/discovery.dart';
 import 'package:bojian_mobile/account_pages.dart';
+import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/main.dart';
+import 'package:bojian_mobile/phone_binding_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,6 +43,10 @@ Future<void> launchBinding(WidgetTester tester) async {
       bannerAdsEnabled: false,
       store: store,
     ),
+  );
+  await tester.pumpAndSettle();
+  unawaited(
+    showPhoneBindingDialog(tester.element(find.byType(AppShell)), store: store),
   );
   await tester.pumpAndSettle();
 }

@@ -5,7 +5,9 @@ import 'dart:ui' as ui;
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/api/generated/auth.pb.dart' as auth;
 import 'package:bojian_mobile/captcha_dialog.dart';
+import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/app_store.dart';
+import 'package:bojian_mobile/phone_binding_dialog.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:bojian_mobile/main.dart';
 import 'package:flutter/material.dart';
@@ -112,6 +114,14 @@ Future<AppStore> _requestCode(
   await tester.pumpAndSettle();
   if (login) {
     await tester.tap(find.byKey(const ValueKey('auth-consent')));
+    await tester.pumpAndSettle();
+  } else {
+    unawaited(
+      showPhoneBindingDialog(
+        tester.element(find.byType(AppShell)),
+        store: store,
+      ),
+    );
     await tester.pumpAndSettle();
   }
   await tester.enterText(

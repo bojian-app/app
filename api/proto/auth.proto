@@ -45,6 +45,10 @@ message LoginResponse {
   bool registration_required = 6;
   string registration_token = 7;
   int32 registration_expires_in_seconds = 8;
+  // WeChat and Douyin logins must prove a phone before a session exists.
+  bool phone_binding_required = 9;
+  string phone_binding_token = 10;
+  int32 phone_binding_expires_in_seconds = 11;
 }
 message TokenResponse {
   string access_token = 1;

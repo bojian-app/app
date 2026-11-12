@@ -156,7 +156,7 @@ void main() {
           .skip(capture + 1)
           .where((script) => script.contains("setProperty('filter'"));
       expect(filtersBefore.last, contains("'none', 'important'"));
-      expect(filtersAfter.last, contains("'grayscale(1)', 'important'"));
+      expect(filtersAfter.last, contains("'url(#print-gray)', 'important'"));
       expect(key.currentState!.widget.monochrome, isTrue);
     },
   );

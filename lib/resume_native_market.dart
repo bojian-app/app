@@ -333,15 +333,23 @@ class NativeMarketPages extends StatelessWidget {
     required this.value,
     this.thumbnail = false,
     this.watermark,
+    this.header,
+    this.zoomable = true,
   });
   final NativeMarketDocument value;
   final bool thumbnail;
   final String? watermark;
+
+  /// Scrolls away above the pages when not [zoomable].
+  final Widget? header;
+
+  /// Pinch to zoom. Without it the pages are a plain list at full width.
+  final bool zoomable;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final doc = value.document;
-      final width = constraints.maxWidth - (thumbnail ? 0 : 24);
+      final width = constraints.maxWidth - (thumbnail || !zoomable ? 0 : 24);
       Widget page(int index) => SizedBox(
         width: width,
         height: width * doc.size.height / doc.size.width,
@@ -359,6 +367,32 @@ class NativeMarketPages extends StatelessWidget {
       if (thumbnail) {
         return ClipRect(
           child: Align(alignment: Alignment.topCenter, child: page(0)),
+        );
+      }
+      if (!zoomable) {
+        return ListView(
+          key: ObjectKey(doc),
+          padding: const EdgeInsets.only(bottom: 16),
+          children: [
+            ?header,
+            for (var i = 0; i < doc.pages.length; i++)
+              Padding(
+                padding: EdgeInsets.only(top: i == 0 ? 0 : 12),
+                child: DecoratedBox(
+                  // Paper on a white page needs an edge to read as paper.
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1C2A44).withValues(alpha: .08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: page(i),
+                ),
+              ),
+          ],
         );
       }
       // One gesture owner for the entire document. A scrollable nested inside
@@ -397,6 +431,33 @@ class NativeMarketPages extends StatelessWidget {
   );
 }
 
+/// Tiles [text] diagonally across a page of [page] points.
+void paintPreviewWatermark(Canvas canvas, Size page, String text) {
+  final painter = TextPainter(
+    text: TextSpan(
+      text: text,
+      style: const TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w500,
+        color: Color(0x24334155),
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+    ellipsis: '…',
+  )..layout(maxWidth: 230);
+  for (double y = 90; y < page.height + 180; y += 180) {
+    for (double x = 130; x < page.width + 260; x += 260) {
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(-0.4487989505);
+      painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+      canvas.restore();
+    }
+  }
+  painter.dispose();
+}
+
 class _NativePagePainter extends CustomPainter {
   _NativePagePainter(this.picture, this.source, {this.watermark});
   final String? watermark;
@@ -410,30 +471,8 @@ class _NativePagePainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
     canvas.scale(size.width / source.width);
     canvas.drawPicture(picture);
-    if (watermark != null) {
-      final text = TextPainter(
-        text: TextSpan(
-          text: '© $watermark',
-          style: const TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w500,
-            color: Color(0x24334155),
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: '…',
-      )..layout(maxWidth: 230);
-      for (double y = 90; y < source.height + 180; y += 180) {
-        for (double x = 130; x < source.width + 260; x += 260) {
-          canvas.save();
-          canvas.translate(x, y);
-          canvas.rotate(-0.4487989505);
-          text.paint(canvas, Offset(-text.width / 2, -text.height / 2));
-          canvas.restore();
-        }
-      }
-      text.dispose();
+    if (watermark case final String text) {
+      paintPreviewWatermark(canvas, source, text);
     }
     canvas.restore();
   }

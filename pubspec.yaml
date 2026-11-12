@@ -48,6 +48,7 @@ dependencies:
   http_parser: ^4.1.2
   hugeicons: ^1.2.0
   share_plus: ^13.3.1
+  qr: ^3.0.2
   pdf: ^3.13.1
   archive: ^4.3.0
   xml: ^7.0.1
@@ -84,7 +85,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  shaders:
+    - shaders/print_gray.frag
   assets:
+    - assets/invitation/reward-envelope.webp
+    - assets/invitation/icons/
     - assets/branding/app_icon.png
     - assets/badges/developer_crystal_v1.webp
     - assets/login/reading.svg
@@ -100,25 +105,27 @@ flutter:
     - assets/resume_ai/identity-professional.webp
     - assets/templates/
     - assets/points/rewards-transparent.webp
+    - assets/points/coin-3d.webp
+    - assets/points/coin-stack.webp
     - assets/points/tasks/publish-material.webp
     - assets/points/tasks/request-material.webp
     - assets/points/tasks/review-material.webp
+    - assets/points/tasks/icons/video.svg
     - assets/fonts/OFL.txt
     - assets/fonts/ChillRound-OFL.txt
-    - assets/fonts/AlibabaPuHuiTi-LICENSE.txt
-    - assets/fonts/alibaba-puhuiti-3-regular.ttf
-    - assets/fonts/alibaba-puhuiti-3-medium.ttf
-    - assets/fonts/alibaba-puhuiti-3-bold.ttf
+    - assets/fonts/resume-sans-regular.ttf
+    - assets/fonts/resume-sans-medium.ttf
+    - assets/fonts/resume-sans-bold.ttf
   fonts:
     - family: ResumeDocument
       fonts:
-        - asset: assets/fonts/alibaba-puhuiti-3-regular.ttf
+        - asset: assets/fonts/resume-sans-regular.ttf
           weight: 400
-        - asset: assets/fonts/alibaba-puhuiti-3-medium.ttf
+        - asset: assets/fonts/resume-sans-medium.ttf
           weight: 500
-        - asset: assets/fonts/alibaba-puhuiti-3-medium.ttf
+        - asset: assets/fonts/resume-sans-medium.ttf
           weight: 600
-        - asset: assets/fonts/alibaba-puhuiti-3-bold.ttf
+        - asset: assets/fonts/resume-sans-bold.ttf
           weight: 700
     - family: AnnotationUI
       fonts:

@@ -19,6 +19,7 @@ import 'package:flutter/physics.dart';
 import 'app_store.dart';
 import 'guidance_help.dart';
 import 'resume_templates.dart';
+import 'resume_theme.dart';
 import 'resume_native_export.dart';
 import 'resume_additional_fields.dart';
 import 'resume_work_experience.dart';
@@ -69,6 +70,7 @@ class ResumeInk {
 
 class ResumeSheet {
   final ink = <ResumeInk>[];
+  final decorations = <ResumeDecoration>[];
   final entryDividers = <double>[];
   final reviewNotes = <ResumeReviewPlacement>[];
   double? dividerY;
@@ -203,7 +205,9 @@ class ResumeDocument {
     String photoURL = '',
     List<ResumeReviewChange> reviewChanges = const [],
     List<ResumeReviewNote> reviewNotes = const [],
-  }) : layout = ResumeLayout.resolve(
+    ResumeTheme? theme,
+  }) : theme = theme ?? ResumeTheme.standard,
+       layout = ResumeLayout.resolve(
          resume.source['app_layout'] ?? resume.template,
        ) {
     final builder = _ResumeTypesetter(
@@ -221,11 +225,13 @@ class ResumeDocument {
   }
   final String? fontFamily;
   final ResumeLayout layout;
+  final ResumeTheme theme;
   final pages = <ResumeSheet>[];
   final painters = <TextPainter>[];
   // TextPainter.width is the ink width for short text, not the column width.
   final paragraphWidths = <TextPainter, double>{};
   final sectionTitles = <String>[];
+
   void dispose() {
     for (final painter in painters) {
       painter.dispose();
@@ -251,21 +257,36 @@ class _ResumeTypesetter {
   final placedNotes = <String>{};
   final anchorOccurrences = <String, Map<String, int>>{};
   late ResumeSheet page;
-  double y = resumePaperMargin;
-  static const width = 595.28 - 92;
-  static const bottom = 841.89 - 50;
+  ResumeTheme get theme => document.theme;
+  double get left => theme.margin.left;
+  late final double width = resumePaperSize.width - theme.margin.horizontal;
+  late final double bottom = resumePaperSize.height - theme.margin.bottom;
+  late double y = theme.margin.top;
+  // Paragraph column; themes indent entries without moving section headings.
+  late double x = left, column = width;
+  _ResumeBox? box;
 
   TextStyle style(double size, {bool bold = false, Color? color}) {
     return TextStyle(
       fontFamily: fontFamily,
       fontSize: size,
-      height: (size + 4) / size,
+      height: theme.body.height ?? (size + 4) / size,
       fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
-      color: color ?? resumePaperInk,
+      color: color ?? theme.body.color,
     );
   }
 
-  TextPainter measure(InlineSpan text, [double available = width]) {
+  TextStyle themed(ResumeThemeText text, {Color? color}) => TextStyle(
+    fontFamily: fontFamily,
+    fontSize: text.size,
+    height: text.height ?? theme.body.height ?? (text.size + 4) / text.size,
+    fontWeight: FontWeight.values[(text.weight ~/ 100 - 1).clamp(0, 8)],
+    letterSpacing: text.letterSpacing,
+    color: color ?? text.color ?? theme.body.color,
+  );
+
+  TextPainter measure(InlineSpan text, [double? available]) {
+    available ??= column;
     final painter = TextPainter(
       text: text,
       textDirection: TextDirection.ltr,
@@ -277,9 +298,15 @@ class _ResumeTypesetter {
   }
 
   void nextPage() {
+    final open = box;
+    if (open != null) open.close(page, y + open.padding.bottom);
     page = ResumeSheet();
     document.pages.add(page);
-    y = resumePaperMargin;
+    y = theme.margin.top;
+    if (open != null) {
+      open.top = y;
+      y += open.padding.top;
+    }
   }
 
   void ensure(double height) {
@@ -333,10 +360,7 @@ class _ResumeTypesetter {
     ensure(before + note.height);
     y += before;
     page.reviewNotes.add(
-      ResumeReviewPlacement(
-        note,
-        Rect.fromLTWH(resumePaperMargin, y, width, note.height),
-      ),
+      ResumeReviewPlacement(note, Rect.fromLTWH(x, y, column, note.height)),
     );
     placedNotes.add(note.key);
     y += note.height + after;
@@ -345,10 +369,11 @@ class _ResumeTypesetter {
   void paragraph(
     InlineSpan text, {
     double before = 0,
-    double after = 7,
+    double? after,
     String? fieldPath,
     bool changesApplied = false,
   }) {
+    after ??= theme.paragraphGap;
     if (!changesApplied) {
       text = applyReviewChanges(text, fieldPath);
       registerAnchorOccurrences(fieldPath, [text]);
@@ -407,7 +432,7 @@ class _ResumeTypesetter {
           ? 0.0
           : 4 + notes.first.height;
       final reserveFits =
-          lines[stop - 1].height + noteReserve <= bottom - resumePaperMargin;
+          lines[stop - 1].height + noteReserve <= bottom - theme.margin.top;
       ensure(
         lines[start].height +
             (start == stop - 1 && reserveFits ? noteReserve : 0),
@@ -430,7 +455,7 @@ class _ResumeTypesetter {
       page.ink.add(
         ResumeInk(
           painter,
-          Offset(resumePaperMargin, y),
+          Offset(x, y),
           height,
           sourceTop: sourceTop,
           fieldPath: fieldPath,
@@ -457,13 +482,16 @@ class _ResumeTypesetter {
 
   void text(
     String value, {
-    double size = 10.5,
+    double? size,
     bool bold = false,
     Color? color,
     double before = 0,
-    double after = 7,
+    double? after,
     String? fieldPath,
+    TextStyle? textStyle,
   }) {
+    size ??= theme.body.size;
+    after ??= theme.paragraphGap;
     if (value.trim().isEmpty) {
       placeReviewNotes(fieldPath);
       return;
@@ -471,7 +499,7 @@ class _ResumeTypesetter {
     paragraph(
       TextSpan(
         text: value,
-        style: style(size, bold: bold, color: color),
+        style: textStyle ?? style(size, bold: bold, color: color),
       ),
       before: before,
       after: after,
@@ -502,7 +530,7 @@ class _ResumeTypesetter {
       .map(
         (span) => TextSpan(
           text: span['text'] as String? ?? '',
-          style: style(10.5, bold: span['bold'] == true).copyWith(
+          style: style(theme.body.size, bold: span['bold'] == true).copyWith(
             fontStyle: span['italic'] == true
                 ? FontStyle.italic
                 : FontStyle.normal,
@@ -519,7 +547,8 @@ class _ResumeTypesetter {
     final rich = entry['${key}_rich'];
     final blocks = rich is Map ? entries(rich['blocks']) : <Map>[];
     if (blocks.isEmpty) {
-      text(value(entry, key), fieldPath: fieldPath);
+      final body = value(entry, key);
+      text(body, fieldPath: fieldPath);
       return;
     }
     var number = 0;
@@ -537,7 +566,7 @@ class _ResumeTypesetter {
       paragraphs.add(
         applyReviewChanges(
           TextSpan(
-            style: style(10.5),
+            style: style(theme.body.size),
             children: [
               if (prefix.isNotEmpty) TextSpan(text: prefix),
               ...spans,
@@ -587,7 +616,7 @@ class _ResumeTypesetter {
     );
     if (label.isNotEmpty &&
         dates.isNotEmpty &&
-        leftWidth + rightWidth + 24 <= width) {
+        leftWidth + rightWidth + 24 <= column) {
       final height = math.max(left.height, right.height);
       ensure(height);
       // Give dates rounding/fallback-font room on their left while keeping
@@ -596,17 +625,17 @@ class _ResumeTypesetter {
       page.ink.add(
         ResumeInk(
           left,
-          Offset(resumePaperMargin, y),
+          Offset(x, y),
           height,
-          wordWidth: width - dateWidth - 12,
+          wordWidth: column - dateWidth - 12,
         ),
       );
       page.ink.add(
         ResumeInk(
           right,
-          Offset(resumePaperMargin + width - rightWidth, y),
+          Offset(x + column - rightWidth, y),
           height,
-          wordLeft: resumePaperMargin + width - dateWidth,
+          wordLeft: x + column - dateWidth,
           wordWidth: dateWidth,
           wordAlignRight: true,
         ),
@@ -716,7 +745,7 @@ class _ResumeTypesetter {
       if (!meaningful(entry)) continue;
       if (key == 'projects' && reviewNotes.isEmpty && reviewChanges.isEmpty) {
         final height = projectHeight(entry) + (renderedEntries == 0 ? 38 : 18);
-        if (height <= bottom - resumePaperMargin) ensure(height);
+        if (height <= bottom - theme.margin.top) ensure(height);
       }
       if (renderedEntries == 0) {
         if (key == 'projects') ensure(118);
@@ -726,7 +755,7 @@ class _ResumeTypesetter {
         final previousPage = page;
         ensure(80);
         // A page boundary already separates entries; keep rules off page tops.
-        if (identical(page, previousPage) && y > resumePaperMargin) {
+        if (identical(page, previousPage) && y > theme.margin.top) {
           y += 5;
           page.entryDividers.add(y);
           y += 13;
@@ -764,6 +793,19 @@ class _ResumeTypesetter {
   }
 
   void compose(ResumeDraft resume, bool hasPhoto) {
+    if (theme.isStandard) {
+      composeStandard(resume, hasPhoto);
+    } else {
+      composeThemed(resume, hasPhoto);
+    }
+    // Historical comments still belong to this review even if their entire
+    // source entry has since been removed from the resume.
+    for (final note in reviewNotes) {
+      if (!placedNotes.contains(note.key)) placeReviewNote(note);
+    }
+  }
+
+  void composeStandard(ResumeDraft resume, bool hasPhoto) {
     final source = resume.source;
     final personal = source['personal_info'] is Map
         ? source['personal_info'] as Map
@@ -812,13 +854,11 @@ class _ResumeTypesetter {
     );
     if (height <= 180) {
       for (final painter in header) {
-        page.ink.add(
-          ResumeInk(painter, Offset(resumePaperMargin, y), painter.height),
-        );
+        page.ink.add(ResumeInk(painter, Offset(left, y), painter.height));
         y += painter.height + 7;
       }
-      if (hasPhoto) page.photo = const Rect.fromLTWH(474.28, 46, 75, 90);
-      y = resumePaperMargin + height + 10;
+      if (hasPhoto) page.photo = photoRect;
+      y = theme.margin.top + height + 10;
       page.dividerY = y;
       y += 8;
     } else {
@@ -909,11 +949,1209 @@ class _ResumeTypesetter {
           entrySection(source, 'certifications', '证书', 'name', ['issuer'], []);
       }
     }
-    // Historical comments still belong to this review even if their entire
-    // source entry has since been removed from the resume.
-    for (final note in reviewNotes) {
-      if (!placedNotes.contains(note.key)) placeReviewNote(note);
+  }
+
+  Rect get photoRect => Rect.fromLTWH(
+    resumePaperSize.width -
+        theme.margin.right -
+        theme.photoInset -
+        theme.photoSize.width,
+    theme.margin.top,
+    theme.photoSize.width,
+    theme.photoSize.height,
+  );
+
+  double inkWidth(TextPainter painter) => painter.computeLineMetrics().fold(
+    0.0,
+    (widest, line) => math.max(widest, line.width),
+  );
+
+  /// Places a measured block that the caller has already kept on this page.
+  void place(
+    TextPainter painter,
+    double dx,
+    double top, {
+    String? fieldPath,
+    double? wordLeft,
+    double? wordWidth,
+    bool alignRight = false,
+  }) => page.ink.add(
+    ResumeInk(
+      painter,
+      Offset(dx, top),
+      painter.height,
+      fieldPath: fieldPath,
+      wordLeft: wordLeft,
+      wordWidth: wordWidth,
+      wordAlignRight: alignRight,
+    ),
+  );
+
+  void graphic(ResumeThemeGraphic? graphic, Rect rect) {
+    if (graphic != null) {
+      page.decorations.add(ResumeGraphicDecoration(graphic, rect));
     }
+  }
+
+  void indented(double indent, VoidCallback body) {
+    final previousX = x, previousColumn = column;
+    x = left + indent;
+    column = width - indent;
+    try {
+      body();
+    } finally {
+      x = previousX;
+      column = previousColumn;
+    }
+  }
+
+  String gender(Map personal) =>
+      switch (value(personal, 'gender').toLowerCase()) {
+        'male' || '男' => '男',
+        'female' || '女' => '女',
+        _ => '',
+      };
+
+  /// Fills the first page's sidebar and returns the modules it holds. A
+  /// module that would run past the page stays in the main column.
+  Set<String> sidebar(
+    ResumeDraft resume,
+    Map personal,
+    Map source,
+    bool hasPhoto,
+  ) {
+    final bar = theme.sidebar!;
+    final pad = bar.padding;
+    final inner = bar.width - pad.horizontal;
+    final icon = bar.iconSize;
+    var cy = pad.top;
+    TextPainter line(String value, ResumeThemeText style, double width) =>
+        measure(TextSpan(text: value, style: themed(style)), width);
+    if (hasPhoto) {
+      final size = theme.photoSize;
+      final rect =
+          theme.photoRect ??
+          Rect.fromLTWH(
+            (bar.width - size.width) / 2,
+            cy,
+            size.width,
+            size.height,
+          );
+      page.photo = rect;
+      if (bar.ring case final Color ring) {
+        page.decorations.add(
+          ResumeDotDecoration(
+            rect.center,
+            size.shortestSide / 2 + bar.ringWidth,
+            ring,
+          ),
+        );
+      }
+      cy = math.max(cy, rect.bottom) + bar.ringWidth + bar.sectionGap;
+    }
+    if (bar.header) {
+      final name = line(
+        resume.name.isEmpty ? resume.title : resume.name,
+        theme.name,
+        inner,
+      );
+      place(name, pad.left, cy);
+      cy += name.height + theme.contactTop;
+      final job = source['job_expectation'] is Map
+          ? source['job_expectation'] as Map
+          : const {};
+      final wanted = [
+        resume.position,
+        value(job, 'industry'),
+      ].where((part) => part.isNotEmpty).join(' · ');
+      if (wanted.isNotEmpty) {
+        final painter = line(wanted, bar.subtitle, inner);
+        place(painter, pad.left, cy, fieldPath: 'job_expectation.position');
+        cy += painter.height;
+      }
+      cy += bar.sectionGap;
+    }
+    final skills = entries(source['skills']);
+    final certifications = entries(source['certifications']);
+    final birthLabel =
+        personal['birth_date_display_mode'] == 'age' &&
+            resumeAge(value(personal, 'birth_date')) != null
+        ? '年龄'
+        : '出生日期';
+    final contacts = [
+      ('phone', theme.contactLabels['phone'] ?? '电话', resume.phone),
+      ('email', theme.contactLabels['email'] ?? '邮箱', resume.email),
+      ('city', theme.contactLabels['city'] ?? '城市', resume.city),
+      (
+        'birth',
+        theme.contactLabels['birth'] ?? birthLabel,
+        resumeBirthLabel(personal),
+      ),
+      ('gender', theme.contactLabels['gender'] ?? '性别', gender(personal)),
+    ].where((item) => item.$3.isNotEmpty);
+    final placed = <String>{};
+    var shown = 0;
+    for (final section in bar.sections) {
+      // Each row: painter, left inset, field path and optional icon key.
+      final rows = <(TextPainter, double, String?, String?)>[];
+      final key = section == 'contact' ? 'contact' : section;
+      switch (section) {
+        case 'contact':
+          for (final (field, label, text) in contacts) {
+            rows.add((
+              line(
+                label.isEmpty ? text : '$label：$text',
+                bar.text,
+                inner - icon * .8 - 5,
+              ),
+              icon * .8 + 5,
+              null,
+              field,
+            ));
+          }
+        case 'skills':
+          for (var index = 0; index < skills.length; index++) {
+            if (!meaningful(skills[index])) continue;
+            final name = value(skills[index], 'name');
+            final about = value(skills[index], 'description');
+            if (name.isNotEmpty) {
+              rows.add((
+                line(name, bar.text, inner),
+                0,
+                'skills.$index.name',
+                null,
+              ));
+            }
+            if (about.isNotEmpty) {
+              rows.add((
+                line(about, bar.muted, inner),
+                0,
+                'skills.$index.description',
+                null,
+              ));
+            }
+          }
+          if (rows.isEmpty && resume.skills.trim().isNotEmpty) {
+            rows.add((
+              line(resume.skills.trim(), bar.muted, inner),
+              0,
+              null,
+              null,
+            ));
+          }
+        case 'certifications':
+          for (var index = 0; index < certifications.length; index++) {
+            if (!meaningful(certifications[index])) continue;
+            final name = value(certifications[index], 'name');
+            final meta = [
+              value(certifications[index], 'issuer'),
+              formatResumeMonth(value(certifications[index], 'date'))
+                  .replaceAll('/', theme.monthSeparator),
+            ].where((part) => part.isNotEmpty).join('  ');
+            if (name.isNotEmpty) {
+              rows.add((
+                line(name, bar.text, inner),
+                0,
+                'certifications.$index.name',
+                null,
+              ));
+            }
+            if (meta.isNotEmpty) {
+              rows.add((
+                line(meta, bar.muted, inner),
+                0,
+                'certifications.$index.issuer',
+                null,
+              ));
+            }
+          }
+      }
+      if (rows.isEmpty) {
+        // Nothing to show, and nothing for the main column to show either.
+        if (section != 'contact') placed.add(section);
+        continue;
+      }
+      final headIcon = bar.icons[key] == null ? 0.0 : icon;
+      final iconSpace = headIcon > 0 ? headIcon + 6 : 0.0;
+      final title = line(
+        theme.title(
+          key,
+          const {
+                'contact': '联系方式',
+                'skills': '技能特长',
+                'certifications': '获奖情况',
+              }[key] ??
+              key,
+        ),
+        bar.heading,
+        inner - iconSpace,
+      );
+      final headHeight = math.max(headIcon, title.height) + 9;
+      final height = rows.fold(
+        headHeight,
+        (sum, row) =>
+            sum + math.max(row.$4 == null ? 0 : icon, row.$1.height) + 4,
+      );
+      if (cy + height > resumePaperSize.height - pad.bottom &&
+          section != 'contact') {
+        continue;
+      }
+      if (bar.rule case final ResumeThemeRule rule
+          when bar.ruleAbove && shown > 0) {
+        final ruleY = cy - bar.sectionGap / 2;
+        page.decorations.add(
+          ResumeLineDecoration(
+            Offset(pad.left, ruleY),
+            Offset(pad.left + inner, ruleY),
+            rule,
+          ),
+        );
+      }
+      shown++;
+      final headTop = cy;
+      final headRow = math.max(headIcon, title.height);
+      graphic(
+        bar.icons[key],
+        Rect.fromLTWH(pad.left, headTop + (headRow - icon) / 2, icon, icon),
+      );
+      place(
+        title,
+        pad.left + iconSpace,
+        headTop + (headRow - title.height) / 2,
+      );
+      cy += headRow + 3;
+      if (bar.rule case final ResumeThemeRule rule when !bar.ruleAbove) {
+        page.decorations.add(
+          ResumeLineDecoration(
+            Offset(pad.left, cy),
+            Offset(pad.left + inner, cy),
+            rule,
+          ),
+        );
+      }
+      cy += 6;
+      for (final (painter, inset, fieldPath, iconKey) in rows) {
+        final rowHeight = math.max(
+          iconKey == null ? 0.0 : icon,
+          painter.height,
+        );
+        if (iconKey != null) {
+          graphic(
+            theme.contactIcons[iconKey],
+            Rect.fromLTWH(
+              pad.left,
+              cy + (rowHeight - icon * .8) / 2,
+              icon * .8,
+              icon * .8,
+            ),
+          );
+        }
+        place(
+          painter,
+          pad.left + inset,
+          cy + (rowHeight - painter.height) / 2,
+          fieldPath: fieldPath,
+        );
+        cy += rowHeight + 4;
+      }
+      cy += bar.sectionGap;
+      placed.add(section);
+    }
+    return placed;
+  }
+
+  /// Main-column header beside a sidebar: the name, then the job
+  /// expectation, which therefore has no section of its own.
+  void sidebarHeader(ResumeDraft resume, Map job) {
+    final name = measure(
+      TextSpan(
+        text: resume.name.isEmpty ? resume.title : resume.name,
+        style: themed(
+          theme.name,
+          color: theme.name.color ?? document.layout.accent,
+        ),
+      ),
+    );
+    place(name, x, y);
+    y += name.height + theme.contactTop;
+    final wanted = [
+      resume.position,
+      value(job, 'industry'),
+      value(job, 'salary'),
+    ].where((part) => part.isNotEmpty).join(' · ');
+    if (wanted.isNotEmpty) {
+      final line = measure(
+        TextSpan(text: '求职意向：$wanted', style: themed(theme.contact)),
+      );
+      place(line, x, y, fieldPath: 'job_expectation.position');
+      y += line.height;
+    }
+    y = math.max(y, theme.margin.top + theme.headerMinHeight);
+  }
+
+  void splitHeader(ResumeDraft resume, Map personal, Map job, bool hasPhoto) {
+    final top = theme.margin.top;
+    final available =
+        width -
+        (hasPhoto ? theme.photoSize.width + theme.photoInset + 13.5 : 0);
+    final gap = theme.contactGap;
+    final name = measure(
+      TextSpan(
+        text: resume.name.isEmpty ? resume.title : resume.name,
+        style: themed(
+          theme.name,
+          color: theme.name.color ?? document.layout.accent,
+        ),
+      ),
+      available * .45,
+    );
+    final subtitle = theme.subtitle == null || resume.position.isEmpty
+        ? null
+        : measure(
+            TextSpan(text: resume.position, style: themed(theme.subtitle!)),
+            available * .45,
+          );
+    final leftWidth = math.max(
+      inkWidth(name),
+      subtitle == null ? 0.0 : inkWidth(subtitle),
+    );
+    final leftHeight =
+        name.height +
+        (subtitle == null ? 0 : theme.contactTop + subtitle.height);
+    final birthLabel =
+        personal['birth_date_display_mode'] == 'age' &&
+            resumeAge(value(personal, 'birth_date')) != null
+        ? '年龄'
+        : '出生日期';
+    const labels = {
+      'phone': '电话',
+      'email': '邮箱',
+      'gender': '性别',
+      'position': '期望职位',
+      'city': '期望城市',
+      'industry': '期望行业',
+      'salary': '期望薪资',
+    };
+    final values = {
+      'phone': resume.phone,
+      'email': resume.email,
+      'birth': resumeBirthLabel(personal),
+      'gender': gender(personal),
+      'position': resume.position,
+      'city': resume.city,
+      'industry': value(job, 'industry'),
+      'salary': value(job, 'salary'),
+    };
+    final contactX = left + leftWidth + gap * 2;
+    final icon = theme.contactIconSize;
+    final textX = contactX + (icon > 0 ? icon + 6 : 0);
+    final rows = [
+      for (final key in theme.contactFields)
+        if ((values[key] ?? '').isNotEmpty)
+          (
+            key: key,
+            painter: measure(
+              TextSpan(
+                text: [
+                  theme.contactLabels[key] ??
+                      (key == 'birth' ? birthLabel : labels[key] ?? ''),
+                  values[key]!,
+                ].where((part) => part.isNotEmpty).join('：'),
+                style: themed(theme.contact),
+              ),
+              math.max(1, left + available - textX),
+            ),
+          ),
+    ];
+    final contactsHeight = rows.isEmpty
+        ? 0.0
+        : rows.fold(
+                0.0,
+                (sum, row) =>
+                    sum +
+                    math.max(icon, row.painter.height) +
+                    theme.contactLineGap,
+              ) -
+              theme.contactLineGap;
+    final height = [
+      theme.headerMinHeight,
+      if (hasPhoto) theme.photoSize.height,
+      leftHeight,
+      contactsHeight,
+    ].reduce(math.max);
+    var cursor = top + (height - leftHeight) / 2;
+    place(name, left, cursor);
+    cursor += name.height + theme.contactTop;
+    if (subtitle != null) place(subtitle, left, cursor);
+    if (theme.headerDivider case final ResumeThemeRule divider
+        when rows.isNotEmpty) {
+      final dividerX = left + leftWidth + gap;
+      page.decorations.add(
+        ResumeLineDecoration(
+          Offset(dividerX, top + (height - contactsHeight) / 2),
+          Offset(dividerX, top + (height + contactsHeight) / 2),
+          divider,
+        ),
+      );
+    }
+    cursor = top + (height - contactsHeight) / 2;
+    for (final row in rows) {
+      final rowHeight = math.max(icon, row.painter.height);
+      graphic(
+        theme.contactIcons[row.key],
+        Rect.fromLTWH(contactX, cursor + (rowHeight - icon) / 2, icon, icon),
+      );
+      place(row.painter, textX, cursor + (rowHeight - row.painter.height) / 2);
+      cursor += rowHeight + theme.contactLineGap;
+    }
+    if (hasPhoto) page.photo = photoRect;
+    y = top + height;
+    if (theme.headerRule != null) {
+      y += 10;
+      page.dividerY = y;
+      y += 8;
+    }
+  }
+
+  void themedHeader(ResumeDraft resume, Map personal, bool hasPhoto) {
+    final top = theme.margin.top;
+    final available =
+        width -
+        (hasPhoto ? theme.photoSize.width + theme.photoInset + 13.5 : 0);
+    final name = measure(
+      TextSpan(
+        text: resume.name.isEmpty ? resume.title : resume.name,
+        style: themed(
+          theme.name,
+          color: theme.name.color ?? document.layout.accent,
+        ),
+      ),
+      available,
+    );
+    var cursor = top + 3;
+    place(name, left, cursor);
+    cursor += name.height + theme.contactTop;
+    final icon = theme.contactIconSize;
+    final row = <({ResumeThemeGraphic? art, TextPainter text, double dx})>[];
+    void flush() {
+      if (row.isEmpty) return;
+      final height = row.fold<double>(
+        icon,
+        (tallest, item) => math.max(tallest, item.text.height),
+      );
+      for (final item in row) {
+        var textX = item.dx;
+        if (item.art != null) {
+          graphic(
+            item.art,
+            Rect.fromLTWH(item.dx, cursor + (height - icon) / 2, icon, icon),
+          );
+          textX += icon + 4.5;
+        }
+        place(item.text, textX, cursor + (height - item.text.height) / 2);
+      }
+      cursor += height + 3;
+      row.clear();
+    }
+
+    var rowX = left;
+    for (final (key, label) in [
+      ('phone', resume.phone),
+      ('email', resume.email),
+      ('birth', resumeBirthLabel(personal)),
+      ('gender', gender(personal)),
+    ]) {
+      if (label.isEmpty) continue;
+      final art = theme.contactIcons[key];
+      final reserved = art == null ? 0.0 : icon + 4.5;
+      final painter = measure(
+        TextSpan(text: label, style: themed(theme.contact)),
+        math.max(1, available - reserved),
+      );
+      final itemWidth = reserved + inkWidth(painter);
+      if (row.isNotEmpty && rowX + itemWidth > left + available) {
+        flush();
+        rowX = left;
+      }
+      row.add((art: art, text: painter, dx: rowX));
+      rowX += itemWidth + theme.contactGap;
+    }
+    flush();
+    final height = [
+      theme.headerMinHeight,
+      if (hasPhoto) theme.photoSize.height,
+      cursor - 3 - top,
+    ].reduce(math.max);
+    if (hasPhoto) page.photo = photoRect;
+    y = top + height;
+    if (theme.headerRule != null) {
+      y += 10;
+      page.dividerY = y;
+      y += 8;
+    }
+  }
+
+  void themedSection(String key, String fallback) {
+    final title = theme.title(key, fallback);
+    final painter = measure(
+      TextSpan(text: title, style: themed(theme.heading)),
+      width,
+    );
+    final icon = theme.headingIconSize;
+    final rowHeight = math.max(icon, painter.height);
+    ensure(theme.headingBefore + rowHeight + theme.headingAfter + 32);
+    // A sidebar inks the page first, so position tells whether the heading
+    // follows other main-column content.
+    final follows = y > theme.margin.top + .5;
+    if (follows) y += theme.headingBefore;
+    document.sectionTitles.add(title);
+    final textX = left + (icon > 0 ? icon + theme.headingIconGap : 0);
+    final textTop = y + (rowHeight - painter.height) / 2;
+    graphic(
+      theme.headingIcons[key],
+      Rect.fromLTWH(left, y + (rowHeight - icon) / 2, icon, icon),
+    );
+    var end = textX + inkWidth(painter);
+    if (theme.headingBrush != null) {
+      final brush = theme.headingBrushPadding;
+      final rect = Rect.fromLTRB(
+        textX - brush.left,
+        textTop - brush.top,
+        end + brush.right,
+        textTop + painter.height + brush.bottom,
+      );
+      graphic(theme.headingBrush, rect);
+      end = rect.right;
+    }
+    place(painter, textX, textTop);
+    if ((theme.headingSubtitles[key], theme.headingSubtitle) case (
+      final String text,
+      final ResumeThemeText style,
+    )) {
+      final subtitle = measure(TextSpan(text: text, style: themed(style)));
+      final gap = theme.headingIconGap > 0 ? theme.headingIconGap : 10.0;
+      place(
+        subtitle,
+        end + gap,
+        textTop +
+            painter.computeDistanceToActualBaseline(TextBaseline.alphabetic) -
+            subtitle.computeDistanceToActualBaseline(TextBaseline.alphabetic),
+      );
+      end += gap + inkWidth(subtitle);
+    }
+    if (theme.headingRule case final ResumeThemeRule rule
+        when theme.headingRuleBelow) {
+      final ruleY =
+          y + rowHeight + (theme.headingRuleOffset ?? theme.headingAfter / 2);
+      page.decorations.add(
+        ResumeLineDecoration(
+          Offset(left, ruleY),
+          Offset(left + width, ruleY),
+          rule,
+        ),
+      );
+    } else if (theme.headingRule case final ResumeThemeRule rule) {
+      final ruleY = y + rowHeight / 2;
+      final from = end + theme.headingIconGap, to = left + width;
+      if (to > from) {
+        page.decorations.add(
+          ResumeLineDecoration(Offset(from, ruleY), Offset(to, ruleY), rule),
+        );
+        if (theme.headingRuleDot case final Color dot) {
+          page.decorations.add(
+            ResumeDotDecoration(Offset(to - 1.5, ruleY), 1.3, dot),
+          );
+        }
+      }
+    }
+    y += rowHeight + theme.headingAfter;
+  }
+
+  void themedExpectations(ResumeDraft resume, Map job) {
+    const basis = {'position': 34.0, 'city': 22.0, 'industry': 26.0};
+    final items = [
+      ('position', '期望职位', resume.position),
+      ('city', '期望城市', resume.city),
+      ('industry', '期望行业', value(job, 'industry')),
+      ('salary', '期望薪资', value(job, 'salary')),
+    ].where((item) => item.$3.isNotEmpty).toList();
+    if (items.isEmpty) return;
+    themedSection('job_expectation', '求职期望');
+    if (!theme.expectationCards) {
+      indented(
+        theme.entryIndent,
+        () => text(
+          items.map((item) => '${item.$2}: ${item.$3}').join('\u2003\u2003'),
+        ),
+      );
+      return;
+    }
+    final pad = theme.expectationPadding;
+    final icon = theme.expectationIconSize;
+    final inner = width - pad.horizontal;
+    final total = items.fold(0.0, (sum, item) => sum + (basis[item.$1] ?? 18));
+    final cells =
+        <
+          ({
+            String key,
+            double dx,
+            double cellWidth,
+            double textX,
+            TextPainter label,
+            TextPainter content,
+          })
+        >[];
+    var cellX = left + pad.left;
+    for (final (key, label, content) in items) {
+      final cellWidth = inner * (basis[key] ?? 18) / total;
+      final textX = cellX + 7.5 + (icon > 0 ? icon + 5.25 : 0);
+      final textWidth = math.max(1.0, cellX + cellWidth - 7.5 - textX);
+      cells.add((
+        key: key,
+        dx: cellX,
+        cellWidth: cellWidth,
+        textX: textX,
+        label: measure(
+          TextSpan(text: label, style: themed(theme.expectationLabel)),
+          textWidth,
+        ),
+        content: measure(
+          TextSpan(text: content, style: themed(theme.expectationValue)),
+          textWidth,
+        ),
+      ));
+      cellX += cellWidth;
+    }
+    final contentHeight = cells.fold<double>(
+      icon,
+      (tallest, cell) =>
+          math.max(tallest, cell.label.height + 3 + cell.content.height),
+    );
+    final height = pad.vertical + contentHeight;
+    ensure(height);
+    final top = y, contentTop = y + pad.top;
+    page.decorations.add(
+      ResumeFillDecoration(
+        Rect.fromLTWH(left, top, width, height),
+        theme.expectationFill,
+        theme.expectationRadius,
+      ),
+    );
+    for (var index = 0; index < cells.length; index++) {
+      final cell = cells[index];
+      graphic(
+        theme.expectationIcons[cell.key],
+        Rect.fromLTWH(cell.dx + 7.5, contentTop, icon, icon),
+      );
+      place(cell.label, cell.textX, contentTop);
+      place(cell.content, cell.textX, contentTop + cell.label.height + 3);
+      if (index < cells.length - 1) {
+        final dividerX = cell.dx + cell.cellWidth;
+        page.decorations.add(
+          ResumeLineDecoration(
+            Offset(dividerX, contentTop),
+            Offset(dividerX, contentTop + contentHeight),
+            ResumeThemeRule(theme.expectationDivider, .75),
+          ),
+        );
+      }
+    }
+    y = top + height;
+  }
+
+  void entryHead(
+    Map entry,
+    String key,
+    int index,
+    String heading,
+    List<String> supporting,
+  ) {
+    final dates = [
+      formatResumeMonth(
+        value(entry, key == 'certifications' ? 'date' : 'start_date'),
+      ).replaceAll('/', theme.monthSeparator),
+      entry['current'] == true
+          ? '至今'
+          : formatResumeMonth(value(entry, 'end_date'))
+                .replaceAll('/', theme.monthSeparator),
+    ].where((s) => s.isNotEmpty).join(theme.dateSeparator);
+    final datePainter = dates.isEmpty
+        ? null
+        : measure(TextSpan(text: dates, style: themed(theme.entryDates)));
+    final dateWidth = datePainter == null ? 0.0 : inkWidth(datePainter);
+    final leading =
+        theme.datesFirst &&
+        datePainter != null &&
+        dateWidth <= theme.dateColumn - 6;
+    final sideBySide =
+        !leading &&
+        theme.datesWithTitle &&
+        datePainter != null &&
+        dateWidth <= column * .4;
+    TextSpan titleSpan(List<String> inline) => TextSpan(
+      style: themed(theme.entryTitle),
+      children: [
+        TextSpan(text: value(entry, heading)),
+        for (final part in inline)
+          TextSpan(
+            text: '${theme.supportingSeparator}$part',
+            style: themed(theme.entrySubtitle),
+          ),
+      ],
+    );
+    var title = titleSpan(const []);
+    if (theme.inlineSupporting) {
+      final inline = [
+        for (final field in supporting)
+          if (value(entry, field).isNotEmpty) value(entry, field),
+      ];
+      final titleWidth = leading
+          ? column - theme.dateColumn
+          : sideBySide
+          ? column - dateWidth - 18
+          : column;
+      // Details join the title only while it all fits on one line; otherwise
+      // they take their own line below it.
+      final joined = titleSpan(inline);
+      if (measure(joined, titleWidth).computeLineMetrics().length <= 1) {
+        title = joined;
+        supporting = const [];
+      }
+    }
+    void writeTitle() =>
+        paragraph(title, after: 0, fieldPath: '$key.$index.$heading');
+    // Dates beside a larger title share its first baseline.
+    double dateShift(TextPainter dates) => math.max(
+      0,
+      measure(title).computeDistanceToActualBaseline(TextBaseline.alphabetic) -
+          dates.computeDistanceToActualBaseline(TextBaseline.alphabetic),
+    );
+    if (leading) {
+      ensure(datePainter.height);
+      final rowPage = page, rowTop = y;
+      final fullX = x, fullColumn = column;
+      x += theme.dateColumn;
+      column -= theme.dateColumn;
+      try {
+        writeTitle();
+      } finally {
+        x = fullX;
+        column = fullColumn;
+      }
+      final dateTop =
+          (identical(rowPage, page) ? rowTop : theme.margin.top) +
+          dateShift(datePainter);
+      place(datePainter, x, dateTop);
+      y = math.max(y, dateTop + datePainter.height);
+    } else if (sideBySide) {
+      ensure(datePainter.height);
+      final rowPage = page, rowTop = y, fullColumn = column;
+      column = fullColumn - dateWidth - 18;
+      try {
+        writeTitle();
+      } finally {
+        column = fullColumn;
+      }
+      // A title that starts on the next page takes its dates along.
+      final dateTop =
+          (identical(rowPage, page) ? rowTop : theme.margin.top) +
+          dateShift(datePainter);
+      place(
+        datePainter,
+        x + column - dateWidth,
+        dateTop,
+        wordLeft: x + column - dateWidth - 12,
+        wordWidth: dateWidth + 12,
+        alignRight: true,
+      );
+      y = math.max(y, dateTop + datePainter.height);
+    } else {
+      writeTitle();
+      if (datePainter != null) {
+        text(dates, textStyle: themed(theme.entryDates), after: 0);
+      }
+    }
+    final meta = [
+      for (final (index, field) in supporting.indexed)
+        if (value(entry, field).isNotEmpty)
+          (
+            field,
+            measure(
+              TextSpan(
+                text: value(entry, field),
+                style: themed(
+                  index == 0 ? theme.entrySubtitle : theme.entryAuxiliary,
+                ),
+              ),
+            ),
+          ),
+    ];
+    if (meta.isEmpty) return;
+    y += 2.25;
+    final combined =
+        meta.fold(0.0, (sum, item) => sum + inkWidth(item.$2)) +
+        10.5 * (meta.length - 1);
+    if (combined <= column) {
+      final height = meta.fold<double>(
+        0,
+        (tallest, item) => math.max(tallest, item.$2.height),
+      );
+      ensure(height);
+      var dx = x;
+      for (final (field, painter) in meta) {
+        place(painter, dx, y, fieldPath: '$key.$index.$field');
+        dx += inkWidth(painter) + 10.5;
+      }
+      y += height;
+    } else {
+      for (final (field, painter) in meta) {
+        text(
+          painter.text!.toPlainText(),
+          textStyle: painter.text!.style,
+          after: 0,
+          fieldPath: '$key.$index.$field',
+        );
+      }
+    }
+  }
+
+  void themedEntries(
+    Map source,
+    String key,
+    String title,
+    String heading,
+    List<String> supporting,
+    List<String> details, {
+    String fallback = '',
+  }) {
+    final values = entries(source[key]);
+    if (!values.any(meaningful)) {
+      if (fallback.trim().isNotEmpty) {
+        themedSection(key, title);
+        indented(theme.entryIndent, () => text(fallback));
+      }
+      return;
+    }
+    themedSection(key, title);
+    indented(theme.entryIndent, () {
+      var rendered = 0;
+      for (var index = 0; index < values.length; index++) {
+        final entry = values[index];
+        if (!meaningful(entry)) continue;
+        if (rendered > 0) {
+          final previous = page;
+          ensure(48);
+          if (identical(previous, page)) {
+            if (theme.entryDivider case final ResumeThemeRule rule) {
+              y += theme.entryGap / 2;
+              page.decorations.add(
+                ResumeLineDecoration(Offset(x, y), Offset(x + column, y), rule),
+              );
+              y += theme.entryGap / 2;
+            } else {
+              y += theme.entryGap;
+            }
+          }
+        }
+        ensure(40);
+        entryHead(entry, key, index, heading, supporting);
+        if (details.isNotEmpty) y += 3;
+        for (final field in details) {
+          detail(entry, field, fieldPath: '$key.$index.$field');
+        }
+        rendered++;
+      }
+    });
+  }
+
+  void themedSkills(ResumeDraft resume, List<Map> skills) {
+    final listed = skills.any(meaningful);
+    if (!listed && resume.skills.isEmpty) return;
+    themedSection('skills', '技能');
+    if (theme.skillTags &&
+        listed &&
+        !skills.any(
+          (skill) => meaningful({...skill, 'name': '', 'level': ''}),
+        )) {
+      indented(theme.entryIndent, () => skillTags(skills));
+      return;
+    }
+    void body() {
+      if (!listed) {
+        text(resume.skills);
+        return;
+      }
+      var first = true;
+      for (var index = 0; index < skills.length; index++) {
+        final skill = skills[index];
+        if (!meaningful(skill)) continue;
+        if (!first) y += theme.skillGap;
+        first = false;
+        text(
+          value(skill, 'name'),
+          textStyle: themed(theme.skillName),
+          after: 2.25,
+          fieldPath: 'skills.$index.name',
+        );
+        detail(skill, 'description', fieldPath: 'skills.$index.description');
+      }
+    }
+
+    if (!theme.skillsCard) {
+      indented(theme.entryIndent, body);
+      return;
+    }
+    card(theme.skillsFill, theme.skillsRadius, theme.skillsPadding, body);
+  }
+
+  void card(Color fill, double radius, EdgeInsets pad, VoidCallback body) {
+    final cardLeft = left + theme.entryIndent;
+    final cardWidth = width - theme.entryIndent;
+    ensure(pad.top + 40);
+    final open = box = _ResumeBox(cardLeft, cardWidth, fill, radius, pad, y);
+    y += pad.top;
+    final previousX = x, previousColumn = column;
+    x = cardLeft + pad.left;
+    column = cardWidth - pad.horizontal;
+    try {
+      body();
+    } finally {
+      x = previousX;
+      column = previousColumn;
+      box = null;
+    }
+    // Paragraph spacing already separates the last line from the card edge.
+    y += math.max(0, pad.bottom - theme.paragraphGap);
+    open.close(page, y);
+  }
+
+  void skillTags(List<Map> skills) {
+    final pad = theme.tagPadding;
+    final style = themed(theme.tagText ?? theme.body);
+    var rowX = x;
+    double? rowHeight;
+    for (var index = 0; index < skills.length; index++) {
+      final name = value(skills[index], 'name');
+      if (name.isEmpty) continue;
+      final painter = measure(
+        TextSpan(text: name, style: style),
+        math.max(1, column - pad.horizontal),
+      );
+      final chip = Size(
+        inkWidth(painter) + pad.horizontal,
+        painter.height + pad.vertical,
+      );
+      if (rowHeight != null && rowX + chip.width > x + column) {
+        y += rowHeight + theme.tagGap;
+        rowX = x;
+        rowHeight = null;
+      }
+      if (rowHeight == null) ensure(chip.height);
+      page.decorations.add(
+        ResumeFillDecoration(
+          Offset(rowX, y) & chip,
+          theme.tagFill,
+          theme.tagRadius,
+        ),
+      );
+      place(
+        painter,
+        rowX + pad.left,
+        y + pad.top,
+        fieldPath: 'skills.$index.name',
+      );
+      rowX += chip.width + theme.tagGap;
+      rowHeight = math.max(rowHeight ?? 0, chip.height);
+    }
+    if (rowHeight != null) y += rowHeight + theme.paragraphGap;
+  }
+
+  void themedCertifications(Map source) {
+    final columns = theme.certificationColumns;
+    if (columns == 1) {
+      themedEntries(source, 'certifications', '证书', 'name', ['issuer'], []);
+      return;
+    }
+    final values = entries(source['certifications']);
+    final shown = [
+      for (var index = 0; index < values.length; index++)
+        if (meaningful(values[index])) index,
+    ];
+    if (shown.isEmpty) return;
+    themedSection('certifications', '证书');
+    indented(theme.entryIndent, () {
+      final gap = theme.certificationColumnGap;
+      final cellWidth = (column - gap * (columns - 1)) / columns;
+      final meta = themed(theme.entryDates, color: theme.muted);
+      for (var start = 0; start < shown.length; start += columns) {
+        final row = [
+          for (final index in shown.skip(start).take(columns))
+            (
+              index: index,
+              title: measure(
+                TextSpan(
+                  text: value(values[index], 'name'),
+                  style: themed(theme.certificationTitle),
+                ),
+                cellWidth,
+              ),
+              meta: measure(
+                TextSpan(
+                  text: [
+                    value(values[index], 'issuer'),
+                    formatResumeMonth(value(values[index], 'date')),
+                  ].where((part) => part.isNotEmpty).join('\u2003'),
+                  style: meta,
+                ),
+                math.max(1, cellWidth - 9),
+              ),
+            ),
+        ];
+        final height = row.fold<double>(
+          0,
+          (tallest, cell) =>
+              math.max(tallest, cell.title.height + 2.25 + cell.meta.height),
+        );
+        ensure(height);
+        for (final (slot, cell) in row.indexed) {
+          final dx = x + slot * (cellWidth + gap);
+          place(
+            cell.title,
+            dx,
+            y,
+            fieldPath: 'certifications.${cell.index}.name',
+          );
+          place(cell.meta, dx + 9, y + cell.title.height + 2.25);
+        }
+        y += height + theme.certificationRowGap;
+      }
+    });
+  }
+
+  void composeThemed(ResumeDraft resume, bool hasPhoto) {
+    final source = resume.source;
+    final personal = source['personal_info'] is Map
+        ? source['personal_info'] as Map
+        : <String, dynamic>{};
+    final job = source['job_expectation'] is Map
+        ? source['job_expectation'] as Map
+        : <String, dynamic>{};
+    final aside = <String>{};
+    if (theme.sidebar != null) {
+      aside.addAll(sidebar(resume, personal, source, hasPhoto));
+      if (!theme.sidebar!.header) sidebarHeader(resume, job);
+    } else if (theme.splitHeader) {
+      splitHeader(resume, personal, job, hasPhoto);
+    } else {
+      themedHeader(resume, personal, hasPhoto);
+    }
+    for (final module in resumeModuleOrder(source)) {
+      switch (module) {
+        case _ when aside.contains(module):
+          break;
+        case 'job_expectation' when theme.expectationInHeader:
+          break;
+        case 'job_expectation':
+          themedExpectations(resume, job);
+        case 'self_evaluation':
+          if (resume.summary.isNotEmpty ||
+              meaningful({'rich': job['preference_rich']})) {
+            themedSection('self_evaluation', '自我评价');
+            void summary() => detail(
+              {...job, 'preference': resume.summary},
+              'preference',
+              fieldPath: 'job_expectation.preference',
+            );
+            final quotes = theme.summaryQuotes;
+            if (theme.summaryFill.a > 0 || quotes.isNotEmpty) {
+              final startPage = page, top = y;
+              card(
+                theme.summaryFill,
+                theme.summaryRadius,
+                theme.summaryPadding,
+                summary,
+              );
+              if (quotes.isNotEmpty) {
+                final size = theme.summaryQuoteSize;
+                if (identical(page, startPage)) {
+                  graphic(
+                    quotes.first,
+                    Rect.fromLTWH(left + theme.entryIndent, top, size, size),
+                  );
+                }
+                graphic(
+                  quotes.last,
+                  Rect.fromLTWH(left + width - size, y - size, size, size),
+                );
+              }
+            } else {
+              indented(theme.entryIndent, summary);
+            }
+          }
+        case 'educations':
+          themedEntries(
+            source,
+            'educations',
+            '教育经历',
+            'institution',
+            ['degree', 'field_of_study'],
+            ['campus_experience', 'thesis_title', 'thesis_description'],
+            fallback: resume.education,
+          );
+        case 'work_experiences':
+          themedEntries(
+            source,
+            'work_experiences',
+            '工作经历',
+            'company',
+            ['position', 'industry'],
+            ['description'],
+            fallback: resume.experience,
+          );
+        case 'projects':
+          themedEntries(
+            source,
+            'projects',
+            '项目经历',
+            'name',
+            ['role', 'url'],
+            ['description', 'achievements'],
+          );
+        case 'skills':
+          themedSkills(resume, entries(source['skills']));
+        case 'certifications':
+          themedCertifications(source);
+      }
+    }
+  }
+}
+
+/// A filled card that may continue across pages; each page gets its own
+/// segment so the fill never covers the page margins.
+class _ResumeBox {
+  _ResumeBox(
+    this.left,
+    this.width,
+    this.color,
+    this.radius,
+    this.padding,
+    this.top,
+  );
+  final double left, width, radius;
+  final Color color;
+  final EdgeInsets padding;
+  double top;
+
+  void close(ResumeSheet page, double bottom) {
+    if (bottom <= top || color.a == 0) return;
+    page.decorations.insert(
+      0,
+      ResumeFillDecoration(
+        Rect.fromLTRB(left, top, left + width, bottom),
+        color,
+        radius,
+      ),
+    );
   }
 }
 
@@ -1360,9 +2598,11 @@ class ResumeDocumentView extends StatefulWidget {
     this.reviewNotes = const [],
     this.reviewNoteBuilder,
     this.onReviewTap,
+    this.theme,
   });
   final void Function(String fieldPath, String selectedText, bool replace)?
   onAnnotate;
+  final ResumeTheme? theme;
   final VoidCallback? onAnnotationSelected, onOriginalShown;
   final ResumeDraft resume;
   final AppStore? store;
@@ -1395,6 +2635,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         widget.resume,
         fontFamily: null,
         photoURL: photoURL,
+        theme: widget.theme,
         reviewNotes: widget.reviewNotes,
         reviewChanges: [
           ...widget.reviewChanges,
@@ -1799,8 +3040,14 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         }
         check();
       }
-      exportDocument = ResumeDocument(resume, fontFamily: font, photoURL: url);
+      exportDocument = ResumeDocument(
+        resume,
+        fontFamily: font,
+        photoURL: url,
+        theme: widget.theme,
+      );
       final pages = <ResumeExportPage>[];
+      final wordPages = <ResumeExportPage>[];
       for (var index = 0; index < exportDocument.pages.length; index++) {
         check();
         onProgress('正在准备第 ${index + 1}/${exportDocument.pages.length} 页文字…');
@@ -1809,6 +3056,9 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         if (photo != null && rect != null) {
           final recorder = ui.PictureRecorder();
           final canvas = Canvas(recorder)..scale(3);
+          canvas.clipPath(
+            exportDocument.theme.photoPath(Offset.zero & rect.size),
+          );
           paintImage(
             canvas: canvas,
             rect: Offset.zero & rect.size,
@@ -1835,11 +3085,47 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
             image.dispose();
           }
         }
-        pages.add(resumeExportSheet(exportDocument, index, portrait: portrait));
+        pages.add(
+          resumeExportSheet(
+            exportDocument,
+            index,
+            portrait: portrait,
+            backdrop: await resumeExportBackdrop(exportDocument, index),
+          ),
+        );
+        if (!exportDocument.theme.isStandard) {
+          wordPages.add(
+            await resumeExportWordSheet(
+              exportDocument,
+              index,
+              portrait: portrait,
+            ),
+          );
+        }
         await Future<void>.delayed(Duration.zero);
       }
       check();
-      return ResumeExportLayout(pages, requiresWordFlow: true);
+      final margin = exportDocument.theme.margin;
+      return ResumeExportLayout(
+        pages,
+        requiresWordFlow: exportDocument.theme.isStandard,
+        // Themes flow in Word like the default template; PDF keeps the
+        // pages exactly as previewed.
+        wordLayout: wordPages.isEmpty
+            ? null
+            : ResumeExportLayout(
+                wordPages,
+                requiresWordFlow: true,
+                nativeFlowGeometry: true,
+                wordRows: true,
+                wordMargins: {
+                  'top': margin.top,
+                  'right': margin.right,
+                  'bottom': margin.bottom,
+                  'left': margin.left,
+                },
+              ),
+      );
     } finally {
       photo?.dispose();
       exportDocument?.dispose();
@@ -1906,7 +3192,12 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         }
         check();
       }
-      exportDocument = ResumeDocument(resume, fontFamily: font, photoURL: url);
+      exportDocument = ResumeDocument(
+        resume,
+        fontFamily: font,
+        photoURL: url,
+        theme: widget.theme,
+      );
       final pages = <Uint8List>[];
       // 288 dpi: paint the same text, clips, photo and footer as the preview.
       const scale = 4.0;
@@ -1919,9 +3210,16 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
           Offset.zero & resumePaperSize,
           Paint()..color = Colors.white,
         );
-        paintResumeSheet(canvas, exportDocument, index);
+        paintResumeSheet(
+          canvas,
+          exportDocument,
+          index,
+          layer: ResumeSheetLayer.paper,
+        );
         final rect = exportDocument.pages[index].photo;
         if (photo != null && rect != null) {
+          canvas.save();
+          canvas.clipPath(exportDocument.theme.photoPath(rect));
           paintImage(
             canvas: canvas,
             rect: rect,
@@ -1929,7 +3227,14 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
             fit: BoxFit.cover,
             alignment: const Alignment(0, -.35),
           );
+          canvas.restore();
         }
+        paintResumeSheet(
+          canvas,
+          exportDocument,
+          index,
+          layer: ResumeSheetLayer.ink,
+        );
         final picture = recorder.endRecording();
         final raster = await picture.toImage(
           (resumePaperSize.width * scale).round(),
@@ -1975,6 +3280,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       font,
       photoURL,
       resume.photoFileID,
+      identityHashCode(widget.theme),
       widget.reviewNotes
           .map((v) => [v.key, v.fieldPath, v.height, v.selectedText])
           .toList(),
@@ -2002,6 +3308,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
         photoURL: photoURL,
         reviewChanges: widget.reviewChanges,
         reviewNotes: widget.reviewNotes,
+        theme: widget.theme,
       );
       if (traceResumePreview) {
         debugPrint(
@@ -2172,6 +3479,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                                         displayed,
                                         index,
                                         paintedRegions[index],
+                                        ResumeSheetLayer.paper,
                                       ),
                                     ),
                                   ),
@@ -2435,57 +3743,76 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                                     top: rect.top * scale,
                                     width: rect.width * scale,
                                     height: rect.height * scale,
-                                    child:
-                                        resume.source['app_privacy_photo'] ==
-                                            true
-                                        ? Semantics(
-                                            label: '简历头像已隐藏',
-                                            child: const Center(
-                                              child: Text(resumePrivacyMask),
-                                            ),
-                                          )
-                                        : photoURL.isEmpty
-                                        ? TextButton(
-                                            onPressed: loadPhoto,
-                                            child: const FittedBox(
-                                              child: Text(
-                                                '照片加载失败\n点击重试',
-                                                textAlign: TextAlign.center,
+                                    child: ClipPath(
+                                      clipper: ResumePhotoClipper(
+                                        displayed.theme,
+                                        scale,
+                                      ),
+                                      child:
+                                          resume.source['app_privacy_photo'] ==
+                                              true
+                                          ? Semantics(
+                                              label: '简历头像已隐藏',
+                                              child: const Center(
+                                                child: Text(resumePrivacyMask),
                                               ),
-                                            ),
-                                          )
-                                        : Image(
-                                            image: ResumePhotoImage(
-                                              photoURL,
-                                              fileID: widget.resume.photoFileID,
-                                            ),
-                                            fit: BoxFit.cover,
-                                            alignment: const Alignment(
-                                              0,
-                                              -0.35,
-                                            ),
-                                            semanticLabel: '简历头像',
-                                            errorBuilder: (_, _, _) =>
-                                                TextButton(
-                                                  onPressed: () {
-                                                    ResumePhotoImage(
-                                                      photoURL,
-                                                      fileID: widget
-                                                          .resume
-                                                          .photoFileID,
-                                                    ).evict();
-                                                    loadPhoto();
-                                                  },
-                                                  child: const FittedBox(
-                                                    child: Text(
-                                                      '照片加载失败\n点击重试',
-                                                      textAlign:
-                                                          TextAlign.center,
+                                            )
+                                          : photoURL.isEmpty
+                                          ? TextButton(
+                                              onPressed: loadPhoto,
+                                              child: const FittedBox(
+                                                child: Text(
+                                                  '照片加载失败\n点击重试',
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ),
+                                            )
+                                          : Image(
+                                              image: ResumePhotoImage(
+                                                photoURL,
+                                                fileID:
+                                                    widget.resume.photoFileID,
+                                              ),
+                                              fit: BoxFit.cover,
+                                              alignment: const Alignment(
+                                                0,
+                                                -0.35,
+                                              ),
+                                              semanticLabel: '简历头像',
+                                              errorBuilder: (_, _, _) =>
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      ResumePhotoImage(
+                                                        photoURL,
+                                                        fileID: widget
+                                                            .resume
+                                                            .photoFileID,
+                                                      ).evict();
+                                                      loadPhoto();
+                                                    },
+                                                    child: const FittedBox(
+                                                      child: Text(
+                                                        '照片加载失败\n点击重试',
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                          ),
+                                            ),
+                                    ),
                                   ),
+                                Positioned.fill(
+                                  child: IgnorePointer(
+                                    child: CustomPaint(
+                                      painter: _SheetPainter(
+                                        displayed,
+                                        index,
+                                        paintedRegions[index],
+                                        ResumeSheetLayer.ink,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -2504,12 +3831,147 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
 }
 
 /// Snapshot already typeset lines, preserving the preview's breaks and baselines.
+/// Rasterizes a themed page's artwork for exports; the text stays native.
+Future<Uint8List?> resumeExportBackdrop(
+  ResumeDocument document,
+  int index,
+) async {
+  if (document.theme.isStandard) return null;
+  const scale = 2.0;
+  final recorder = ui.PictureRecorder();
+  paintResumeBackdrop(Canvas(recorder)..scale(scale), document, index);
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(
+    (resumePaperSize.width * scale).round(),
+    (resumePaperSize.height * scale).round(),
+  );
+  picture.dispose();
+  try {
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (data == null) throw const ApiFailure('页面背景生成失败，请重试');
+    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  } finally {
+    image.dispose();
+  }
+}
+
+/// Whether [area] lies in a themed page's sidebar, which Word keeps at its
+/// page position while the main column flows.
+bool resumeWordFixed(ResumeDocument document, Rect area) =>
+    switch (document.theme.sidebar) {
+      final ResumeThemeSidebar bar => area.right <= bar.width + .5,
+      null => false,
+    };
+
+Future<Uint8List> _resumeRaster(Size size, void Function(Canvas) paint) async {
+  const scale = 3.0;
+  final recorder = ui.PictureRecorder();
+  paint(Canvas(recorder)..scale(scale));
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(
+    math.max(1, (size.width * scale).ceil()),
+    math.max(1, (size.height * scale).ceil()),
+  );
+  picture.dispose();
+  try {
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (data == null) throw const ApiFailure('页面装饰生成失败，请重试');
+    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  } finally {
+    image.dispose();
+  }
+}
+
+/// A themed page for flowing Word: the page keeps only its paper and fixed
+/// blocks, and each remaining decoration rides on the paragraph it precedes
+/// or overlaps, so headings and cards follow the text when Word reflows.
+Future<ResumeExportPage> resumeExportWordSheet(
+  ResumeDocument document,
+  int index, {
+  Uint8List? portrait,
+}) async {
+  final base = resumeExportSheet(document, index, portrait: portrait);
+  final paragraphs = <String, Rect>{};
+  for (final line in base.lines) {
+    final id = line.paragraphId;
+    if (id == null || line.fixed) continue;
+    final area = Rect.fromLTWH(0, line.top, 1, line.height);
+    paragraphs[id] = paragraphs[id]?.expandToInclude(area) ?? area;
+  }
+  final order = paragraphs.entries.toList()
+    ..sort((a, b) => a.value.top.compareTo(b.value.top));
+  final fixed = <ResumeDecoration>[];
+  final attached = <String, List<ResumeDecoration>>{};
+  for (final decoration in document.pages[index].decorations) {
+    final area = decoration.bounds;
+    final owner = resumeWordFixed(document, area) || order.isEmpty
+        ? null
+        : order
+              .firstWhere(
+                (entry) => entry.value.bottom > area.top,
+                orElse: () => order.last,
+              )
+              .key;
+    if (owner == null) {
+      fixed.add(decoration);
+    } else {
+      (attached[owner] ??= []).add(decoration);
+    }
+  }
+  final backdrop = await _resumeRaster(resumePaperSize, (canvas) {
+    paintResumePaper(canvas, document, index);
+    for (final decoration in fixed) {
+      decoration.paint(canvas);
+    }
+  });
+  final art = <ResumeExportArt>[];
+  for (final MapEntry(key: id, value: decorations) in attached.entries) {
+    final area = decorations
+        .map((decoration) => decoration.bounds)
+        .reduce((a, b) => a.expandToInclude(b))
+        .inflate(.5);
+    art.add(
+      ResumeExportArt(
+        id,
+        ResumeExportPicture(
+          await _resumeRaster(area.size, (canvas) {
+            canvas.translate(-area.left, -area.top);
+            for (final decoration in decorations) {
+              decoration.paint(canvas);
+            }
+          }),
+          area.left,
+          area.top,
+          area.width,
+          area.height,
+        ),
+      ),
+    );
+  }
+  return ResumeExportPage(
+    wordFlow: true,
+    lines: base.lines,
+    rules: base.rules,
+    pictures: base.pictures,
+    background: ResumeExportPicture(
+      backdrop,
+      0,
+      0,
+      resumePaperSize.width,
+      resumePaperSize.height,
+    ),
+    art: art,
+  );
+}
+
 ResumeExportPage resumeExportSheet(
   ResumeDocument document,
   int index, {
   Uint8List? portrait,
+  Uint8List? backdrop,
 }) {
   final sheet = document.pages[index];
+  final theme = document.theme;
   final lines = <ResumeExportLine>[];
   for (final ink in sheet.ink) {
     final painter = ink.text;
@@ -2578,6 +4040,7 @@ ResumeExportPage resumeExportSheet(
                 style.decoration?.contains(TextDecoration.underline) ?? false,
             strike:
                 style.decoration?.contains(TextDecoration.lineThrough) ?? false,
+            letterSpacing: style.letterSpacing ?? 0,
           ),
         );
       }
@@ -2598,11 +4061,20 @@ ResumeExportPage resumeExportSheet(
             paragraphWidth: math.min(
               ink.wordWidth ?? document.paragraphWidths[painter]!,
               resumePaperSize.width -
-                  resumePaperMargin -
+                  theme.margin.right -
                   (ink.wordLeft ?? ink.position.dx),
             ),
             paragraphAlignRight: ink.wordAlignRight,
             paragraphField: ink.fieldPath,
+            fixed: resumeWordFixed(
+              document,
+              Rect.fromLTWH(
+                ink.position.dx,
+                ink.position.dy,
+                painter.width,
+                ink.height,
+              ),
+            ),
           ),
         );
       }
@@ -2620,43 +4092,60 @@ ResumeExportPage resumeExportSheet(
     textDirection: TextDirection.ltr,
   )..layout();
   final metric = footer.computeLineMetrics().first;
-  lines.add(
-    ResumeExportLine(
-      top: resumePaperSize.height - 34,
-      height: metric.height,
-      baseline: resumePaperSize.height - 34 + metric.baseline,
-      spans: [
-        ResumeExportSpan(
-          text: '${index + 1}',
-          x: (resumePaperSize.width - footer.width) / 2,
-          width: footer.width,
-          size: 9,
-          color: Colors.grey.toARGB32(),
-        ),
-      ],
-    ),
-  );
+  if (theme.pageNumbers) {
+    lines.add(
+      ResumeExportLine(
+        top: resumePaperSize.height - 34,
+        height: metric.height,
+        baseline: resumePaperSize.height - 34 + metric.baseline,
+        spans: [
+          ResumeExportSpan(
+            text: '${index + 1}',
+            x: (resumePaperSize.width - footer.width) / 2,
+            width: footer.width,
+            size: 9,
+            color: Colors.grey.toARGB32(),
+          ),
+        ],
+      ),
+    );
+  }
   footer.dispose();
   final rect = sheet.photo;
+  final ruleWidth = resumePaperSize.width - theme.margin.horizontal;
   return ResumeExportPage(
-    wordFlow: true,
+    // Theme artwork is fixed to the APP's pagination, so their Word pages keep
+    // every paragraph at its typeset position instead of reflowing.
+    wordFlow: theme.isStandard,
     lines: lines,
+    background: backdrop == null
+        ? null
+        : ResumeExportPicture(
+            backdrop,
+            0,
+            0,
+            resumePaperSize.width,
+            resumePaperSize.height,
+          ),
     rules: [
       for (final y in sheet.entryDividers)
         ResumeExportRule(
-          resumePaperMargin,
+          theme.margin.left,
           y,
-          resumePaperSize.width - 2 * resumePaperMargin,
-          .6,
-          0xFFDFE5EE,
+          ruleWidth,
+          theme.entryDivider?.width ?? .6,
+          (theme.entryDivider?.color ?? const Color(0xFFDFE5EE)).toARGB32(),
         ),
-      if (sheet.dividerY case final double y)
+      if ((sheet.dividerY, theme.headerRule) case (
+        final double y,
+        final ResumeThemeRule rule,
+      ))
         ResumeExportRule(
-          resumePaperMargin,
+          theme.margin.left,
           y,
-          resumePaperSize.width - 2 * resumePaperMargin,
-          1.5,
-          document.layout.accent.toARGB32(),
+          ruleWidth,
+          rule.width,
+          (theme.isStandard ? document.layout.accent : rule.color).toARGB32(),
         ),
     ],
     pictures: [
@@ -2673,42 +4162,107 @@ ResumeExportPage resumeExportSheet(
 }
 
 class _SheetPainter extends CustomPainter {
-  _SheetPainter(this.document, this.index, this.regions);
+  _SheetPainter(this.document, this.index, this.regions, this.layer);
   final List<ResumeReviewRegion> regions;
   final ResumeDocument document;
   final int index;
+  final ResumeSheetLayer layer;
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.scale(size.width / resumePaperSize.width);
-    paintResumeSheet(canvas, document, index, reviewRegions: regions);
+    paintResumeSheet(
+      canvas,
+      document,
+      index,
+      reviewRegions: regions,
+      layer: layer,
+    );
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(_SheetPainter old) =>
-      old.document != document || old.index != index || old.regions != regions;
+      old.document != document ||
+      old.index != index ||
+      old.regions != regions ||
+      old.layer != layer;
 }
+
+/// Everything on a page except text: paper, artwork and rules. The standard
+/// sheet leaves its white paper to the host so text keeps clean coverage.
+/// Page-level artwork: paper, background image, sidebar and ornaments.
+void paintResumePaper(Canvas canvas, ResumeDocument document, int index) {
+  final theme = document.theme;
+  final paper = Offset.zero & resumePaperSize;
+  if (!theme.isStandard) {
+    canvas.drawRect(paper, Paint()..color = theme.background);
+  }
+  theme.backgroundImage?.paint(canvas, paper);
+  if (theme.sidebar case final ResumeThemeSidebar bar) {
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, bar.width, resumePaperSize.height),
+      Paint()..color = bar.fill,
+    );
+  }
+  for (final ornament in theme.ornaments) {
+    if (index == 0 || !ornament.firstPage) {
+      ornament.art.paint(canvas, ornament.rect);
+    }
+  }
+}
+
+void paintResumeBackdrop(Canvas canvas, ResumeDocument document, int index) {
+  final theme = document.theme;
+  final page = document.pages[index];
+  paintResumePaper(canvas, document, index);
+  for (final decoration in page.decorations) {
+    decoration.paint(canvas);
+  }
+  final left = theme.margin.left;
+  final right = resumePaperSize.width - theme.margin.right;
+  for (final y in page.entryDividers) {
+    canvas.drawLine(
+      Offset(left, y),
+      Offset(right, y),
+      Paint()
+        ..color = theme.entryDivider?.color ?? const Color(0xFFDFE5EE)
+        ..strokeWidth = theme.entryDivider?.width ?? .6,
+    );
+  }
+  if ((page.dividerY, theme.headerRule) case (
+    final double y,
+    final ResumeThemeRule rule,
+  )) {
+    canvas.drawLine(
+      Offset(left, y),
+      Offset(right, y),
+      Paint()
+        ..color = theme.isStandard ? document.layout.accent : rule.color
+        ..strokeWidth = rule.width,
+    );
+  }
+}
+
+/// Which part of a sheet to paint, so the photo can sit between the paper
+/// and the text a theme may lay over it.
+enum ResumeSheetLayer { all, paper, ink }
 
 void paintResumeSheet(
   Canvas canvas,
   ResumeDocument document,
   int index, {
   List<ResumeReviewRegion> reviewRegions = const [],
+  ResumeSheetLayer layer = ResumeSheetLayer.all,
 }) {
-  for (final region in reviewRegions) {
-    paintResumeReviewWash(canvas, region);
+  if (layer != ResumeSheetLayer.ink) {
+    paintResumeBackdrop(canvas, document, index);
+    for (final region in reviewRegions) {
+      paintResumeReviewWash(canvas, region);
+    }
+    if (layer == ResumeSheetLayer.paper) return;
   }
   final page = document.pages[index];
-  for (final y in page.entryDividers) {
-    canvas.drawLine(
-      Offset(resumePaperMargin, y),
-      Offset(resumePaperSize.width - resumePaperMargin, y),
-      Paint()
-        ..color = const Color(0xFFDFE5EE)
-        ..strokeWidth = .6,
-    );
-  }
   for (final run in page.ink) {
     canvas.save();
     canvas.clipRect(
@@ -2759,15 +4313,7 @@ void paintResumeSheet(
   for (final region in reviewRegions) {
     paintResumeReviewWave(canvas, region);
   }
-  if (page.dividerY case final double y) {
-    canvas.drawLine(
-      Offset(46, y),
-      Offset(549.28, y),
-      Paint()
-        ..color = document.layout.accent
-        ..strokeWidth = 1.5,
-    );
-  }
+  if (!document.theme.pageNumbers) return;
   final footer = TextPainter(
     text: TextSpan(
       text: '${index + 1}',

@@ -101,7 +101,7 @@ void main() {
             store: store,
             templateID: 4,
             version: 1,
-            author: author,
+            watermark: author,
           ),
         ),
       );

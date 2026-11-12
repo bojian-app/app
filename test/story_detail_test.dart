@@ -47,7 +47,10 @@ void main() {
       expect(find.text('文章正文内容'), findsOneWidget);
       final actions = find.byKey(const ValueKey('article-end-actions'));
       expect(
-        find.descendant(of: actions, matching: find.byType(ArticleReactionButton)),
+        find.descendant(
+          of: actions,
+          matching: find.byType(ArticleReactionButton),
+        ),
         findsNWidgets(2),
       );
       expect(

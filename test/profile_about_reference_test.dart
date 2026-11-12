@@ -133,9 +133,9 @@ void main() {
         final name = find.byKey(const ValueKey('profile-identity-name'));
         final id = find.byKey(const ValueKey('profile-account-summary'));
         final about = find.byKey(const ValueKey('profile-about-summary'));
-        expect(tester.getTopLeft(name).dx, 16);
-        expect(tester.getTopLeft(id).dx, 16);
-        expect(tester.getTopLeft(about).dx, 16);
+        expect(tester.getTopLeft(name).dx, appPageHorizontalPadding);
+        expect(tester.getTopLeft(id).dx, appPageHorizontalPadding);
+        expect(tester.getTopLeft(about).dx, appPageHorizontalPadding);
         expect(
           tester
               .getCenter(find.byKey(const ValueKey('profile-identity-avatar')))

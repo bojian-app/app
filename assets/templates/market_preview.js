@@ -3,7 +3,7 @@
   const pages = document.getElementById('pages');
   const options = window.bojianPreviewOptions || {};
   const sheets = [];
-  let author = String(options.author || '');
+  let watermarkText = String(options.watermark || '');
   let initialPositioned = false;
   let fullscreen = false;
   let inlinePosition = null;
@@ -21,20 +21,20 @@
     const paint = tile.getContext('2d');
     paint.translate(130, 90);
     paint.rotate(-Math.PI / 7);
-    paint.font = '500 28px ResumeDocument, sans-serif';
+    paint.font = '500 22px ResumeDocument, sans-serif';
     paint.fillStyle = 'rgba(51,65,85,0.14)';
     paint.textAlign = 'center';
     paint.textBaseline = 'middle';
-    paint.fillText('© ' + author, 0, 0, 230);
+    paint.fillText(watermarkText, 0, 0, 230);
     return tile.toDataURL('image/png');
   }
   let watermark = watermarkImage();
-  window.updatePreviewAuthor = value => {
-    author = String(value || '');
+  window.updatePreviewWatermark = value => {
+    watermarkText = String(value || '');
     watermark = watermarkImage();
     for (const sheet of sheets) sheet.watermark.style.backgroundImage = `url("${watermark}")`;
   };
-  document.fonts.ready.then(() => window.updatePreviewAuthor(author));
+  document.fonts.ready.then(() => window.updatePreviewWatermark(watermarkText));
 
   // Resize the existing papers instead of fetching, loading fonts and paginating again.
   window.setPreviewMode = (expanded, index) => {
