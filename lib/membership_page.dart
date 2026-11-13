@@ -192,23 +192,31 @@ class _MembershipPageState extends State<MembershipPage> {
           backgroundColor: barSolid ? _bg : Colors.transparent,
           foregroundColor: _text,
           actions: [
-            TextButton.icon(
-              onPressed: () async {
-                await openPage<void>(
-                  context,
-                  MembershipWalletPage(store: store),
-                );
-                if (mounted) await _loadStatus();
-              },
-              style: TextButton.styleFrom(foregroundColor: _gold),
-              icon: const HugeIcon(
-                icon: HugeIcons.strokeRoundedTicket01,
-                size: 18,
-                color: _gold,
+            Padding(
+              // 去掉按钮自带内边距，使文字右缘与页面统一边距对齐
+              padding: const EdgeInsets.only(right: appPageHorizontalPadding),
+              child: TextButton.icon(
+                onPressed: () async {
+                  await openPage<void>(
+                    context,
+                    MembershipWalletPage(store: store),
+                  );
+                  if (mounted) await _loadStatus();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: _gold,
+                  padding: const EdgeInsets.only(left: 8),
+                  minimumSize: const Size(44, 44),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const HugeIcon(
+                  icon: HugeIcons.strokeRoundedTicket01,
+                  size: 18,
+                  color: _gold,
+                ),
+                label: const Text('卡包'),
               ),
-              label: const Text('卡包'),
             ),
-            const SizedBox(width: 6),
           ],
         ),
         body: ListView(
