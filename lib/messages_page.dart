@@ -15,6 +15,7 @@ import 'my_articles_page.dart';
 import 'resume_updated_label.dart';
 import 'resume_pages.dart';
 import 'discovery.dart';
+import 'membership_page.dart';
 import 'resume_guidance_view.dart';
 import 'resume_guidance_review.dart';
 import 'user_profile_page.dart';
@@ -219,6 +220,7 @@ class _MessagesPageState extends State<MessagesPage> {
   /// Icon and tint that tell a notification's kind at a glance.
   (AppIconData, Color) _kind(InboxItem item) => switch (item.type) {
     'RESUME_CREATED' => (AppIcons.resume, context.colors.accent),
+    'MEMBERSHIP_BENEFIT' => (AppIcons.wallet, const Color(0xFFD9A441)),
     'ARTICLE_APPROVED' => (AppIcons.done, _green),
     'ARTICLE_LIKE' => (AppIcons.like, const Color(0xFFF0587A)),
     'ARTICLE_COMMENT' ||
@@ -384,8 +386,15 @@ class _MessagesPageState extends State<MessagesPage> {
       item.subjectType == 'ARTICLE' &&
       item.subjectID > 0;
 
+  bool _opensWallet(InboxItem item) =>
+      item.type == 'MEMBERSHIP_BENEFIT' &&
+      item.subjectType == 'MEMBERSHIP_WALLET';
+
   bool _actionable(InboxItem item) =>
-      _opensResume(item) || _opensGuidance(item) || _opensArticle(item);
+      _opensResume(item) ||
+      _opensGuidance(item) ||
+      _opensArticle(item) ||
+      _opensWallet(item);
 
   final _passiveReads = <int>{};
 
@@ -410,6 +419,13 @@ class _MessagesPageState extends State<MessagesPage> {
   }
 
   Future<void> _openNotification(InboxItem item) async {
+    if (_opensWallet(item)) {
+      if (!item.read) {
+        unawaited(runRequest(context, () => widget.store.markRead(item)));
+      }
+      await openPage<void>(context, MembershipWalletPage(store: widget.store));
+      return;
+    }
     if (_opensResume(item)) {
       final epoch = widget.store.epoch;
       await runRequest(context, () async {

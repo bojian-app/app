@@ -1,5 +1,10 @@
+import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/membership_page.dart';
+import 'package:bojian_mobile/messages_page.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/fake_gateway.dart';
 
 void main() {
   final year = membershipPlans.firstWhere((plan) => plan.code == 'YEAR');
@@ -46,5 +51,40 @@ void main() {
     });
     expect(card.plan.orderName, '会员年卡');
     expect(card.membershipEndsAt, isNull);
+  });
+
+  testWidgets('Benefit notification opens the wallet and marks it read', (
+    tester,
+  ) async {
+    final api = FakeGateway();
+    api.documents['GetNotifications'] = {
+      'unread_count': 1,
+      'items': [
+        {
+          'id': 31,
+          'type': 'MEMBERSHIP_BENEFIT',
+          'subject_type': 'MEMBERSHIP_WALLET',
+          'payload': {
+            'title': '你收到了会员年卡',
+            'body': '1 张会员年卡已放入卡包',
+          },
+        },
+      ],
+    };
+    api.documents['GetMembershipWallet'] = {'coupons': [], 'cards': []};
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: Scaffold(body: MessagesPage(store: store)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('你收到了会员年卡'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MembershipWalletPage), findsOneWidget);
+    expect(store.inbox.single.read, isTrue);
+    expect(api.calls, contains('PostNotificationsRead'));
   });
 }

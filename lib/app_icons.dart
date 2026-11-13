@@ -64,6 +64,7 @@ abstract final class AppIcons {
   static const notification = HugeIcons.strokeRoundedNotification01;
   static const notificationUnread = HugeIcons.strokeRoundedNotification02;
   static const notificationSettings = HugeIcons.strokeRoundedNotificationSquare;
+  static const wallet = HugeIcons.strokeRoundedTicket01;
   static const settings = HugeIcons.strokeRoundedSettings01;
   static const bold = HugeIcons.strokeRoundedTextBold;
   static const italic = HugeIcons.strokeRoundedTextItalic;
