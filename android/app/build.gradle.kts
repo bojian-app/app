@@ -71,6 +71,7 @@ dependencies {
     implementation(fileTree("libs/baidu-face") { include("*.aar") })
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.alipay.sdk:alipaysdk-android:15.8.42@aar")
     // 0.2.0.11's polaris dependency is unavailable from the documented repository.
     val douyinSdkVersion = "0.2.0.10"
     implementation("com.bytedance.ies.ugc.aweme:opensdk-china-external:$douyinSdkVersion")

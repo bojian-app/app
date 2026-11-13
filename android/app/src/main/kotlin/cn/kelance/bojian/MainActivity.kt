@@ -14,6 +14,7 @@ class MainActivity : FlutterActivity() {
     private var baiduFace: BaiduFaceBridge? = null
     private var resumeFiles: ResumeFileBridge? = null
     private var douyinLogin: DouyinLoginBridge? = null
+    private var alipay: AlipayBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -25,6 +26,7 @@ class MainActivity : FlutterActivity() {
         baiduFace = BaiduFaceBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         resumeFiles = ResumeFileBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         douyinLogin = DouyinLoginBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        alipay = AlipayBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "cn.kelance.bojian/settings")
             .setMethodCallHandler { call, result ->
                 try {
@@ -99,6 +101,8 @@ class MainActivity : FlutterActivity() {
         baiduFace = null
         douyinLogin?.close()
         douyinLogin = null
+        alipay?.close()
+        alipay = null
         super.onDestroy()
     }
 }

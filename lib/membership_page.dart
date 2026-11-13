@@ -266,10 +266,13 @@ class _MembershipPageState extends State<MembershipPage> {
           label: endsAt == null ? '立即开通' : '立即续费',
           amount: selected.price,
           footer: const _AutoRenewToggle(),
-          onPressed: () => openPage<void>(
-            context,
-            MembershipCheckoutPage(store: store, plan: selected),
-          ),
+          onPressed: () async {
+            await openPage<void>(
+              context,
+              MembershipCheckoutPage(store: store, plan: selected),
+            );
+            if (mounted) await _loadStatus();
+          },
         ),
       ),
     );
@@ -1279,6 +1282,33 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
     }
   }
 
+  static const _alipay = MethodChannel('cn.kelance.bojian/alipay');
+
+  /// 支付宝通知通常在几秒内到达，期间轮询订单状态。
+  Future<bool> _waitUntilPaid(int id) async {
+    if (id <= 0) return false;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      try {
+        final result = await widget.store.request(
+          'GetMembershipOrdersId',
+          path: {'id': '$id'},
+        );
+        if (result.data['status'] == 'PAID') return true;
+      } on ApiFailure {
+        // 网络抖动时继续等待下一次查询。
+      }
+      if (!mounted) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      if (!mounted) return false;
+    }
+    return false;
+  }
+
+  void _paid() {
+    toast(context, '会员已开通');
+    Navigator.of(context).pop();
+  }
+
   Future<void> _pay() async {
     if (paying) return;
     requestKey ??=
@@ -1291,13 +1321,34 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
         extra: {'idempotency-key': requestKey!},
       );
       if (!mounted) return;
-      if (order.data['status'] == 'PAID') {
-        toast(context, '会员已开通');
-        Navigator.of(context).pop();
+      if (order.data['status'] == 'PAID') return _paid();
+      final orderString = order.data['alipay_order_string'];
+      if (channel != 'ALIPAY' ||
+          orderString is! String ||
+          orderString.isEmpty) {
+        toast(context, '${_channelName(channel)}暂未开放，请稍后再试');
         return;
       }
-      // 支付 SDK 尚未接入：订单已创建，但还不能调起收银台。
-      toast(context, '${_channelName(channel)}暂未开放，请稍后再试');
+      final outcome = await _alipay.invokeMapMethod<String, String>('pay', {
+        'orderString': orderString,
+      });
+      if (!mounted) return;
+      final status = outcome?['resultStatus'];
+      if (status == '6001') {
+        toast(context, '已取消支付');
+        return;
+      }
+      // 支付宝同步结果仅作提示，会员是否开通以服务端验签后的订单状态为准。
+      if (await _waitUntilPaid(integer(order.data['id']))) return _paid();
+      if (!mounted) return;
+      toast(
+        context,
+        status == '9000' || status == '8000'
+            ? '支付结果确认中，稍后可在会员页查看'
+            : '支付未完成，请重试',
+      );
+    } on PlatformException catch (e) {
+      if (mounted) toast(context, e.message ?? '无法打开支付宝，请重试');
     } on ApiFailure catch (e) {
       if (!mounted) return;
       if (e.code == 'MEMBERSHIP_ORDER_EXPIRED' ||
