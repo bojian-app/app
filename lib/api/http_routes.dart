@@ -205,6 +205,8 @@ const httpRoutes = <String, (String, String)>{
   'GetMembershipPlans': ('GET', '/membership/plans'),
   'PostMembershipOrders': ('POST', '/membership/orders'),
   'GetMembershipOrdersId': ('GET', '/membership/orders/{id}'),
+  'GetMembershipWallet': ('GET', '/membership/wallet'),
+  'PostMembershipCardsIdUse': ('POST', '/membership/cards/{id}/use'),
   'GetWallet': ('GET', '/wallet'),
   'GetWalletTransactions': ('GET', '/wallet/transactions'),
   'GetWalletTransactionsId': ('GET', '/wallet/transactions/{id}'),

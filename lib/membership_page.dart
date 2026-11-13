@@ -12,8 +12,11 @@ import 'app_page_bar.dart';
 import 'app_store.dart';
 import 'confirmation_dialog.dart';
 import 'design.dart';
+import 'panel_sheet.dart';
 import 'profile_avatar.dart';
 import 'template_market.dart' show MarketTemplateArtwork;
+
+part 'membership_wallet.dart';
 
 /// 会员套餐。价格与服务端 membershipPlans 保持一致，下单时以服务端金额为准。
 class MembershipPlan {
@@ -188,6 +191,25 @@ class _MembershipPageState extends State<MembershipPage> {
           title: const Text('开通会员'),
           backgroundColor: barSolid ? _bg : Colors.transparent,
           foregroundColor: _text,
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                await openPage<void>(
+                  context,
+                  MembershipWalletPage(store: store),
+                );
+                if (mounted) await _loadStatus();
+              },
+              style: TextButton.styleFrom(foregroundColor: _gold),
+              icon: const HugeIcon(
+                icon: HugeIcons.strokeRoundedTicket01,
+                size: 18,
+                color: _gold,
+              ),
+              label: const Text('卡包'),
+            ),
+            const SizedBox(width: 6),
+          ],
         ),
         body: ListView(
           controller: scroll,
@@ -1260,10 +1282,44 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
   /// 同一次确认使用同一幂等键，重复点击不会生成多笔订单。
   String? requestKey;
 
+  /// 适用于本套餐的可用券；默认选中抵扣最多的一张。
+  List<WalletCoupon> coupons = const [];
+  WalletCoupon? coupon;
+
+  int get discountCents => coupon?.discountFor(widget.plan) ?? 0;
+  int get payableCents => widget.plan.amountCents - discountCents;
+
   @override
   void initState() {
     super.initState();
     _loadChannels();
+    _loadCoupons();
+  }
+
+  Future<void> _loadCoupons() async {
+    try {
+      final wallet = await MembershipWallet.load(widget.store);
+      if (!mounted) return;
+      setState(() {
+        coupons = wallet.coupons
+            .where((c) => c.usable && c.appliesTo(widget.plan.code))
+            .toList();
+        coupon = wallet.bestFor(widget.plan);
+        requestKey = null;
+      });
+    } catch (_) {
+      // 卡包读取失败时按原价下单。
+    }
+  }
+
+  Future<void> _chooseCoupon() async {
+    final picked = await _pickCoupon(context, coupons, coupon?.id);
+    if (picked == null || !mounted) return;
+    setState(() {
+      coupon = picked == 0 ? null : coupons.firstWhere((c) => c.id == picked);
+      // 换券即换订单内容，需要新的幂等键。
+      requestKey = null;
+    });
   }
 
   Future<void> _loadChannels() async {
@@ -1317,7 +1373,11 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
     try {
       final order = await widget.store.request(
         'PostMembershipOrders',
-        body: {'plan_code': widget.plan.code, 'channel': channel},
+        body: {
+          'plan_code': widget.plan.code,
+          'channel': channel,
+          'coupon_id': ?coupon?.id,
+        },
         extra: {'idempotency-key': requestKey!},
       );
       if (!mounted) return;
@@ -1418,10 +1478,14 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
                   '商品金额',
                   '¥${(plan.amountCents / 100).toStringAsFixed(2)}',
                 ),
-                _OrderLine('优惠', '-¥0.00'),
+                _CouponLine(
+                  discountCents: discountCents,
+                  available: coupons.length,
+                  onTap: paying || coupons.isEmpty ? null : _chooseCoupon,
+                ),
                 _OrderLine(
                   '实付金额',
-                  '¥${(plan.amountCents / 100).toStringAsFixed(2)}',
+                  '¥${(payableCents / 100).toStringAsFixed(2)}',
                   emphasize: true,
                 ),
               ],
@@ -1483,7 +1547,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
       ),
       bottomNavigationBar: _BottomPayBar(
         label: '立即支付',
-        amount: (plan.amountCents / 100).toStringAsFixed(2),
+        amount: (payableCents / 100).toStringAsFixed(2),
         busy: paying,
         onPressed: _pay,
       ),
@@ -1578,6 +1642,48 @@ class _Card extends StatelessWidget {
     ),
     child: child,
   );
+}
+
+class _CouponLine extends StatelessWidget {
+  const _CouponLine({
+    required this.discountCents,
+    required this.available,
+    required this.onTap,
+  });
+  final int discountCents, available;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final value = discountCents > 0
+        ? '-¥${(discountCents / 100).toStringAsFixed(2)}'
+        : available > 0
+        ? '$available 张可用'
+        : '无可用优惠券';
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            Text('优惠券', style: TextStyle(fontSize: 13, color: colors.muted)),
+            const Spacer(),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 13,
+                color: discountCents > 0 ? colors.accent : colors.muted,
+                fontWeight: discountCents > 0 ? FontWeight.w600 : null,
+              ),
+            ),
+            if (onTap != null)
+              Icon(Icons.chevron_right_rounded, size: 18, color: colors.muted),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _OrderLine extends StatelessWidget {
