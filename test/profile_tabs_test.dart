@@ -367,7 +367,7 @@ void main() {
 
   for (final dark in [false, true]) {
     testWidgets(
-      'Certified profile displays its badge and removes the application, dark=$dark',
+      'Certified profile shows the verified tag and removes the application, dark=$dark',
       (tester) async {
         final api = ProfileContentGateway()
           ..documents['GetMeIdentityVerification'] = {
@@ -382,7 +382,7 @@ void main() {
           dark: dark,
         );
         expect(
-          find.byKey(const ValueKey('profile-developer-badge')),
+          find.byKey(const ValueKey('profile-verified-tag')),
           findsOneWidget,
         );
         expect(find.text('开发者认证'), findsNothing);
@@ -412,7 +412,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const ValueKey('profile-developer-badge')),
+        find.byKey(const ValueKey('profile-verified-tag')),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);

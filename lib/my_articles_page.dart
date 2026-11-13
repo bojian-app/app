@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'api/bojian_api.dart';
 import 'app_icons.dart';
 import 'app_store.dart';
+import 'confirmation_dialog.dart';
 import 'app_search_field.dart';
 import 'design.dart';
 import 'discovery.dart';
@@ -59,7 +60,7 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
   bool loading = true, loadingMore = false;
   String? error;
   int generation = 0;
-  String? opening;
+  String? opening, deleting;
   StreamSubscription<Map<String, dynamic>>? realtime;
   Timer? refreshTimer;
   bool get feedLayout => widget.embedded && widget.publishedOnly;
@@ -228,6 +229,33 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
       if (mounted) toast(context, '$e');
     } finally {
       if (mounted) setState(() => opening = null);
+    }
+  }
+
+  Future<void> _deleteDraft(Map<String, dynamic> row) async {
+    if (deleting != null) return;
+    final id = '${row['id']}';
+    final title = '${row['title'] ?? ''}'.trim();
+    final confirmed = await showAppConfirmation(
+      context,
+      title: '删除这篇草稿？',
+      content: Text(title.isEmpty ? '删除后无法恢复。' : '“$title”删除后无法恢复。'),
+      confirmLabel: '删除',
+      destructive: true,
+      confirmKey: ValueKey('draft-delete-confirm-$id'),
+    );
+    if (confirmed != true || !mounted) return;
+    final session = widget.store.epoch;
+    setState(() => deleting = id);
+    try {
+      await widget.store.request('DeleteArticlesId', path: {'id': id});
+      if (!mounted || widget.store.epoch != session) return;
+      setState(() => articles.removeWhere((item) => '${item['id']}' == id));
+      toast(context, '草稿已删除');
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    } finally {
+      if (mounted) setState(() => deleting = null);
     }
   }
 
@@ -448,8 +476,13 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                               padding: const EdgeInsets.only(bottom: 14),
                               child: _ArticleCard(
                                 row: row,
-                                busy: opening == '${row['id']}',
+                                busy:
+                                    opening == '${row['id']}' ||
+                                    deleting == '${row['id']}',
                                 onTap: () => _open(row),
+                                onDelete: row['status'] == 'DRAFT'
+                                    ? () => _deleteDraft(row)
+                                    : null,
                               ),
                             ),
                         PageLoadingFooter(visible: loadingMore),
@@ -481,10 +514,15 @@ class _ArticleCard extends StatelessWidget {
     required this.row,
     required this.busy,
     required this.onTap,
+    this.onDelete,
   });
   final Map<String, dynamic> row;
   final bool busy;
   final VoidCallback onTap;
+
+  /// Only drafts can be deleted from the list; other states are managed from
+  /// the article itself.
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -524,6 +562,23 @@ class _ArticleCard extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
+                  if (onDelete != null && !busy)
+                    IconButton(
+                      key: ValueKey('draft-delete-${row['id']}'),
+                      tooltip: '删除草稿',
+                      onPressed: onDelete,
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
+                      padding: EdgeInsets.zero,
+                      icon: AppIcon(
+                        AppIcons.delete,
+                        size: 18,
+                        color: context.colors.muted,
+                      ),
+                    ),
                   const SizedBox(width: 12),
                   if (busy)
                     const SizedBox(

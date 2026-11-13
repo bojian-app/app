@@ -348,7 +348,13 @@ class _StoryComposerState extends State<StoryComposer> {
                         h2: style(19, bold: true),
                         placeHolder: style(16, color: context.colors.muted),
                       ),
-                      onTapOutside: (_, focus) => focus.unfocus(),
+                      // Selection handles and the copy menu live in the root
+                      // overlay, outside the editor's tap region. Unfocusing
+                      // on them would collapse a selection while it is being
+                      // dragged, so only a caret is dismissed by outside taps.
+                      onTapOutside: (_, focus) {
+                        if (editor.selection.isCollapsed) focus.unfocus();
+                      },
                     ),
                   ),
                 ),
@@ -376,7 +382,12 @@ class _StoryComposerState extends State<StoryComposer> {
                         children: [
                           Expanded(
                             child: SingleChildScrollView(
+                              key: const ValueKey('composer-format-bar'),
                               scrollDirection: Axis.horizontal,
+                              // The app dismisses the keyboard on drag; this
+                              // bar sits on the keyboard and must keep it.
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.manual,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                                 vertical: 6,

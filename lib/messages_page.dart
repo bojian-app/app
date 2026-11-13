@@ -10,7 +10,9 @@ import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
 import 'app_store.dart';
+import 'confirmation_dialog.dart';
 import 'design.dart';
+import 'swipe_actions.dart';
 import 'my_articles_page.dart';
 import 'resume_updated_label.dart';
 import 'resume_pages.dart';
@@ -34,7 +36,7 @@ class MessagesPage extends StatefulWidget {
 }
 
 class _MessagesPageState extends State<MessagesPage> {
-  bool marking = false;
+  bool marking = false, clearing = false;
   @override
   void initState() {
     super.initState();
@@ -95,6 +97,7 @@ class _MessagesPageState extends State<MessagesPage> {
                             ),
                           ),
                         ),
+                        _clearAllButton(store),
                         _markAllReadButton(store),
                       ],
                     ),
@@ -120,7 +123,7 @@ class _MessagesPageState extends State<MessagesPage> {
                 Padding(padding: gutter, child: const EmptyState('暂无系统通知', '')),
               for (var i = 0; i < store.inbox.length; i++) ...[
                 if (i > 0) divider,
-                _notification(store.inbox[i]),
+                _dismissible(store, store.inbox[i]),
               ],
               PageLoadingFooter(visible: store.loadingMore.contains(section)),
             ],
@@ -133,12 +136,63 @@ class _MessagesPageState extends State<MessagesPage> {
               appBar: AppPageBar(
                 backgroundColor: context.colors.surface,
                 title: const Text('消息'),
-                actions: [_markAllReadButton(store)],
+                actions: [_clearAllButton(store), _markAllReadButton(store)],
               ),
               body: content,
             )
           : content;
     },
+  );
+
+  Widget _clearAllButton(AppStore store) => IconButton(
+    key: const ValueKey('notifications-clear-all'),
+    tooltip: '清空通知',
+    icon: AppIcon(AppIcons.delete, size: 22, color: context.colors.muted),
+    onPressed: !store.isAuthenticated || clearing || store.inbox.isEmpty
+        ? null
+        : () async {
+            final confirmed = await showAppConfirmation(
+              context,
+              title: '清空全部通知？',
+              content: const Text('清空后通知将从列表中移除，无法恢复。'),
+              confirmLabel: '清空',
+              destructive: true,
+              confirmKey: const ValueKey('notifications-clear-confirm'),
+            );
+            if (confirmed != true || !mounted) return;
+            setState(() => clearing = true);
+            await runRequest(
+              context,
+              store.clearAllNotifications,
+              success: '通知已清空',
+            );
+            if (mounted) setState(() => clearing = false);
+          },
+  );
+
+  /// Swipe left for per-notification actions: mark read and delete.
+  Widget _dismissible(AppStore store, InboxItem item) => SwipeActions(
+    key: ValueKey('notification-${item.id}'),
+    actions: [
+      if (!item.read)
+        SwipeAction(
+          key: ValueKey('notification-read-${item.id}'),
+          label: '标为已读',
+          color: const Color(0xFF2F6BFF),
+          onTap: () => runRequest(context, () => store.markRead(item)),
+        ),
+      SwipeAction(
+        key: ValueKey('notification-delete-${item.id}'),
+        label: '删除',
+        color: const Color(0xFFFF4D4F),
+        onTap: () => runRequest(
+          context,
+          () => store.clearNotification(item),
+          success: '通知已删除',
+        ),
+      ),
+    ],
+    child: _notification(item),
   );
 
   Widget _markAllReadButton(AppStore store) => IconButton(

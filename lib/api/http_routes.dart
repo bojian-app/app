@@ -225,6 +225,8 @@ const httpRoutes = <String, (String, String)>{
   'PostNotificationsIdDelivery': ('POST', '/notifications/{id}/delivery'),
   'PostNotificationsRead': ('POST', '/notifications/read'),
   'PostNotificationsReadAll': ('POST', '/notifications/read-all'),
+  'PostNotificationsClear': ('POST', '/notifications/clear'),
+  'DeleteNotificationsId': ('DELETE', '/notifications/{id}'),
   'GetMeNotificationSettings': ('GET', '/me/notification-settings'),
   'PatchMeNotificationSettings': ('PATCH', '/me/notification-settings'),
   'PostReports': ('POST', '/reports'),

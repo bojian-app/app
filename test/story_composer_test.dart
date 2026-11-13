@@ -100,4 +100,57 @@ void main() {
       store.dispose();
     },
   );
+
+  testWidgets(
+    'Selections survive outside touches and the format bar keeps the keyboard',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = await testStore(authenticated: true);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          scrollBehavior: const MaterialScrollBehavior().copyWith(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          ),
+          home: StoryComposer(store: store),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final editor = tester.widget<quill.QuillEditor>(
+        find.byKey(const ValueKey('composer-body')),
+      );
+      final focus = editor.focusNode;
+      focus.requestFocus();
+      editor.controller.replaceText(
+        0,
+        0,
+        '第一段文字',
+        const TextSelection(baseOffset: 0, extentOffset: 3),
+      );
+      await tester.pumpAndSettle();
+      // A touch outside the editor, e.g. on a selection handle.
+      await tester.tapAt(const Offset(180, 60));
+      await tester.pumpAndSettle();
+      expect(focus.hasFocus, isTrue);
+      expect(editor.controller.selection.extentOffset, 3);
+      final bar = tester.widget<SingleChildScrollView>(
+        find.byKey(const ValueKey('composer-format-bar')),
+      );
+      expect(
+        bar.keyboardDismissBehavior,
+        ScrollViewKeyboardDismissBehavior.manual,
+      );
+      editor.controller.updateSelection(
+        const TextSelection.collapsed(offset: 2),
+        quill.ChangeSource.local,
+      );
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(180, 60));
+      await tester.pumpAndSettle();
+      expect(focus.hasFocus, isFalse);
+    },
+  );
 }

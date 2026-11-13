@@ -1088,7 +1088,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                                           store: market.store,
                                           templateID: id,
                                           version: integer(design['version']),
-                                          watermark: '未经授权，商用追责',
                                           fullscreen: previewOpen,
                                           header: header,
                                           initialPage: previewPage,

@@ -28,6 +28,29 @@ extension AppStoreSocial on AppStore {
     changed();
   }
 
+  /// Clearing hides a notification from the inbox; the server keeps the row
+  /// for anything still linked to it.
+  Future<void> clearNotification(InboxItem item) async {
+    final version = epoch;
+    await request('DeleteNotificationsId', path: {'id': '${item.id}'});
+    if (!alive || version != epoch) return;
+    inbox.removeWhere((value) => value.id == item.id);
+    if (!item.read) {
+      notificationUnreadCount = (notificationUnreadCount - 1).clamp(0, 1 << 31);
+    }
+    changed();
+  }
+
+  Future<void> clearAllNotifications() async {
+    final version = epoch;
+    await request('PostNotificationsClear', body: {});
+    if (!alive || version != epoch) return;
+    inbox.clear();
+    cursors.remove('messages');
+    notificationUnreadCount = 0;
+    changed();
+  }
+
   Future<void> acceptFriend(int id) async {
     await request('PostFriendRequestsIdAccept', path: {'id': '$id'}, body: {});
     await load('messages');

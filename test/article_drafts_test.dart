@@ -14,7 +14,7 @@ import 'support/fake_gateway.dart';
 class DraftGateway extends FakeGateway {
   final queries = <Map<String, String>>[];
   final mutations = <(String, String, Map<String, dynamic>)>[];
-  bool submitted = false;
+  bool submitted = false, deleted = false;
   Completer<void>? saving;
   Map<String, dynamic> draft = {
     'id': 8,
@@ -37,11 +37,18 @@ class DraftGateway extends FakeGateway {
       queries.add({...query});
       return ApiDocument({
         'items': [
-          if (!submitted) {...draft},
+          if (!submitted && !deleted) {...draft},
           // A non-draft must never appear in this entry even if cached by an API.
           {'id': 9, 'title': '已发布内容', 'status': 'PUBLISHED'},
         ],
       });
+    }
+    if (method == 'DeleteArticlesId') {
+      calls.add(method);
+      mutations.add((method, path['id']!, const {}));
+      if (failing == method) throw const ApiFailure('网络暂不可用');
+      deleted = true;
+      return ApiDocument({'id': 8, 'deleted': true});
     }
     if (method == 'GetArticlesId') {
       calls.add(method);
@@ -123,6 +130,36 @@ void main() {
       expect(api.mutations, isEmpty);
     },
   );
+
+  testWidgets('Drafts can be deleted after confirmation', (tester) async {
+    final api = DraftGateway();
+    await mount(tester, api);
+    expect(find.byKey(const ValueKey('draft-delete-9')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('draft-delete-8')));
+    await tester.pumpAndSettle();
+    expect(find.text('删除这篇草稿？'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(api.mutations, isEmpty);
+    expect(find.text('求职复盘'), findsOneWidget);
+
+    api.failing = 'DeleteArticlesId';
+    await tester.tap(find.byKey(const ValueKey('draft-delete-8')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('draft-delete-confirm-8')));
+    await tester.pumpAndSettle();
+    expect(find.text('求职复盘'), findsOneWidget);
+
+    api.failing = null;
+    await tester.tap(find.byKey(const ValueKey('draft-delete-8')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('draft-delete-confirm-8')));
+    await tester.pumpAndSettle();
+    expect(api.mutations.last.$1, 'DeleteArticlesId');
+    expect(api.mutations.last.$2, '8');
+    expect(find.text('求职复盘'), findsNothing);
+    expect(find.text('草稿已删除'), findsOneWidget);
+  });
 
   testWidgets('Save updates the original draft and refreshes the draft box', (
     tester,

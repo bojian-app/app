@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'app_icons.dart';
 import 'app_store.dart';
 import 'design.dart';
-import 'developer_certification_badge.dart';
 import 'profile_avatar.dart';
 import 'profile_identity_data.dart';
 export 'profile_identity_data.dart';
@@ -118,13 +117,7 @@ class ProfileHeader extends StatelessWidget {
       final t = collapseProgress;
       final inset = MediaQuery.paddingOf(context).top;
       final width = constraints.maxWidth;
-      final certified = identity == null && store.identityVerified;
-      final badgeSize = ui.lerpDouble(
-        DeveloperCertificationBadge.expandedSize,
-        DeveloperCertificationBadge.compactSize,
-        t,
-      )!;
-      final badgeGap = ui.lerpDouble(6, 4, t)!;
+      final verified = identity == null && store.identityVerified;
       final toolbar = toolbarHeight(context);
       final color = Color.lerp(
         Colors.white,
@@ -143,27 +136,15 @@ class ProfileHeader extends StatelessWidget {
       );
       // Reserve the expanded name's height while its one existing Text moves.
       // Its changing font/width must not change the Sliver's natural extent.
-      final namePainter =
-          TextPainter(
-            text: TextSpan(
-              text: userDisplayName(data.name),
-              style: sourceStyle,
-            ),
-            textDirection: Directionality.of(context),
-            textScaler: MediaQuery.textScalerOf(context),
-            locale: Localizations.maybeLocaleOf(context),
-            maxLines: 2,
-            ellipsis: '…',
-          )..layout(
-            maxWidth:
-                width -
-                32 -
-                (certified ? DeveloperCertificationBadge.expandedSize + 6 : 0),
-          );
-      final nameHeight = namePainter.height.clamp(
-        certified ? DeveloperCertificationBadge.expandedSize : 0.0,
-        double.infinity,
-      );
+      final namePainter = TextPainter(
+        text: TextSpan(text: userDisplayName(data.name), style: sourceStyle),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        locale: Localizations.maybeLocaleOf(context),
+        maxLines: 2,
+        ellipsis: '…',
+      )..layout(maxWidth: width - 32);
+      final nameHeight = namePainter.height;
       final avatarTop = inset + toolbar + 24 + pullProgress * pullExtent;
       final nameTop = avatarTop + 106;
       final nameWidth = ui.lerpDouble(
@@ -194,23 +175,11 @@ class ProfileHeader extends StatelessWidget {
       namePainter
         ..text = TextSpan(text: userDisplayName(data.name), style: nameStyle)
         ..maxLines = t == 1 ? 1 : 2
-        ..layout(
-          maxWidth: (nameWidth - (certified ? badgeSize + badgeGap : 0)).clamp(
-            0,
-            width,
-          ),
-        );
-      final nameLineMetrics = namePainter.computeLineMetrics();
-      final firstLineHeight = nameLineMetrics.isEmpty
-          ? nameLineHeight
-          : nameLineMetrics.first.height;
-      final surfaceHeight =
-          (nameY +
-                  namePainter.height.clamp(
-                    certified ? badgeSize : 0.0,
-                    double.infinity,
-                  ))
-              .clamp(inset + toolbar, double.infinity);
+        ..layout(maxWidth: nameWidth.clamp(0, width));
+      final surfaceHeight = (nameY + namePainter.height).clamp(
+        inset + toolbar,
+        double.infinity,
+      );
       namePainter.dispose();
       final buttonStyle =
           (IconButtonTheme.of(context).style ?? const ButtonStyle()).copyWith(
@@ -252,19 +221,36 @@ class ProfileHeader extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (data.publicID.isNotEmpty ||
-                            data.ipLocation.isNotEmpty)
-                          Text(
-                            [
-                              if (data.publicID.isNotEmpty)
-                                'ID：${data.publicID}',
-                              if (data.ipLocation.isNotEmpty)
-                                'IP：${data.ipLocation.replaceFirst(RegExp(r'省$'), '')}',
-                            ].join(' / '),
-                            key: const ValueKey('profile-account-summary'),
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              color: Color(0xFFCDD2D9),
-                            ),
+                            data.ipLocation.isNotEmpty ||
+                            verified)
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  [
+                                    if (data.publicID.isNotEmpty)
+                                      'ID：${data.publicID}',
+                                    if (data.ipLocation.isNotEmpty)
+                                      'IP：${data.ipLocation.replaceFirst(RegExp(r'省$'), '')}',
+                                  ].join(' / '),
+                                  key: const ValueKey(
+                                    'profile-account-summary',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    color: Color(0xFFCDD2D9),
+                                  ),
+                                ),
+                              ),
+                              if (verified) ...[
+                                const SizedBox(width: 6),
+                                const _VerifiedTag(
+                                  key: ValueKey('profile-verified-tag'),
+                                ),
+                              ],
+                            ],
                           ),
                         const SizedBox(height: 10),
                         _ProfileAboutSummary(bio: data.bio, onTap: onDetails),
@@ -345,22 +331,15 @@ class ProfileHeader extends StatelessWidget {
               width: nameWidth,
               child: Opacity(
                 opacity: showName && !transitionSnapshot ? 1 : 0,
-                child: _ProfileCertifiedName(
-                  certified: certified,
-                  badgeSize: badgeSize,
-                  gap: badgeGap,
-                  firstLineHeight: firstLineHeight,
-                  badgeKey: const ValueKey('profile-developer-badge'),
-                  child: _ProfileMorphHero(
-                    store: store,
-                    identity: identity,
-                    child: Text(
-                      userDisplayName(data.name),
-                      key: const ValueKey('profile-identity-name'),
-                      maxLines: t == 1 ? 1 : 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: nameStyle,
-                    ),
+                child: _ProfileMorphHero(
+                  store: store,
+                  identity: identity,
+                  child: Text(
+                    userDisplayName(data.name),
+                    key: const ValueKey('profile-identity-name'),
+                    maxLines: t == 1 ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: nameStyle,
                   ),
                 ),
               ),
@@ -944,38 +923,22 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
   );
 }
 
-class _ProfileCertifiedName extends StatelessWidget {
-  const _ProfileCertifiedName({
-    required this.child,
-    required this.certified,
-    required this.badgeSize,
-    required this.gap,
-    required this.firstLineHeight,
-    this.badgeKey,
-  });
-  final Widget child;
-  final bool certified;
-  final double badgeSize, gap, firstLineHeight;
-  final Key? badgeKey;
-
+/// Shown after the IP location once the account owner passed real-name
+/// verification.
+class _VerifiedTag extends StatelessWidget {
+  const _VerifiedTag({super.key});
   @override
-  Widget build(BuildContext context) {
-    if (!certified) return child;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Flexible(child: child),
-        SizedBox(width: gap),
-        Padding(
-          padding: EdgeInsets.only(
-            top: ((firstLineHeight - badgeSize) / 2).clamp(0, double.infinity),
-          ),
-          child: DeveloperCertificationBadge(key: badgeKey, size: badgeSize),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .16),
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: const Text(
+      '已实名',
+      style: TextStyle(fontSize: 10, height: 1.3, color: Colors.white),
+    ),
+  );
 }
 
 class _ProfileMorphHero extends StatelessWidget {
@@ -1139,32 +1102,19 @@ class _ProfileDetailsLayout extends StatelessWidget {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          _ProfileCertifiedName(
-                                            certified:
-                                                identity == null &&
-                                                store.identityVerified,
-                                            badgeSize:
-                                                DeveloperCertificationBadge
-                                                    .expandedSize,
-                                            gap: 6,
-                                            firstLineHeight:
-                                                MediaQuery.textScalerOf(context)
-                                                    .scale(22) *
-                                                1.25,
-                                            child: _ProfileMorphHero(
-                                              store: store,
-                                              identity: identity,
-                                              child: Text(
-                                                userDisplayName(data.name),
-                                                key: const ValueKey(
-                                                  'profile-details-name',
-                                                ),
-                                                style: const TextStyle(
-                                                  fontSize: 22,
-                                                  height: 1.25,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.white,
-                                                ),
+                                          _ProfileMorphHero(
+                                            store: store,
+                                            identity: identity,
+                                            child: Text(
+                                              userDisplayName(data.name),
+                                              key: const ValueKey(
+                                                'profile-details-name',
+                                              ),
+                                              style: const TextStyle(
+                                                fontSize: 22,
+                                                height: 1.25,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.white,
                                               ),
                                             ),
                                           ),
@@ -1256,6 +1206,7 @@ class _ProfileAccountDetails extends StatelessWidget {
   final ProfileIdentityData? identity;
   ProfileIdentityData get data =>
       identity ?? ProfileIdentityData.fromStore(store);
+  bool get verified => identity == null && store.identityVerified;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -1278,15 +1229,27 @@ class _ProfileAccountDetails extends StatelessWidget {
             color: Colors.white,
           ),
         ),
-      if (data.ipLocation.isNotEmpty)
-        Text(
-          'IP属地：${data.ipLocation}',
-          key: const ValueKey('profile-details-ip-location'),
-          style: const TextStyle(
-            fontSize: 12,
-            height: 1.6,
-            color: Colors.white,
-          ),
+      if (data.ipLocation.isNotEmpty || verified)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (data.ipLocation.isNotEmpty)
+              Flexible(
+                child: Text(
+                  'IP属地：${data.ipLocation}',
+                  key: const ValueKey('profile-details-ip-location'),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.6,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            if (verified) ...[
+              if (data.ipLocation.isNotEmpty) const SizedBox(width: 6),
+              const _VerifiedTag(key: ValueKey('profile-details-verified-tag')),
+            ],
+          ],
         ),
     ],
   );
