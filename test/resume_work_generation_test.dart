@@ -17,6 +17,7 @@ class WorkGenerationGateway extends FakeGateway {
   final inputs = <Map<String, dynamic>>[];
   Completer<ApiDocument>? pending;
   bool fail = false;
+  bool membersOnly = false;
   @override
   Future<ApiDocument> call(
     String method, {
@@ -28,6 +29,12 @@ class WorkGenerationGateway extends FakeGateway {
     if (method == 'PostResumeWorkDescriptions') {
       inputs.add(Map.of(body!));
       if (fail) throw const ApiFailure('生成失败，请重试');
+      if (membersOnly) {
+        throw const ApiFailure(
+          'AI 生成为会员专享，开通会员后即可使用',
+          code: 'MEMBERSHIP_REQUIRED',
+        );
+      }
       return pending == null
           ? ApiDocument({'description': generated})
           : await pending!.future;
@@ -167,6 +174,17 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Members-only rejection explains membership', (tester) async {
+    final api = WorkGenerationGateway()..membersOnly = true;
+    await open(tester, api);
+    await generate(tester);
+    expect(find.text('会员专享'), findsOneWidget);
+    expect(find.text('AI 生成为会员专享，开通会员后即可使用'), findsOneWidget);
+    final field = find.byKey(const ValueKey('resume-work-0-description'));
+    expect(tester.widget<TextFormField>(field).controller!.text, '原工作内容');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('Failure retains content and allows retry', (tester) async {
     final api = WorkGenerationGateway()..fail = true;

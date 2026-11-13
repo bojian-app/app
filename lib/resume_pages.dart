@@ -55,6 +55,7 @@ import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
 import 'confirmation_dialog.dart';
+import 'membership_page.dart';
 
 part 'resume_library.dart';
 part 'resume_editor.dart';

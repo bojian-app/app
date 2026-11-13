@@ -6,6 +6,7 @@ import 'api/bojian_api.dart';
 import 'app_page_bar.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'membership_page.dart';
 
 class ResumeAIOptimizationPage extends StatefulWidget {
   const ResumeAIOptimizationPage({
@@ -131,6 +132,8 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
       });
       await poll();
     } catch (e) {
+      if (!mounted || !valid) return;
+      if (await showMembershipRequired(context, widget.store, e)) return;
       if (valid) setState(() => error = '$e');
     } finally {
       if (valid) setState(() => busy = false);

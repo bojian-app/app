@@ -91,6 +91,9 @@ flutter:
     - assets/invitation/reward-envelope.webp
     - assets/invitation/icons/
     - assets/branding/app_icon.png
+    - assets/membership/golden_tree.webp
+    - assets/payment/alipay.svg
+    - assets/payment/wechat_pay.svg
     - assets/badges/developer_crystal_v1.webp
     - assets/login/happy-cat.svg
     - assets/login/ILLLUSTRATIONS-LICENSE.txt

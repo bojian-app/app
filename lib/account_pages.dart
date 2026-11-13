@@ -18,6 +18,7 @@ import 'app_photo_picker.dart';
 import 'developer_verification_page.dart';
 import 'form_page_layout.dart';
 import 'design.dart';
+import 'membership_page.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
 import 'resume_pages.dart';
@@ -146,7 +147,13 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
   }
 }
 
-enum _ProfileMenuPage { drafts, settings, points, developerVerification }
+enum _ProfileMenuPage {
+  drafts,
+  settings,
+  points,
+  membership,
+  developerVerification,
+}
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.store});
@@ -657,6 +664,7 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
           draftsOnly: true,
         ),
         _ProfileMenuPage.settings => SettingsPage(store: store),
+        _ProfileMenuPage.membership => MembershipPage(store: store),
         _ProfileMenuPage.developerVerification => DeveloperVerificationPage(
           store: store,
         ),
@@ -756,6 +764,16 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
                                   _ProfileMenuPage.points,
                                 ),
                               ),
+                              if (membershipPurchaseAvailable)
+                                _menu(
+                                  context,
+                                  '博简会员',
+                                  AppIcons.membership,
+                                  () => openDestination(
+                                    menuContext,
+                                    _ProfileMenuPage.membership,
+                                  ),
+                                ),
                               _menu(
                                 context,
                                 '草稿箱',

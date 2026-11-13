@@ -115,6 +115,7 @@ abstract final class AppIcons {
   static const gift = HugeIcons.strokeRoundedGift;
   static const accountChanged = HugeIcons.strokeRoundedUserBlock01;
   static const coins = HugeIcons.strokeRoundedCoins01;
+  static const membership = HugeIcons.strokeRoundedCrown;
 }
 
 /// Inherits icon size, color and disabled opacity from the surrounding controls.
