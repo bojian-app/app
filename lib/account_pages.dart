@@ -764,7 +764,7 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
                                   _ProfileMenuPage.points,
                                 ),
                               ),
-                              if (membershipPurchaseAvailable)
+                              if (membershipPageAvailable)
                                 _menu(
                                   context,
                                   '博简会员',

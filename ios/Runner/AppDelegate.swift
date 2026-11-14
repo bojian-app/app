@@ -9,6 +9,7 @@ import BojianPangleAds
   private var rewardedAd: BojianRewardedAdBridge?
   private var douyinLogin: BojianDouyinLogin?
   private var baiduFace: BojianNativeFaceBridge?
+  private var appleProducts: BojianAppleProducts?
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -27,6 +28,9 @@ import BojianPangleAds
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianNativeFace") {
       baiduFace = BojianNativeFaceBridge(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianAppleProducts") {
+      appleProducts = BojianAppleProducts(messenger: registrar.messenger())
     }
     guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianDeviceMetadata") else { return }
     FlutterMethodChannel(name: "cn.kelance.bojian/settings", binaryMessenger: registrar.messenger())

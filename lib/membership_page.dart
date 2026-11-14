@@ -1,22 +1,30 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:fluwx_no_pay/fluwx_no_pay.dart';
 import 'package:hugeicons/hugeicons.dart';
 
 import 'api/bojian_api.dart';
 import 'app_page_bar.dart';
 import 'app_store.dart';
+import 'apple_membership_products.dart';
+import 'apple_membership_purchases.dart';
 import 'confirmation_dialog.dart';
 import 'design.dart';
+import 'legal_document.dart';
+import 'legal_document_page.dart';
 import 'panel_sheet.dart';
 import 'profile_avatar.dart';
 import 'template_market.dart' show MarketTemplateArtwork;
+import 'wechat_login.dart' show NativeWeChatAuthorizer;
 
 part 'membership_wallet.dart';
+part 'membership_apple_checkout.dart';
+part 'membership_auto_renew.dart';
 
 /// 会员套餐。价格与服务端 membershipPlans 保持一致，下单时以服务端金额为准。
 class MembershipPlan {
@@ -72,7 +80,10 @@ const _benefits = [
 
 const _faqs = [
   ('开通后多久生效？', '支付成功后立即生效，有效期从开通时刻起算。已是会员时续费，有效期在当前到期时间上顺延。'),
-  ('到期会自动扣费吗？', '不会。月卡和年卡都是一次性购买，到期后不续费就恢复为免费用户，已编辑的简历和导出的文件都会保留。'),
+  (
+    '到期会自动扣费吗？',
+    '默认是一次性购买，不会自动扣费，到期后恢复为免费用户，已编辑的简历和导出的文件都会保留。下单时勾选“自动续费”才会在到期前自动扣费，可随时在会员页取消。',
+  ),
   ('会员能在其他手机上用吗？', '可以。会员绑定博简账号，登录同一账号的手机都能使用会员权益。'),
   ('之前用积分兑换的模板会失效吗？', '不会。改版前兑换的模板继续永久可用；开通会员后所有付费模板都可直接使用。'),
 ];
@@ -126,11 +137,23 @@ class MembershipPage extends StatefulWidget {
 }
 
 class _MembershipPageState extends State<MembershipPage> {
-  MembershipPlan selected = membershipPlans.first;
+  MembershipPlan selected = usesAppleMembership
+      ? membershipPlans.last
+      : membershipPlans.first;
+  final AppleMembershipProducts? appleProducts = usesAppleMembership
+      ? AppleMembershipProducts()
+      : null;
   DateTime? endsAt;
+
+  /// 进行中的自动续费；开通后下单页不再提供自动续费勾选。
+  Map? autoRenew;
+  Map<String, AutoRenewOption> autoRenewOptions = const {};
+  bool cancellingAutoRenew = false;
   List<Map<String, dynamic>> templates = const [];
   final scroll = ScrollController();
   bool barSolid = false;
+  AppleMembershipPurchases? applePurchases;
+  int _membershipRevision = 0;
 
   AppStore get store => widget.store;
 
@@ -143,17 +166,75 @@ class _MembershipPageState extends State<MembershipPage> {
     });
     _loadStatus();
     _loadTemplates();
+    if (appleProducts == null) _loadAutoRenewOptions();
+    appleProducts?.addListener(_productsChanged);
+    appleProducts?.load();
+    if (appleProducts != null) {
+      applePurchases = AppleMembershipPurchases.forStore(store);
+      _membershipRevision = applePurchases!.membershipRevision;
+      applePurchases!.addListener(_purchasesChanged);
+    }
+  }
+
+  void _purchasesChanged() {
+    if (!mounted) return;
+    if (_membershipRevision != applePurchases!.membershipRevision) {
+      _membershipRevision = applePurchases!.membershipRevision;
+      unawaited(_loadStatus());
+    }
+    setState(() {});
+  }
+
+  void _productsChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadStatus() async {
     try {
       final result = await store.request('GetMembership');
       final value = result.data['ends_at'];
-      if (!mounted || result.data['active'] != true || value is! String) return;
-      setState(() => endsAt = DateTime.tryParse(value)?.toLocal());
+      if (!mounted) return;
+      final running = result.data['auto_renew'];
+      setState(() {
+        endsAt = result.data['active'] == true && value is String
+            ? DateTime.tryParse(value)?.toLocal()
+            : null;
+        autoRenew = running is Map ? running : null;
+      });
     } catch (_) {
       // 会员状态读取失败时按未开通展示，不影响选购。
     }
+  }
+
+  Future<void> _loadAutoRenewOptions() async {
+    try {
+      final options = await loadAutoRenewOptions(store);
+      if (mounted) setState(() => autoRenewOptions = options);
+    } catch (_) {
+      // 读取失败时只提供一次性购买。
+    }
+  }
+
+  Future<void> _cancelAutoRenew() async {
+    final confirmed = await showAppConfirmation(
+      context,
+      title: '取消自动续费？',
+      content: const Text('取消后不再自动扣费，已开通的会员可用到当前有效期结束。'),
+      confirmLabel: '取消续费',
+      cancelLabel: '再想想',
+      destructive: true,
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => cancellingAutoRenew = true);
+    try {
+      await store.request('PostMembershipSubscriptionCancel');
+      if (mounted) toast(context, '已取消自动续费');
+    } on ApiFailure catch (e) {
+      if (mounted) toast(context, e.message);
+    } finally {
+      if (mounted) setState(() => cancellingAutoRenew = false);
+    }
+    await _loadStatus();
   }
 
   Future<void> _loadTemplates() async {
@@ -176,6 +257,9 @@ class _MembershipPageState extends State<MembershipPage> {
 
   @override
   void dispose() {
+    appleProducts?.removeListener(_productsChanged);
+    appleProducts?.dispose();
+    applePurchases?.removeListener(_purchasesChanged);
     scroll.dispose();
     super.dispose();
   }
@@ -192,38 +276,51 @@ class _MembershipPageState extends State<MembershipPage> {
           backgroundColor: barSolid ? _bg : Colors.transparent,
           foregroundColor: _text,
           actions: [
-            Padding(
-              // 去掉按钮自带内边距，使文字右缘与页面统一边距对齐
-              padding: const EdgeInsets.only(right: appPageHorizontalPadding),
-              child: TextButton.icon(
-                onPressed: () async {
-                  await openPage<void>(
-                    context,
-                    MembershipWalletPage(store: store),
-                  );
-                  if (mounted) await _loadStatus();
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: _gold,
-                  padding: const EdgeInsets.only(left: 8),
-                  minimumSize: const Size(44, 44),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: const HugeIcon(
-                  icon: HugeIcons.strokeRoundedTicket01,
-                  size: 18,
-                  color: _gold,
-                ),
-                label: const Text('卡包'),
+            if (applePurchases != null)
+              TextButton(
+                onPressed: applePurchases!.busy
+                    ? null
+                    : applePurchases!.restore,
+                style: TextButton.styleFrom(foregroundColor: _gold),
+                child: const Text('恢复购买'),
               ),
-            ),
+            if (appleProducts == null)
+              Padding(
+                // 去掉按钮自带内边距，使文字右缘与页面统一边距对齐
+                padding: const EdgeInsets.only(right: appPageHorizontalPadding),
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await openPage<void>(
+                      context,
+                      MembershipWalletPage(store: store),
+                    );
+                    if (mounted) await _loadStatus();
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: _gold,
+                    padding: const EdgeInsets.only(left: 8),
+                    minimumSize: const Size(44, 44),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const HugeIcon(
+                    icon: HugeIcons.strokeRoundedTicket01,
+                    size: 18,
+                    color: _gold,
+                  ),
+                  label: const Text('卡包'),
+                ),
+              ),
           ],
         ),
         body: ListView(
           controller: scroll,
           padding: EdgeInsets.zero,
           children: [
-            _Header(store: store, endsAt: endsAt),
+            _Header(
+              store: store,
+              endsAt: endsAt,
+              showPrice: appleProducts == null,
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Column(
@@ -242,6 +339,9 @@ class _MembershipPageState extends State<MembershipPage> {
                             child: _PlanCard(
                               plan: plan,
                               selected: plan == selected,
+                              localizedPrice: appleProducts?.priceLabel(
+                                plan.code,
+                              ),
                               onTap: () => setState(() => selected = plan),
                             ),
                           ),
@@ -250,20 +350,43 @@ class _MembershipPageState extends State<MembershipPage> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  const Row(
+                  if (appleProducts?.error != null)
+                    _AppleProductNotice(products: appleProducts!, dark: true),
+                  if (applePurchases?.message != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        applePurchases!.message!,
+                        style: const TextStyle(color: _gold, fontSize: 12),
+                      ),
+                    ),
+                  Row(
                     children: [
-                      HugeIcon(
+                      const HugeIcon(
                         icon: HugeIcons.strokeRoundedInformationCircle,
                         size: 14,
                         color: _muted,
                       ),
-                      SizedBox(width: 4),
-                      Text(
-                        '一次性购买，到期不自动扣费',
-                        style: TextStyle(fontSize: 12, color: _muted),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          autoRenewOptions.containsKey(selected.code) &&
+                                  autoRenew == null
+                              ? '默认一次性购买；下单时可勾选自动续费'
+                              : '一次性购买，到期不自动扣费',
+                          style: const TextStyle(fontSize: 12, color: _muted),
+                        ),
                       ),
                     ],
                   ),
+                  if (autoRenew != null) ...[
+                    const SizedBox(height: 12),
+                    _AutoRenewStatus(
+                      subscription: autoRenew!,
+                      busy: cancellingAutoRenew,
+                      onCancel: _cancelAutoRenew,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -293,13 +416,38 @@ class _MembershipPageState extends State<MembershipPage> {
         ),
         bottomNavigationBar: _BottomPayBar(
           dark: true,
-          label: endsAt == null ? '立即开通' : '立即续费',
+          label: appleProducts != null
+              ? '查看购买详情'
+              : endsAt == null
+              ? '立即开通'
+              : '立即续费',
           amount: selected.price,
-          footer: const _AutoRenewToggle(),
+          displayAmount: appleProducts?.priceLabel(selected.code),
+          footer: appleProducts == null
+              ? const Text(
+                  '一次性购买',
+                  style: TextStyle(fontSize: 12, color: _muted),
+                )
+              : const Text(
+                  'App Store 内购',
+                  style: TextStyle(fontSize: 12, color: _muted),
+                ),
           onPressed: () async {
             await openPage<void>(
               context,
-              MembershipCheckoutPage(store: store, plan: selected),
+              appleProducts != null
+                  ? _AppleMembershipCheckoutPage(
+                      plan: selected,
+                      products: appleProducts!,
+                      purchases: applePurchases!,
+                    )
+                  : MembershipCheckoutPage(
+                      store: store,
+                      plan: selected,
+                      autoRenew: autoRenew == null
+                          ? autoRenewOptions[selected.code]
+                          : null,
+                    ),
             );
             if (mounted) await _loadStatus();
           },
@@ -310,9 +458,10 @@ class _MembershipPageState extends State<MembershipPage> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.store, this.endsAt});
+  const _Header({required this.store, this.endsAt, this.showPrice = true});
   final AppStore store;
   final DateTime? endsAt;
+  final bool showPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -403,10 +552,11 @@ class _Header extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  Text(
-                    '低至 ¥${membershipPlans.first.perDay}/天',
-                    style: const TextStyle(fontSize: 12, color: _gold),
-                  ),
+                  if (showPrice)
+                    Text(
+                      '低至 ¥${membershipPlans.first.perDay}/天',
+                      style: const TextStyle(fontSize: 12, color: _gold),
+                    ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -660,10 +810,12 @@ class _PlanCard extends StatelessWidget {
     required this.plan,
     required this.selected,
     required this.onTap,
+    this.localizedPrice,
   });
   final MembershipPlan plan;
   final bool selected;
   final VoidCallback onTap;
+  final String? localizedPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -674,33 +826,52 @@ class _PlanCard extends StatelessWidget {
       fontWeight: FontWeight.w800,
       fontFeatures: [FontFeature.tabularFigures()],
     );
-    final price = Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        selected
-            ? const _GoldText(
-                '¥',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              )
-            : const Text(
-                '¥',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: _text,
-                ),
-              ),
-        selected
-            ? _GoldText(plan.price, style: priceStyle)
-            : Text(plan.price, style: priceStyle.copyWith(color: _text)),
-      ],
-    );
+    final price = localizedPrice != null
+        ? FittedBox(
+            fit: BoxFit.scaleDown,
+            child: selected
+                ? _GoldText(localizedPrice!, style: priceStyle)
+                : Text(
+                    localizedPrice!,
+                    style: priceStyle.copyWith(color: _text),
+                  ),
+          )
+        : FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                selected
+                    ? const _GoldText(
+                        '¥',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      )
+                    : const Text(
+                        '¥',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: _text,
+                        ),
+                      ),
+                selected
+                    ? _GoldText(plan.price, style: priceStyle)
+                    : Text(
+                        plan.price,
+                        style: priceStyle.copyWith(color: _text),
+                      ),
+              ],
+            ),
+          );
     return Semantics(
       selected: selected,
       button: true,
-      label: '${plan.title} ${plan.price} 元',
+      label: '${plan.title} ${localizedPrice ?? '${plan.price} 元'}',
       excludeSemantics: true,
       child: GestureDetector(
         onTap: onTap,
@@ -762,7 +933,9 @@ class _PlanCard extends StatelessWidget {
                             price,
                             const SizedBox(height: 4),
                             Text(
-                              '折合 ¥${plan.perDay}/天',
+                              localizedPrice != null
+                                  ? '有效期 ${plan.period}'
+                                  : '折合 ¥${plan.perDay}/天',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: _muted,
@@ -780,7 +953,11 @@ class _PlanCard extends StatelessWidget {
                           color: selected ? null : Colors.black26,
                         ),
                         child: Text(
-                          year ? '预计可省 ¥$_yearSaving' : '适合短期求职冲刺',
+                          year
+                              ? localizedPrice != null
+                                    ? '全年会员权益'
+                                    : '预计可省 ¥$_yearSaving'
+                              : '适合短期求职冲刺',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 12,
@@ -808,9 +985,9 @@ class _PlanCard extends StatelessWidget {
                             bottomRight: Radius.circular(12),
                           ),
                         ),
-                        child: const Text(
-                          '最划算',
-                          style: TextStyle(
+                        child: Text(
+                          localizedPrice != null ? '推荐' : '最划算',
+                          style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
@@ -1050,12 +1227,12 @@ class _FaqList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Material(
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: _surface,
+      color: _surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _line),
+        side: const BorderSide(color: _line),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -1102,68 +1279,18 @@ class _FaqList extends StatelessWidget {
 }
 
 /// 底部结算栏。会员页用黑金底配香槟金按钮，确认订单页用浅色底配蓝色按钮。
-/// Records the buyer's auto-renew preference. Purchases stay one-off until
-/// Alipay and WeChat recurring deduction are signed, so it is not sent yet.
-class _AutoRenewToggle extends StatefulWidget {
-  const _AutoRenewToggle();
-
-  @override
-  State<_AutoRenewToggle> createState() => _AutoRenewToggleState();
-}
-
-class _AutoRenewToggleState extends State<_AutoRenewToggle> {
-  bool selected = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      checked: selected,
-      button: true,
-      label: '自动续费',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => selected = !selected),
-        child: Padding(
-          padding: const EdgeInsets.only(top: 4, bottom: 2),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                width: 15,
-                height: 15,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: selected ? _champagneGradient : null,
-                  border: selected
-                      ? null
-                      : Border.all(color: _muted, width: 1.2),
-                ),
-                child: selected
-                    ? const Icon(Icons.check_rounded, size: 11, color: _goldInk)
-                    : null,
-              ),
-              const SizedBox(width: 6),
-              const Text('自动续费', style: TextStyle(fontSize: 12, color: _text)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _BottomPayBar extends StatelessWidget {
   const _BottomPayBar({
     required this.label,
     required this.amount,
+    this.displayAmount,
     this.footer,
     required this.onPressed,
     this.busy = false,
     this.dark = false,
   });
   final String label, amount;
+  final String? displayAmount;
   final Widget? footer;
   final VoidCallback? onPressed;
   final bool busy, dark;
@@ -1175,11 +1302,11 @@ class _BottomPayBar extends StatelessWidget {
     final onButton = dark ? _goldInk : Colors.white;
     final amountWidget = dark
         ? _GoldText(
-            '¥$amount',
+            displayAmount ?? '¥$amount',
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           )
         : Text(
-            '¥$amount',
+            displayAmount ?? '¥$amount',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -1210,12 +1337,12 @@ class _BottomPayBar extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(23),
-                    gradient: busy
+                    gradient: busy || onPressed == null
                         ? LinearGradient(colors: [muted, muted])
                         : dark
                         ? _champagneGradient
                         : const LinearGradient(colors: _blueGradient),
-                    boxShadow: busy
+                    boxShadow: busy || onPressed == null
                         ? null
                         : [
                             BoxShadow(
@@ -1272,9 +1399,13 @@ class MembershipCheckoutPage extends StatefulWidget {
     super.key,
     required this.store,
     required this.plan,
+    this.autoRenew,
   });
   final AppStore store;
   final MembershipPlan plan;
+
+  /// 该套餐可勾选的自动续费；为空时不显示勾选框。
+  final AutoRenewOption? autoRenew;
 
   @override
   State<MembershipCheckoutPage> createState() => _MembershipCheckoutPageState();
@@ -1294,8 +1425,40 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
   List<WalletCoupon> coupons = const [];
   WalletCoupon? coupon;
 
-  int get discountCents => coupon?.discountFor(widget.plan) ?? 0;
-  int get payableCents => widget.plan.amountCents - discountCents;
+  /// 是否勾选自动续费，默认不勾选。
+  bool autoRenew = false;
+
+  /// 勾选自动续费时按每期续费价计价，优惠券只抵扣首期。
+  MembershipPlan get plan {
+    final option = widget.autoRenew;
+    if (!autoRenew || option == null) return widget.plan;
+    final base = widget.plan;
+    return MembershipPlan(
+      code: base.code,
+      title: base.title,
+      orderName: base.orderName,
+      amountCents: option.amountCents,
+      period: base.period,
+      days: base.days,
+    );
+  }
+
+  int get discountCents => coupon?.discountFor(plan) ?? 0;
+  int get payableCents => plan.amountCents - discountCents;
+
+  /// 勾选自动续费时只列出已开通代扣的渠道。
+  Set<String> get channels => autoRenew
+      ? available.intersection(widget.autoRenew!.channels)
+      : available;
+
+  void _setAutoRenew(bool value) => setState(() {
+    autoRenew = value;
+    // 金额和下单接口都变了，需要新的幂等键。
+    requestKey = null;
+    if (!channels.contains(channel) && channels.isNotEmpty) {
+      channel = channels.first;
+    }
+  });
 
   @override
   void initState() {
@@ -1373,12 +1536,94 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
     Navigator.of(context).pop();
   }
 
+  /// 签约通知通常在几秒内到达，期间轮询会员状态。
+  Future<bool> _waitUntilSigned() async {
+    for (var attempt = 0; attempt < 8; attempt++) {
+      try {
+        final result = await widget.store.request('GetMembership');
+        final running = result.data['auto_renew'];
+        if (running is Map && running['status'] == 'ACTIVE') return true;
+      } on ApiFailure {
+        // 网络抖动时继续等待下一次查询。
+      }
+      if (!mounted) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      if (!mounted) return false;
+    }
+    return false;
+  }
+
+  /// 支付宝：首月付款同时签约；微信：先签约，首月在次日扣款后生效。
+  Future<void> _subscribe() async {
+    final created = await widget.store.request(
+      'PostMembershipSubscriptions',
+      body: {
+        'plan_code': widget.plan.code,
+        'channel': channel,
+        'coupon_id': ?coupon?.id,
+      },
+      extra: {'idempotency-key': requestKey!},
+    );
+    if (!mounted) return;
+    final subscription = created.data['subscription'];
+    if (subscription is Map && subscription['status'] == 'ACTIVE') {
+      toast(context, '已开通自动续费');
+      Navigator.of(context).pop();
+      return;
+    }
+    if (channel == 'ALIPAY') {
+      final orderString = created.data['alipay_order_string'];
+      if (orderString is! String || orderString.isEmpty) {
+        toast(context, '支付宝签约暂不可用，请稍后再试');
+        return;
+      }
+      final outcome = await _alipay.invokeMapMethod<String, String>('pay', {
+        'orderString': orderString,
+      });
+      if (!mounted) return;
+      final status = outcome?['resultStatus'];
+      if (status == '6001') {
+        toast(context, '已取消开通');
+        return;
+      }
+      final paid = await _waitUntilPaid(integer(created.data['order_id']));
+      if (!mounted) return;
+      if (paid) {
+        toast(context, '会员已开通，自动续费已生效');
+        Navigator.of(context).pop();
+        return;
+      }
+      if (!mounted) return;
+      toast(
+        context,
+        status == '9000' || status == '8000'
+            ? '开通结果确认中，稍后可在会员页查看'
+            : '开通未完成，请重试',
+      );
+      return;
+    }
+    final sign = created.data['wechat_sign'];
+    if (sign is! Map || !await _openWeChatContractSign(sign)) {
+      if (mounted) toast(context, '无法打开微信签约，请重试');
+      return;
+    }
+    // 微信签约完成后用户手动返回 App，此时再查询签约结果。
+    if (await _waitUntilSigned()) {
+      if (!mounted) return;
+      toast(context, '签约成功，首期扣款成功后会员生效');
+      Navigator.of(context).pop();
+      return;
+    }
+    if (mounted) toast(context, '签约结果确认中，稍后可在会员页查看');
+  }
+
   Future<void> _pay() async {
     if (paying) return;
     requestKey ??=
         'mobile-membership-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
     setState(() => paying = true);
     try {
+      if (autoRenew) return await _subscribe();
       final order = await widget.store.request(
         'PostMembershipOrders',
         body: {
@@ -1420,6 +1665,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
     } on ApiFailure catch (e) {
       if (!mounted) return;
       if (e.code == 'MEMBERSHIP_ORDER_EXPIRED' ||
+          e.code == 'AUTO_RENEW_SIGN_EXPIRED' ||
           e.code == 'IDEMPOTENCY_CONFLICT') {
         requestKey = null;
       }
@@ -1432,7 +1678,8 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final plan = widget.plan;
+    final plan = this.plan;
+    final unit = plan.code == 'YEAR' ? '年' : '月';
     return Scaffold(
       backgroundColor: colors.canvas,
       appBar: AppPageBar(
@@ -1447,7 +1694,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
               children: [
                 Row(
                   children: [
-                    _PlanThumb(plan: widget.plan),
+                    _PlanThumb(plan: plan),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -1463,7 +1710,9 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '有效期 ${plan.period} · 到期不自动续费',
+                            autoRenew
+                                ? '每$unit自动续费 · 可随时取消'
+                                : '有效期 ${plan.period} · 到期不自动续费',
                             style: TextStyle(fontSize: 12, color: colors.muted),
                           ),
                         ],
@@ -1486,6 +1735,15 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
                   '商品金额',
                   '¥${(plan.amountCents / 100).toStringAsFixed(2)}',
                 ),
+                if (widget.autoRenew != null) ...[
+                  MembershipAutoRenewToggle(
+                    value: autoRenew,
+                    onChanged: paying ? null : _setAutoRenew,
+                    plan: widget.plan,
+                    price: '¥${widget.autoRenew!.price}',
+                  ),
+                  const SizedBox(height: 4),
+                ],
                 _CouponLine(
                   discountCents: discountCents,
                   available: coupons.length,
@@ -1517,7 +1775,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
                   ),
                 ),
                 for (final option in const ['ALIPAY', 'WECHAT'])
-                  if (available.contains(option))
+                  if (channels.contains(option))
                     _ChannelTile(
                       channel: option,
                       selected: channel == option,
@@ -1541,7 +1799,11 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '会员为虚拟服务，支付成功后立即生效。付款后 30 分钟内未到账，请在“隐私与设置 → 意见反馈”联系我们。',
+                  autoRenew
+                      ? channel == 'WECHAT'
+                            ? '开通即授权博简通过微信支付每$unit自动扣费 ${plan.price} 元：签约后次日扣首期，之后每期在会员到期前一天扣费，扣费前微信会提醒。优惠券只抵扣首期。可随时在会员页或微信“支付设置 → 自动续费”中取消，取消后已开通的会员保留到期满。'
+                            : '开通即授权博简通过支付宝每$unit自动扣费 ${plan.price} 元：本次支付首期，之后每期在会员到期前一天扣费。优惠券只抵扣首期。可随时在会员页或支付宝“设置 → 支付设置 → 免密支付/自动扣款”中取消，取消后已开通的会员保留到期满。'
+                      : '会员为虚拟服务，支付成功后立即生效。付款后 30 分钟内未到账，请在“隐私与设置 → 意见反馈”联系我们。',
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.5,
@@ -1554,7 +1816,11 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
         ],
       ),
       bottomNavigationBar: _BottomPayBar(
-        label: '立即支付',
+        label: autoRenew
+            ? channel == 'WECHAT'
+                  ? '去微信签约'
+                  : '支付并开通'
+            : '立即支付',
         amount: (payableCents / 100).toStringAsFixed(2),
         busy: paying,
         onPressed: _pay,
@@ -1818,8 +2084,9 @@ class _ChannelTile extends StatelessWidget {
   }
 }
 
-/// 当前只在安卓开放购买；iOS 接入苹果内购前不显示入口。
-bool get membershipPurchaseAvailable => Platform.isAndroid;
+/// iOS 允许查看套餐，实际购买由独立的 App Store 页面控制。
+bool get membershipPageAvailable =>
+    defaultTargetPlatform == TargetPlatform.android || usesAppleMembership;
 
 /// Explains a members-only rejection and offers the membership page.
 /// Returns false for any other error so callers keep their own handling.
@@ -1831,12 +2098,16 @@ Future<bool> showMembershipRequired(
   if (error is! ApiFailure || error.code != 'MEMBERSHIP_REQUIRED') {
     return false;
   }
-  final purchasable = membershipPurchaseAvailable;
+  final purchasable = membershipPageAvailable;
   final open = await showAppConfirmation(
     context,
     title: '会员专享',
     content: Text(error.message),
-    confirmLabel: purchasable ? '开通会员' : '知道了',
+    confirmLabel: purchasable
+        ? usesAppleMembership
+              ? '查看会员'
+              : '开通会员'
+        : '知道了',
     cancelLabel: purchasable ? '暂不' : null,
   );
   if (open == true && purchasable && context.mounted) {

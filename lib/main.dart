@@ -10,6 +10,8 @@ import 'app_shell.dart';
 import 'app_environment.dart';
 import 'auth_page.dart';
 import 'app_store.dart';
+import 'apple_membership_products.dart';
+import 'apple_membership_purchases.dart';
 import 'confirmation_dialog.dart';
 import 'design.dart';
 import 'banner_ads.dart';
@@ -42,6 +44,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final AppStore store = widget.store ?? AppStore();
+  AppleMembershipPurchases? applePurchases;
   final navigatorKey = GlobalKey<NavigatorState>();
   final shellKey = GlobalKey<AppShellState>();
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -56,6 +59,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     entryAllowed = store.isAuthenticated || store.isGuest;
     store.addListener(sessionChanged);
+    if (usesAppleMembership) {
+      applePurchases = AppleMembershipPurchases.forStore(store);
+    }
     files.incoming.addListener(sharedFileChanged);
     files.error.addListener(sharedFileError);
     unawaited(files.start());
@@ -172,6 +178,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     store.removeListener(sessionChanged);
     files.incoming.removeListener(sharedFileChanged);
     files.error.removeListener(sharedFileError);
+    applePurchases?.dispose();
     store.dispose();
     super.dispose();
   }
@@ -180,6 +187,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       store.setForeground(true);
+      unawaited(applePurchases?.syncUnfinished());
       sharedFileChanged();
     }
     if (state == AppLifecycleState.paused ||
