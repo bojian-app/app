@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:fluwx_no_pay/fluwx_no_pay.dart';
 import 'package:hugeicons/hugeicons.dart';
 
 import 'api/bojian_api.dart';
@@ -20,11 +19,9 @@ import 'legal_document_page.dart';
 import 'panel_sheet.dart';
 import 'profile_avatar.dart';
 import 'template_market.dart' show MarketTemplateArtwork;
-import 'wechat_login.dart' show NativeWeChatAuthorizer;
 
 part 'membership_wallet.dart';
 part 'membership_apple_checkout.dart';
-part 'membership_auto_renew.dart';
 
 /// 会员套餐。价格与服务端 membershipPlans 保持一致，下单时以服务端金额为准。
 class MembershipPlan {
@@ -82,7 +79,7 @@ const _faqs = [
   ('开通后多久生效？', '支付成功后立即生效，有效期从开通时刻起算。已是会员时续费，有效期在当前到期时间上顺延。'),
   (
     '到期会自动扣费吗？',
-    '默认是一次性购买，不会自动扣费，到期后恢复为免费用户，已编辑的简历和导出的文件都会保留。下单时勾选“自动续费”才会在到期前自动扣费，可随时在会员页取消。',
+    '默认是一次性购买，不会自动扣费，到期后恢复为免费用户，已编辑的简历和导出的文件都会保留。iPhone 下单时勾选“自动续费”才会由 App Store 到期自动续订，可在 App Store 订阅管理中取消。',
   ),
   ('会员能在其他手机上用吗？', '可以。会员绑定博简账号，登录同一账号的手机都能使用会员权益。'),
   ('之前用积分兑换的模板会失效吗？', '不会。改版前兑换的模板继续永久可用；开通会员后所有付费模板都可直接使用。'),
@@ -144,11 +141,6 @@ class _MembershipPageState extends State<MembershipPage> {
       ? AppleMembershipProducts()
       : null;
   DateTime? endsAt;
-
-  /// 进行中的自动续费；开通后下单页不再提供自动续费勾选。
-  Map? autoRenew;
-  Map<String, AutoRenewOption> autoRenewOptions = const {};
-  bool cancellingAutoRenew = false;
   List<Map<String, dynamic>> templates = const [];
   final scroll = ScrollController();
   bool barSolid = false;
@@ -166,7 +158,6 @@ class _MembershipPageState extends State<MembershipPage> {
     });
     _loadStatus();
     _loadTemplates();
-    if (appleProducts == null) _loadAutoRenewOptions();
     appleProducts?.addListener(_productsChanged);
     appleProducts?.load();
     if (appleProducts != null) {
@@ -194,47 +185,14 @@ class _MembershipPageState extends State<MembershipPage> {
       final result = await store.request('GetMembership');
       final value = result.data['ends_at'];
       if (!mounted) return;
-      final running = result.data['auto_renew'];
-      setState(() {
-        endsAt = result.data['active'] == true && value is String
+      setState(
+        () => endsAt = result.data['active'] == true && value is String
             ? DateTime.tryParse(value)?.toLocal()
-            : null;
-        autoRenew = running is Map ? running : null;
-      });
+            : null,
+      );
     } catch (_) {
       // 会员状态读取失败时按未开通展示，不影响选购。
     }
-  }
-
-  Future<void> _loadAutoRenewOptions() async {
-    try {
-      final options = await loadAutoRenewOptions(store);
-      if (mounted) setState(() => autoRenewOptions = options);
-    } catch (_) {
-      // 读取失败时只提供一次性购买。
-    }
-  }
-
-  Future<void> _cancelAutoRenew() async {
-    final confirmed = await showAppConfirmation(
-      context,
-      title: '取消自动续费？',
-      content: const Text('取消后不再自动扣费，已开通的会员可用到当前有效期结束。'),
-      confirmLabel: '取消续费',
-      cancelLabel: '再想想',
-      destructive: true,
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => cancellingAutoRenew = true);
-    try {
-      await store.request('PostMembershipSubscriptionCancel');
-      if (mounted) toast(context, '已取消自动续费');
-    } on ApiFailure catch (e) {
-      if (mounted) toast(context, e.message);
-    } finally {
-      if (mounted) setState(() => cancellingAutoRenew = false);
-    }
-    await _loadStatus();
   }
 
   Future<void> _loadTemplates() async {
@@ -368,25 +326,14 @@ class _MembershipPageState extends State<MembershipPage> {
                         color: _muted,
                       ),
                       const SizedBox(width: 4),
-                      Expanded(
+                      const Expanded(
                         child: Text(
-                          autoRenewOptions.containsKey(selected.code) &&
-                                  autoRenew == null
-                              ? '默认一次性购买；下单时可勾选自动续费'
-                              : '一次性购买，到期不自动扣费',
-                          style: const TextStyle(fontSize: 12, color: _muted),
+                          '一次性购买，到期不自动扣费',
+                          style: TextStyle(fontSize: 12, color: _muted),
                         ),
                       ),
                     ],
                   ),
-                  if (autoRenew != null) ...[
-                    const SizedBox(height: 12),
-                    _AutoRenewStatus(
-                      subscription: autoRenew!,
-                      busy: cancellingAutoRenew,
-                      onCancel: _cancelAutoRenew,
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -441,13 +388,7 @@ class _MembershipPageState extends State<MembershipPage> {
                       products: appleProducts!,
                       purchases: applePurchases!,
                     )
-                  : MembershipCheckoutPage(
-                      store: store,
-                      plan: selected,
-                      autoRenew: autoRenew == null
-                          ? autoRenewOptions[selected.code]
-                          : null,
-                    ),
+                  : MembershipCheckoutPage(store: store, plan: selected),
             );
             if (mounted) await _loadStatus();
           },
@@ -1399,13 +1340,9 @@ class MembershipCheckoutPage extends StatefulWidget {
     super.key,
     required this.store,
     required this.plan,
-    this.autoRenew,
   });
   final AppStore store;
   final MembershipPlan plan;
-
-  /// 该套餐可勾选的自动续费；为空时不显示勾选框。
-  final AutoRenewOption? autoRenew;
 
   @override
   State<MembershipCheckoutPage> createState() => _MembershipCheckoutPageState();
@@ -1425,40 +1362,8 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
   List<WalletCoupon> coupons = const [];
   WalletCoupon? coupon;
 
-  /// 是否勾选自动续费，默认不勾选。
-  bool autoRenew = false;
-
-  /// 勾选自动续费时按每期续费价计价，优惠券只抵扣首期。
-  MembershipPlan get plan {
-    final option = widget.autoRenew;
-    if (!autoRenew || option == null) return widget.plan;
-    final base = widget.plan;
-    return MembershipPlan(
-      code: base.code,
-      title: base.title,
-      orderName: base.orderName,
-      amountCents: option.amountCents,
-      period: base.period,
-      days: base.days,
-    );
-  }
-
-  int get discountCents => coupon?.discountFor(plan) ?? 0;
-  int get payableCents => plan.amountCents - discountCents;
-
-  /// 勾选自动续费时只列出已开通代扣的渠道。
-  Set<String> get channels => autoRenew
-      ? available.intersection(widget.autoRenew!.channels)
-      : available;
-
-  void _setAutoRenew(bool value) => setState(() {
-    autoRenew = value;
-    // 金额和下单接口都变了，需要新的幂等键。
-    requestKey = null;
-    if (!channels.contains(channel) && channels.isNotEmpty) {
-      channel = channels.first;
-    }
-  });
+  int get discountCents => coupon?.discountFor(widget.plan) ?? 0;
+  int get payableCents => widget.plan.amountCents - discountCents;
 
   @override
   void initState() {
@@ -1536,94 +1441,12 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
     Navigator.of(context).pop();
   }
 
-  /// 签约通知通常在几秒内到达，期间轮询会员状态。
-  Future<bool> _waitUntilSigned() async {
-    for (var attempt = 0; attempt < 8; attempt++) {
-      try {
-        final result = await widget.store.request('GetMembership');
-        final running = result.data['auto_renew'];
-        if (running is Map && running['status'] == 'ACTIVE') return true;
-      } on ApiFailure {
-        // 网络抖动时继续等待下一次查询。
-      }
-      if (!mounted) return false;
-      await Future<void>.delayed(const Duration(milliseconds: 1500));
-      if (!mounted) return false;
-    }
-    return false;
-  }
-
-  /// 支付宝：首月付款同时签约；微信：先签约，首月在次日扣款后生效。
-  Future<void> _subscribe() async {
-    final created = await widget.store.request(
-      'PostMembershipSubscriptions',
-      body: {
-        'plan_code': widget.plan.code,
-        'channel': channel,
-        'coupon_id': ?coupon?.id,
-      },
-      extra: {'idempotency-key': requestKey!},
-    );
-    if (!mounted) return;
-    final subscription = created.data['subscription'];
-    if (subscription is Map && subscription['status'] == 'ACTIVE') {
-      toast(context, '已开通自动续费');
-      Navigator.of(context).pop();
-      return;
-    }
-    if (channel == 'ALIPAY') {
-      final orderString = created.data['alipay_order_string'];
-      if (orderString is! String || orderString.isEmpty) {
-        toast(context, '支付宝签约暂不可用，请稍后再试');
-        return;
-      }
-      final outcome = await _alipay.invokeMapMethod<String, String>('pay', {
-        'orderString': orderString,
-      });
-      if (!mounted) return;
-      final status = outcome?['resultStatus'];
-      if (status == '6001') {
-        toast(context, '已取消开通');
-        return;
-      }
-      final paid = await _waitUntilPaid(integer(created.data['order_id']));
-      if (!mounted) return;
-      if (paid) {
-        toast(context, '会员已开通，自动续费已生效');
-        Navigator.of(context).pop();
-        return;
-      }
-      if (!mounted) return;
-      toast(
-        context,
-        status == '9000' || status == '8000'
-            ? '开通结果确认中，稍后可在会员页查看'
-            : '开通未完成，请重试',
-      );
-      return;
-    }
-    final sign = created.data['wechat_sign'];
-    if (sign is! Map || !await _openWeChatContractSign(sign)) {
-      if (mounted) toast(context, '无法打开微信签约，请重试');
-      return;
-    }
-    // 微信签约完成后用户手动返回 App，此时再查询签约结果。
-    if (await _waitUntilSigned()) {
-      if (!mounted) return;
-      toast(context, '签约成功，首期扣款成功后会员生效');
-      Navigator.of(context).pop();
-      return;
-    }
-    if (mounted) toast(context, '签约结果确认中，稍后可在会员页查看');
-  }
-
   Future<void> _pay() async {
     if (paying) return;
     requestKey ??=
         'mobile-membership-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
     setState(() => paying = true);
     try {
-      if (autoRenew) return await _subscribe();
       final order = await widget.store.request(
         'PostMembershipOrders',
         body: {
@@ -1665,7 +1488,6 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
     } on ApiFailure catch (e) {
       if (!mounted) return;
       if (e.code == 'MEMBERSHIP_ORDER_EXPIRED' ||
-          e.code == 'AUTO_RENEW_SIGN_EXPIRED' ||
           e.code == 'IDEMPOTENCY_CONFLICT') {
         requestKey = null;
       }
@@ -1678,8 +1500,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final plan = this.plan;
-    final unit = plan.code == 'YEAR' ? '年' : '月';
+    final plan = widget.plan;
     return Scaffold(
       backgroundColor: colors.canvas,
       appBar: AppPageBar(
@@ -1694,7 +1515,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
               children: [
                 Row(
                   children: [
-                    _PlanThumb(plan: plan),
+                    _PlanThumb(plan: widget.plan),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -1710,9 +1531,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            autoRenew
-                                ? '每$unit自动续费 · 可随时取消'
-                                : '有效期 ${plan.period} · 到期不自动续费',
+                            '有效期 ${plan.period} · 到期不自动续费',
                             style: TextStyle(fontSize: 12, color: colors.muted),
                           ),
                         ],
@@ -1735,15 +1554,6 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
                   '商品金额',
                   '¥${(plan.amountCents / 100).toStringAsFixed(2)}',
                 ),
-                if (widget.autoRenew != null) ...[
-                  MembershipAutoRenewToggle(
-                    value: autoRenew,
-                    onChanged: paying ? null : _setAutoRenew,
-                    plan: widget.plan,
-                    price: '¥${widget.autoRenew!.price}',
-                  ),
-                  const SizedBox(height: 4),
-                ],
                 _CouponLine(
                   discountCents: discountCents,
                   available: coupons.length,
@@ -1775,7 +1585,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
                   ),
                 ),
                 for (final option in const ['ALIPAY', 'WECHAT'])
-                  if (channels.contains(option))
+                  if (available.contains(option))
                     _ChannelTile(
                       channel: option,
                       selected: channel == option,
@@ -1799,11 +1609,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  autoRenew
-                      ? channel == 'WECHAT'
-                            ? '开通即授权博简通过微信支付每$unit自动扣费 ${plan.price} 元：签约后次日扣首期，之后每期在会员到期前一天扣费，扣费前微信会提醒。优惠券只抵扣首期。可随时在会员页或微信“支付设置 → 自动续费”中取消，取消后已开通的会员保留到期满。'
-                            : '开通即授权博简通过支付宝每$unit自动扣费 ${plan.price} 元：本次支付首期，之后每期在会员到期前一天扣费。优惠券只抵扣首期。可随时在会员页或支付宝“设置 → 支付设置 → 免密支付/自动扣款”中取消，取消后已开通的会员保留到期满。'
-                      : '会员为虚拟服务，支付成功后立即生效。付款后 30 分钟内未到账，请在“隐私与设置 → 意见反馈”联系我们。',
+                  '会员为虚拟服务，支付成功后立即生效。付款后 30 分钟内未到账，请在“隐私与设置 → 意见反馈”联系我们。',
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.5,
@@ -1816,11 +1622,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
         ],
       ),
       bottomNavigationBar: _BottomPayBar(
-        label: autoRenew
-            ? channel == 'WECHAT'
-                  ? '去微信签约'
-                  : '支付并开通'
-            : '立即支付',
+        label: '立即支付',
         amount: (payableCents / 100).toStringAsFixed(2),
         busy: paying,
         onPressed: _pay,

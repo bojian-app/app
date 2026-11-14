@@ -206,11 +206,6 @@ const httpRoutes = <String, (String, String)>{
   'PostMembershipAppleTransactions': ('POST', '/membership/apple/transactions'),
   'GetMembershipPlans': ('GET', '/membership/plans'),
   'PostMembershipOrders': ('POST', '/membership/orders'),
-  'PostMembershipSubscriptions': ('POST', '/membership/subscriptions'),
-  'PostMembershipSubscriptionCancel': (
-    'POST',
-    '/membership/subscription/cancel',
-  ),
   'GetMembershipOrdersId': ('GET', '/membership/orders/{id}'),
   'GetMembershipWallet': ('GET', '/membership/wallet'),
   'PostMembershipCardsIdUse': ('POST', '/membership/cards/{id}/use'),
