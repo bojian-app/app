@@ -5,7 +5,7 @@ import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/discovery.dart';
 import 'package:bojian_mobile/resume_pages.dart';
-import 'package:bojian_mobile/points_page.dart';
+import 'package:bojian_mobile/membership_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -56,9 +56,9 @@ Future<AppStore> _showShell(
 
 int _pageIndex(Type pageType) => {
   DiscoveryPage: 0,
-  PointsPage: 2,
+  MembershipPage: AppShell.membershipTab,
   TemplateMarket: 1,
-  ProfilePage: 3,
+  ProfilePage: AppShell.profileTab,
 }[pageType]!;
 
 FadeTransition _pageFade(WidgetTester tester, Type pageType) =>
@@ -76,6 +76,55 @@ Offset _pageOffset(WidgetTester tester, Type pageType) {
 }
 
 void main() {
+  testWidgets('Membership is a retained tab with no back button', (
+    tester,
+  ) async {
+    final store = await _showShell(tester);
+    await tester.tap(find.byKey(const ValueKey('nav-2')));
+    await tester.pumpAndSettle();
+    final membership = tester.widget<MembershipPage>(
+      find.byType(MembershipPage),
+    );
+    final state = tester.state(find.byType(MembershipPage));
+    expect(membership.embedded, isTrue);
+    expect(find.byType(BackButton), findsNothing);
+    expect(find.byType(AppBottomNavigation), findsOneWidget);
+    expect(
+      ModalRoute.of(tester.element(find.byType(MembershipPage)))!.canPop,
+      isFalse,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('nav-3')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('nav-2')));
+    await tester.pumpAndSettle();
+    expect(tester.state(find.byType(MembershipPage)), same(state));
+    expect(membership.store, same(store));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Membership keeps guest users behind the login entry', (
+    tester,
+  ) async {
+    final api = FakeGateway();
+    final store = await testStore(api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: AppShell(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nav-2')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MembershipPage), findsNothing);
+    expect(find.text('登录 / 注册'), findsOneWidget);
+    expect(api.calls, isNot(contains('GetMembership')));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'The market filters and keyboard fit a small dark screen with 2x text',
     (tester) async {
@@ -132,7 +181,7 @@ void main() {
   );
 
   testWidgets(
-    'Top message entries return to discovery and the collapsed profile without changing tabs',
+    'Top message and settings entries return to their tabs without losing scroll',
     (tester) async {
       await _showShell(tester);
       final search = find.byKey(const ValueKey('discovery-search'));
@@ -154,9 +203,9 @@ void main() {
       tester.view.physicalSize = const Size(360, 640);
       await tester.tap(find.byKey(const ValueKey('nav-3')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('profile-messages')));
+      await tester.tap(find.byKey(const ValueKey('profile-settings')));
       await tester.pumpAndSettle();
-      expect(find.byType(MessagesPage), findsOneWidget);
+      expect(find.byType(SettingsPage), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
       final list = find.byKey(const ValueKey('profile-scroll'));
@@ -169,11 +218,11 @@ void main() {
           tester.getTopLeft(name).dy - tester.getTopLeft(list).dy + 1;
       scrolling.jumpTo(target);
       await tester.pumpAndSettle();
-      final entry = find.byKey(const ValueKey('profile-messages'));
+      final entry = find.byKey(const ValueKey('profile-settings'));
       expect(entry.hitTestable(), findsOneWidget);
       await tester.tap(entry);
       await tester.pumpAndSettle();
-      expect(find.byType(MessagesPage), findsOneWidget);
+      expect(find.byType(SettingsPage), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(scrolling.pixels, closeTo(target, .001));
@@ -182,7 +231,7 @@ void main() {
         tester
             .widget<AppBottomNavigation>(find.byType(AppBottomNavigation))
             .selectedIndex,
-        3,
+        AppShell.profileTab,
       );
       expect(tester.takeException(), isNull);
     },
@@ -196,40 +245,39 @@ void main() {
         find.byKey(const ValueKey('discovery-messages')).hitTestable(),
         findsOneWidget,
       );
-      expect(find.semantics.byLabel(RegExp('推荐')), findsOneWidget);
+      expect(find.semantics.byLabel(RegExp(r'^推荐')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
 
-      final startOpacity = _pageFade(tester, PointsPage).opacity.value;
-      final startPosition = tester.getTopLeft(find.byType(PointsPage));
+      final startOpacity = _pageFade(tester, MembershipPage).opacity.value;
+      final startPosition = tester.getTopLeft(find.byType(MembershipPage));
       expect(startOpacity, lessThan(1));
-      expect(_pageOffset(tester, PointsPage), isNot(Offset.zero));
+      expect(_pageOffset(tester, MembershipPage), isNot(Offset.zero));
       expect(find.byType(DiscoveryPage), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 80));
-      final middleOpacity = _pageFade(tester, PointsPage).opacity.value;
+      final middleOpacity = _pageFade(tester, MembershipPage).opacity.value;
       expect(middleOpacity, greaterThan(startOpacity));
       expect(middleOpacity, lessThan(1));
       expect(
         find.byKey(const ValueKey('discovery-messages')).hitTestable(),
         findsNothing,
       );
-      expect(find.semantics.byLabel(RegExp('推荐')), findsNothing);
-      expect(find.text('我的积分').hitTestable(), findsOneWidget);
-      expect(find.semantics.byLabel(RegExp('可用积分')), findsOneWidget);
+      expect(find.semantics.byLabel(RegExp(r'^推荐')), findsNothing);
       expect(
         TickerMode.valuesOf(tester.element(find.byType(DiscoveryPage))).enabled,
         isFalse,
       );
       expect(
-        TickerMode.valuesOf(tester.element(find.byType(PointsPage))).enabled,
+        TickerMode.valuesOf(tester.element(find.byType(MembershipPage)))
+            .enabled,
         isTrue,
       );
 
       await tester.pumpAndSettle();
 
-      expect(_pageFade(tester, PointsPage).opacity.value, 1);
-      expect(_pageOffset(tester, PointsPage), Offset.zero);
-      final endPosition = tester.getTopLeft(find.byType(PointsPage));
+      expect(_pageFade(tester, MembershipPage).opacity.value, 1);
+      expect(_pageOffset(tester, MembershipPage), Offset.zero);
+      final endPosition = tester.getTopLeft(find.byType(MembershipPage));
       expect((startPosition - endPosition).distance, greaterThan(0));
       expect((startPosition - endPosition).distance, lessThanOrEqualTo(8));
       expect(find.byType(DiscoveryPage), findsNothing);
@@ -253,23 +301,18 @@ void main() {
         tester
             .widget<AppBottomNavigation>(find.byType(AppBottomNavigation))
             .selectedIndex,
-        3,
+        AppShell.profileTab,
       );
       expect(find.byType(ProfilePage), findsOneWidget);
       expect(_pageFade(tester, ProfilePage).opacity.value, 1);
       expect(_pageOffset(tester, ProfilePage), Offset.zero);
-      for (final pageType in [DiscoveryPage, PointsPage, TemplateMarket]) {
+      for (final pageType in [DiscoveryPage, MembershipPage, TemplateMarket]) {
         expect(find.byType(pageType), findsNothing);
         final retained = find.byType(pageType, skipOffstage: false);
         expect(retained, findsOneWidget);
         expect(TickerMode.valuesOf(tester.element(retained)).enabled, isFalse);
       }
-      expect(
-        find.text('我的积分', skipOffstage: false).hitTestable(),
-        findsNothing,
-      );
-      expect(find.semantics.byLabel(RegExp('可用积分')), findsNothing);
-      expect(find.semantics.byLabel(RegExp('推荐')), findsNothing);
+      expect(find.semantics.byLabel(RegExp(r'^推荐')), findsNothing);
       expect(
         TickerMode.valuesOf(tester.element(find.byType(ProfilePage))).enabled,
         isTrue,
@@ -285,29 +328,29 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
-      final page = tester.element(find.byType(PointsPage));
-      final opacity = _pageFade(tester, PointsPage).opacity.value;
+      final page = tester.element(find.byType(MembershipPage));
+      final opacity = _pageFade(tester, MembershipPage).opacity.value;
       expect(opacity, allOf(greaterThan(0), lessThan(1)));
 
       await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
       expect(
-        _pageFade(tester, PointsPage).opacity.value,
+        _pageFade(tester, MembershipPage).opacity.value,
         greaterThanOrEqualTo(opacity),
       );
       await store.load('profile');
       await tester.pump();
       expect(
-        _pageFade(tester, PointsPage).opacity.value,
+        _pageFade(tester, MembershipPage).opacity.value,
         greaterThanOrEqualTo(opacity),
       );
-      expect(tester.element(find.byType(PointsPage)), same(page));
+      expect(tester.element(find.byType(MembershipPage)), same(page));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('nav-2')));
       await tester.pump();
-      expect(_pageFade(tester, PointsPage).opacity.value, 1);
-      expect(_pageOffset(tester, PointsPage), Offset.zero);
-      expect(tester.element(find.byType(PointsPage)), same(page));
+      expect(_pageFade(tester, MembershipPage).opacity.value, 1);
+      expect(_pageOffset(tester, MembershipPage), Offset.zero);
+      expect(tester.element(find.byType(MembershipPage)), same(page));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
@@ -360,13 +403,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nav-2')));
     await tester.pump();
 
-    expect(_pageFade(tester, PointsPage).opacity.value, 1);
-    expect(_pageOffset(tester, PointsPage), Offset.zero);
+    expect(_pageFade(tester, MembershipPage).opacity.value, 1);
+    expect(_pageOffset(tester, MembershipPage), Offset.zero);
     expect(find.byType(DiscoveryPage), findsNothing);
-    expect(find.byType(PointsPage), findsOneWidget);
+    expect(find.byType(MembershipPage), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 80));
-    expect(_pageFade(tester, PointsPage).opacity.value, 1);
-    expect(_pageOffset(tester, PointsPage), Offset.zero);
+    expect(_pageFade(tester, MembershipPage).opacity.value, 1);
+    expect(_pageOffset(tester, MembershipPage), Offset.zero);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
@@ -381,16 +424,16 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
       expect(
-        _pageFade(tester, PointsPage).opacity.value,
+        _pageFade(tester, MembershipPage).opacity.value,
         allOf(greaterThan(0), lessThan(1)),
       );
 
       motionPreference.value = true;
       await tester.pump();
-      expect(_pageFade(tester, PointsPage).opacity.value, 1);
-      expect(_pageOffset(tester, PointsPage), Offset.zero);
+      expect(_pageFade(tester, MembershipPage).opacity.value, 1);
+      expect(_pageOffset(tester, MembershipPage), Offset.zero);
       expect(find.byType(DiscoveryPage), findsNothing);
-      expect(find.byType(PointsPage), findsOneWidget);
+      expect(find.byType(MembershipPage), findsOneWidget);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
@@ -425,7 +468,7 @@ void main() {
       tester.view.viewInsets = const FakeViewPadding(bottom: 244);
       await tester.pumpAndSettle();
 
-      for (final index in [0, 1, 2, 3]) {
+      for (final index in [0, 1, 2, 3, 4]) {
         expect(find.byKey(ValueKey('nav-$index')).hitTestable(), findsNothing);
       }
       expect(find.byType(AppBottomNavigation), findsNothing);

@@ -19,6 +19,16 @@ final class BojianAppleProducts {
     "cn.kelance.bojian.membership.year": .nonRenewable,
     "cn.kelance.bojian.membership.month.auto": .autoRenewable,
     "cn.kelance.bojian.membership.year.auto": .autoRenewable,
+    // Members buy extra AI uses as fixed consumable packs.
+    "cn.kelance.bojian.ai.create.1": .consumable,
+    "cn.kelance.bojian.ai.create.5": .consumable,
+    "cn.kelance.bojian.ai.create.10": .consumable,
+    "cn.kelance.bojian.ai.polish.1": .consumable,
+    "cn.kelance.bojian.ai.polish.5": .consumable,
+    "cn.kelance.bojian.ai.polish.10": .consumable,
+    "cn.kelance.bojian.ai.text.10": .consumable,
+    "cn.kelance.bojian.ai.text.50": .consumable,
+    "cn.kelance.bojian.ai.text.100": .consumable,
   ]
   private static let productIDs = Set(productTypes.keys)
 

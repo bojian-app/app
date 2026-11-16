@@ -1,6 +1,5 @@
 import 'article_owner_actions.dart';
 import 'app_page_bar.dart';
-import 'account_pages.dart' show showAccountMenu;
 import 'api/bojian_api.dart';
 import 'content_report.dart';
 import 'playful_refresh.dart';
@@ -21,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import 'app_store.dart';
 import 'discovery_banner.dart';
+import 'invite_floating_badge.dart';
 import 'app_search_field.dart';
 import 'comment_composer.dart';
 import 'design.dart';
@@ -38,27 +38,16 @@ class DiscoveryPage extends StatefulWidget {
 }
 
 class _DiscoveryPageState extends State<DiscoveryPage> {
-  static const categories = ['推荐', '简历求指点', '经验分享'];
+  static const categories = ['推荐', '简历分享', '动态'];
   final search = TextEditingController();
   final searchFocus = FocusNode();
   String query = '';
-  bool openingMenu = false;
   final _seenArticles = <String, Set<int>>{};
   @override
   void dispose() {
     search.dispose();
     searchFocus.dispose();
     super.dispose();
-  }
-
-  Future<void> openMenu() async {
-    if (openingMenu) return;
-    openingMenu = true;
-    try {
-      await showAccountMenu(context, widget.store);
-    } finally {
-      openingMenu = false;
-    }
   }
 
   Widget feed(String category) {
@@ -151,10 +140,10 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         );
     return Padding(
-      // Icon artwork lands on the page gutter: a 44 button pads its 20
-      // glyph by 12, and the glyphs carry about 2.5 and 1 of their own.
+      // Align the search field to the page gutter while preserving the
+      // message icon's artwork alignment at the opposite edge.
       padding: const EdgeInsets.fromLTRB(
-        appPageHorizontalPadding - 14.5,
+        appPageHorizontalPadding,
         0,
         appPageHorizontalPadding - 13,
         0,
@@ -164,100 +153,82 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
         height: rowHeight,
         child: Row(
           children: [
-            if (widget.store.isAuthenticated)
-              ColoredBox(
-                color: context.colors.surface,
-                child: IconButton(
-                  key: const ValueKey('discovery-menu'),
-                  tooltip: '展开菜单',
-                  style: buttonStyle,
-                  onPressed: openMenu,
-                  icon: AppIcon(
-                    AppIcons.menu,
-                    size: 20,
-                    color: context.colors.ink,
-                  ),
-                ),
-              ),
             Expanded(
               child: IgnorePointer(
                 ignoring: collapse > 0,
                 child: Opacity(
                   opacity: (1 - collapse * 2).clamp(0.0, 1.0),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: SizedBox(
-                      height: height,
-                      child: TextField(
-                        key: const ValueKey('discovery-search'),
-                        controller: search,
-                        focusNode: searchFocus,
-                        textInputAction: TextInputAction.search,
-                        textAlignVertical: TextAlignVertical.center,
-                        style: TextStyle(
+                  child: SizedBox(
+                    height: height,
+                    child: TextField(
+                      key: const ValueKey('discovery-search'),
+                      controller: search,
+                      focusNode: searchFocus,
+                      textInputAction: TextInputAction.search,
+                      textAlignVertical: TextAlignVertical.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.2,
+                        color: context.colors.ink,
+                      ),
+                      onChanged: (value) =>
+                          setState(() => query = value.trim()),
+                      onSubmitted: (_) => searchFocus.unfocus(),
+                      decoration: InputDecoration(
+                        hintText: '搜索',
+                        hintStyle: TextStyle(
+                          color: context.colors.muted,
                           fontSize: 13,
                           height: 1.2,
-                          color: context.colors.ink,
                         ),
-                        onChanged: (value) =>
-                            setState(() => query = value.trim()),
-                        onSubmitted: (_) => searchFocus.unfocus(),
-                        decoration: InputDecoration(
-                          hintText: '搜索',
-                          hintStyle: TextStyle(
+                        filled: true,
+                        fillColor: context.colors.inset,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                        ),
+                        prefixIconConstraints: BoxConstraints.tightFor(
+                          width: 36,
+                          height: height,
+                        ),
+                        prefixIcon: Center(
+                          child: AppIcon(
+                            AppIcons.search,
+                            size: 16,
                             color: context.colors.muted,
-                            fontSize: 13,
-                            height: 1.2,
                           ),
-                          filled: true,
-                          fillColor: context.colors.inset,
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                          ),
-                          prefixIconConstraints: BoxConstraints.tightFor(
-                            width: 36,
-                            height: height,
-                          ),
-                          prefixIcon: Center(
-                            child: AppIcon(
-                              AppIcons.search,
-                              size: 16,
-                              color: context.colors.muted,
-                            ),
-                          ),
-                          suffixIconConstraints: BoxConstraints.tightFor(
-                            width: 32,
-                            height: height,
-                          ),
-                          suffixIcon: search.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: '清空搜索',
-                                  padding: EdgeInsets.zero,
-                                  onPressed: () {
-                                    search.clear();
-                                    setState(() => query = '');
-                                    searchFocus.requestFocus();
-                                  },
-                                  icon: AppIcon(
-                                    AppIcons.clear,
-                                    size: 16,
-                                    color: context.colors.muted,
-                                  ),
+                        ),
+                        suffixIconConstraints: BoxConstraints.tightFor(
+                          width: 32,
+                          height: height,
+                        ),
+                        suffixIcon: search.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: '清空搜索',
+                                padding: EdgeInsets.zero,
+                                onPressed: () {
+                                  search.clear();
+                                  setState(() => query = '');
+                                  searchFocus.requestFocus();
+                                },
+                                icon: AppIcon(
+                                  AppIcons.clear,
+                                  size: 16,
+                                  color: context.colors.muted,
                                 ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
-                          ),
+                              ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
                         ),
                       ),
                     ),
@@ -300,78 +271,87 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
       color: context.colors.surface,
       child: DefaultTabController(
         length: categories.length,
-        child: NestedScrollView(
-          headerSliverBuilder: (context, innerScrolled) => [
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _DiscoveryHeaderDelegate(
-                rowHeight:
-                    (MediaQuery.textScalerOf(context).scale(13) * 1.2 + 16)
-                        .clamp(44.0, double.infinity),
-                builder: (context, collapse) => ColoredBox(
-                  color: context.colors.surface,
-                  child: Padding(
-                    padding: EdgeInsets.zero,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 600),
-                        child: Stack(
-                          children: [
-                            Positioned(
-                              // Collapsed, the tabs sit between the two
-                              // 44 buttons of the search row.
-                              left:
-                                  (widget.store.isAuthenticated
-                                      ? appPageHorizontalPadding - 14.5 + 44
-                                      : 4) *
-                                  collapse,
-                              right:
-                                  (appPageHorizontalPadding - 13 + 44) *
-                                  collapse,
-                              bottom:
-                                  (((MediaQuery.textScalerOf(context)
-                                                          .scale(13) *
-                                                      1.2 +
-                                                  16)
-                                              .clamp(44.0, double.infinity) -
-                                          38) /
-                                      2) *
-                                  collapse,
-                              child: ProfileContentTabs(
-                                tabBarKey: const ValueKey('discovery-tabs'),
-                                horizontalPadding: appPageHorizontalPadding - 8,
-                                showDivider: false,
-                                tabs: [
-                                  for (final category in categories)
-                                    Tab(text: category, height: 36),
-                                ],
-                              ),
+        child: Stack(
+          children: [
+            NestedScrollView(
+              headerSliverBuilder: (context, innerScrolled) => [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _DiscoveryHeaderDelegate(
+                    rowHeight:
+                        (MediaQuery.textScalerOf(context).scale(13) * 1.2 + 16)
+                            .clamp(44.0, double.infinity),
+                    builder: (context, collapse) => ColoredBox(
+                      color: context.colors.surface,
+                      child: Padding(
+                        padding: EdgeInsets.zero,
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 600),
+                            child: Stack(
+                              children: [
+                                Positioned(
+                                  // Collapsed tabs keep their page gutter and
+                                  // leave room for the message button on the right.
+                                  left: 0,
+                                  right:
+                                      (appPageHorizontalPadding - 13 + 44) *
+                                      collapse,
+                                  bottom:
+                                      (((MediaQuery.textScalerOf(context)
+                                                              .scale(13) *
+                                                          1.2 +
+                                                      16)
+                                                  .clamp(
+                                                    44.0,
+                                                    double.infinity,
+                                                  ) -
+                                              38) /
+                                          2) *
+                                      collapse,
+                                  child: ProfileContentTabs(
+                                    tabBarKey: const ValueKey('discovery-tabs'),
+                                    horizontalPadding:
+                                        appPageHorizontalPadding - 8,
+                                    showDivider: false,
+                                    tabs: [
+                                      for (final category in categories)
+                                        Tab(text: category, height: 36),
+                                    ],
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: searchBar(context, collapse: collapse),
+                                ),
+                              ],
                             ),
-                            Positioned(
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              child: searchBar(context, collapse: collapse),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
+                SliverToBoxAdapter(child: DiscoveryBanner(store: widget.store)),
+                SliverToBoxAdapter(
+                  child: ColoredBox(
+                    color: context.colors.canvas,
+                    child: const SizedBox(height: 8),
+                  ),
+                ),
+              ],
+              body: TabBarView(
+                children: [for (final category in categories) feed(category)],
               ),
             ),
-            SliverToBoxAdapter(child: DiscoveryBanner(store: widget.store)),
-            SliverToBoxAdapter(
-              child: ColoredBox(
-                color: context.colors.canvas,
-                child: const SizedBox(height: 8),
-              ),
+            Positioned(
+              right: 10,
+              bottom: 18,
+              child: InviteFloatingBadge(store: widget.store),
             ),
           ],
-          body: TabBarView(
-            children: [for (final category in categories) feed(category)],
-          ),
         ),
       ),
     );
@@ -1304,7 +1284,7 @@ class _StoryDetailState extends State<StoryDetail> {
                             id: widget.story.id,
                           ),
                         ),
-                        child: const Text('查看简历并指点'),
+                        child: const Text('查看简历'),
                       ),
                     ),
                   ArticleRichBody(

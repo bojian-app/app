@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:hugeicons/hugeicons.dart';
 import 'api/bojian_api.dart';
 import 'app_page_bar.dart';
 import 'app_store.dart';
+import 'membership_status.dart';
 import 'apple_membership_products.dart';
 import 'apple_membership_purchases.dart';
 import 'confirmation_dialog.dart';
@@ -20,8 +22,11 @@ import 'panel_sheet.dart';
 import 'profile_avatar.dart';
 import 'template_market.dart' show MarketTemplateArtwork;
 
+part 'membership_ai_addon.dart';
 part 'membership_wallet.dart';
 part 'membership_apple_checkout.dart';
+part 'membership_order_result.dart';
+part 'membership_theme.dart';
 
 /// 会员套餐。价格与服务端 membershipPlans 保持一致，下单时以服务端金额为准。
 class MembershipPlan {
@@ -32,9 +37,15 @@ class MembershipPlan {
     required this.amountCents,
     required this.period,
     required this.days,
+    required this.aiCreateQuota,
+    required this.aiPolishQuota,
+    required this.aiTextQuota,
   });
   final String code, title, orderName, period;
   final int amountCents, days;
+
+  /// 开通时一次性发放的整期 AI 次数，与服务端 membershipPlans 一致。
+  final int aiCreateQuota, aiPolishQuota, aiTextQuota;
 
   String get price =>
       (amountCents / 100).toStringAsFixed(amountCents % 100 == 0 ? 0 : 2);
@@ -51,6 +62,9 @@ const membershipPlans = [
     amountCents: 12800,
     period: '12 个月',
     days: 365,
+    aiCreateQuota: 180,
+    aiPolishQuota: 180,
+    aiTextQuota: 1200,
   ),
   MembershipPlan(
     code: 'MONTH',
@@ -59,81 +73,76 @@ const membershipPlans = [
     amountCents: 2500,
     period: '1 个月',
     days: 30,
+    aiCreateQuota: 15,
+    aiPolishQuota: 15,
+    aiTextQuota: 100,
   ),
 ];
 
-/// 年卡相比连续买 12 个月卡省下的钱（元）。
-int get _yearSaving =>
-    (membershipPlans[1].amountCents * 12 - membershipPlans[0].amountCents) ~/
-    100;
-
-/// 免费用户与会员的权益对照，数值与服务端 benefitsFor 一致。
+/// 免费用户与会员的权益对照；AI 次数开通时一次性发放，会员到期清零。
 const _benefits = [
   (HugeIcons.strokeRoundedLayout01, '付费模板', '兑换后限 24h', '全部免费用'),
-  (HugeIcons.strokeRoundedAiMagic, 'AI 整份生成', '不提供', '单月 30 次'),
-  (HugeIcons.strokeRoundedAiIdea, 'AI 单段生成', '不提供', '单月 100 次'),
+  (HugeIcons.strokeRoundedAiMagic, 'AI 简历生成', '不提供', '月卡 15 次\n年卡 180 次'),
+  (HugeIcons.strokeRoundedAiEditing, 'AI 简历优化', '不提供', '月卡 15 次\n年卡 180 次'),
+  (HugeIcons.strokeRoundedAiIdea, 'AI 单段生成', '不提供', '月卡 100 次\n年卡 1200 次'),
   (HugeIcons.strokeRoundedAdvertisiment, '广告', '显示', '不显示'),
 ];
 
 const _faqs = [
-  ('开通后多久生效？', '支付成功后立即生效，有效期从开通时刻起算。已是会员时续费，有效期在当前到期时间上顺延。'),
+  (
+    '开通后多久生效？',
+    '支付成功后立即生效，从购买时刻起算。每次购买都是独立的一份会员，不会在已有会员到期后顺延；同时有多份时，会员到期日以最晚的一份为准。',
+  ),
+  (
+    'AI 次数怎么算？',
+    '每次购买时一次性发放这一份的全部次数：月卡 AI 简历生成 15 次、AI 简历优化 15 次、单段生成 100 次，年卡 180 次、180 次、1200 次，三类次数分开计算。次数只在这一份的有效期内可用，到期剩余次数直接清零，不合并到其他份。同时有多份时，先扣最早到期的那一份。',
+  ),
   (
     '到期会自动扣费吗？',
     '默认是一次性购买，不会自动扣费，到期后恢复为免费用户，已编辑的简历和导出的文件都会保留。iPhone 下单时勾选“自动续费”才会由 App Store 到期自动续订，可在 App Store 订阅管理中取消。',
   ),
   ('会员能在其他手机上用吗？', '可以。会员绑定博简账号，登录同一账号的手机都能使用会员权益。'),
-  ('之前用积分兑换的模板会失效吗？', '不会。改版前兑换的模板继续永久可用；开通会员后所有付费模板都可直接使用。'),
+  (
+    '邀请好友能得到什么？',
+    '好友用你的邀请码注册并绑定手机号后，你获得三天会员体验包：到账起 3 天内享受会员权益（免广告、付费模板免费用），另含 AI 简历生成 1 次、AI 简历优化 1 次、单段生成 10 次，到期清零。',
+  ),
+  ('之前用积分兑换的模板会失效吗？', '积分已下线。改版前兑换的模板在原有效期内继续可用；开通会员后所有付费模板都可直接使用。'),
 ];
 
-// 黑金配色：暖黑底 + 香槟金，只用于会员相关页面。
-const _bg = Color(0xFF0F0D0A);
-const _surface = Color(0xFF1B1813);
-const _surfaceHi = Color(0xFF26211A);
-const _line = Color(0x2EE8C992);
-const _text = Color(0xFFF4ECDD);
-const _muted = Color(0xFF948B7A);
-const _gold = Color(0xFFEBCB91);
-const _goldDeep = Color(0xFFC99A55);
-const _goldInk = Color(0xFF4A2F0E);
+// 晶体配色：深蓝灰底、铂银高光与冰蓝反射，只用于会员相关页面。
+const _bg = Color(0xFF10151E);
+const _surface = Color(0xFF1B2431);
+const _surfaceHi = Color(0xFF273449);
+const _line = Color(0x29C5D7EF);
+const _text = Color(0xFFF0F5FC);
+const _muted = Color(0xFF9CACC2);
+const _platinum = Color(0xFFD4E6FF);
+const _platinumInk = Color(0xFF203349);
 
 /// 浅色确认订单页沿用 App 蓝色主题。
 const _blueGradient = [Color(0xFF3F7BFF), Color(0xFF1C4FD8)];
-const _champagne = [Color(0xFFFFEBC4), Color(0xFFEBC583), Color(0xFFC9934A)];
+const _crystal = [Color(0xFFF7FCFF), Color(0xFFCDDEF2), Color(0xFF91B3DD)];
 
-LinearGradient get _champagneGradient => const LinearGradient(
+LinearGradient get _crystalGradient => const LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: _champagne,
+  colors: _crystal,
 );
-
-/// 金色渐变文字。
-class _GoldText extends StatelessWidget {
-  const _GoldText(this.text, {required this.style});
-  final String text;
-  final TextStyle style;
-
-  @override
-  Widget build(BuildContext context) => ShaderMask(
-    blendMode: BlendMode.srcIn,
-    shaderCallback: (bounds) => const LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFFFFF1D2), Color(0xFFEBC583), Color(0xFFC08A43)],
-    ).createShader(bounds),
-    child: Text(text, style: style),
-  );
-}
 
 /// 会员开通页：会员身份、权益、套餐、专享模板、权益对比和常见问题。
 class MembershipPage extends StatefulWidget {
-  const MembershipPage({super.key, required this.store});
+  const MembershipPage({super.key, required this.store, this.embedded = false});
   final AppStore store;
+  final bool embedded;
+  static Color backgroundColor(BuildContext context) =>
+      _MembershipColors.of(context).background;
 
   @override
   State<MembershipPage> createState() => _MembershipPageState();
 }
 
-class _MembershipPageState extends State<MembershipPage> {
+class _MembershipPageState extends State<MembershipPage>
+    with WidgetsBindingObserver {
   MembershipPlan selected = usesAppleMembership
       ? membershipPlans.last
       : membershipPlans.first;
@@ -142,22 +151,60 @@ class _MembershipPageState extends State<MembershipPage> {
       : null;
   DateTime? endsAt;
   List<Map<String, dynamic>> templates = const [];
-  final scroll = ScrollController();
-  bool barSolid = false;
   AppleMembershipPurchases? applePurchases;
   int _membershipRevision = 0;
+  int _statusRequest = 0;
+  bool _membershipLoaded = false;
+  bool _membershipLoading = true;
+  String? _membershipPlanCode;
+  List<_AIPack> _aiPacks = const [];
+  _AIAddonBalance _aiAddon = const _AIAddonBalance();
+  List<AIAddonOffer> _addonOffers = const [];
+  Timer? _membershipExpiryTimer;
+  bool _tabWasActive = true;
 
   AppStore get store => widget.store;
+
+  /// 已开通年卡或月卡时用对应的会员标识图替换文字。
+  String? get _membershipBadgeAsset {
+    final ends = endsAt;
+    if (!_membershipLoaded || ends == null || !ends.isAfter(DateTime.now())) {
+      return null;
+    }
+    return switch (_membershipPlanCode) {
+      'YEAR' => 'assets/membership/badge-year-blue.png',
+      'MONTH' => 'assets/membership/badge-month-blue.png',
+      _ => null,
+    };
+  }
+
+  String get _membershipLabel {
+    if (!_membershipLoaded) {
+      return _membershipLoading ? '正在查询会员状态' : '会员状态暂不可用';
+    }
+    final ends = endsAt;
+    if (ends == null) return '暂无有效会员';
+    if (!ends.isAfter(DateTime.now())) return '会员已到期';
+    return switch (_membershipPlanCode) {
+      'YEAR' => '已开通年度会员',
+      'MONTH' => '已开通月度会员',
+      _ when _aiPacks.isNotEmpty && _aiPacks.every((pack) => pack.referral) =>
+        '会员体验中',
+      _ => '已开通会员',
+    };
+  }
 
   @override
   void initState() {
     super.initState();
-    scroll.addListener(() {
-      final solid = scroll.offset > 24;
-      if (solid != barSolid) setState(() => barSolid = solid);
-    });
+    WidgetsBinding.instance.addObserver(this);
     _loadStatus();
     _loadTemplates();
+    if (usesAppleMembership) {
+      _addonOffers = _appleAddonOffers;
+    } else {
+      _loadAddonOffers();
+    }
     appleProducts?.addListener(_productsChanged);
     appleProducts?.load();
     if (appleProducts != null) {
@@ -176,23 +223,66 @@ class _MembershipPageState extends State<MembershipPage> {
     setState(() {});
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!widget.embedded) return;
+    final active = TickerMode.valuesOf(context).enabled;
+    if (active && !_tabWasActive) unawaited(_loadStatus());
+    _tabWasActive = active;
+  }
+
   void _productsChanged() {
     if (mounted) setState(() {});
   }
 
   Future<void> _loadStatus() async {
+    final request = ++_statusRequest;
+    if (!_membershipLoaded && !_membershipLoading && mounted) {
+      setState(() => _membershipLoading = true);
+    }
     try {
       final result = await store.request('GetMembership');
+      final active = result.data['active'];
       final value = result.data['ends_at'];
-      if (!mounted) return;
-      setState(
-        () => endsAt = result.data['active'] == true && value is String
-            ? DateTime.tryParse(value)?.toLocal()
-            : null,
-      );
+      final ends = value is String ? DateTime.tryParse(value)?.toLocal() : null;
+      if (active is! bool || (active && ends == null)) {
+        throw const FormatException('Invalid membership status');
+      }
+      if (!mounted || request != _statusRequest) return;
+      MembershipStatus.instance.apply(store.userID, active ? ends : null);
+      setState(() {
+        endsAt = active ? ends : null;
+        _membershipPlanCode = active && result.data['plan_code'] is String
+            ? result.data['plan_code'] as String
+            : null;
+        _aiPacks = _AIPack.parseAll(result.data['ai_packs']);
+        _aiAddon = _AIAddonBalance.parse(result.data['ai_addon']);
+        _membershipLoaded = true;
+        _membershipLoading = false;
+      });
+      _membershipExpiryTimer?.cancel();
+      // Refresh when the membership or any pack ends, since its uses vanish then.
+      final changes = [?endsAt, for (final pack in _aiPacks) pack.endsAt]
+        ..sort();
+      if (changes.firstOrNull case final expiry?
+          when expiry.isAfter(DateTime.now())) {
+        _membershipExpiryTimer = Timer(expiry.difference(DateTime.now()), () {
+          if (!mounted) return;
+          setState(() {});
+          unawaited(_loadStatus());
+        });
+      }
     } catch (_) {
-      // 会员状态读取失败时按未开通展示，不影响选购。
+      if (!mounted || request != _statusRequest) return;
+      // 刷新失败保留上次有效结果，不能把网络错误当作未开通。
+      setState(() => _membershipLoading = false);
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_loadStatus());
   }
 
   Future<void> _loadTemplates() async {
@@ -215,76 +305,148 @@ class _MembershipPageState extends State<MembershipPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _membershipExpiryTimer?.cancel();
     appleProducts?.removeListener(_productsChanged);
     appleProducts?.dispose();
     applePurchases?.removeListener(_purchasesChanged);
-    scroll.dispose();
     super.dispose();
+  }
+
+  /// 加购价格来自服务端；读取失败时不展示加购入口。
+  Future<void> _loadAddonOffers() async {
+    try {
+      final result = await store.request('GetMembershipPlans');
+      if (!mounted) return;
+      setState(
+        () => _addonOffers = AIAddonOffer.parseAll(result.data['ai_addons']),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _openAddonCheckout(AIAddonOffer offer) async {
+    await openPage<bool>(
+      context,
+      appleProducts != null
+          ? _AppleAIAddonCheckoutPage(
+              offer: offer,
+              products: appleProducts!,
+              purchases: applePurchases!,
+            )
+          : AIAddonCheckoutPage(store: store, offer: offer),
+    );
+    if (mounted) await _loadStatus();
+  }
+
+  Future<void> _openCheckout() async {
+    await openPage<void>(
+      context,
+      appleProducts != null
+          ? _AppleMembershipCheckoutPage(
+              plan: selected,
+              products: appleProducts!,
+              purchases: applePurchases!,
+            )
+          : MembershipCheckoutPage(store: store, plan: selected),
+    );
+    if (mounted) await _loadStatus();
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = _MembershipColors.of(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: appSystemUiStyle(context)
+          .copyWith(systemNavigationBarColor: palette.background),
       child: Scaffold(
-        backgroundColor: _bg,
-        extendBodyBehindAppBar: true,
+        backgroundColor: palette.background,
         appBar: AppPageBar(
-          title: const Text('开通会员'),
-          backgroundColor: barSolid ? _bg : Colors.transparent,
-          foregroundColor: _text,
+          title: Text(widget.embedded ? '会员' : '开通会员'),
+          automaticallyImplyLeading: !widget.embedded,
+          backgroundColor: palette.background,
+          foregroundColor: palette.text,
           actions: [
-            if (applePurchases != null)
-              TextButton(
-                onPressed: applePurchases!.busy
-                    ? null
-                    : applePurchases!.restore,
-                style: TextButton.styleFrom(foregroundColor: _gold),
-                child: const Text('恢复购买'),
-              ),
-            if (appleProducts == null)
-              Padding(
-                // 去掉按钮自带内边距，使文字右缘与页面统一边距对齐
-                padding: const EdgeInsets.only(right: appPageHorizontalPadding),
-                child: TextButton.icon(
-                  onPressed: () async {
-                    await openPage<void>(
-                      context,
-                      MembershipWalletPage(store: store),
-                    );
-                    if (mounted) await _loadStatus();
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: _gold,
-                    padding: const EdgeInsets.only(left: 8),
-                    minimumSize: const Size(44, 44),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: const HugeIcon(
-                    icon: HugeIcons.strokeRoundedTicket01,
-                    size: 18,
-                    color: _gold,
-                  ),
-                  label: const Text('卡包'),
+            Padding(
+              // 去掉按钮自带内边距，使文字右缘与页面统一边距对齐
+              padding: const EdgeInsets.only(right: appPageHorizontalPadding),
+              child: TextButton.icon(
+                onPressed: () async {
+                  await openPage<void>(
+                    context,
+                    MembershipWalletPage(store: store),
+                  );
+                  if (mounted) await _loadStatus();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: palette.accent,
+                  padding: const EdgeInsets.only(left: 8),
+                  minimumSize: const Size(44, 44),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
+                icon: HugeIcon(
+                  icon: HugeIcons.strokeRoundedTicket01,
+                  size: 18,
+                  color: palette.accent,
+                ),
+                label: const Text('卡包'),
               ),
+            ),
           ],
         ),
         body: ListView(
-          controller: scroll,
           padding: EdgeInsets.zero,
           children: [
             _Header(
               store: store,
+              membershipLabel: _membershipLabel,
+              membershipBadgeAsset: _membershipBadgeAsset,
               endsAt: endsAt,
-              showPrice: appleProducts == null,
+              aiPacks: _aiPacks,
+              aiAddon: _aiAddon,
             ),
+            if (endsAt != null && _addonOffers.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
+                child: _AIAddonSection(
+                  offers: _addonOffers,
+                  balance: _aiAddon,
+                  onBuy: _openAddonCheckout,
+                  apple: appleProducts != null,
+                ),
+              ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _SectionTitle('选择套餐'),
+                  Row(
+                    children: [
+                      const Expanded(child: _SectionTitle('选择套餐')),
+                      TextButton(
+                        onPressed: _openCheckout,
+                        style: TextButton.styleFrom(
+                          foregroundColor: palette.accent,
+                          padding: const EdgeInsets.only(left: 12),
+                          minimumSize: const Size(44, 44),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              endsAt == null ? '立即开通' : '立即续费',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            const Icon(Icons.chevron_right_rounded, size: 19),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 14),
                   IntrinsicHeight(
                     child: Row(
@@ -297,9 +459,13 @@ class _MembershipPageState extends State<MembershipPage> {
                             child: _PlanCard(
                               plan: plan,
                               selected: plan == selected,
+                              recommended: plan.code == 'YEAR',
                               localizedPrice: appleProducts?.priceLabel(
                                 plan.code,
                               ),
+                              priceLoading:
+                                  appleProducts?.loading == true &&
+                                  !appleProducts!.available(plan.code),
                               onTap: () => setState(() => selected = plan),
                             ),
                           ),
@@ -307,45 +473,33 @@ class _MembershipPageState extends State<MembershipPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  if (appleProducts?.error != null)
-                    _AppleProductNotice(products: appleProducts!, dark: true),
+                  if (appleProducts?.error != null) ...[
+                    const SizedBox(height: 10),
+                    _AppleProductNotice(
+                      products: appleProducts!,
+                      membership: true,
+                    ),
+                  ],
                   if (applePurchases?.message != null)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.only(top: 10),
                       child: Text(
                         applePurchases!.message!,
-                        style: const TextStyle(color: _gold, fontSize: 12),
+                        style: TextStyle(color: palette.accent, fontSize: 12),
                       ),
                     ),
-                  Row(
-                    children: [
-                      const HugeIcon(
-                        icon: HugeIcons.strokeRoundedInformationCircle,
-                        size: 14,
-                        color: _muted,
-                      ),
-                      const SizedBox(width: 4),
-                      const Expanded(
-                        child: Text(
-                          '一次性购买，到期不自动扣费',
-                          style: TextStyle(fontSize: 12, color: _muted),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
             if (templates.isNotEmpty) ...[
               const Padding(
-                padding: EdgeInsets.fromLTRB(16, 32, 16, 14),
-                child: _SectionTitle('会员专享模板', trailing: '付费模板开通即用'),
+                padding: EdgeInsets.fromLTRB(20, 32, 20, 14),
+                child: _SectionTitle('会员专享模板'),
               ),
               _TemplateStrip(templates: templates),
             ],
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 32, 16, 24),
+              padding: EdgeInsets.fromLTRB(20, 32, 20, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -361,388 +515,464 @@ class _MembershipPageState extends State<MembershipPage> {
             ),
           ],
         ),
-        bottomNavigationBar: _BottomPayBar(
-          dark: true,
-          label: appleProducts != null
-              ? '查看购买详情'
-              : endsAt == null
-              ? '立即开通'
-              : '立即续费',
-          amount: selected.price,
-          displayAmount: appleProducts?.priceLabel(selected.code),
-          footer: appleProducts == null
-              ? const Text(
-                  '一次性购买',
-                  style: TextStyle(fontSize: 12, color: _muted),
-                )
-              : const Text(
-                  'App Store 内购',
-                  style: TextStyle(fontSize: 12, color: _muted),
-                ),
-          onPressed: () async {
-            await openPage<void>(
-              context,
-              appleProducts != null
-                  ? _AppleMembershipCheckoutPage(
-                      plan: selected,
-                      products: appleProducts!,
-                      purchases: applePurchases!,
-                    )
-                  : MembershipCheckoutPage(store: store, plan: selected),
-            );
-            if (mounted) await _loadStatus();
-          },
-        ),
       ),
     );
   }
 }
 
+/// 邀请好友入口：好友注册并绑定手机号后，邀请人获得 3 天内可用的 AI 次数。
 class _Header extends StatelessWidget {
-  const _Header({required this.store, this.endsAt, this.showPrice = true});
+  const _Header({
+    required this.store,
+    required this.membershipLabel,
+    this.membershipBadgeAsset,
+    this.endsAt,
+    this.aiPacks = const [],
+    this.aiAddon = const _AIAddonBalance(),
+  });
   final AppStore store;
+  final String membershipLabel;
+  final String? membershipBadgeAsset;
   final DateTime? endsAt;
-  final bool showPrice;
+  final List<_AIPack> aiPacks;
+  final _AIAddonBalance aiAddon;
 
   @override
   Widget build(BuildContext context) {
-    final top = MediaQuery.paddingOf(context).top;
-    final ends = endsAt;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _TreeHero(
-          top: top,
-          identity: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(1.5),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: _champagneGradient,
-                ),
-                child: ProfileAvatar(
-                  seed: profileAvatarSeed(store),
-                  url: store.avatarURL,
-                  size: 36,
-                  borderRadius: 18,
-                ),
-              ),
-              const SizedBox(width: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 150),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      store.name.isEmpty ? '博简用户' : store.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: _text,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      ends == null
-                          ? '尚未开通会员'
-                          : '有效期至 ${ends.year}-${_two(ends.month)}-${_two(ends.day)}',
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: ends == null ? _muted : _gold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+    final children = [
+      // Only members carry the card; non-members go straight to the plans.
+      if (endsAt != null)
+        _MetalMembershipCard(
+          store: store,
+          membershipLabel: membershipLabel,
+          membershipBadgeAsset: membershipBadgeAsset,
+          endsAt: endsAt,
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-          child: Column(
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    '可享 ',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
-                    ),
-                  ),
-                  _GoldText(
-                    '${_privileges.length}',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      height: 1.05,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const Text(
-                    ' 项会员权益',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (showPrice)
-                    Text(
-                      '低至 ¥${membershipPlans.first.perDay}/天',
-                      style: const TextStyle(fontSize: 12, color: _gold),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  for (final (icon, title, subtitle) in _privileges)
-                    _Privilege(icon: icon, title: title, subtitle: subtitle),
-                ],
-              ),
-            ],
-          ),
-        ),
+      if (aiPacks.isNotEmpty || !aiAddon.isEmpty) ...[
+        if (endsAt != null) const SizedBox(height: 12),
+        _AIUsageStrip(aiPacks, addon: aiAddon, member: endsAt != null),
       ],
+    ];
+    if (children.isEmpty) return const SizedBox(height: 8);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      child: Column(children: children),
     );
   }
 }
 
-/// 首屏主视觉：发光金树立在金边沙丘上，左下角放会员身份。
-class _TreeHero extends StatelessWidget {
-  const _TreeHero({required this.top, required this.identity});
-  final double top;
-  final Widget identity;
+class _MetalMembershipCard extends StatelessWidget {
+  const _MetalMembershipCard({
+    required this.store,
+    required this.membershipLabel,
+    this.membershipBadgeAsset,
+    this.endsAt,
+  });
+  final AppStore store;
+  final String membershipLabel;
+  final String? membershipBadgeAsset;
+  final DateTime? endsAt;
 
-  static const _treeAspect = 960 / 719;
+  /// ISO/IEC 7810 ID-1, the proportion of a real bank card.
+  static const aspectRatio = 85.60 / 53.98;
+
+  // Embossed lettering: a dark lower edge and a faint upper highlight.
+  static const _emboss = [
+    Shadow(color: Color(0xA6000000), offset: Offset(0, 1), blurRadius: 1),
+    Shadow(color: Color(0x30FFFFFF), offset: Offset(0, -.6)),
+  ];
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final width = constraints.maxWidth;
-      final treeWidth = width * .74;
-      final treeHeight = treeWidth / _treeAspect;
-      final treeLeft = width * .57 - treeWidth / 2;
-      final treeTop = top - 6;
-      final height = treeTop + treeHeight + 34;
-      return SizedBox(
-        height: height,
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            Positioned(
-              left: width * .57 - 190,
-              top: treeTop + treeHeight * .5 - 190,
-              child: const _Glow(size: 380, color: Color(0x40F2B544)),
+      final height = width / aspectRatio;
+      // Everything on the card scales with it, like print on a real card.
+      final k = (width / 335).clamp(.8, 1.25).toDouble();
+      final radius = width * .045;
+      final inset = 20 * k;
+      final ends = endsAt;
+      final name = store.name.isEmpty ? '博简用户' : store.name;
+      return MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.15,
+        child: Semantics(
+          container: true,
+          label: [
+            membershipLabel,
+            name,
+            if (ends != null)
+              '有效期至 ${ends.year}-${_two(ends.month)}-${_two(ends.day)}',
+          ].join('，'),
+          excludeSemantics: true,
+          child: Container(
+            width: width,
+            height: height,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+              boxShadow: const [
+                // Contact shadow plus a soft ambient lift.
+                BoxShadow(
+                  color: Color(0x40000000),
+                  blurRadius: 3,
+                  offset: Offset(0, 1.5),
+                ),
+                BoxShadow(
+                  color: Color(0x4D0B1626),
+                  blurRadius: 28,
+                  spreadRadius: -6,
+                  offset: Offset(0, 16),
+                ),
+              ],
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 120,
-              child: const CustomPaint(painter: _DunesPainter(front: false)),
-            ),
-            Positioned(
-              left: treeLeft,
-              top: treeTop,
-              width: treeWidth,
-              height: treeHeight,
-              child: Image.asset(
-                'assets/membership/golden_tree.webp',
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.medium,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(radius),
+              child: Stack(
+                children: [
+                  const Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF3A4D68),
+                            Color(0xFF233249),
+                            Color(0xFF162234),
+                            Color(0xFF1E2D42),
+                          ],
+                          stops: [0, .38, .78, 1],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const Positioned.fill(
+                    child: CustomPaint(painter: _BrushedMetal()),
+                  ),
+                  Positioned.fill(
+                    child: CustomPaint(painter: _CardSheen(radius: radius)),
+                  ),
+                  // One left edge for chip, number and holder, like the
+                  // print grid of a real card.
+                  Positioned(
+                    left: inset,
+                    top: height * .2,
+                    width: 50 * k,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(7 * k),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x59000000),
+                            blurRadius: 2,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: Image.asset(
+                        'assets/membership/card_chip.png',
+                        fit: BoxFit.contain,
+                        cacheWidth: 240,
+                        filterQuality: FilterQuality.medium,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: inset,
+                    top: height * .53,
+                    child: Text(
+                      _decorativeCardNumber(profileAvatarSeed(store)),
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(
+                        fontSize: 15 * k,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.6 * k,
+                        color: const Color(0xFFDCE6F3),
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        shadows: _emboss,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: inset,
+                    right: inset,
+                    bottom: inset * .85,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0x66C5D8F0),
+                              width: 1,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(1.5),
+                            child: ProfileAvatar(
+                              seed: profileAvatarSeed(store),
+                              url: store.avatarURL,
+                              size: 32 * k,
+                              borderRadius: 16 * k,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 9 * k),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14 * k,
+                                  height: 1.25,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 1,
+                                  color: const Color(0xFFE4ECF7),
+                                  shadows: _emboss,
+                                ),
+                              ),
+                              SizedBox(height: 3 * k),
+                              if (membershipBadgeAsset != null)
+                                Image.asset(
+                                  membershipBadgeAsset!,
+                                  height: 17 * k,
+                                  fit: BoxFit.contain,
+                                  cacheHeight: 96,
+                                )
+                              else
+                                Text(
+                                  membershipLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 10 * k,
+                                    height: 1.3,
+                                    letterSpacing: 1,
+                                    color: const Color(0xFF9FB2CC),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (ends != null) ...[
+                          SizedBox(width: 10 * k),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '有效期至',
+                                style: TextStyle(
+                                  fontSize: 9 * k,
+                                  height: 1.2,
+                                  letterSpacing: 1.5,
+                                  color: const Color(0xFF8DA1BC),
+                                ),
+                              ),
+                              SizedBox(height: 2 * k),
+                              Text(
+                                '${ends.year}/${_two(ends.month)}/${_two(ends.day)}',
+                                style: TextStyle(
+                                  fontSize: 15 * k,
+                                  height: 1.2,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 1.5,
+                                  color: const Color(0xFFE4ECF7),
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                  shadows: _emboss,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 120,
-              child: const IgnorePointer(
-                child: CustomPaint(painter: _DunesPainter(front: true)),
-              ),
-            ),
-            Positioned(left: 20, bottom: 18, child: identity),
-          ],
+          ),
         ),
       );
     },
   );
 }
 
-/// 两层暗色沙丘，顶边带金色描光；前景层只覆盖左侧，让树根光环露出来。
-class _DunesPainter extends CustomPainter {
-  const _DunesPainter({required this.front});
-  final bool front;
+/// A stable, purely decorative card number derived from the account, shown
+/// in the 4 × 4 grouping of a real card. It is not an identifier.
+String _decorativeCardNumber(String seed) {
+  var hash = 0x811C9DC5;
+  final digits = StringBuffer();
+  for (var i = 0; digits.length < 16; i++) {
+    for (final unit in '$seed#$i'.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xFFFFFFFF;
+    }
+    digits.write(hash % 10);
+  }
+  final text = digits.toString();
+  return [for (var i = 0; i < 16; i += 4) text.substring(i, i + 4)].join(' ');
+}
+
+/// The remaining AI uses sit below the card, not printed on it.
+class _AIUsageStrip extends StatelessWidget {
+  const _AIUsageStrip(
+    this.packs, {
+    this.addon = const _AIAddonBalance(),
+    this.member = true,
+  });
+  final List<_AIPack> packs;
+  final _AIAddonBalance addon;
+  final bool member;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _MembershipColors.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette.surfaceHi,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        [
+          ..._aiUsageLines(packs),
+          ?_aiAddonLine(addon, member: member),
+        ].join('\n'),
+        style: TextStyle(fontSize: 12, height: 1.5, color: palette.muted),
+      ),
+    );
+  }
+}
+
+/// Fine horizontal grain of brushed metal, deterministic so it never flickers.
+class _BrushedMetal extends CustomPainter {
+  const _BrushedMetal();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width, h = size.height;
-    final edge = Path();
-    if (front) {
-      edge
-        ..moveTo(0, h * .5)
-        ..cubicTo(w * .22, h * .38, w * .42, h * .62, w * .62, h * .86)
-        ..cubicTo(w * .75, h * 1.0, w * .9, h * .96, w, h * .9);
-    } else {
-      edge
-        ..moveTo(0, h * .36)
-        ..cubicTo(w * .2, h * .16, w * .38, h * .3, w * .55, h * .5)
-        ..cubicTo(w * .72, h * .68, w * .86, h * .4, w, h * .3);
+    final random = Random(7);
+    final paint = Paint()..strokeWidth = .5;
+    for (var y = 0.0; y < size.height; y += .9) {
+      final light = random.nextBool();
+      paint.color = (light ? Colors.white : Colors.black).withValues(
+        alpha: .012 + random.nextDouble() * (light ? .03 : .05),
+      );
+      final start = random.nextDouble() * size.width * .3;
+      canvas.drawLine(
+        Offset(start, y),
+        Offset(size.width - random.nextDouble() * size.width * .3, y),
+        paint,
+      );
     }
-    final fill = Path.from(edge)
-      ..lineTo(w, h)
-      ..lineTo(0, h)
-      ..close();
-    canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: front
-              ? const [Color(0xFF1A150F), _bg]
-              : const [Color(0xFF2A2116), Color(0xFF15120D)],
-        ).createShader(Offset.zero & size),
+  }
+
+  @override
+  bool shouldRepaint(covariant _BrushedMetal oldDelegate) => false;
+}
+
+/// A bevelled edge that catches light on top.
+class _CardSheen extends CustomPainter {
+  const _CardSheen({required this.radius});
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final edge = RRect.fromRectAndRadius(
+      rect.deflate(.6),
+      Radius.circular(radius),
     );
-    canvas.drawPath(
+    canvas.drawRRect(
       edge,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = front ? 1.2 : 1.6
-        ..shader = LinearGradient(
-          colors: [
-            _gold.withValues(alpha: 0),
-            _gold.withValues(alpha: front ? .45 : .7),
-            _gold.withValues(alpha: 0),
-          ],
-          stops: front ? const [0, .35, 1] : const [0, .55, 1],
-        ).createShader(Offset.zero & size),
+        ..strokeWidth = 1.2
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x66E4EEFA), Color(0x14E4EEFA), Color(0x33000000)],
+        ).createShader(rect),
     );
   }
 
   @override
-  bool shouldRepaint(covariant _DunesPainter oldDelegate) =>
-      oldDelegate.front != front;
+  bool shouldRepaint(covariant _CardSheen oldDelegate) =>
+      radius != oldDelegate.radius;
 }
 
-const _privileges = [
-  (HugeIcons.strokeRoundedLayout01, '付费模板', '全部免费用'),
-  (HugeIcons.strokeRoundedAiMagic, 'AI 整份生成', '单月 30 次'),
-  (HugeIcons.strokeRoundedAiIdea, 'AI 单段生成', '单月 100 次'),
-  (HugeIcons.strokeRoundedAdvertisiment, '去除广告', '全程清爽'),
-];
-
+/// 生效中的一份会员或邀请奖励。次数只在这一份的有效期内可用，到期清零。
 String _two(int value) => value.toString().padLeft(2, '0');
 
-class _Glow extends StatelessWidget {
-  const _Glow({required this.size, required this.color});
-  final double size;
-  final Color color;
+class _AIPack {
+  const _AIPack({
+    required this.referral,
+    required this.endsAt,
+    required this.create,
+    required this.polish,
+    required this.text,
+  });
+  final bool referral;
+  final DateTime endsAt;
+  final int create, polish, text;
 
-  @override
-  Widget build(BuildContext context) => IgnorePointer(
-    child: Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
-      ),
-    ),
-  );
+  /// 服务端已按到期时间升序返回；格式不对的项直接忽略。
+  static List<_AIPack> parseAll(Object? value) {
+    final packs = <_AIPack>[];
+    if (value is! List) return packs;
+    for (final item in value) {
+      if (item is! Map) continue;
+      final ends = DateTime.tryParse('${item['ends_at']}')?.toLocal();
+      if (ends == null) continue;
+      packs.add(
+        _AIPack(
+          referral: item['source'] == 'REFERRAL',
+          endsAt: ends,
+          create: _count(item['ai_create_remaining']),
+          polish: _count(item['ai_polish_remaining']),
+          text: _count(item['ai_text_remaining']),
+        ),
+      );
+    }
+    return packs;
+  }
 }
 
-class _Privilege extends StatelessWidget {
-  const _Privilege({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-  final List<List<dynamic>> icon;
-  final String title, subtitle;
+int _count(Object? value) => value is num && value > 0 ? value.toInt() : 0;
 
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: Column(
-      children: [
-        Container(
-          width: 46,
-          height: 46,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF2E271D), Color(0xFF1A1611)],
-            ),
-            border: Border.all(color: _gold.withValues(alpha: .35)),
-          ),
-          child: ShaderMask(
-            blendMode: BlendMode.srcIn,
-            shaderCallback: (bounds) => _champagneGradient.createShader(bounds),
-            child: HugeIcon(icon: icon, size: 22, color: Colors.white),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          title,
-          maxLines: 1,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: _text,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(subtitle, style: const TextStyle(fontSize: 11, color: _muted)),
-      ],
-    ),
-  );
+/// 剩余次数合计，以及最早一份的清零时间（扣减也先扣这一份）。
+List<String> _aiUsageLines(List<_AIPack> packs) {
+  if (packs.isEmpty) return const [];
+  final create = packs.fold(0, (sum, pack) => sum + pack.create);
+  final polish = packs.fold(0, (sum, pack) => sum + pack.polish);
+  final text = packs.fold(0, (sum, pack) => sum + pack.text);
+  final first = packs.first;
+  final label = first.referral ? '邀请奖励' : (packs.length > 1 ? '最早一份' : '本份');
+  final at = first.endsAt;
+  return [
+    'AI 剩余：简历生成 $create 次 · 简历优化 $polish 次 · 单段 $text 次',
+    '$label ${_two(at.month)}-${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)} 到期清零',
+  ];
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text, {this.trailing});
+  const _SectionTitle(this.text);
   final String text;
-  final String? trailing;
 
   @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      Container(
-        width: 4,
-        height: 16,
-        margin: const EdgeInsets.only(right: 8, bottom: 2),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(2),
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFFFEBC4), _goldDeep],
-          ),
-        ),
-      ),
-      Text(
-        text,
-        style: const TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          color: _text,
-        ),
-      ),
-      const Spacer(),
-      if (trailing != null)
-        Text(trailing!, style: const TextStyle(fontSize: 12, color: _muted)),
-    ],
+  Widget build(BuildContext context) => Text(
+    text,
+    style: TextStyle(
+      fontSize: 17,
+      fontWeight: FontWeight.w700,
+      color: _MembershipColors.of(context).text,
+    ),
   );
 }
 
@@ -751,211 +981,254 @@ class _PlanCard extends StatelessWidget {
     required this.plan,
     required this.selected,
     required this.onTap,
+    this.recommended = false,
     this.localizedPrice,
+    this.priceLoading = false,
   });
   final MembershipPlan plan;
-  final bool selected;
+  final bool selected, priceLoading, recommended;
   final VoidCallback onTap;
   final String? localizedPrice;
 
   @override
   Widget build(BuildContext context) {
-    final year = plan.code == 'YEAR';
-    final priceStyle = const TextStyle(
-      fontSize: 36,
-      height: 1.1,
-      fontWeight: FontWeight.w800,
-      fontFeatures: [FontFeature.tabularFigures()],
-    );
-    final price = localizedPrice != null
-        ? FittedBox(
-            fit: BoxFit.scaleDown,
-            child: selected
-                ? _GoldText(localizedPrice!, style: priceStyle)
-                : Text(
-                    localizedPrice!,
-                    style: priceStyle.copyWith(color: _text),
-                  ),
-          )
-        : FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                selected
-                    ? const _GoldText(
-                        '¥',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      )
-                    : const Text(
-                        '¥',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: _text,
-                        ),
-                      ),
-                selected
-                    ? _GoldText(plan.price, style: priceStyle)
-                    : Text(
-                        plan.price,
-                        style: priceStyle.copyWith(color: _text),
-                      ),
-              ],
-            ),
-          );
+    final colors = _MembershipColors.of(context);
+    final accent = colors.accent;
+    final titleColor = context.isDark
+        ? selected
+              ? const Color(0xFFEFF5FF)
+              : const Color(0xFFD2DFF1)
+        : colors.text;
     return Semantics(
       selected: selected,
       button: true,
-      label: '${plan.title} ${localizedPrice ?? '${plan.price} 元'}',
+      onTap: onTap,
+      label:
+          '${plan.title}，${recommended ? '推荐，' : ''}有效期 ${plan.period}，含 AI 简历生成 ${plan.aiCreateQuota} 次、AI 简历优化 ${plan.aiPolishQuota} 次、单段生成 ${plan.aiTextQuota} 次，${priceLoading ? '价格加载中' : localizedPrice ?? '${plan.price} 元'}',
       excludeSemantics: true,
-      child: GestureDetector(
-        onTap: onTap,
-        // 选中态与未选中态布局完全一致，只整体淡入淡出，避免边框和渐变逐项插值造成跳动。
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          switchInCurve: Curves.easeOut,
-          switchOutCurve: Curves.easeIn,
-          layoutBuilder: (current, previous) => Stack(
-            fit: StackFit.passthrough,
-            children: [...previous, ?current],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 108),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: selected ? colors.selectedPlan : colors.unselectedPlan,
           ),
-          child: Container(
-            key: ValueKey(selected),
-            padding: const EdgeInsets.all(1.5),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: selected ? _champagneGradient : null,
-              color: selected ? null : _line,
-              boxShadow: selected
-                  ? const [
-                      BoxShadow(
-                        color: Color(0x40C9934A),
-                        blurRadius: 18,
-                        offset: Offset(0, 6),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14.5),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: selected
-                      ? const [Color(0xFF3A2D1B), Color(0xFF1E1912)]
-                      : const [_surfaceHi, _surface],
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Column(
+          border: Border.all(
+            color: selected ? colors.selectedBorder : colors.unselectedBorder,
+            width: 1.1,
+          ),
+        ),
+        child: Stack(
+          fit: StackFit.passthrough,
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(18),
+                splashColor: accent.withValues(alpha: .1),
+                highlightColor: accent.withValues(alpha: .04),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 16, 12, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 28, 12, 14),
-                        child: Column(
-                          children: [
-                            Text(
-                              plan.title,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: selected ? _gold : _text,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            price,
-                            const SizedBox(height: 4),
-                            Text(
-                              localizedPrice != null
-                                  ? '有效期 ${plan.period}'
-                                  : '折合 ¥${plan.perDay}/天',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: _muted,
-                              ),
-                            ),
-                          ],
+                      Text(
+                        plan.title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
                         ),
                       ),
-                      const Spacer(),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          gradient: selected ? _champagneGradient : null,
-                          color: selected ? null : Colors.black26,
-                        ),
-                        child: Text(
-                          year
-                              ? localizedPrice != null
-                                    ? '全年会员权益'
-                                    : '预计可省 ¥$_yearSaving'
-                              : '适合短期求职冲刺',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: selected ? _goldInk : _muted,
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: priceLoading
+                                  ? _BreathingPricePlaceholder(
+                                      fontSize: 24,
+                                      color: accent,
+                                    )
+                                  : Text(
+                                      localizedPrice ?? '¥${plan.price}',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        height: 1.1,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -.5,
+                                        color: selected ? accent : titleColor,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 6),
+                          _PlanRadio(selected: selected),
+                        ],
                       ),
                     ],
                   ),
-                  if (year)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Color(0xFFFF8A4C), Color(0xFFE5402E)],
-                          ),
-                          borderRadius: BorderRadius.only(
-                            bottomRight: Radius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          localizedPrice != null ? '推荐' : '最划算',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (selected)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: _champagneGradient,
-                        ),
-                        child: const HugeIcon(
-                          icon: HugeIcons.strokeRoundedTick02,
-                          size: 13,
-                          color: _goldInk,
-                        ),
-                      ),
-                    ),
-                ],
+                ),
+              ),
+            ),
+            if (recommended)
+              const Positioned(top: 0, right: 0, child: _PlanBadge()),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 卡片右下角的单选圈，选中时显示对勾。
+class _PlanRadio extends StatelessWidget {
+  const _PlanRadio({required this.selected});
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _MembershipColors.of(context);
+    final accent = colors.accent;
+    return ExcludeSemantics(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? accent : Colors.transparent,
+          border: Border.all(
+            color: selected
+                ? accent
+                : context.isDark
+                ? const Color(0xFF647E9E)
+                : colors.muted.withValues(alpha: .7),
+            width: 1.4,
+          ),
+        ),
+        child: selected
+            ? Icon(Icons.check_rounded, size: 13, color: colors.accentInk)
+            : null,
+      ),
+    );
+  }
+}
+
+/// 贴在卡片右上角的“推荐”标签，外侧圆角与卡片一致。
+class _PlanBadge extends StatelessWidget {
+  const _PlanBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFF3DDA8), Color(0xFFD9A864)],
+            ),
+            borderRadius: BorderRadius.only(
+              topRight: Radius.circular(17),
+              bottomLeft: Radius.circular(14),
+            ),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: 14,
+                color: Color(0xFFD62F1F),
+              ),
+              SizedBox(width: 3),
+              Text(
+                '推荐',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF9B2416),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BreathingPricePlaceholder extends StatefulWidget {
+  const _BreathingPricePlaceholder({this.fontSize = 30, this.color});
+  final double fontSize;
+  final Color? color;
+
+  @override
+  State<_BreathingPricePlaceholder> createState() =>
+      _BreathingPricePlaceholderState();
+}
+
+class _BreathingPricePlaceholderState extends State<_BreathingPricePlaceholder>
+    with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+  late final _opacity = Tween<double>(
+    begin: .35,
+    end: .75,
+  ).chain(CurveTween(curve: Curves.easeInOut)).animate(_controller);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.stop();
+      _controller.value = .5;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final height =
+        MediaQuery.textScalerOf(context).scale(widget.fontSize) * 1.1;
+    return Semantics(
+      label: '正在获取 App Store 价格',
+      child: RepaintBoundary(
+        child: FadeTransition(
+          opacity: _opacity,
+          child: SizedBox(
+            width: widget.fontSize * 3.2,
+            height: height,
+            child: Center(
+              child: Container(
+                height: height * .6,
+                decoration: BoxDecoration(
+                  color: widget.color ?? _MembershipColors.of(context).accent,
+                  borderRadius: BorderRadius.circular(6),
+                ),
               ),
             ),
           ),
@@ -979,7 +1252,7 @@ class _TemplateStrip extends StatelessWidget {
       height: _cardWidth / _pageRatio + 26,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: templates.length,
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
@@ -1009,7 +1282,7 @@ class _TemplateStrip extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              gradient: _champagneGradient,
+                              gradient: _crystalGradient,
                               borderRadius: const BorderRadius.only(
                                 bottomRight: Radius.circular(8),
                               ),
@@ -1019,7 +1292,7 @@ class _TemplateStrip extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
-                                color: _goldInk,
+                                color: _platinumInk,
                               ),
                             ),
                           ),
@@ -1033,7 +1306,10 @@ class _TemplateStrip extends StatelessWidget {
                   '${template['name'] ?? '简历模板'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: _text),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _MembershipColors.of(context).text,
+                  ),
                 ),
               ],
             ),
@@ -1049,7 +1325,10 @@ class _BenefitTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const memberTint = Color(0x1FEBC583);
+    final palette = _MembershipColors.of(context);
+    final memberTint = context.isDark
+        ? const Color(0x1FA3C7F3)
+        : const Color(0xFFEAF3FF);
     Widget cell(Widget child, {bool member = false, int flex = 4}) => Expanded(
       flex: flex,
       child: Container(
@@ -1061,9 +1340,9 @@ class _BenefitTable extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _line),
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.line),
       ),
       child: Column(
         children: [
@@ -1072,33 +1351,35 @@ class _BenefitTable extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 cell(
-                  const Text(
+                  Text(
                     '特权',
-                    style: TextStyle(fontSize: 12, color: _muted),
+                    style: TextStyle(fontSize: 12, color: palette.muted),
                   ),
                   flex: 5,
                 ),
                 cell(
-                  const Text(
+                  Text(
                     '免费用户',
-                    style: TextStyle(fontSize: 12, color: _muted),
+                    style: TextStyle(fontSize: 12, color: palette.muted),
                   ),
                 ),
                 cell(
-                  const Row(
+                  Row(
                     children: [
                       HugeIcon(
                         icon: HugeIcons.strokeRoundedCrown,
                         size: 14,
-                        color: _gold,
+                        color: palette.accent,
                       ),
-                      SizedBox(width: 4),
-                      Text(
-                        '会员',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: _gold,
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          '会员',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: palette.accent,
+                          ),
                         ),
                       ),
                     ],
@@ -1110,8 +1391,8 @@ class _BenefitTable extends StatelessWidget {
           ),
           for (final (icon, name, free, member) in _benefits)
             DecoratedBox(
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: _line)),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: palette.line)),
               ),
               child: IntrinsicHeight(
                 child: Row(
@@ -1120,15 +1401,15 @@ class _BenefitTable extends StatelessWidget {
                     cell(
                       Row(
                         children: [
-                          HugeIcon(icon: icon, size: 18, color: _gold),
+                          HugeIcon(icon: icon, size: 18, color: palette.accent),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: _text,
+                                color: palette.text,
                               ),
                             ),
                           ),
@@ -1139,16 +1420,16 @@ class _BenefitTable extends StatelessWidget {
                     cell(
                       Text(
                         free,
-                        style: const TextStyle(fontSize: 12, color: _muted),
+                        style: TextStyle(fontSize: 12, color: palette.muted),
                       ),
                     ),
                     cell(
                       Text(
                         member,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: _gold,
+                          color: palette.accent,
                         ),
                       ),
                       member: true,
@@ -1168,12 +1449,13 @@ class _FaqList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _MembershipColors.of(context);
     return Material(
       clipBehavior: Clip.antiAlias,
-      color: _surface,
+      color: palette.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: _line),
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: palette.line),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -1184,29 +1466,29 @@ class _FaqList extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: index == 0
                       ? null
-                      : const Border(top: BorderSide(color: _line)),
+                      : Border(top: BorderSide(color: palette.line)),
                 ),
                 child: ExpansionTile(
                   tilePadding: const EdgeInsets.symmetric(horizontal: 16),
                   childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                   expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                  iconColor: _gold,
-                  collapsedIconColor: _muted,
+                  iconColor: palette.accent,
+                  collapsedIconColor: palette.muted,
                   title: Text(
                     question,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: _text,
+                      color: palette.text,
                     ),
                   ),
                   children: [
                     Text(
                       answer,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         height: 1.6,
-                        color: _muted,
+                        color: palette.muted,
                       ),
                     ),
                   ],
@@ -1219,57 +1501,50 @@ class _FaqList extends StatelessWidget {
   }
 }
 
-/// 底部结算栏。会员页用黑金底配香槟金按钮，确认订单页用浅色底配蓝色按钮。
+/// 确认订单页底部结算栏。
 class _BottomPayBar extends StatelessWidget {
   const _BottomPayBar({
     required this.label,
     required this.amount,
     this.displayAmount,
-    this.footer,
     required this.onPressed,
     this.busy = false,
-    this.dark = false,
   });
   final String label, amount;
   final String? displayAmount;
-  final Widget? footer;
   final VoidCallback? onPressed;
-  final bool busy, dark;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final muted = dark ? _muted : colors.muted;
-    final onButton = dark ? _goldInk : Colors.white;
-    final amountWidget = dark
-        ? _GoldText(
-            displayAmount ?? '¥$amount',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-          )
-        : Text(
-            displayAmount ?? '¥$amount',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: colors.accent,
-            ),
-          );
+    final inactive = busy || onPressed == null;
+    const onButton = Colors.white;
+    final buttonRadius = BorderRadius.circular(23);
+    final amountWidget = Text(
+      displayAmount ?? '¥$amount',
+      style: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w800,
+        color: colors.accent,
+      ),
+    );
     return Container(
       decoration: BoxDecoration(
-        color: dark ? _surface : colors.surface,
-        border: Border(top: BorderSide(color: dark ? _line : colors.border)),
+        color: colors.surface,
+        border: Border(top: BorderSide(color: colors.border)),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: Row(
             children: [
               Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [amountWidget, ?footer],
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: amountWidget,
                 ),
               ),
               const SizedBox(width: 12),
@@ -1277,19 +1552,15 @@ class _BottomPayBar extends StatelessWidget {
                 height: 46,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(23),
-                    gradient: busy || onPressed == null
-                        ? LinearGradient(colors: [muted, muted])
-                        : dark
-                        ? _champagneGradient
+                    borderRadius: buttonRadius,
+                    gradient: inactive
+                        ? LinearGradient(colors: [colors.muted, colors.muted])
                         : const LinearGradient(colors: _blueGradient),
-                    boxShadow: busy || onPressed == null
+                    boxShadow: inactive
                         ? null
-                        : [
+                        : const [
                             BoxShadow(
-                              color: dark
-                                  ? const Color(0x50C9934A)
-                                  : const Color(0x402867EE),
+                              color: Color(0x402867EE),
                               blurRadius: 14,
                               offset: Offset(0, 4),
                             ),
@@ -1303,12 +1574,10 @@ class _BottomPayBar extends StatelessWidget {
                       shadowColor: Colors.transparent,
                       foregroundColor: onButton,
                       padding: const EdgeInsets.symmetric(horizontal: 30),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(23),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: buttonRadius),
                     ),
                     child: busy
-                        ? SizedBox.square(
+                        ? const SizedBox.square(
                             dimension: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
@@ -1317,7 +1586,7 @@ class _BottomPayBar extends StatelessWidget {
                           )
                         : Text(
                             label,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
                               color: onButton,
@@ -1416,29 +1685,41 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
 
   static const _alipay = MethodChannel('cn.kelance.bojian/alipay');
 
-  /// 支付宝通知通常在几秒内到达，期间轮询订单状态。
-  Future<bool> _waitUntilPaid(int id) async {
-    if (id <= 0) return false;
+  /// 支付宝通知通常在几秒内到达，期间轮询订单状态；返回最后一次查到的订单。
+  Future<Map<String, dynamic>> _waitUntilPaid(
+    Map<String, dynamic> order,
+  ) async {
+    final id = integer(order['id']);
+    if (id <= 0) return order;
     for (var attempt = 0; attempt < 8; attempt++) {
       try {
         final result = await widget.store.request(
           'GetMembershipOrdersId',
           path: {'id': '$id'},
         );
-        if (result.data['status'] == 'PAID') return true;
+        order = result.data;
+        if (order['status'] == 'PAID') return order;
       } on ApiFailure {
         // 网络抖动时继续等待下一次查询。
       }
-      if (!mounted) return false;
+      if (!mounted) return order;
       await Future<void>.delayed(const Duration(milliseconds: 1500));
-      if (!mounted) return false;
+      if (!mounted) return order;
     }
-    return false;
+    return order;
   }
 
-  void _paid() {
-    toast(context, '会员已开通');
-    Navigator.of(context).pop();
+  /// 用结果页替换确认订单页，返回时直接回到会员页。
+  void _showResult(Map<String, dynamic> order) {
+    Navigator.of(context).pushReplacement(
+      CupertinoPageRoute<void>(
+        builder: (_) => MembershipOrderResultPage(
+          store: widget.store,
+          plan: widget.plan,
+          order: order,
+        ),
+      ),
+    );
   }
 
   Future<void> _pay() async {
@@ -1457,7 +1738,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
         extra: {'idempotency-key': requestKey!},
       );
       if (!mounted) return;
-      if (order.data['status'] == 'PAID') return _paid();
+      if (order.data['status'] == 'PAID') return _showResult(order.data);
       final orderString = order.data['alipay_order_string'];
       if (channel != 'ALIPAY' ||
           orderString is! String ||
@@ -1475,14 +1756,13 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
         return;
       }
       // 支付宝同步结果仅作提示，会员是否开通以服务端验签后的订单状态为准。
-      if (await _waitUntilPaid(integer(order.data['id']))) return _paid();
+      final latest = await _waitUntilPaid(order.data);
       if (!mounted) return;
-      toast(
-        context,
-        status == '9000' || status == '8000'
-            ? '支付结果确认中，稍后可在会员页查看'
-            : '支付未完成，请重试',
-      );
+      // 已开通，或支付宝显示已付款（9000 成功、8000 处理中）时进入结果页继续确认。
+      if (latest['status'] == 'PAID' || status == '9000' || status == '8000') {
+        return _showResult(latest);
+      }
+      toast(context, '支付未完成，请重试');
     } on PlatformException catch (e) {
       if (mounted) toast(context, e.message ?? '无法打开支付宝，请重试');
     } on ApiFailure catch (e) {
@@ -1633,7 +1913,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
 
 String _channelName(String channel) => channel == 'WECHAT' ? '微信支付' : '支付宝';
 
-/// 订单商品缩略图：黑金底上斜放一张迷你香槟金会员卡，标明年卡或月卡。
+/// 订单商品缩略图：冷黑底上斜放一张迷你铂银会员卡，标明年卡或月卡。
 class _PlanThumb extends StatelessWidget {
   const _PlanThumb({required this.plan});
   final MembershipPlan plan;
@@ -1648,7 +1928,7 @@ class _PlanThumb extends StatelessWidget {
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFF3A2C1A), _bg],
+        colors: [Color(0xFF243B5B), _bg],
       ),
     ),
     child: Stack(
@@ -1657,7 +1937,7 @@ class _PlanThumb extends StatelessWidget {
         const Positioned(
           right: 5,
           top: 4,
-          child: Text('✦', style: TextStyle(fontSize: 8, color: _gold)),
+          child: Text('✦', style: TextStyle(fontSize: 8, color: _platinum)),
         ),
         Transform.rotate(
           angle: -.2,
@@ -1667,7 +1947,7 @@ class _PlanThumb extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 3, 4, 3),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
-              gradient: _champagneGradient,
+              gradient: _crystalGradient,
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x80000000),
@@ -1683,7 +1963,7 @@ class _PlanThumb extends StatelessWidget {
                 const HugeIcon(
                   icon: HugeIcons.strokeRoundedCrown,
                   size: 8,
-                  color: _goldInk,
+                  color: _platinumInk,
                   strokeWidth: 2,
                 ),
                 Text(
@@ -1692,7 +1972,7 @@ class _PlanThumb extends StatelessWidget {
                     fontSize: 7,
                     height: 1,
                     fontWeight: FontWeight.w900,
-                    color: _goldInk,
+                    color: _platinumInk,
                   ),
                 ),
               ],

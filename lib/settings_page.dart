@@ -9,7 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'about_page.dart';
 import 'app_icons.dart';
+import 'app_update.dart';
 import 'account_deletion_dialog.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
@@ -20,6 +22,7 @@ import 'legal_document.dart';
 import 'legal_document_page.dart';
 import 'network_image_cache.dart';
 import 'profile_avatar.dart';
+import 'sign_out_dialog.dart';
 
 const _settingsChannel = MethodChannel('cn.kelance.bojian/settings');
 
@@ -32,6 +35,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool savingPrivacy = false;
+  bool signingOut = false;
   Timer? cacheRefresh;
   int imageCacheBytes = PaintingBinding.instance.imageCache.currentSizeBytes;
   int imageDiskBytes = 0;
@@ -60,7 +64,8 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    if (Platform.isAndroid) _loadVersion();
+    if (Platform.isAndroid || Platform.isIOS) _loadVersion();
+    AppUpdates.instance.refresh(widget.store);
     refreshImageDisk();
     // Images finish decoding after this page builds; ImageCache is not a Listenable.
     cacheRefresh = Timer.periodic(
@@ -108,6 +113,14 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) setState(() => savingPrivacy = false);
   }
 
+  Future<void> _signOut() async {
+    final confirmed = await showSignOutDialog(context);
+    if (!mounted || confirmed != true || !widget.store.isAuthenticated) return;
+    setState(() => signingOut = true);
+    await runRequest(context, widget.store.endSession);
+    if (mounted) setState(() => signingOut = false);
+  }
+
   Future<void> _clearImages() async {
     final clear = await showAppConfirmation(
       context,
@@ -137,7 +150,8 @@ class _SettingsPageState extends State<SettingsPage> {
           ? '${(total / 1024).toStringAsFixed(1)} KB'
           : '${(total / (1024 * 1024)).toStringAsFixed(1)} MB';
       return _SettingsListPage(
-        title: '隐私与设置',
+        title: '返回',
+        backgroundColor: context.isDark ? null : Colors.white,
         children: [
           if (store.isAuthenticated) ...[
             Padding(
@@ -260,48 +274,40 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: '隐私政策',
                 onTap: () => _legal(LegalDocumentKind.privacyPolicy),
               ),
-              _SettingsRow(
-                icon: AppIcons.about,
-                title: '关于博简',
-                value: 'v$version',
-                onTap: () => showModalBottomSheet<void>(
-                  context: context,
-                  showDragHandle: true,
-                  builder: (_) => SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '博简',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '版本 $version',
-                            style: TextStyle(
-                              color: context.colors.muted,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            '简历创建与优化、模板选择，以及求职经验交流。',
-                            style: TextStyle(fontSize: 14, height: 1.7),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+              ListenableBuilder(
+                listenable: AppUpdates.instance,
+                builder: (context, _) {
+                  final updates = AppUpdates.instance;
+                  return _SettingsRow(
+                    icon: AppIcons.about,
+                    title: '关于博简',
+                    value: updates.hasUpdate ? null : 'v$version',
+                    trailing: updates.hasUpdate ? const _NewVersionTag() : null,
+                    onTap: () => openPage(context, AboutPage(store: store)),
+                  );
+                },
               ),
             ],
           ),
+          if (store.isAuthenticated)
+            OutlinedButton(
+              key: const ValueKey('settings-sign-out'),
+              onPressed: signingOut ? null : _signOut,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+                backgroundColor: context.colors.surface,
+                side: BorderSide(color: context.colors.border),
+                minimumSize: const Size.fromHeight(48),
+                textStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ).withoutHover(),
+              child: Text(signingOut ? '正在退出…' : '退出登录'),
+            ),
         ],
       );
     },
@@ -314,6 +320,7 @@ class _SettingsListPage extends StatelessWidget {
     required this.title,
     required this.children,
     this.actions,
+    this.backgroundColor,
     this.padding = const EdgeInsets.fromLTRB(
       appPageHorizontalPadding,
       16,
@@ -325,11 +332,17 @@ class _SettingsListPage extends StatelessWidget {
   final String title;
   final List<Widget> children;
   final List<Widget>? actions;
+  final Color? backgroundColor;
   final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppPageBar(title: Text(title), actions: actions),
+    backgroundColor: backgroundColor,
+    appBar: AppPageBar(
+      title: Text(title),
+      actions: actions,
+      backgroundColor: backgroundColor,
+    ),
     body: Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680),
@@ -846,6 +859,28 @@ class _SecurityPageState extends State<_SecurityPage> {
           ),
         ],
       ),
+    ],
+  );
+}
+
+/// 设置里“关于博简”的新版本提示：红点加文字。
+class _NewVersionTag extends StatelessWidget {
+  const _NewVersionTag();
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 8,
+        height: 8,
+        decoration: const BoxDecoration(
+          color: Color(0xFFE5322D),
+          shape: BoxShape.circle,
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text('有新版本', style: TextStyle(fontSize: 12, color: context.colors.muted)),
     ],
   );
 }

@@ -6,7 +6,6 @@ import BojianPangleAds
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
-  private var rewardedAd: BojianRewardedAdBridge?
   private var douyinLogin: BojianDouyinLogin?
   private var baiduFace: BojianNativeFaceBridge?
   private var appleProducts: BojianAppleProducts?
@@ -20,7 +19,6 @@ import BojianPangleAds
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianBannerAds") {
-      rewardedAd = BojianRewardedAdBridge(messenger: registrar.messenger())
       registrar.register(BojianBannerFactory(messenger: registrar.messenger()), withId: "cn.kelance.bojian/banner")
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianDouyinLogin") {
@@ -35,6 +33,12 @@ import BojianPangleAds
     guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BojianDeviceMetadata") else { return }
     FlutterMethodChannel(name: "cn.kelance.bojian/settings", binaryMessenger: registrar.messenger())
       .setMethodCallHandler { call, result in
+        if call.method == "appInfo" {
+          let info = Bundle.main.infoDictionary
+          result(["version": info?["CFBundleShortVersionString"] as? String ?? "",
+                  "build": Int(info?["CFBundleVersion"] as? String ?? "") ?? 0])
+          return
+        }
         guard call.method == "deviceInfo" else {
           result(FlutterMethodNotImplemented)
           return

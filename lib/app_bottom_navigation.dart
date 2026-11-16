@@ -14,7 +14,7 @@ class AppBottomNavigation extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
-  static const _destinations = ['发现', '模版市场', '积分', '我的'];
+  static const _destinations = ['发现', '模版市场', '会员', '我的'];
 
   @override
   Widget build(BuildContext context) {

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 Future<void> changeAppearance(
   WidgetTester tester,
@@ -115,7 +116,7 @@ void main() {
       await tester.pumpAndSettle();
       final shell = tester.state<AppShellState>(find.byType(AppShell));
       final signOut = find.byKey(const ValueKey('account-sign-out'));
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await openSharedAccountMenu(tester);
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         signOut,

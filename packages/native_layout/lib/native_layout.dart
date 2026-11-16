@@ -143,20 +143,24 @@ class NativeLayoutRenderer {
     this.assetBytes, {
     this.photoBytes,
     this.useSystemFont = false,
+    this.bundledSystemBold = false,
   }) : fields = normalizeNativeFields(fields);
   final J layout, fields;
   final Map<String, Uint8List> assetBytes;
   final Uint8List? photoBytes;
   final bool useSystemFont;
+
+  /// With [useSystemFont], draws weights of 600 and above with the bundled
+  /// bold face. Set it when the system font has no real bold, since a
+  /// synthesized bold varies in weight along the line. Needs [loadFonts].
+  final bool bundledSystemBold;
   static Future<void>? _fonts;
   bool paintText = true;
   static Future<void> loadFonts(AssetBundle bundle) => _fonts ??=
       () async {
         for (final face in ['regular', 'medium', 'bold']) {
           final loader = FontLoader('Resume-$face');
-          loader.addFont(
-            bundle.load('assets/fonts/resume-sans-$face.ttf'),
-          );
+          loader.addFont(bundle.load('assets/fonts/resume-sans-$face.ttf'));
           await loader.load();
         }
       }().catchError((Object e, StackTrace st) {
@@ -232,6 +236,16 @@ class NativeLayoutRenderer {
   TextStyle textStyle(String name, [J overrides = const {}]) {
     final s = {...map(layout['textStyles'][name]), ...overrides};
     final weight = number(s['fontWeight'], 400);
+    if (useSystemFont && bundledSystemBold && weight >= 600) {
+      return TextStyle(
+        fontFamily: 'Resume-bold',
+        fontSize: number(s['fontSizePt'], 8.5) * 96 / 72,
+        height: number(s['lineHeight'], 1.75),
+        letterSpacing: number(s['letterSpacing']),
+        color: color(s['color'] ?? '#262B27'),
+        leadingDistribution: TextLeadingDistribution.even,
+      );
+    }
     return TextStyle(
       fontFamily: useSystemFont
           ? null
@@ -716,10 +730,12 @@ class NativeLayoutRenderer {
           TextSpan(
             text: value,
             style: TextStyle(
-              fontFamily: !useSystemFont && span['bold'] == true
+              fontFamily:
+                  (!useSystemFont || bundledSystemBold) && span['bold'] == true
                   ? 'Resume-bold'
                   : null,
-              fontWeight: useSystemFont && span['bold'] == true
+              fontWeight:
+                  useSystemFont && !bundledSystemBold && span['bold'] == true
                   ? FontWeight.bold
                   : null,
               fontStyle: span['italic'] == true ? FontStyle.italic : null,

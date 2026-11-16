@@ -154,7 +154,7 @@ class GuidanceFeedCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '查看简历并指点',
+                          '查看简历',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,

@@ -34,6 +34,14 @@ Map<String, dynamic> result() => {
   'status': 'WAITING_CONFIRMATION',
   'comparisons': {
     'summary': '优化表达',
+    'diagnosis': {
+      'overall': '项目职责清楚，但成果缺少依据',
+      'priorities': ['删去各项目重复的通用流程职责'],
+      'dimensions': [
+        {'key': 'relevance', 'level': 'good', 'comment': '前端经历与岗位一致'},
+        {'key': 'evidence', 'level': 'weak', 'comment': '平台项目未说明作用'},
+      ],
+    },
     'changes': [
       {
         'path': 'projects.0.description',
@@ -51,6 +59,7 @@ Map<String, dynamic> result() => {
     'issues': [
       {
         'path': 'projects.0.end_date',
+        'type': 'missing_information',
         'message': '结束时间为空',
         'question': '项目是否还在进行？',
       },
@@ -62,16 +71,39 @@ Future<void> open(WidgetTester tester, AppStore store) async {
     MaterialApp(
       home: ResumeAIOptimizationPage(
         store: store,
-        resume: ResumeDraft(id: 42, title: '简历'),
+        resume: ResumeDraft(
+          id: 42,
+          title: '简历',
+          source: {
+            'projects': [
+              {'name': '平台'},
+            ],
+          },
+        ),
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
 
+Future<void> tapKey(WidgetTester tester, String key) async {
+  final target = find.byKey(ValueKey(key));
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  await tester.tap(target);
+  await tester.pumpAndSettle();
+}
+
+final list = find
+    .descendant(
+      of: find.byKey(const ValueKey('resume-ai-list')),
+      matching: find.byType(Scrollable),
+    )
+    .first;
+
 void main() {
   testWidgets(
-    'Result shows comparisons without diagnostic sections and supports reanalysis',
+    'Result shows diagnosis, reasons, issues and supports reanalysis',
     (tester) async {
       final api = FakeGateway()
         ..documents['GetResumesIdPolishJobs'] = {'id': 12}
@@ -79,16 +111,30 @@ void main() {
       final store = await testStore(authenticated: true, api: api);
       addTearDown(store.dispose);
       await open(tester, store);
-      expect(find.text('优化结果'), findsOneWidget);
-      expect(find.text('需要核对的内容问题'), findsNothing);
-      expect(find.text('问题与改法'), findsNothing);
+      expect(find.text('诊断结论'), findsOneWidget);
+      expect(find.text('项目职责清楚，但成果缺少依据'), findsOneWidget);
+      expect(find.text('优先处理'), findsNothing);
+      expect(find.text('岗位匹配度'), findsOneWidget);
+      expect(find.text('待加强'), findsOneWidget);
+      // Only the diagnosis shows until an entry is opened.
+      expect(find.text('平台 · 项目介绍'), findsNothing);
+      expect(find.byKey(const ValueKey('resume-ai-apply')), findsNothing);
+      await tapKey(tester, 'resume-ai-stat-issues');
+      expect(find.text('待补充信息'), findsOneWidget);
+      expect(find.text('AI 简历优化'), findsNothing);
+      expect(find.text('项目是否还在进行？'), findsOneWidget);
+      // The reasoning stays folded until asked for.
       expect(find.text('结束时间为空'), findsNothing);
-      expect(find.text('项目是否还在进行？'), findsNothing);
-      expect(find.text('表达清楚'), findsNothing);
+      await tapKey(tester, 'resume-ai-why-projects.0.end_date');
+      expect(find.text('结束时间为空'), findsOneWidget);
+      expect(find.textContaining('AI'), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('AI 简历优化'), findsOneWidget);
+      expect(find.text('项目职责清楚，但成果缺少依据'), findsOneWidget);
       api.documents['GetResumesIdPolishJobs'] = {'id': null};
       api.documents['PostResumesIdPolishJobs'] = {'id': 13, 'status': 'QUEUED'};
       final button = find.byKey(const ValueKey('resume-ai-reanalyze'));
-      await tester.ensureVisible(button);
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(
@@ -126,7 +172,10 @@ void main() {
         api.calls.where((v) => v == 'PostResumesIdPolishJobs'),
         hasLength(1),
       );
-      expect(find.byKey(const ValueKey('resume-ai-apply')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('resume-ai-stat-changes')),
+        findsOneWidget,
+      );
     },
   );
 
@@ -193,23 +242,23 @@ void main() {
       addTearDown(store.dispose);
       await open(tester, store);
       expect(api.calls, isNot(contains('PostResumesIdPolishJobs')));
-      final checkbox = find.byKey(
-        const ValueKey('resume-ai-change-projects.0.description'),
-      );
-      await tester.scrollUntilVisible(
-        checkbox,
-        250,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await Scrollable.ensureVisible(tester.element(checkbox), alignment: 0.2);
-      await tester.pumpAndSettle();
-      await tester.tap(checkbox);
-      await tester.pumpAndSettle();
-      expect(find.text('采纳并保存 1 项'), findsOneWidget);
+      await tapKey(tester, 'resume-ai-stat-changes');
+      expect(find.text('修改建议 1/2'), findsOneWidget);
+      // Deciding on a suggestion turns to the next one.
+      await tapKey(tester, 'resume-ai-ignore-projects.0.description');
+      expect(find.text('修改建议 2/2'), findsOneWidget);
+      expect(api.calls, contains('PutPolishJobsIdDecisions'));
+      expect(api.lastMutationBody!['decisions'], {
+        'projects.0.description': false,
+        'skills.0.description': true,
+      });
+      await tapKey(tester, 'resume-ai-adopt-skills.0.description');
+      expect(find.text('采纳 1 处，忽略 1 处'), findsOneWidget);
       api.failing = 'PostPolishJobsIdApply';
       await tester.tap(find.byKey(const ValueKey('resume-ai-apply')));
       await tester.pumpAndSettle();
-      expect(find.text('采纳并保存 1 项'), findsOneWidget);
+      expect(find.text('服务器暂不可用'), findsOneWidget);
+      expect(find.text('采纳 1 处，忽略 1 处'), findsOneWidget);
       api.failing = null;
       await tester.tap(find.byKey(const ValueKey('resume-ai-apply')));
       await tester.pumpAndSettle();
@@ -217,9 +266,8 @@ void main() {
         'projects.0.description': false,
         'skills.0.description': true,
       });
-      await tester.drag(find.byType(ListView), const Offset(0, 1600));
-      await tester.pumpAndSettle();
-      expect(find.text('已保存采纳的建议'), findsOneWidget);
+      expect(find.text('已保存'), findsOneWidget);
+      expect(find.text('已写入 1 项修改'), findsOneWidget);
     },
   );
   testWidgets('Account switch prevents adoption', (tester) async {
@@ -247,13 +295,104 @@ void main() {
     addTearDown(store.dispose);
     await open(tester, store);
     expect(find.byKey(const ValueKey('resume-ai-apply')), findsNothing);
-    expect(find.text('本次没有可采纳的修改。'), findsOneWidget);
-    expect(find.text('需要核对的内容问题'), findsNothing);
+    await tapKey(tester, 'resume-ai-stat-issues');
     final discard = find.text('放弃本次结果');
     await tester.ensureVisible(discard);
+    await tester.pumpAndSettle();
     await tester.tap(discard);
     await tester.pumpAndSettle();
     expect(api.calls, contains('PostPolishJobsIdDiscard'));
     expect(api.calls, isNot(contains('PostPolishJobsIdApply')));
+  });
+
+  testWidgets('Long rewrites fold unchanged lines around the edit', (
+    tester,
+  ) async {
+    final lines = [for (var i = 1; i <= 12; i++) '$i). 负责模块$i的开发与维护'];
+    final before = lines.join('\n');
+    final after = [...lines.take(11), '12). 负责支付模块重构并完成回调容错'].join('\n');
+    final data = result();
+    (data['comparisons'] as Map)['changes'] = [
+      {
+        'path': 'projects.0.achievements',
+        'before': before,
+        'after': after,
+        'reason': '补充个人负责的模块',
+      },
+    ];
+    final api = FakeGateway()
+      ..documents['GetResumesIdPolishJobs'] = {'id': 12}
+      ..documents['GetPolishJobsId'] = data;
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await open(tester, store);
+    await tapKey(tester, 'resume-ai-stat-changes');
+    final fold = find.byKey(
+      const ValueKey('resume-ai-fold-projects.0.achievements'),
+    );
+    expect(fold, findsOneWidget);
+    expect(find.text('展开 10 行未改动内容'), findsOneWidget);
+    await tester.ensureVisible(fold);
+    await tester.pumpAndSettle();
+    await tester.tap(fold);
+    await tester.pumpAndSettle();
+    expect(fold, findsNothing);
+  });
+
+  testWidgets('Change links to open issues on the same experience', (
+    tester,
+  ) async {
+    final api = FakeGateway()
+      ..documents['GetResumesIdPolishJobs'] = {'id': 12}
+      ..documents['GetPolishJobsId'] = result();
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await open(tester, store);
+    await tapKey(tester, 'resume-ai-stat-changes');
+    final link = find.byKey(
+      const ValueKey('resume-ai-related-projects.0.description'),
+    );
+    expect(find.text('这段经历还有 1 处待核对'), findsOneWidget);
+    await tester.ensureVisible(link);
+    await tester.pumpAndSettle();
+    await tester.tap(link);
+    await tester.pumpAndSettle();
+    expect(find.text('待补充信息'), findsOneWidget);
+    expect(find.text('项目是否还在进行？').hitTestable(), findsOneWidget);
+    final edit = find.byKey(
+      const ValueKey('resume-ai-edit-projects.0.end_date'),
+    );
+    await tester.ensureVisible(edit);
+    await tester.pumpAndSettle();
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    expect(find.text('先保存已采纳的修改？'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(api.calls, isNot(contains('PostPolishJobsIdApply')));
+  });
+
+  testWidgets('One decision turns exactly one page', (tester) async {
+    final data = result();
+    (data['comparisons'] as Map)['changes'] = [
+      for (var i = 0; i < 4; i++)
+        {
+          'path': 'projects.$i.description',
+          'before': '负责开发网站$i',
+          'after': '负责网站开发$i',
+          'reason': '原因$i',
+        },
+    ];
+    final api = FakeGateway()
+      ..documents['GetResumesIdPolishJobs'] = {'id': 12}
+      ..documents['GetPolishJobsId'] = data;
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await open(tester, store);
+    await tapKey(tester, 'resume-ai-stat-changes');
+    expect(find.text('修改建议 1/4'), findsOneWidget);
+    await tapKey(tester, 'resume-ai-adopt-projects.0.description');
+    expect(find.text('修改建议 2/4'), findsOneWidget);
+    expect(find.textContaining('原因1', findRichText: true), findsOneWidget);
   });
 }

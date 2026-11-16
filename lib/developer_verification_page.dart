@@ -80,8 +80,8 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
     animation: controller,
     builder: (context, _) => Scaffold(
       key: const ValueKey('developer-verification-page'),
-      backgroundColor: context.colors.inset,
-      appBar: AppPageBar(title: const Text('开发者认证')),
+      backgroundColor: context.colors.surface,
+      appBar: AppPageBar(title: const Text('实名认证')),
       body: !controller.sessionCurrent
           ? const Center(child: Text('登录状态已变化，请返回后重试'))
           : SafeArea(
@@ -103,26 +103,12 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Wrap(
-                              spacing: 8,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                const Text(
-                                  '本人实名认证',
-                                  style: TextStyle(
-                                    fontSize: 21,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Text(
-                                  '开发者身份',
-                                  style: TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w600,
-                                    color: accent,
-                                  ),
-                                ),
-                              ],
+                            const Text(
+                              '本人实名认证',
+                              style: TextStyle(
+                                fontSize: 21,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const SizedBox(height: 8),
                             Text(

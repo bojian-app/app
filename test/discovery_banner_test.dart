@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/discovery_banner.dart';
 import 'package:bojian_mobile/banner_ads.dart';
+import 'package:bojian_mobile/membership_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,6 +29,7 @@ void main() {
     disposed.clear();
     calls.clear();
     store = await testStore(authenticated: true);
+    MembershipStatus.instance.apply(store.userID, null);
     active = ValueNotifier(true);
     messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
       call,
@@ -63,6 +65,7 @@ void main() {
     }
     messenger.setMockMethodCallHandler(SystemChannels.platform_views, null);
     BannerAds.ready.value = false;
+    MembershipStatus.instance.reset();
     WidgetsBinding.instance.handleAppLifecycleStateChanged(
       AppLifecycleState.resumed,
     );
@@ -265,6 +268,23 @@ void main() {
     },
     variant: TargetPlatformVariant({TargetPlatform.iOS}),
   );
+
+  testWidgets('members and unknown membership never create an ad view', (
+    tester,
+  ) async {
+    MembershipStatus.instance.reset();
+    await mount(tester);
+    expect(created, isEmpty);
+    MembershipStatus.instance.apply(
+      store.userID,
+      DateTime.now().add(const Duration(days: 30)),
+    );
+    await tester.pump();
+    expect(created, isEmpty);
+    MembershipStatus.instance.apply(store.userID, null);
+    await tester.pump();
+    expect(created, isNotEmpty);
+  });
 
   testWidgets('iOS guests do not create or initialize an ad view', (
     tester,

@@ -240,7 +240,7 @@ void main() {
         tester.getCenter(find.text('参与改写')).dy,
       );
       expect(find.byType(PopupMenuItem<bool>), findsNothing);
-      expect(find.text('简历指点'), findsOneWidget);
+      expect(find.text('简历分享'), findsOneWidget);
       expect(
         actions.top,
         greaterThan(tester.getRect(find.byType(AppBar)).bottom),

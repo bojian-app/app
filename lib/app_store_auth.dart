@@ -283,12 +283,6 @@ extension AppStoreAuth on AppStore {
     guidanceReviewDrafts.clear();
     contentSubmissions.clear();
     userID = 0;
-    points = null;
-    rewardPoints = null;
-    rewardClaimed = false;
-    rewardStatus = '';
-    rewardDay = 0;
-    rewardDays = [];
     registrationInviteCode = '';
     publicProfile = true;
     stories.clear();

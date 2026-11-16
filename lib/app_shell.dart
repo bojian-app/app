@@ -2,17 +2,21 @@ import 'app_bottom_navigation.dart';
 import 'route_transition_snapshot.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_store.dart';
+import 'app_page_bar.dart';
 import 'design.dart';
 import 'discovery.dart';
 import 'resume_pages.dart';
 import 'account_pages.dart';
-import 'points_page.dart';
+import 'membership_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store});
   final AppStore store;
+  static const membershipTab = 2;
+  static const profileTab = 3;
   @override
   State<AppShell> createState() => AppShellState();
 }
@@ -75,7 +79,27 @@ class AppShellState extends State<AppShell>
   Widget page(int index) => switch (index) {
     0 => DiscoveryPage(store: widget.store),
     1 => TemplateMarket(store: widget.store),
-    2 => PointsPage(store: widget.store),
+    AppShell.membershipTab =>
+      widget.store.isAuthenticated
+          ? MembershipPage(
+              key: ValueKey('membership-${widget.store.userID}'),
+              store: widget.store,
+              embedded: true,
+            )
+          : AnnotatedRegion<SystemUiOverlayStyle>(
+              value: appSystemUiStyle(context),
+              child: Scaffold(
+                appBar: const AppPageBar(
+                  title: Text('会员'),
+                  automaticallyImplyLeading: false,
+                ),
+                body: DataStatus(
+                  store: widget.store,
+                  section: 'profile',
+                  empty: false,
+                ),
+              ),
+            ),
     _ => ProfilePage(store: widget.store),
   };
   @override
@@ -198,11 +222,14 @@ class _RetainedTabState extends State<_RetainedTab> {
                     child: ColoredBox(
                       color: switch (widget.index) {
                         0 || 1 => context.colors.surface,
-                        2 => PointsPage.headerColor(context),
+                        AppShell.membershipTab =>
+                          widget.store.isAuthenticated
+                              ? MembershipPage.backgroundColor(context)
+                              : context.colors.surface,
                         _ => context.colors.canvas,
                       },
                       child: SafeArea(
-                        top: widget.index != 2 && widget.index != 3,
+                        top: widget.index < AppShell.membershipTab,
                         bottom: false,
                         child: ColoredBox(
                           color: context.colors.canvas,

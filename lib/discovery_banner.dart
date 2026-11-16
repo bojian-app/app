@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'app_store.dart';
 import 'banner_ads.dart';
+import 'membership_status.dart';
 
 /// The platform view stays laid out while loading, but takes no feed space
 /// until the SDK has rendered a creative. Guests never initialize the SDK.
@@ -29,9 +30,18 @@ class DiscoveryBanner extends StatelessWidget {
         TickerMode.valuesOf(context).enabled &&
         (ModalRoute.of(context)?.isCurrent ?? true);
     return ListenableBuilder(
-      listenable: Listenable.merge([store, BannerAds.ready]),
+      listenable: Listenable.merge([
+        store,
+        BannerAds.ready,
+        MembershipStatus.instance,
+      ]),
       builder: (context, _) {
         if (!store.isAuthenticated || !BannerAds.ready.value) {
+          return const SizedBox.shrink();
+        }
+        // 会员免广告；会员状态读到之前也不加载广告，避免会员看到一闪而过的广告。
+        final status = MembershipStatus.instance;
+        if (!status.knownFor(store.userID) || status.isMemberOf(store.userID)) {
           return const SizedBox.shrink();
         }
         return LayoutBuilder(

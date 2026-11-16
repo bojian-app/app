@@ -51,11 +51,7 @@ void main() {
             store: store,
             initialFile: selectedFile(),
             onSaved: () => saved++,
-            importer: ResumeImporter(
-              store: store,
-              upload: (_, _, _) async {},
-              delay: (_) async {},
-            ),
+            importer: ResumeImporter(store: store, delay: (_) async {}),
           ),
         ),
       );
@@ -146,7 +142,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('文件中的姓名'), findsOneWidget);
       expect(api.calls, isNot(contains('PostFilesUploads')));
-      expect(api.calls, isNot(contains('PostResumeImports')));
+      expect(api.calls, isNot(contains('PostResumeImportsUpload')));
       api.failing = 'PostResumeImportsIdConfirm';
       await tester.tap(find.byKey(const ValueKey('resume-import-save')));
       await tester.pumpAndSettle();

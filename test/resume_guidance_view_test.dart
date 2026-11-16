@@ -183,7 +183,7 @@ void main() {
         title: '前端开发简历',
         author: '小林',
         role: '',
-        category: '简历求指点',
+        category: '简历分享',
         hasGuidance: true,
         excerpt: '不应展示的完整简历正文',
         paragraphs: [],
@@ -204,7 +204,7 @@ void main() {
       expect(find.text('22'), findsNothing);
       expect(find.text('33'), findsNothing);
       expect(find.text('不应展示的完整简历正文'), findsNothing);
-      await tester.tap(find.text('查看简历并指点'));
+      await tester.tap(find.text('查看简历'));
       await tester.pumpAndSettle();
       expect(find.byType(ResumeGuidanceView), findsOneWidget);
       expect(api.calls, contains('GetArticlesIdGuidance'));

@@ -274,7 +274,7 @@ Story decodeStory(Map<String, dynamic> v) {
     authorID: integer(author['id'] ?? v['author_id']),
     authorAvatarURL: author['avatar_url']?.toString() ?? '',
     role: author['city'] as String? ?? '',
-    category: guidance ? '简历求指点' : '经验分享',
+    category: guidance ? '简历分享' : '动态',
     hasGuidance: guidance,
     guidanceParticipantCount: decodeGuidanceParticipantCount(
       v['guidance_participant_count'],

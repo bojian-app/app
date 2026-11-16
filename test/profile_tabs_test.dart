@@ -7,7 +7,6 @@ import 'package:bojian_mobile/developer_verification_page.dart';
 import 'package:bojian_mobile/my_articles_page.dart';
 import 'package:bojian_mobile/profile_avatar.dart';
 import 'package:bojian_mobile/profile_identity.dart';
-import 'package:bojian_mobile/points_page.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/saved_articles_page.dart';
 import 'package:bojian_mobile/story_composer.dart';
@@ -15,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 class ProfileContentGateway extends FakeGateway {
   ProfileContentGateway() : super(seeded: true);
@@ -186,57 +186,6 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Partial profile drags spring to the endpoint in either direction',
-    (tester) async {
-      await mount(tester, ProfileContentGateway());
-      final outer = nested(tester).outerController;
-      Future<void> slowDrag(double distance) async {
-        final gesture = await tester.startGesture(const Offset(300, 540));
-        for (var i = 0; i < 5; i++) {
-          await gesture.moveBy(Offset(0, distance / 5));
-          await tester.pump(const Duration(milliseconds: 30));
-        }
-        expect(outer.offset, greaterThan(0));
-        expect(outer.offset, lessThan(outer.position.maxScrollExtent));
-        await tester.pump(const Duration(milliseconds: 200));
-        await gesture.up();
-        await tester.pumpAndSettle();
-      }
-
-      await slowDrag(-80);
-      expect(outer.offset, closeTo(outer.position.maxScrollExtent, .5));
-      await slowDrag(80);
-      expect(outer.offset, closeTo(0, .5));
-      expect(find.byType(ProfileDetailsPage), findsNothing);
-      outer.jumpTo(outer.position.maxScrollExtent / 2);
-      await tester.pumpAndSettle();
-      expect(outer.offset, closeTo(outer.position.maxScrollExtent / 2, .5));
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'A profile snap can be interrupted and reversed by another drag',
-    (tester) async {
-      await mount(tester, ProfileContentGateway());
-      final outer = nested(tester).outerController;
-      final up = await tester.startGesture(const Offset(300, 540));
-      await up.moveBy(const Offset(0, -80));
-      await tester.pump(const Duration(milliseconds: 200));
-      await up.up();
-      await tester.pump(const Duration(milliseconds: 70));
-      final down = await tester.startGesture(const Offset(300, 540));
-      await down.moveBy(const Offset(0, 60));
-      await tester.pump(const Duration(milliseconds: 200));
-      await down.up();
-      await tester.pumpAndSettle();
-      expect(outer.offset, closeTo(0, .5));
-      expect(find.byType(ProfileDetailsPage), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
   testWidgets('Profile actions follow a swipe before it settles', (
     tester,
   ) async {
@@ -328,43 +277,6 @@ void main() {
     },
   );
 
-  testWidgets('Discovery menu opens the shared drawer and preserves search', (
-    tester,
-  ) async {
-    await mount(tester, ProfileContentGateway(), shell: true);
-    await tester.tap(find.byKey(const ValueKey('nav-0')));
-    await tester.pumpAndSettle();
-    final field = find.byKey(const ValueKey('discovery-search'));
-    await tester.enterText(field, '简历');
-    await tester.pumpAndSettle();
-    final menu = find.byKey(const ValueKey('discovery-menu'));
-    expect(
-      tester.getRect(menu).right,
-      lessThanOrEqualTo(tester.getRect(field).left),
-    );
-    await tester.tap(menu);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
-    final editor = tester.widget<EditableText>(
-      find.descendant(
-        of: find.byKey(const ValueKey('discovery-search'), skipOffstage: false),
-        matching: find.byType(EditableText, skipOffstage: false),
-      ),
-    );
-    expect(editor.focusNode.hasFocus, isFalse);
-    await tester.tap(find.text('隐私与设置'));
-    await tester.pumpAndSettle();
-    expect(find.byType(SettingsPage), findsOneWidget);
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('discovery-search')), findsOneWidget);
-    expect(tester.widget<TextField>(field).controller!.text, '简历');
-    expect(tester.takeException(), isNull);
-  });
-
   for (final dark in [false, true]) {
     testWidgets(
       'Certified profile shows the verified tag and removes the application, dark=$dark',
@@ -386,9 +298,9 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('开发者认证'), findsNothing);
-        await tester.tap(find.byKey(const ValueKey('profile-menu')));
+        await openSharedAccountMenu(tester);
         await tester.pumpAndSettle();
-        expect(find.text('申请开发者认证'), findsNothing);
+        expect(find.text('实名认证'), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
@@ -399,16 +311,16 @@ void main() {
     (tester) async {
       final api = ProfileContentGateway();
       final store = await mount(tester, api);
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await openSharedAccountMenu(tester);
       await tester.pumpAndSettle();
-      expect(find.text('申请开发者认证'), findsOneWidget);
+      expect(find.text('实名认证'), findsOneWidget);
       api.documents['GetMeIdentityVerification'] = {
         'status': 'VERIFIED',
         'valid_until': '2099-12-31',
       };
       await store.load('identity');
       await tester.pumpAndSettle();
-      expect(find.text('申请开发者认证'), findsNothing);
+      expect(find.text('实名认证'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
       await tester.pumpAndSettle();
       expect(
@@ -757,7 +669,7 @@ void main() {
     expect(find.byKey(const ValueKey('profile-write-article')), findsNothing);
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.byTooltip('发布动态'), findsNothing);
-    for (final tab in ['saved', 'resumes', 'articles']) {
+    for (final tab in ['saved', 'resumes', 'articles', 'drafts']) {
       await select(tester, tab);
       expect(find.byType(FloatingActionButton), findsNothing);
     }
@@ -845,124 +757,107 @@ void main() {
     },
   );
 
+  testWidgets('Menu identity updates live', (tester) async {
+    final api = ProfileContentGateway();
+    final store = await mount(tester, api, shell: true);
+    await openSharedAccountMenu(tester);
+    await tester.pumpAndSettle();
+    final identity = find.byKey(const ValueKey('profile-menu-identity'));
+    final avatar = tester.widget<ProfileAvatar>(
+      find.descendant(of: identity, matching: find.byType(ProfileAvatar)),
+    );
+    expect(avatar.seed, '${store.userID}');
+    expect(avatar.url, store.avatarURL);
+    expect(avatar.size, 44);
+    expect(find.byKey(const ValueKey('profile-menu-points')), findsNothing);
+    store.name = '更新后的昵称';
+    store.changed();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('profile-menu-name'))).data,
+      '更新后的昵称',
+    );
+    expect(find.byKey(const ValueKey('profile-menu-scan')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
-    'Menu identity updates live and points keeps the drawer for return',
+    'Profile settings replaces menu and messages without changing the active tab',
     (tester) async {
-      final api = ProfileContentGateway();
-      final store = await mount(tester, api, shell: true);
-      store.points = null;
-      store.changed();
+      await mount(tester, ProfileContentGateway());
+      await select(tester, 'articles');
+      expect(find.byKey(const ValueKey('profile-menu')), findsNothing);
+      expect(find.byKey(const ValueKey('profile-messages')), findsNothing);
+      final settings = find.byKey(const ValueKey('profile-settings'));
+      expect(settings.hitTestable(), findsOneWidget);
+      await tester.tap(settings);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
-      await tester.pumpAndSettle();
-      final identity = find.byKey(const ValueKey('profile-menu-identity'));
-      final avatar = tester.widget<ProfileAvatar>(
-        find.descendant(of: identity, matching: find.byType(ProfileAvatar)),
-      );
-      expect(avatar.seed, '${store.userID}');
-      expect(avatar.url, store.avatarURL);
-      expect(avatar.size, 44);
-      expect(
-        tester
-            .widget<Text>(find.byKey(const ValueKey('profile-menu-balance')))
-            .data,
-        '积分余额：—',
-      );
-      store.name = '更新后的昵称';
-      store.points = 321;
-      store.changed();
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<Text>(find.byKey(const ValueKey('profile-menu-name')))
-            .data,
-        '更新后的昵称',
-      );
-      expect(
-        tester
-            .widget<Text>(find.byKey(const ValueKey('profile-menu-balance')))
-            .data,
-        '积分余额：321',
-      );
-      expect(find.byKey(const ValueKey('profile-menu-scan')), findsNothing);
-      final calls = List<String>.of(api.calls);
-      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
-      expect(api.calls, calls);
-      await tester.tap(find.byKey(const ValueKey('profile-menu-points')));
-      await tester.pumpAndSettle();
+      expect(find.byType(SettingsPage), findsOneWidget);
       expect(find.byKey(const ValueKey('profile-drawer')), findsNothing);
-      expect(
-        find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
-        findsOneWidget,
-      );
-      expect(find.byType(PointsPage), findsOneWidget);
-      expect(
-        tester
-            .state<AppShellState>(find.byType(AppShell, skipOffstage: false))
-            .selected,
-        3,
-      );
-      expect(api.calls, isNot(contains('PostWalletDailyRewardClaims')));
       await tester.pageBack();
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
-      expect(find.text('积分余额：${store.points}'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
-        findsNothing,
-      );
+      expect(tabs(tester).index, 2);
+      expect(find.byKey(const ValueKey('profile-settings')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'The left menu opens a dedicated draft box and preserves profile tabs',
+    'Drafts are the fourth profile tab and keep their scroll separate from posts',
     (tester) async {
       final api = ProfileContentGateway();
       await mount(tester, api);
+      expect(tabs(tester).length, 4);
       await select(tester, 'articles');
-      expect(find.text('草稿箱'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      nested(tester).outerController
+          .jumpTo(nested(tester).outerController.position.maxScrollExtent);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('profile-points-card')), findsNothing);
-      expect(find.text('模板市场'), findsNothing);
-      expect(find.text('身份认证'), findsNothing);
-      expect(find.text('隐私与设置'), findsOneWidget);
-      expect(find.byKey(const ValueKey('account-sign-out')), findsOneWidget);
-      await tester.ensureVisible(find.text('草稿箱'));
-      await tester.tap(find.text('草稿箱'));
+      ScrollPosition listPosition(String key) => tester
+          .state<ScrollableState>(
+            find.descendant(
+              of: find.byKey(PageStorageKey(key)),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Scrollable &&
+                    widget.axisDirection == AxisDirection.down,
+              ),
+            ),
+          )
+          .position;
+      listPosition('profile-articles').jumpTo(120);
       await tester.pumpAndSettle();
+      await select(tester, 'drafts');
+      expect(tabs(tester).index, 3);
+      final page = tester.widget<MyArticlesPage>(find.byType(MyArticlesPage));
+      expect(page.embedded, isTrue);
+      expect(page.draftsOnly, isTrue);
+      expect(page.publishedOnly, isFalse);
+      expect(api.statuses, containsAllInOrder(['PUBLISHED', 'DRAFT']));
       expect(find.byKey(const ValueKey('profile-drawer')), findsNothing);
-      expect(find.text('草稿箱'), findsOneWidget);
-      expect(
-        tester.widget<MyArticlesPage>(find.byType(MyArticlesPage)).draftsOnly,
-        isTrue,
-      );
-      expect(api.statuses, ['PUBLISHED', 'DRAFT']);
       expect(find.byKey(const ValueKey('articles-SUBMITTED')), findsNothing);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
-      // A second visit reuses the same retained drawer, without stacking menus.
-      await tester.tap(find.text('草稿箱'));
-      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('my-articles-search')), findsNothing);
       expect(
-        find.byKey(const ValueKey('profile-drawer'), skipOffstage: false),
-        findsOneWidget,
+        find.byKey(const ValueKey('profile-publish-article')).hitTestable(),
+        findsNothing,
       );
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
-      await tester.pumpAndSettle();
-      expect(tabs(tester).index, 2);
       expect(
-        tester
-            .widget<MyArticlesPage>(find.byType(MyArticlesPage))
-            .publishedOnly,
-        isTrue,
+        find.byKey(const ValueKey('profile-add-resume')).hitTestable(),
+        findsNothing,
       );
+      expect(find.text('SUBMITTED 未发布文章'), findsNothing);
+      expect(find.text('REJECTED 未发布文章'), findsNothing);
+      listPosition('profile-drafts').jumpTo(80);
+      await tester.pumpAndSettle();
+      await select(tester, 'articles');
+      expect(listPosition('profile-articles').pixels, closeTo(120, .5));
+      await select(tester, 'drafts');
+      expect(listPosition('profile-drafts').pixels, closeTo(80, .5));
       expect(tester.takeException(), isNull);
     },
   );
@@ -973,7 +868,7 @@ void main() {
       await mount(tester, ProfileContentGateway(), shell: true);
       final state = tester.state<AppShellState>(find.byType(AppShell));
       final initialOffset = nested(tester).outerController.offset;
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await openSharedAccountMenu(tester);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('nav-1')).hitTestable(), findsNothing);
       await tester.dragFrom(const Offset(370, 400), const Offset(0, -180));
@@ -992,7 +887,7 @@ void main() {
     'Signing out while the menu is open removes private menu content',
     (tester) async {
       final store = await mount(tester, ProfileContentGateway());
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await openSharedAccountMenu(tester);
       await tester.pumpAndSettle();
       await store.endSession(remote: false);
       await tester.pumpAndSettle();
@@ -1008,7 +903,7 @@ void main() {
     'Signing out beneath an opened destination removes the retained drawer',
     (tester) async {
       final store = await mount(tester, ProfileContentGateway());
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await openSharedAccountMenu(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('隐私与设置'));
       await tester.pumpAndSettle();
@@ -1048,7 +943,7 @@ void main() {
           .jumpTo(nested(tester).outerController.position.maxScrollExtent);
       await tester.pumpAndSettle();
       final compact = tester.getRect(
-        find.byKey(const ValueKey('profile-menu')),
+        find.byKey(const ValueKey('profile-settings')),
       );
       final tabBar = tester.getRect(find.byKey(const ValueKey('profile-tabs')));
       expect(
@@ -1056,7 +951,7 @@ void main() {
         closeTo(
           viewport.top +
               MediaQuery.paddingOf(
-                tester.element(find.byKey(const ValueKey('profile-menu'))),
+                tester.element(find.byKey(const ValueKey('profile-settings'))),
               ).top,
           .01,
         ),
@@ -1070,12 +965,13 @@ void main() {
         greaterThanOrEqualTo(tabBar.bottom - .01),
       );
       expect(
-        find.byKey(const ValueKey('profile-menu')).hitTestable(),
+        find.byKey(const ValueKey('profile-settings')).hitTestable(),
         findsOneWidget,
       );
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await tester.tap(find.byKey(const ValueKey('profile-settings')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+      expect(find.byType(SettingsPage), findsOneWidget);
+      expect(find.byKey(const ValueKey('profile-drawer')), findsNothing);
       expect(find.byKey(const ValueKey('profile-points-card')), findsNothing);
       expect(find.text('模板市场'), findsNothing);
       expect(find.text('身份认证'), findsNothing);
@@ -1108,7 +1004,7 @@ void main() {
       store.name = '一个很长的用户昵称，用来确认动态卡片头像旁边的文字不会溢出';
       store.changed();
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('profile-menu')));
+      await openSharedAccountMenu(tester);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
       expect(find.byKey(const ValueKey('profile-points-card')), findsNothing);
@@ -1139,18 +1035,18 @@ void main() {
         matching: find.byType(Scrollable),
       );
       await tester.scrollUntilVisible(
-        find.text('申请开发者认证'),
+        find.text('实名认证'),
         100,
         scrollable: menuScroll,
       );
-      await tester.ensureVisible(find.text('申请开发者认证'));
+      await tester.ensureVisible(find.text('实名认证'));
       await tester.pumpAndSettle();
       final callsBeforeCertification = List<String>.of(api.calls);
-      await tester.tap(find.text('申请开发者认证'));
+      await tester.tap(find.text('实名认证'));
       await tester.pumpAndSettle();
       expect(find.byType(DeveloperVerificationPage), findsOneWidget);
       expect(find.text('本人实名认证'), findsOneWidget);
-      final titleRect = tester.getRect(find.text('开发者认证'));
+      final titleRect = tester.getRect(find.text('实名认证'));
       expect(
         titleRect.left,
         greaterThanOrEqualTo(tester.getRect(find.byType(BackButton)).right),
@@ -1184,7 +1080,7 @@ void main() {
       nested(tester).outerController
           .jumpTo(nested(tester).outerController.position.maxScrollExtent);
       await tester.pumpAndSettle();
-      for (final tab in ['saved', 'resumes', 'articles']) {
+      for (final tab in ['saved', 'resumes', 'articles', 'drafts']) {
         await select(tester, tab);
         expect(find.byKey(const ValueKey('my-articles-search')), findsNothing);
         expect(find.byKey(const ValueKey('saved-search')), findsNothing);

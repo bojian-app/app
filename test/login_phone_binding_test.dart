@@ -146,11 +146,7 @@ void main() {
     expect(find.byType(PhoneBindingDialog), findsNothing);
     await tester.tap(find.byKey(const ValueKey('nav-3')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('profile-menu')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('隐私与设置'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('隐私与设置'));
+    await tester.tap(find.byKey(const ValueKey('profile-settings')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('账号安全'));
     await tester.pumpAndSettle();

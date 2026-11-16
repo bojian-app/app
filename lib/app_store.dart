@@ -253,9 +253,6 @@ class AppStore extends ChangeNotifier {
       'article.updated' ||
       'article.comment' ||
       'article.reaction' => {'messages'},
-      'wallet.updated' ||
-      'recharge_orders.updated' ||
-      'withdrawals.updated' => {'profile', 'templates'},
       'template.updated' => {'templates'},
       'account.updated' => {'profile'},
       _ => <String>{},
@@ -339,25 +336,7 @@ class AppStore extends ChangeNotifier {
   bool get hasBoundPhone => phoneMasked.isNotEmpty;
   int _phoneBindingRevision = 0;
   int userID = 0;
-  int? points;
-  int? rewardPoints;
-  bool rewardClaimed = false;
-  String rewardStatus = '';
-  int rewardDay = 0;
-  List<Map<String, dynamic>> rewardDays = [];
   String registrationInviteCode = '';
-  bool get rewardEnded =>
-      rewardStatus == 'EXPIRED' || rewardStatus == 'COMPLETED';
-  void readReward(Map<String, dynamic> data) {
-    rewardPoints = integer(data['points']);
-    rewardClaimed = data['claimable'] != true;
-    rewardStatus = '${data['status'] ?? ''}';
-    rewardDay = integer(data['day']);
-    rewardDays = (data['days'] as List? ?? [])
-        .whereType<Map>()
-        .map((v) => Map<String, dynamic>.from(v))
-        .toList();
-  }
 
   bool publicProfile = true;
   final stories = <Story>[];
@@ -401,7 +380,13 @@ class AppStore extends ChangeNotifier {
     final version = epoch;
     deviceMetadata = await DeviceMetadata.read();
     try {
-      deviceID = await storage.read('bojian.device-id') ?? newDeviceID();
+      // 已有安装沿用原设备 ID，避免刷新令牌失效；全新安装在 Android 上
+      // 使用重装后不变的标识，同一台手机不会在登录设备里重复出现。
+      deviceID =
+          await storage.read('bojian.device-id') ??
+          (deviceMetadata.stableID.isNotEmpty
+              ? 'a-${deviceMetadata.stableID}'
+              : newDeviceID());
       await storage.write('bojian.device-id', deviceID);
       final raw = await storage.read('bojian.session');
       if (version != epoch || !alive) return;
@@ -454,6 +439,41 @@ class AppStore extends ChangeNotifier {
     Map<String, String> extra = const {},
     bool authenticated = true,
     int? expectedEpoch,
+  }) => _withSession(
+    (headers) => api.call(
+      method,
+      path: path,
+      query: query,
+      body: body,
+      headers: headers,
+    ),
+    extra: extra,
+    authenticated: authenticated,
+    expectedEpoch: expectedEpoch,
+  );
+
+  Future<ApiDocument> upload(
+    String method, {
+    Map<String, String> path = const {},
+    required Map<String, String> fields,
+    required ApiUploadFile file,
+    int? expectedEpoch,
+  }) => _withSession(
+    (headers) => api.upload(
+      method,
+      path: path,
+      fields: fields,
+      file: file,
+      headers: headers,
+    ),
+    expectedEpoch: expectedEpoch,
+  );
+
+  Future<ApiDocument> _withSession(
+    Future<ApiDocument> Function(Map<String, String> headers) call, {
+    Map<String, String> extra = const {},
+    bool authenticated = true,
+    int? expectedEpoch,
   }) async {
     await initialize();
     if (expectedEpoch != null && expectedEpoch != epoch) {
@@ -461,18 +481,11 @@ class AppStore extends ChangeNotifier {
     }
     if (authenticated && !isAuthenticated) throw const ApiFailure('请先登录');
     final version = epoch;
-    Future<ApiDocument> send() => api.call(
-      method,
-      path: path,
-      query: query,
-      body: body,
-      headers: {
-        ...headers,
-        if (authenticated)
-          'authorization': 'Bearer ${session!['access_token']}',
-        ...extra,
-      },
-    );
+    Future<ApiDocument> send() => call({
+      ...headers,
+      if (authenticated) 'authorization': 'Bearer ${session!['access_token']}',
+      ...extra,
+    });
     try {
       final result = await send();
       if (!alive || version != epoch) throw const ApiFailure('账号已切换，请重试');
@@ -690,14 +703,6 @@ class AppStore extends ChangeNotifier {
             phoneBindingChecked = true;
           }
           changed();
-          final w = await request('GetWallet');
-          if (w.data['available_points'] == null) {
-            throw const ApiFailure('积分数据暂不可用，请稍后重试');
-          }
-          points = integer(w.data['available_points']);
-          final reward = await request('GetWalletDailyReward');
-          if (version != epoch || !alive) return;
-          readReward(reward.data);
         case 'templates':
           final v = await request('GetTemplates', query: query);
           if (version != epoch || !alive) return;

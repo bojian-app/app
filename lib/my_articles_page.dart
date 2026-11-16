@@ -303,7 +303,11 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
             hasError: () => error != null,
             child: CustomScrollView(
               key: PageStorageKey(
-                widget.embedded ? 'profile-articles' : 'my-articles',
+                widget.embedded
+                    ? widget.draftsOnly
+                          ? 'profile-drafts'
+                          : 'profile-articles'
+                    : 'my-articles',
               ),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               physics: const AlwaysScrollableScrollPhysics(),

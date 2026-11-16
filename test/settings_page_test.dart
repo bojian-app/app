@@ -257,7 +257,7 @@ void main() {
       api.failing = null;
       await tapText(tester, '提交反馈');
       expect(find.byType(TextField), findsNothing);
-      expect(find.text('隐私与设置'), findsOneWidget);
+      expect(find.text('返回'), findsOneWidget);
     },
   );
 

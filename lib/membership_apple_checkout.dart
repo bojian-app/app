@@ -1,25 +1,31 @@
 part of 'membership_page.dart';
 
 class _AppleProductNotice extends StatelessWidget {
-  const _AppleProductNotice({required this.products, this.dark = false});
+  const _AppleProductNotice({required this.products, this.membership = false});
   final AppleMembershipProducts products;
-  final bool dark;
+  final bool membership;
 
   @override
   Widget build(BuildContext context) => Row(
     children: [
       Expanded(
         child: Text(
-          products.error ?? '商品信息由 App Store 提供',
+          products.error ?? '',
           style: TextStyle(
             fontSize: 12,
-            color: dark ? _muted : context.colors.muted,
+            color: membership
+                ? _MembershipColors.of(context).muted
+                : context.colors.muted,
           ),
         ),
       ),
       TextButton(
         onPressed: products.loading ? null : products.load,
-        style: dark ? TextButton.styleFrom(foregroundColor: _gold) : null,
+        style: membership
+            ? TextButton.styleFrom(
+                foregroundColor: _MembershipColors.of(context).accent,
+              )
+            : null,
         child: const Text('刷新'),
       ),
     ],
@@ -46,9 +52,47 @@ class _AppleMembershipCheckoutPageState
   late final int initialRevision = widget.purchases.membershipRevision;
   // 自动续费须由用户主动勾选。
   bool autoRenew = false;
+  bool _resultShown = false;
   MembershipPlan get plan => widget.plan;
   AppleMembershipProducts get products => widget.products;
   AppleMembershipPurchases get purchases => widget.purchases;
+
+  bool get _completed =>
+      purchases.membershipRevision > initialRevision &&
+      purchases.lastDeliveredProductID ==
+          AppleMembershipProducts.productIDs[AppleMembershipProducts.productKey(
+            plan.code,
+            autoRenew: autoRenew,
+          )] &&
+      purchases.state == ApplePurchaseState.delivered;
+
+  @override
+  void initState() {
+    super.initState();
+    purchases.addListener(_showResultWhenDone);
+  }
+
+  @override
+  void dispose() {
+    purchases.removeListener(_showResultWhenDone);
+    super.dispose();
+  }
+
+  /// 付款确认到账后用结果页替换确认订单页，返回时直接回到会员页。
+  void _showResultWhenDone() {
+    if (_resultShown || !mounted || !_completed) return;
+    _resultShown = true;
+    Navigator.of(context).pushReplacement(
+      CupertinoPageRoute<void>(
+        builder: (_) => _AppleMembershipResultPage(
+          store: purchases.store,
+          plan: plan,
+          price: products.priceLabel(plan.code, autoRenew: autoRenew),
+          autoRenew: autoRenew,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -145,7 +189,9 @@ class _AppleMembershipCheckoutPageState
                         ? null
                         : (value) => setState(() => autoRenew = value),
                   ),
-                  _AppleProductNotice(products: products),
+                  // 仅在商品加载失败时显示错误与刷新入口
+                  if (products.error != null)
+                    _AppleProductNotice(products: products),
                 ],
               ),
             ),
@@ -340,6 +386,156 @@ class _AppleAutoRenewToggle extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// App Store 购买结果页：确认到账后替换确认订单页展示。
+class _AppleMembershipResultPage extends StatefulWidget {
+  const _AppleMembershipResultPage({
+    required this.store,
+    required this.plan,
+    required this.price,
+    required this.autoRenew,
+  });
+  final AppStore store;
+  final MembershipPlan plan;
+  final String price;
+  final bool autoRenew;
+
+  @override
+  State<_AppleMembershipResultPage> createState() =>
+      _AppleMembershipResultPageState();
+}
+
+class _AppleMembershipResultPageState
+    extends State<_AppleMembershipResultPage> {
+  final DateTime paidAt = DateTime.now();
+  DateTime? endsAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEndsAt();
+  }
+
+  Future<void> _loadEndsAt() async {
+    try {
+      final result = await widget.store.request('GetMembership');
+      final value = result.data['ends_at'];
+      final ends = value is String ? DateTime.tryParse(value)?.toLocal() : null;
+      if (mounted && result.data['active'] == true && ends != null) {
+        setState(() => endsAt = ends);
+      }
+    } catch (_) {
+      // 有效期只是补充信息，读取失败时不显示该行。
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Scaffold(
+      backgroundColor: colors.canvas,
+      appBar: AppPageBar(
+        title: const Text('购买结果'),
+        backgroundColor: colors.canvas,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          _Card(
+            padding: const EdgeInsets.fromLTRB(16, 28, 16, 24),
+            child: Column(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(colors: _blueGradient),
+                  ),
+                  child: const HugeIcon(
+                    icon: HugeIcons.strokeRoundedTick02,
+                    size: 34,
+                    color: Colors.white,
+                    strokeWidth: 2.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '支付成功',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: colors.ink,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${widget.plan.orderName}已开通，可立即使用全部会员权益',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: colors.muted,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  widget.price,
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    color: colors.ink,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _Card(
+            child: Column(
+              children: [
+                _OrderLine('商品', widget.plan.orderName),
+                _OrderLine('支付方式', 'App Store'),
+                if (widget.autoRenew) _OrderLine('到期自动续费', '已开启'),
+                _OrderLine('支付时间', _dateTime(paidAt)),
+                if (endsAt != null) _OrderLine('会员有效期至', _dateTime(endsAt!)),
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: SizedBox(
+          height: 46,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(23),
+              gradient: const LinearGradient(colors: _blueGradient),
+            ),
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(23),
+                ),
+              ),
+              child: const Text(
+                '完成',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
         ),
       ),
     );

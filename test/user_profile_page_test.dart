@@ -72,7 +72,7 @@ Story article(int author) => Story(
   author: '小林',
   authorID: author,
   role: '上海市',
-  category: '经验分享',
+  category: '动态',
   excerpt: '复盘',
   paragraphs: ['文章正文'],
 );

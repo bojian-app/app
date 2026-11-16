@@ -83,9 +83,6 @@ class _InvitationDialogState extends State<InvitationDialog> {
         },
       )
       .toString();
-  int get reward => integer(data?['points_per_invitee']) > 0
-      ? integer(data?['points_per_invitee'])
-      : 500;
   bool get current =>
       widget.store.isAuthenticated && widget.store.epoch == epoch;
   bool get ready =>
@@ -101,7 +98,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
   Future<void> load() async {
     setState(() => error = null);
     try {
-      final result = await widget.store.request('GetWalletInvitations');
+      final result = await widget.store.request('GetInvitations');
       if (!mounted || !current) return;
       final value = result.data;
       if ('${value['invite_code'] ?? ''}'.trim().isEmpty ||
@@ -376,10 +373,24 @@ class _InvitationDialogState extends State<InvitationDialog> {
           80.4,
           Transform.rotate(
             angle: 4 * math.pi / 180,
-            child: Image.asset(
-              'assets/invitation/reward-envelope.webp',
-              fit: BoxFit.contain,
-              excludeFromSemantics: true,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  'assets/invitation/reward-envelope-blank.png',
+                  fit: BoxFit.contain,
+                  excludeFromSemantics: true,
+                ),
+                // The reward printed on the letter: invitations pay out a
+                // three-day trial pack, not points.
+                const Positioned(
+                  left: 40,
+                  top: 9,
+                  width: 44,
+                  height: 33,
+                  child: ExcludeSemantics(child: _EnvelopeReward()),
+                ),
+              ],
             ),
           ),
         ),
@@ -426,16 +437,17 @@ class _InvitationDialogState extends State<InvitationDialog> {
         at(
           124.5,
           101.5,
-          68.5,
+          98,
           5,
           const HighlightScribble(strokeWidth: 3.3, colors: rewardColors),
         ),
         at(
           123.5,
           88,
-          90,
+          100,
           22,
-          Align(
+          FittedBox(
+            fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: ShaderMask(
               blendMode: BlendMode.srcIn,
@@ -445,7 +457,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
                 colors: rewardColors,
               ).createShader,
               child: Text(
-                '$reward积分',
+                '三天会员体验包',
                 maxLines: 1,
                 softWrap: false,
                 style: const TextStyle(
@@ -907,4 +919,47 @@ class _SparklePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SparklePainter oldDelegate) => false;
+}
+
+class _EnvelopeReward extends StatelessWidget {
+  const _EnvelopeReward();
+
+  @override
+  Widget build(BuildContext context) => MediaQuery.withNoTextScaling(
+    child: ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFFF2532F), Color(0xFFE8361F)],
+      ).createShader,
+      child: const FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '3天',
+              style: TextStyle(
+                fontSize: 15.5,
+                fontWeight: FontWeight.w900,
+                height: 1,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              '体验包',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w900,
+                height: 1,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

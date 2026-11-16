@@ -1,6 +1,7 @@
 import 'resume_module_order.dart';
 import 'resume_photo_image.dart';
 import 'resume_preview_trace.dart';
+import 'resume_system_fonts.dart';
 
 import 'dart:convert';
 import 'dart:async';
@@ -266,24 +267,35 @@ class _ResumeTypesetter {
   late double x = left, column = width;
   _ResumeBox? box;
 
+  // A system font without a real bold face gets the bundled bold instead of
+  // a synthesized one whose weight varies along the line.
+  String? family(FontWeight weight) =>
+      fontFamily == null && ResumeSystemFonts.needsBundledBold(weight.value)
+      ? resumeDocumentFontFamily
+      : fontFamily;
+
   TextStyle style(double size, {bool bold = false, Color? color}) {
+    final weight = bold ? FontWeight.w600 : FontWeight.w400;
     return TextStyle(
-      fontFamily: fontFamily,
+      fontFamily: family(weight),
       fontSize: size,
       height: theme.body.height ?? (size + 4) / size,
-      fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+      fontWeight: weight,
       color: color ?? theme.body.color,
     );
   }
 
-  TextStyle themed(ResumeThemeText text, {Color? color}) => TextStyle(
-    fontFamily: fontFamily,
-    fontSize: text.size,
-    height: text.height ?? theme.body.height ?? (text.size + 4) / text.size,
-    fontWeight: FontWeight.values[(text.weight ~/ 100 - 1).clamp(0, 8)],
-    letterSpacing: text.letterSpacing,
-    color: color ?? text.color ?? theme.body.color,
-  );
+  TextStyle themed(ResumeThemeText text, {Color? color}) {
+    final weight = FontWeight.values[(text.weight ~/ 100 - 1).clamp(0, 8)];
+    return TextStyle(
+      fontFamily: family(weight),
+      fontSize: text.size,
+      height: text.height ?? theme.body.height ?? (text.size + 4) / text.size,
+      fontWeight: weight,
+      letterSpacing: text.letterSpacing,
+      color: color ?? text.color ?? theme.body.color,
+    );
+  }
 
   TextPainter measure(InlineSpan text, [double? available]) {
     available ??= column;
@@ -1024,7 +1036,7 @@ class _ResumeTypesetter {
     final pad = bar.padding;
     final inner = bar.width - pad.horizontal;
     final icon = bar.iconSize;
-    var cy = pad.top;
+    var cy = hasPhoto ? pad.top : bar.topWithoutPhoto ?? pad.top;
     TextPainter line(String value, ResumeThemeText style, double width) =>
         measure(TextSpan(text: value, style: themed(style)), width);
     if (hasPhoto) {
@@ -2606,6 +2618,7 @@ class ResumeDocumentView extends StatefulWidget {
 
 class ResumeDocumentViewState extends State<ResumeDocumentView>
     with SingleTickerProviderStateMixin {
+  late final ResumeSystemFontObserver systemFonts;
   final transform = TransformationController();
   ResumeDocument? document;
   ResumeDocument? originalPreview;
@@ -2912,6 +2925,10 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
   @override
   void initState() {
     super.initState();
+    systemFonts = ResumeSystemFontObserver(() {
+      hideOriginal();
+      setState(() => cacheKey = null);
+    });
     inertia = AnimationController.unbounded(vsync: this)
       ..addListener(() {
         final distance = inertia.value - flingPosition;
@@ -2960,6 +2977,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
 
   @override
   void dispose() {
+    systemFonts.dispose();
     inertia.dispose();
     scrollHold?.cancel();
     pageScroll.dispose();
@@ -4152,8 +4170,11 @@ void paintResumePaper(Canvas canvas, ResumeDocument document, int index) {
       Paint()..color = bar.fill,
     );
   }
+  final hasPhoto =
+      document.pages.isNotEmpty && document.pages.first.photo != null;
   for (final ornament in theme.ornaments) {
-    if (index == 0 || !ornament.firstPage) {
+    if ((index == 0 || !ornament.firstPage) &&
+        (ornament.photo == null || ornament.photo == hasPhoto)) {
       ornament.art.paint(canvas, ornament.rect);
     }
   }

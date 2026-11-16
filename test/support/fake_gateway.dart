@@ -62,8 +62,6 @@ class FakeGateway implements ApiGateway {
       'profile_visibility': 'PUBLIC',
       'phone_masked': '138****5678',
     };
-    documents['GetWallet'] = {'available_points': 0};
-    documents['GetWalletDailyReward'] = {'points': 10, 'claimable': true};
     if (seeded) {
       documents['GetFeed'] = {
         'items': [
@@ -115,6 +113,21 @@ class FakeGateway implements ApiGateway {
       };
     }
   }
+  final uploads =
+      <({String method, Map<String, String> fields, ApiUploadFile file})>[];
+
+  @override
+  Future<ApiDocument> upload(
+    String method, {
+    Map<String, String> path = const {},
+    required Map<String, String> fields,
+    required ApiUploadFile file,
+    Map<String, String> headers = const {},
+  }) async {
+    uploads.add((method: method, fields: fields, file: file));
+    return call(method, path: path, headers: headers);
+  }
+
   @override
   Future<ApiDocument> call(
     String method, {

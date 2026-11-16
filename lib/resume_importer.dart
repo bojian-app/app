@@ -86,14 +86,9 @@ Future<void> uploadResumeDocument(
 }
 
 class ResumeImporter {
-  ResumeImporter({
-    required this.store,
-    ResumeUpload? upload,
-    Future<void> Function(Duration)? delay,
-  }) : upload = upload ?? uploadResumeDocument,
-       delay = delay ?? Future<void>.delayed;
+  ResumeImporter({required this.store, Future<void> Function(Duration)? delay})
+    : delay = delay ?? Future<void>.delayed;
   final AppStore store;
-  final ResumeUpload upload;
   final Future<void> Function(Duration) delay;
 
   Future<ResumeDraft> resumeImport(int taskID) async {
@@ -194,35 +189,21 @@ class ResumeImporter {
       final name = String.fromCharCodes(
         file.name.substring(0, dot).runes.take(160),
       );
-      onProgress('正在准备上传…');
-      onPhase?.call(ResumeImportPhase.uploading);
-      final auth = await store.request(
-        'PostFilesUploads',
-        body: {
-          'purpose': 'RESUME_IMPORT',
-          'filename': file.name,
-          'content_type': mime,
-          'size_bytes': size,
-        },
-      );
-      check();
-      final fileID = integer(auth.data['id']);
-      if (fileID <= 0) throw const ApiFailure('未能创建文件上传，请重试');
       onProgress('正在上传文件…');
-      await upload(auth.data, file, mime);
-      check();
-      await store.request(
-        'PostFilesUploadsIdComplete',
-        path: {'id': '$fileID'},
-        body: {},
+      onPhase?.call(ResumeImportPhase.uploading);
+      // The server parses the file straight from this request, so it never
+      // lands in object storage.
+      final task = await store.upload(
+        'PostResumeImportsUpload',
+        fields: {'name': name.isEmpty ? '导入的简历' : name},
+        file: ApiUploadFile(
+          path: file.path,
+          filename: file.name,
+          contentType: mime,
+        ),
+        expectedEpoch: epoch,
       );
-      check();
       onPhase?.call(ResumeImportPhase.parsing);
-      onProgress('正在提交 AI 解析…');
-      final task = await store.request(
-        'PostResumeImports',
-        body: {'file_id': fileID, 'name': name.isEmpty ? '导入的简历' : name},
-      );
       taskID = integer(task.data['id']);
       check();
       if (taskID <= 0) throw const ApiFailure('未能创建简历解析任务，请重试');
@@ -256,6 +237,12 @@ class ResumeImporter {
             'FILE_READ_FAILED' => '服务器暂时无法读取已上传的文件，请稍后重试',
             'IMPORT_AI_DOCUMENT_PARSE_FAILED' => '未能识别简历内容，请检查文件或稍后重试',
             'IMPORT_AI_PARSE_FAILED' => '简历内容整理失败，请稍后重试',
+            'IMPORT_DOCUMENT_CONVERT_FAILED' =>
+              'Word 文件无法打开，请确认文件完整且未加密，或另存为 PDF 后重新导入',
+            'IMPORT_NO_TEXT_DETECTED' => '没有识别到简历文字，请确认文件不是空白页或过于模糊的图片',
+            'IMPORT_CONTENT_TOO_LONG' => '简历内容过长，请精简后重新导入，或拆分为多份导入',
+            'IMPORT_AI_UNAVAILABLE' => 'AI 解析服务繁忙，请稍后点击重试',
+            'IMPORT_SOURCE_EXPIRED' => '原文件已过期，请重新选择文件导入',
             _ =>
               status == 'CANCELED'
                   ? '简历导入已取消'

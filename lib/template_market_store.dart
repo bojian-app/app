@@ -9,7 +9,7 @@ import 'template_preview_cache.dart';
 enum TemplateMarketFilter {
   all('全部', ''),
   free('免费', 'FREE'),
-  paid('积分', 'PAID'),
+  paid('会员', 'PAID'),
   owned('我的', '');
 
   const TemplateMarketFilter(this.label, this.pricing);
@@ -179,12 +179,7 @@ class TemplateMarketStore extends ChangeNotifier {
     }
   }
 
-  Future<void> acquire({
-    required int id,
-    required int quotedPrice,
-    required int quotedRevision,
-    required String idempotencyKey,
-  }) async {
+  Future<void> acquire({required int id, required int quotedRevision}) async {
     if (!valid) throw const ApiFailure('登录状态已变化，请重试');
     await loadOwned();
     if (!valid) throw const ApiFailure('登录状态已变化，请重试');
@@ -194,67 +189,27 @@ class TemplateMarketStore extends ChangeNotifier {
       unawaited(
         predownloadAcquiredTemplate(store, id, integer(template['version'])),
       );
-      if (quotedPrice > 0) await syncWallet();
       return;
     }
     final detail = await store.request('GetTemplatesId', path: {'id': '$id'});
     if (!valid) throw const ApiFailure('登录状态已变化，请重试');
-    if (integer(detail.data['price_points']) != quotedPrice ||
-        integer(detail.data['revision']) != quotedRevision) {
-      throw const ApiFailure('模板信息或价格已更新，请刷新详情后重新确认');
+    if (integer(detail.data['revision']) != quotedRevision) {
+      throw const ApiFailure('模板信息已更新，请刷新详情后重试');
     }
     if (detail.data['compatible'] != true ||
         detail.data['status'] != 'PUBLISHED') {
       throw const ApiFailure('模板暂不可用');
     }
-    if (quotedPrice == 0 && detail.data['pricing_type'] == 'FREE') {
-      await store.request(
-        'PostTemplatesIdAcquisitions',
-        path: {'id': '$id'},
-        body: {},
-      );
-    } else {
-      if (quotedPrice <= 0 || detail.data['pricing_type'] != 'PAID') {
-        throw const ApiFailure('模板价格无效，请刷新后重试');
-      }
-      final result = await store.request(
-        'PostTemplateOrders',
-        body: {
-          'template_id': id,
-          'agreement_version': 'template-purchase-v1',
-          'expected_price_points': quotedPrice,
-          'expected_template_revision': quotedRevision,
-        },
-        extra: {'idempotency-key': idempotencyKey},
-      );
-      if (result.data['status'] != 'PAID') {
-        throw const ApiFailure('购买结果暂未确认，请刷新我的模板');
-      }
-      final wallet = result.data['wallet'];
-      if (valid && wallet is Map && wallet['available_points'] != null) {
-        store.points = integer(wallet['available_points']);
-        store.changed();
-      } else {
-        await syncWallet();
-      }
-    }
+    await store.request(
+      'PostTemplatesIdAcquisitions',
+      path: {'id': '$id'},
+      body: {},
+    );
     if (!valid) return;
     unawaited(
       predownloadAcquiredTemplate(store, id, integer(detail.data['version'])),
     );
     await loadOwned();
-  }
-
-  Future<void> syncWallet() async {
-    try {
-      final result = await store.request('GetWallet');
-      if (valid && result.data['available_points'] != null) {
-        store.points = integer(result.data['available_points']);
-        store.changed();
-      }
-    } catch (_) {
-      /* A confirmed acquisition remains successful if balance refresh fails. */
-    }
   }
 
   @override

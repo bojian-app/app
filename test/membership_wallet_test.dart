@@ -64,10 +64,7 @@ void main() {
           'id': 31,
           'type': 'MEMBERSHIP_BENEFIT',
           'subject_type': 'MEMBERSHIP_WALLET',
-          'payload': {
-            'title': '你收到了会员年卡',
-            'body': '1 张会员年卡已放入卡包',
-          },
+          'payload': {'title': '你收到了会员年卡', 'body': '1 张会员年卡已放入卡包'},
         },
       ],
     };

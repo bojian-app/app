@@ -84,7 +84,8 @@ class ProfileHeader extends StatelessWidget {
     this.identity,
     required this.onEdit,
     required this.onAvatar,
-    required this.onMenu,
+    this.onMenu,
+    this.onSettings,
     required this.onDetails,
     this.pullProgress = 0,
     this.collapseProgress = 0,
@@ -99,7 +100,8 @@ class ProfileHeader extends StatelessWidget {
   final ProfileIdentityData? identity;
   ProfileIdentityData get data =>
       identity ?? ProfileIdentityData.fromStore(store);
-  final VoidCallback onEdit, onAvatar, onMenu, onDetails;
+  final VoidCallback onEdit, onAvatar, onDetails;
+  final VoidCallback? onMenu, onSettings;
   final double pullProgress, collapseProgress, scrollOffset;
   final Key? nameKey, surfaceKey;
   final bool showName, transitionSnapshot, paintBackground;
@@ -115,15 +117,13 @@ class ProfileHeader extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final t = collapseProgress;
+      // Colors only switch once the header is fully collapsed.
+      final settled = t >= 1 ? 1.0 : 0.0;
       final inset = MediaQuery.paddingOf(context).top;
       final width = constraints.maxWidth;
       final verified = identity == null && store.identityVerified;
       final toolbar = toolbarHeight(context);
-      final color = Color.lerp(
-        Colors.white,
-        context.colors.ink,
-        Curves.easeOutCubic.transform(t),
-      )!;
+      final color = Color.lerp(Colors.white, context.colors.ink, settled)!;
       final sourceStyle = DefaultTextStyle.of(context).style.merge(
         TextStyle(
           fontSize: 20,
@@ -147,9 +147,19 @@ class ProfileHeader extends StatelessWidget {
       final nameHeight = namePainter.height;
       final avatarTop = inset + toolbar + 24 + pullProgress * pullExtent;
       final nameTop = avatarTop + 106;
+      final compactAvatarCenterX = identity == null
+          ? appPageHorizontalPadding + 13
+          : 74.0;
+      final compactNameLeft = identity == null
+          ? appPageHorizontalPadding + 26 + 12
+          : 104.0;
+      // Leave room for both 44px action buttons, their divider and a 12px gap.
+      final compactNameRight = identity == null
+          ? appPageHorizontalPadding + 89 + 12
+          : 100.0;
       final nameWidth = ui.lerpDouble(
         width - appPageHorizontalPadding * 2,
-        (width - 204).clamp(0, width),
+        (width - compactNameLeft - compactNameRight).clamp(0, width),
         t,
       )!;
       final nameLineHeight = MediaQuery.textScalerOf(context).scale(14) * 1.3;
@@ -270,7 +280,7 @@ class ProfileHeader extends StatelessWidget {
                   key: surfaceKey,
                   child: IgnorePointer(
                     child: Opacity(
-                      opacity: t,
+                      opacity: settled,
                       child: ColoredBox(
                         key: t > 0
                             ? const ValueKey('profile-compact-header')
@@ -283,7 +293,7 @@ class ProfileHeader extends StatelessWidget {
               ),
             Positioned(
               left:
-                  ui.lerpDouble(width / 2, 74, t)! -
+                  ui.lerpDouble(width / 2, compactAvatarCenterX, t)! -
                   ui.lerpDouble(86, 44, t)! / 2,
               top: scrollOffset + avatarCenterY - ui.lerpDouble(86, 44, t)! / 2,
               width: ui.lerpDouble(86, 44, t),
@@ -326,7 +336,7 @@ class ProfileHeader extends StatelessWidget {
               ),
             ),
             Positioned(
-              left: ui.lerpDouble(appPageHorizontalPadding, 104, t),
+              left: ui.lerpDouble(appPageHorizontalPadding, compactNameLeft, t),
               top: scrollOffset + nameY,
               width: nameWidth,
               child: Opacity(
@@ -358,16 +368,13 @@ class ProfileHeader extends StatelessWidget {
                 data: IconButtonThemeData(style: buttonStyle),
                 child: Row(
                   children: [
-                    IconButton(
-                      key: const ValueKey('profile-menu'),
-                      tooltip: identity == null ? '展开菜单' : '返回',
-                      onPressed: onMenu,
-                      icon: AppIcon(
-                        identity == null ? AppIcons.menu : AppIcons.back,
-                        size: 20,
-                        color: color,
+                    if (identity != null)
+                      IconButton(
+                        key: const ValueKey('profile-menu'),
+                        tooltip: '返回',
+                        onPressed: onMenu,
+                        icon: AppIcon(AppIcons.back, size: 20, color: color),
                       ),
-                    ),
                     const Spacer(),
                     if (identity == null &&
                         store.loading.contains('profile') &&
@@ -396,7 +403,9 @@ class ProfileHeader extends StatelessWidget {
                                 key: const ValueKey('profile-actions-capsule'),
                                 decoration: ShapeDecoration(
                                   color: color.withValues(
-                                    alpha: context.isDark ? .10 : .10 * (1 - t),
+                                    alpha: context.isDark
+                                        ? .10
+                                        : .10 * (1 - settled),
                                   ),
                                   shape: StadiumBorder(
                                     side: BorderSide(
@@ -427,11 +436,15 @@ class ProfileHeader extends StatelessWidget {
                                   color: color.withValues(alpha: .28),
                                 ),
                               ),
-                              MessagesButton(
-                                key: const ValueKey('profile-messages'),
-                                store: store,
-                                color: color,
-                                iconSize: 18,
+                              IconButton(
+                                key: const ValueKey('profile-settings'),
+                                tooltip: '隐私与设置',
+                                onPressed: onSettings,
+                                icon: AppIcon(
+                                  AppIcons.settings,
+                                  size: 18,
+                                  color: color,
+                                ),
                               ),
                             ],
                           ),
@@ -478,6 +491,7 @@ class ProfileContentTabs extends StatelessWidget
       Tab(key: ValueKey('profile-tab-resumes'), text: '简历', height: 36),
       Tab(key: ValueKey('profile-tab-saved'), text: '收藏', height: 36),
       Tab(key: ValueKey('profile-tab-articles'), text: '动态', height: 36),
+      Tab(key: ValueKey('profile-tab-drafts'), text: '草稿箱', height: 36),
     ],
   });
   final TabController? controller;
@@ -826,6 +840,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                       collapseProgress: widget.initialCollapse,
                       scrollOffset: widget.initialScrollOffset,
                       onMenu: () {},
+                      onSettings: () {},
                       onEdit: () {},
                       onAvatar: () {},
                       onDetails: () {},

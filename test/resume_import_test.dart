@@ -19,13 +19,7 @@ import 'support/resume_editor_helpers.dart';
 
 class ImportGateway extends FakeGateway {
   ImportGateway() {
-    documents['PostFilesUploads'] = {
-      'id': 10,
-      'method': 'POST',
-      'upload_url': 'https://uploads.example.test',
-      'fields': {'token': 'limited-upload-token', 'key': 'resume/10'},
-    };
-    documents['PostResumeImports'] = {'id': 3};
+    documents['PostResumeImportsUpload'] = {'id': 3, 'status': 'QUEUED'};
     documents['GetResumeImportsId'] = {
       'status': 'WAITING_CONFIRMATION',
       'parsed_content': {
@@ -41,6 +35,25 @@ class ImportGateway extends FakeGateway {
     documents['GetResumesId'] = {'id': 12, 'revision': 2};
   }
   final records = <Map<String, dynamic>>[];
+  Future<void> Function()? beforeUpload;
+  @override
+  Future<ApiDocument> upload(
+    String method, {
+    Map<String, String> path = const {},
+    required Map<String, String> fields,
+    required ApiUploadFile file,
+    Map<String, String> headers = const {},
+  }) async {
+    await beforeUpload?.call();
+    return super.upload(
+      method,
+      path: path,
+      fields: fields,
+      file: file,
+      headers: headers,
+    );
+  }
+
   @override
   Future<ApiDocument> call(
     String method, {
@@ -83,12 +96,8 @@ void main() {
       };
       final store = await testStore(authenticated: true, api: api);
       addTearDown(store.dispose);
-      final draft =
-          await ResumeImporter(
-            store: store,
-            upload: (_, _, _) async {},
-            delay: (_) async {},
-          ).importFile(
+      final draft = await ResumeImporter(store: store, delay: (_) async {})
+          .importFile(
             selectedFile(),
             onProgress: (_) {},
             isCancelled: () => false,
@@ -112,17 +121,16 @@ void main() {
           store: store,
           initialFile: selectedFile(),
           onSaved: () => returnedToLibrary = true,
-          importer: ResumeImporter(
-            store: store,
-            upload: (_, _, _) async {},
-            delay: (_) async {},
-          ),
+          importer: ResumeImporter(store: store, delay: (_) async {}),
         ),
       ),
     );
     await tester.pumpAndSettle();
     expect(find.byType(ResumeEditor), findsOneWidget);
-    expect(api.calls.where((c) => c == 'PostResumeImports'), hasLength(1));
+    expect(
+      api.calls.where((c) => c == 'PostResumeImportsUpload'),
+      hasLength(1),
+    );
     expect(api.calls, isNot(contains('PostResumeImportsIdConfirm')));
     expect(returnedToLibrary, isFalse);
     await openResumeSection(tester, 0);
@@ -145,19 +153,16 @@ void main() {
         () => File('${directory!.path}/简历.pdf').writeAsString('%PDF-test'),
       );
       var uploads = 0;
+      api.beforeUpload = () async {
+        uploads++;
+        await gate.future;
+      };
       await tester.pumpWidget(
         MaterialApp(
           theme: appTheme,
           home: ImportResume(
             store: store,
-            importer: ResumeImporter(
-              store: store,
-              upload: (_, _, _) async {
-                uploads++;
-                await gate.future;
-              },
-              delay: (_) async {},
-            ),
+            importer: ResumeImporter(store: store, delay: (_) async {}),
           ),
         ),
       );
@@ -186,7 +191,9 @@ void main() {
         find.byKey(const ValueKey('resume-import-progress')),
         findsNothing,
       );
-      expect(api.calls, isNot(contains('PostResumeImports')));
+      // The upload already created the job, so cancelling must stop it.
+      expect(api.calls, contains('PostResumeImportsIdCancel'));
+      expect(api.calls, isNot(contains('GetResumeImportsId')));
       await tester.ensureVisible(find.byKey(const ValueKey('resume-upload')));
       await tester.tap(find.byKey(const ValueKey('resume-upload')));
       await tester.runAsync(() async {
@@ -212,15 +219,7 @@ void main() {
     () async {
       final api = ImportGateway();
       final store = await testStore(authenticated: true, api: api);
-      final importer = ResumeImporter(
-        store: store,
-        delay: (_) async {},
-        upload: (auth, file, mime) async {
-          expect(mime, 'application/pdf');
-          expect(auth['id'], 10);
-          expect(api.calls, isNot(contains('PostResumeImports')));
-        },
-      );
+      final importer = ResumeImporter(store: store, delay: (_) async {});
       final phases = <ResumeImportPhase>[];
       final draft = await importer.importFile(
         selectedFile(),
@@ -234,24 +233,16 @@ void main() {
       expect(draft.id, 0);
       expect(
         api.calls,
-        containsAllInOrder([
-          'PostFilesUploads',
-          'PostFilesUploadsIdComplete',
-          'PostResumeImports',
-          'GetResumeImportsId',
-        ]),
+        containsAllInOrder(['PostResumeImportsUpload', 'GetResumeImportsId']),
       );
+      expect(api.calls, isNot(contains('PostFilesUploads')));
       expect(api.calls, isNot(contains('PostResumeImportsIdConfirm')));
       expect(api.calls, isNot(contains('PostResumes')));
-      final upload = api.records.firstWhere(
-        (r) => r['method'] == 'PostFilesUploads',
-      );
-      expect(upload['body'], {
-        'purpose': 'RESUME_IMPORT',
-        'filename': '我的简历.PDF',
-        'content_type': 'application/pdf',
-        'size_bytes': 20,
-      });
+      final upload = api.uploads.single;
+      expect(upload.fields, {'name': '我的简历'});
+      expect(upload.file.path, '/test/我的简历.PDF');
+      expect(upload.file.filename, '我的简历.PDF');
+      expect(upload.file.contentType, 'application/pdf');
       draft.title = '校对后的简历';
       await store.updateResume(draft.copy());
       final confirm = api.records.firstWhere(
@@ -275,12 +266,8 @@ void main() {
     api.documents['GetResumeImportsId']!['photo_url'] =
         'https://cdn.example.test/imported-portrait.png';
     final store = await testStore(authenticated: true, api: api);
-    final draft =
-        await ResumeImporter(
-          store: store,
-          upload: (_, _, _) async {},
-          delay: (_) async {},
-        ).importFile(
+    final draft = await ResumeImporter(store: store, delay: (_) async {})
+        .importFile(
           selectedFile(name: '简历.docx'),
           onProgress: (_) {},
           isCancelled: () => false,
@@ -291,43 +278,32 @@ void main() {
     expect(draft.copy().photoURL, draft.photoURL);
   });
 
-  test(
-    'Invalid and oversized files fail before requesting upload authorization',
-    () async {
-      final api = ImportGateway();
-      final store = await testStore(authenticated: true, api: api);
-      final importer = ResumeImporter(store: store);
-      for (final file in [
-        selectedFile(name: '简历.txt'),
-        selectedFile(name: 'pdf'),
-        selectedFile(size: 0),
-        selectedFile(size: maximumResumeFileBytes + 1),
-      ]) {
-        await expectLater(
-          importer.importFile(
-            file,
-            onProgress: (_) {},
-            isCancelled: () => false,
-          ),
-          throwsA(isA<ApiFailure>()),
-        );
-      }
-      expect(api.calls, isNot(contains('PostFilesUploads')));
-    },
-  );
+  test('Invalid and oversized files fail before uploading', () async {
+    final api = ImportGateway();
+    final store = await testStore(authenticated: true, api: api);
+    final importer = ResumeImporter(store: store);
+    for (final file in [
+      selectedFile(name: '简历.txt'),
+      selectedFile(name: 'pdf'),
+      selectedFile(size: 0),
+      selectedFile(size: maximumResumeFileBytes + 1),
+    ]) {
+      await expectLater(
+        importer.importFile(file, onProgress: (_) {}, isCancelled: () => false),
+        throwsA(isA<ApiFailure>()),
+      );
+    }
+    expect(api.calls, isNot(contains('PostResumeImportsUpload')));
+  });
 
   test(
-    'Upload failure and cancellation do not mark files ready or create jobs',
+    'Cancelling during upload stops the created job; failed uploads stop early',
     () async {
       final api = ImportGateway();
       final store = await testStore(authenticated: true, api: api);
       var cancel = false;
-      final importer = ResumeImporter(
-        store: store,
-        upload: (_, _, _) async {
-          cancel = true;
-        },
-      );
+      api.beforeUpload = () async => cancel = true;
+      final importer = ResumeImporter(store: store);
       await expectLater(
         importer.importFile(
           selectedFile(),
@@ -336,23 +312,22 @@ void main() {
         ),
         throwsA(isA<ImportCancelled>()),
       );
-      expect(api.calls, isNot(contains('PostFilesUploadsIdComplete')));
-      expect(api.calls, isNot(contains('PostResumeImports')));
-      final failing = ResumeImporter(
-        store: store,
-        upload: (_, _, _) async {
-          throw const ApiFailure('上传失败');
-        },
-      );
+      await Future<void>.delayed(Duration.zero);
+      expect(api.calls, contains('PostResumeImportsIdCancel'));
+      expect(api.calls, isNot(contains('GetResumeImportsId')));
+      api.calls.clear();
+      api.beforeUpload = null;
+      api.failing = 'PostResumeImportsUpload';
       await expectLater(
-        failing.importFile(
+        importer.importFile(
           selectedFile(),
           onProgress: (_) {},
           isCancelled: () => false,
         ),
         throwsA(isA<ApiFailure>()),
       );
-      expect(api.calls, isNot(contains('PostResumeImports')));
+      expect(api.calls, isNot(contains('GetResumeImportsId')));
+      expect(api.calls, isNot(contains('PostResumeImportsIdCancel')));
     },
   );
 
@@ -401,50 +376,45 @@ void main() {
     );
   });
 
-  test('Storage account freeze is explained and stops resume import', () async {
-    final directory = await Directory.systemTemp.createTemp('bojian-419-test-');
-    addTearDown(() => directory.delete(recursive: true));
-    final file = await File('${directory.path}/resume.pdf')
-        .writeAsString('%PDF-test-content');
-    final api = ImportGateway();
-    api.documents['PostFilesUploads']!['upload_url'] =
-        'https://upload-z2.qiniup.com';
-    final store = await testStore(authenticated: true, api: api);
-    final client = MockClient(
-      (_) async => http.Response('{"error":"user is frozen"}', 419),
-    );
-    addTearDown(client.close);
-    final importer = ResumeImporter(
-      store: store,
-      upload: (auth, file, mime) =>
-          uploadResumeDocument(auth, file, mime, client: client),
-    );
-    await expectLater(
-      importer.importFile(
-        XFile(file.path),
-        onProgress: (_) {},
-        isCancelled: () => false,
-      ),
-      throwsA(
-        isA<ApiFailure>().having(
-          (e) => e.message,
-          'message',
-          '文件存储服务暂不可用，请联系管理员恢复服务（419）',
+  test(
+    'Storage account freeze is explained for object storage uploads',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'bojian-419-test-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = await File('${directory.path}/photo.png')
+          .writeAsString('png');
+      final client = MockClient(
+        (_) async => http.Response('{"error":"user is frozen"}', 419),
+      );
+      addTearDown(client.close);
+      await expectLater(
+        uploadResumeDocument(
+          {
+            'upload_url': 'https://upload-z2.qiniup.com',
+            'method': 'POST',
+            'fields': {'token': 'limited-upload-token', 'key': 'photo/10'},
+          },
+          XFile(file.path),
+          'image/png',
+          client: client,
         ),
-      ),
-    );
-    expect(api.calls, isNot(contains('PostFilesUploadsIdComplete')));
-    expect(api.calls, isNot(contains('PostResumeImports')));
-  });
+        throwsA(
+          isA<ApiFailure>().having(
+            (e) => e.message,
+            'message',
+            '文件存储服务暂不可用，请联系管理员恢复服务（419）',
+          ),
+        ),
+      );
+    },
+  );
 
   test('Import task errors never expose signed download URLs', () async {
     final api = ImportGateway();
     final store = await testStore(authenticated: true, api: api);
-    final importer = ResumeImporter(
-      store: store,
-      upload: (_, _, _) async {},
-      delay: (_) async {},
-    );
+    final importer = ResumeImporter(store: store, delay: (_) async {});
     for (final code in ['OBJECT_STORAGE_READ_FAILED', 'UNKNOWN_ERROR']) {
       api.documents['GetResumeImportsId'] = {
         'status': 'FAILED',
@@ -470,6 +440,35 @@ void main() {
     }
   });
 
+  test('Import task errors explain user-actionable failure causes', () async {
+    final api = ImportGateway();
+    final store = await testStore(authenticated: true, api: api);
+    final importer = ResumeImporter(store: store, delay: (_) async {});
+    for (final entry in {
+      'IMPORT_DOCUMENT_CONVERT_FAILED':
+          'Word 文件无法打开，请确认文件完整且未加密，或另存为 PDF 后重新导入',
+      'IMPORT_NO_TEXT_DETECTED': '没有识别到简历文字，请确认文件不是空白页或过于模糊的图片',
+      'IMPORT_CONTENT_TOO_LONG': '简历内容过长，请精简后重新导入，或拆分为多份导入',
+      'IMPORT_AI_UNAVAILABLE': 'AI 解析服务繁忙，请稍后点击重试',
+    }.entries) {
+      api.documents['GetResumeImportsId'] = {
+        'status': 'FAILED',
+        'error_code': entry.key,
+        'error_message': 'Post https://ai.example.test/v1: connection reset',
+      };
+      await expectLater(
+        importer.importFile(
+          selectedFile(),
+          onProgress: (_) {},
+          isCancelled: () => false,
+        ),
+        throwsA(
+          isA<ApiFailure>().having((e) => e.message, 'message', entry.value),
+        ),
+      );
+    }
+  });
+
   testWidgets(
     'Import offers two file sources, keeps cancellation harmless, and opens review',
     (tester) async {
@@ -482,11 +481,7 @@ void main() {
           home: ImportResume(
             store: store,
             pickFile: () async => ++attempts == 1 ? null : selectedFile(),
-            importer: ResumeImporter(
-              store: store,
-              delay: (_) async {},
-              upload: (_, _, _) async {},
-            ),
+            importer: ResumeImporter(store: store, delay: (_) async {}),
           ),
         ),
       );
@@ -495,7 +490,7 @@ void main() {
       await tester.tap(find.text('从本机文件上传'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('resume-upload')), findsNothing);
-      expect(api.calls, isNot(contains('PostFilesUploads')));
+      expect(api.calls, isNot(contains('PostResumeImportsUpload')));
       await tester.tap(find.text('从本机文件上传'));
       await tester.pumpAndSettle();
       expect(find.text('我的简历.PDF'), findsOneWidget);

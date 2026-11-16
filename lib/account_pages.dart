@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 
 import 'app_store.dart';
+import 'app_update.dart';
 import 'app_photo_picker.dart';
 import 'developer_verification_page.dart';
 import 'form_page_layout.dart';
@@ -25,9 +26,7 @@ import 'resume_pages.dart';
 import 'story_composer.dart';
 import 'profile_avatar.dart';
 import 'profile_identity.dart';
-import 'profile_snap_scroll_physics.dart';
 import 'profile_edit_actions.dart';
-import 'points_page.dart';
 import 'profile_editor_views.dart';
 import 'resume_photo.dart';
 import 'resume_photo_crop.dart';
@@ -147,13 +146,7 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
   }
 }
 
-enum _ProfileMenuPage {
-  drafts,
-  settings,
-  points,
-  membership,
-  developerVerification,
-}
+enum _ProfileMenuPage { drafts, settings, membership, developerVerification }
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.store});
@@ -190,7 +183,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final nameMarker = GlobalKey();
   final headerMarker = GlobalKey();
   final headerSurfaceMarker = GlobalKey();
-  bool openingMenu = false, openingCreation = false;
+  bool openingSettings = false, openingCreation = false;
   final viewportMarker = GlobalKey();
   final headerOverlap = SliverOverlapAbsorberHandle();
   AppStore get store => widget.store;
@@ -199,7 +192,6 @@ class _ProfilePageState extends State<ProfilePage> {
   double? nameContentTop;
   double headerHeight = 400;
   int? profilePointer;
-  double headerDragDirection = 0;
 
   @override
   void initState() {
@@ -225,7 +217,7 @@ class _ProfilePageState extends State<ProfilePage> {
         store.isAuthenticated &&
         scroll.hasClients &&
         top != null &&
-        scroll.offset > top * .5 + .001;
+        scroll.offset >= top - .5;
     if (show != compactHeader) setState(() => compactHeader = show);
   }
 
@@ -278,15 +270,6 @@ class _ProfilePageState extends State<ProfilePage> {
             !source.mounted ||
             !TickerMode.valuesOf(source).enabled)) {
       return false;
-    }
-    if (notification.depth == 0) {
-      if (notification is ScrollUpdateNotification &&
-          notification.dragDetails != null &&
-          (notification.scrollDelta ?? 0).abs() > .01) {
-        headerDragDirection = notification.scrollDelta!.sign;
-      } else if (notification is ScrollEndNotification) {
-        headerDragDirection = 0;
-      }
     }
     return false;
   }
@@ -364,7 +347,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> editAvatar() async {
     if (openingDetails ||
-        openingMenu ||
+        openingSettings ||
         !store.isAuthenticated ||
         ModalRoute.of(context)?.isCurrent != true ||
         !TickerMode.valuesOf(context).enabled) {
@@ -391,18 +374,18 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<void> openMenu() async {
-    if (openingMenu ||
+  Future<void> openSettings() async {
+    if (openingSettings ||
         !store.isAuthenticated ||
         ModalRoute.of(context)?.isCurrent != true ||
         !TickerMode.valuesOf(context).enabled) {
       return;
     }
-    openingMenu = true;
+    openingSettings = true;
     try {
-      await showAccountMenu(context, store);
+      await openPage(context, SettingsPage(store: store));
     } finally {
-      openingMenu = false;
+      openingSettings = false;
     }
   }
 
@@ -428,10 +411,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       );
                 final isResume = index == 0;
                 return Visibility(
-                  visible: index != 1,
-                  maintainSize: true,
-                  maintainState: true,
-                  maintainAnimation: true,
+                  visible: index == 0 || index == 2,
                   child: InkWell(
                     key: ValueKey(
                       isResume
@@ -503,14 +483,13 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 )
               : DefaultTabController(
-                  length: 3,
+                  length: 4,
                   child: PlayfulRefreshScope(
                     enabled: true,
                     child: Listener(
                       onPointerDown: (event) {
                         if (profilePointer != null) return;
                         profilePointer = event.pointer;
-                        headerDragDirection = 0;
                       },
                       onPointerUp: (event) {
                         if (profilePointer == event.pointer) {
@@ -534,12 +513,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             child: NestedScrollView(
                               key: const ValueKey('profile-scroll'),
                               controller: scroll,
-                              physics: ProfileSnapScrollPhysics(
-                                headerExtent: () => scroll.hasClients
-                                    ? scroll.position.maxScrollExtent
-                                    : 0,
-                                dragDirection: () => headerDragDirection,
-                                parent: const AlwaysScrollableScrollPhysics(),
+                              physics: const ClampingScrollPhysics(
+                                parent: AlwaysScrollableScrollPhysics(),
                               ),
                               headerSliverBuilder: (context, innerScrolled) => [
                                 SliverOverlapAbsorber(
@@ -561,7 +536,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                             onEdit: () =>
                                                 _editProfile(context, store),
                                             onAvatar: editAvatar,
-                                            onMenu: openMenu,
+                                            onSettings: openSettings,
                                             onDetails: () =>
                                                 unawaited(showDetails()),
                                           ),
@@ -618,6 +593,14 @@ class _ProfilePageState extends State<ProfilePage> {
                                         publishedOnly: true,
                                       ),
                                     ),
+                                    _ProfileContentTab(
+                                      index: 3,
+                                      child: MyArticlesPage(
+                                        store: store,
+                                        embedded: true,
+                                        draftsOnly: true,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -642,6 +625,7 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
   }
   dismissKeyboard();
   unawaited(store.load('identity'));
+  unawaited(AppUpdates.instance.refresh(store));
   final epoch = store.epoch;
   final reduced = MediaQuery.disableAnimationsOf(context);
   bool closing = false, openingDestination = false;
@@ -667,10 +651,6 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
         _ProfileMenuPage.membership => MembershipPage(store: store),
         _ProfileMenuPage.developerVerification => DeveloperVerificationPage(
           store: store,
-        ),
-        _ProfileMenuPage.points => Scaffold(
-          appBar: AppPageBar(title: const Text('积分中心')),
-          body: PointsPage(store: store),
         ),
       });
     } finally {
@@ -757,13 +737,7 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                             children: [
-                              _ProfileMenuIdentity(
-                                store: store,
-                                onPoints: () => openDestination(
-                                  menuContext,
-                                  _ProfileMenuPage.points,
-                                ),
-                              ),
+                              _ProfileMenuIdentity(store: store),
                               if (membershipPageAvailable)
                                 _menu(
                                   context,
@@ -783,19 +757,23 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
                                   _ProfileMenuPage.drafts,
                                 ),
                               ),
-                              _menu(
-                                context,
-                                '隐私与设置',
-                                AppIcons.settings,
-                                () => openDestination(
-                                  menuContext,
-                                  _ProfileMenuPage.settings,
+                              ListenableBuilder(
+                                listenable: AppUpdates.instance,
+                                builder: (context, _) => _menu(
+                                  context,
+                                  '隐私与设置',
+                                  AppIcons.settings,
+                                  () => openDestination(
+                                    menuContext,
+                                    _ProfileMenuPage.settings,
+                                  ),
+                                  dot: AppUpdates.instance.hasUpdate,
                                 ),
                               ),
                               if (store.canApplyDeveloperVerification)
                                 _menu(
                                   context,
-                                  '申请开发者认证',
+                                  '实名认证',
                                   AppIcons.identityVerification,
                                   () => openDestination(
                                     menuContext,
@@ -832,8 +810,9 @@ Widget _menu(
   BuildContext context,
   String label,
   AppIconData icon,
-  VoidCallback onTap,
-) => Material(
+  VoidCallback onTap, {
+  bool dot = false,
+}) => Material(
   color: Colors.transparent,
   child: ListTile(
     minTileHeight: 48,
@@ -842,15 +821,29 @@ Widget _menu(
     minLeadingWidth: 20,
     leading: AppIcon(icon, size: 20, color: context.colors.ink),
     title: Text(label, style: const TextStyle(fontSize: 13)),
-    trailing: AppIcon(AppIcons.forward, size: 14, color: context.colors.muted),
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (dot)
+          Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(right: 8),
+            decoration: const BoxDecoration(
+              color: Color(0xFFE5322D),
+              shape: BoxShape.circle,
+            ),
+          ),
+        AppIcon(AppIcons.forward, size: 14, color: context.colors.muted),
+      ],
+    ),
     onTap: onTap,
   ),
 );
 
 class _ProfileMenuIdentity extends StatelessWidget {
-  const _ProfileMenuIdentity({required this.store, required this.onPoints});
+  const _ProfileMenuIdentity({required this.store});
   final AppStore store;
-  final VoidCallback onPoints;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -878,20 +871,6 @@ class _ProfileMenuIdentity extends StatelessWidget {
                   fontSize: 16,
                   height: 1.25,
                   fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              InkWell(
-                key: const ValueKey('profile-menu-points'),
-                onTap: onPoints,
-                child: Text(
-                  '积分余额：${store.points ?? '—'}',
-                  key: const ValueKey('profile-menu-balance'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.3,
-                    color: context.colors.muted,
-                  ),
                 ),
               ),
             ],

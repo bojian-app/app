@@ -11,13 +11,12 @@ import 'app_icons.dart';
 import 'app_store.dart';
 import 'form_page_layout.dart';
 import 'design.dart';
-import 'confirmation_dialog.dart';
+import 'membership_page.dart';
+import 'membership_status.dart';
 import 'template_market_store.dart';
 import 'template_live_preview.dart';
 import 'network_image_cache.dart';
 import 'profile_avatar.dart';
-import 'points_coin.dart';
-import 'points_page.dart';
 
 /// Every market template is published by the platform.
 const officialTemplatePublisher = '博简官方';
@@ -97,7 +96,6 @@ class _TemplateMarketViewState extends State<TemplateMarketView>
       appBar: AppPageBar(
         titleSpacing: appPageHorizontalPadding,
         title: const Text('模板市场'),
-        actions: [_BalancePill(store: widget.store)],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -451,65 +449,6 @@ class MarketTemplateArtwork extends StatelessWidget {
   }
 }
 
-/// Points balance in the market app bar; opens the points center.
-class _BalancePill extends StatelessWidget {
-  const _BalancePill({required this.store});
-  final AppStore store;
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: store,
-    builder: (context, _) {
-      final points = store.points;
-      if (!store.isAuthenticated || points == null) {
-        return const SizedBox.shrink();
-      }
-      return Padding(
-        padding: const EdgeInsets.only(right: appPageHorizontalPadding),
-        child: TextButton(
-          key: const ValueKey('market-balance'),
-          onPressed: () => openPage(
-            context,
-            Scaffold(
-              appBar: AppPageBar(title: const Text('积分中心')),
-              body: PointsPage(store: store),
-            ),
-          ),
-          style: TextButton.styleFrom(
-            backgroundColor: context.isDark
-                ? context.colors.accentSoft
-                : const Color(0xFFF2F3F5),
-            foregroundColor: context.colors.ink,
-            minimumSize: const Size(0, 30),
-            padding: const EdgeInsets.fromLTRB(6, 0, 10, 0),
-            shape: const StadiumBorder(),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const PointsCoin(size: 18),
-              const SizedBox(width: 4),
-              Text(
-                '$points',
-                style: const TextStyle(
-                  fontFamily: 'ResumeDocument',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 3),
-              Text(
-                '积分',
-                style: TextStyle(fontSize: 12, color: context.colors.muted),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
 /// A market card: just the template's own page, with small tags on its
 /// corners.
 class _TemplateCard extends StatelessWidget {
@@ -605,6 +544,16 @@ class _TemplateCard extends StatelessWidget {
                     const Color(0x8C1A2233),
                     BorderRadius.circular(4),
                   ),
+                )
+              else if (template['pricing_type'] == 'PAID')
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: tag(
+                    '会员',
+                    const Color(0xFFB8891F),
+                    BorderRadius.circular(4),
+                  ),
                 ),
             ],
           ),
@@ -612,31 +561,6 @@ class _TemplateCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Coin and amount, the same price treatment as the points center.
-class _PointsPrice extends StatelessWidget {
-  const _PointsPrice({required this.points, required this.size});
-  final int points;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      PointsCoin(size: size),
-      SizedBox(width: size * .2),
-      Text(
-        '$points',
-        style: TextStyle(
-          fontFamily: 'ResumeDocument',
-          fontSize: size,
-          fontWeight: FontWeight.w700,
-          color: const Color(0xFFE07B00),
-        ),
-      ),
-    ],
-  );
 }
 
 String _publishedLabel(Map<String, dynamic> design) {
@@ -684,15 +608,25 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
   ).animate(previewOpacity);
   int previewPage = 0;
   String? error;
-  int? balance;
   int operation = 0;
   TemplateMarketStore get market => widget.market;
   int get id => integer(widget.template['id']);
   bool get acquired => market.ownedIDs.contains(id);
+  bool get paid => design['pricing_type'] == 'PAID';
+  bool get needsMembership =>
+      paid &&
+      !MembershipStatus.instance.isMemberOf(market.store.userID) &&
+      !acquired;
   @override
   void initState() {
     super.initState();
+    MembershipStatus.instance.addListener(membershipChanged);
+    unawaited(MembershipStatus.instance.refresh(market.store, force: true));
     load();
+  }
+
+  void membershipChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> load() async {
@@ -701,7 +635,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
       loading = true;
       detailsReady = false;
       error = null;
-      balance = null;
     });
     try {
       final ownership = Future<void>.microtask(market.loadOwned);
@@ -721,13 +654,6 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
       if (!mounted || request != operation) return;
       if (!market.valid) throw const ApiFailure('登录状态已变化，请返回后重试');
       if (market.ownedError != null) throw ApiFailure(market.ownedError!);
-      if (integer(data['price_points']) > 0 && !acquired) {
-        final wallet = await market.store.request('GetWallet');
-        if (wallet.data['available_points'] == null) {
-          throw const ApiFailure('积分余额暂不可用，请重试');
-        }
-        balance = integer(wallet.data['available_points']);
-      }
     } catch (e) {
       if (mounted && request == operation) {
         setState(() => error = e is ApiFailure ? e.message : '模板详情加载失败');
@@ -745,41 +671,20 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
       widget.onUseTemplate(context, design);
       return;
     }
-    final price = integer(design['price_points']);
-    if (price > 0) {
-      final confirmed = await showAppConfirmation(
-        context,
-        title: '兑换模板',
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('${design['name']}'),
-            const SizedBox(height: 12),
-            Text('本次使用 $price 积分'),
-            const SizedBox(height: 8),
-            Text('当前余额：${balance ?? 0} 积分'),
-          ],
-        ),
-        confirmEnabled: balance != null && balance! >= price,
-        confirmLabel: balance != null && balance! >= price ? '确认兑换' : '积分不足',
-      );
-      if (confirmed != true || !mounted || !market.valid) return;
+    if (needsMembership) {
+      await openPage<void>(context, MembershipPage(store: market.store));
+      if (mounted) {
+        await MembershipStatus.instance.refresh(market.store, force: true);
+      }
+      return;
     }
     setState(() {
       busy = true;
       error = null;
     });
     try {
-      await market.acquire(
-        id: id,
-        quotedPrice: price,
-        quotedRevision: integer(design['revision']),
-        idempotencyKey: purchaseKey,
-      );
-      if (mounted && market.valid) {
-        setState(() => balance = market.store.points);
-        toast(context, '获取成功');
-      }
+      await market.acquire(id: id, quotedRevision: integer(design['revision']));
+      if (mounted && market.valid) toast(context, '获取成功');
     } catch (e) {
       if (mounted) {
         setState(() => error = e is ApiFailure ? e.message : '获取失败，请重试');
@@ -853,6 +758,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
 
   @override
   void dispose() {
+    MembershipStatus.instance.removeListener(membershipChanged);
     previewOpacity.dispose();
     previewTransition.dispose();
     super.dispose();
@@ -989,12 +895,7 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                                             runSpacing: 6,
                                             children: [
                                               for (final chip in [
-                                                integer(
-                                                          design['price_points'],
-                                                        ) ==
-                                                        0
-                                                    ? '免费'
-                                                    : '${integer(design['price_points'])} 积分',
+                                                paid ? '会员专享' : '免费',
                                                 if (acquired) '已获取',
                                                 if (_publishedLabel(design)
                                                     .isNotEmpty)
@@ -1137,35 +1038,17 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (integer(design['price_points']) == 0)
-                                  const Text(
-                                    '免费',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      height: 1.3,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF13A58C),
-                                    ),
-                                  )
-                                else
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: _PointsPrice(
-                                      points: integer(design['price_points']),
-                                      size: 20,
-                                    ),
+                                Text(
+                                  paid ? '会员专享' : '免费',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    height: 1.3,
+                                    fontWeight: FontWeight.w700,
+                                    color: paid
+                                        ? const Color(0xFFB8891F)
+                                        : const Color(0xFF13A58C),
                                   ),
-                                if (balance != null) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '我的积分 $balance',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: context.colors.muted,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ],
                             ),
                           ),
@@ -1192,9 +1075,11 @@ class _TemplateMarketDetailState extends State<TemplateMarketDetail>
                                   ? '正在处理…'
                                   : acquired
                                   ? '使用模板'
-                                  : integer(design['price_points']) == 0
-                                  ? '免费获取'
-                                  : '积分兑换',
+                                  : needsMembership
+                                  ? '开通会员使用'
+                                  : paid
+                                  ? '会员获取'
+                                  : '免费获取',
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 fontSize: 14,

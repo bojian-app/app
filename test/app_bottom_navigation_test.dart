@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 const _destinations = [
   (index: 0, label: '发现'),
   (index: 1, label: '模版市场'),
-  (index: 2, label: '积分'),
+  (index: 2, label: '会员'),
   (index: 3, label: '我的'),
 ];
 
@@ -144,7 +144,7 @@ void main() {
     final baseline = _destinationRects(tester);
     final bar = tester.getRect(find.byType(AppBottomNavigation));
 
-    for (final state in [(2, 1), (3, 99), (1, 12457), (0, 0)]) {
+    for (final state in [(2, 1), (3, 99), (2, 12457), (1, 12457), (0, 0)]) {
       await _showNavigation(tester, selected: state.$1, textScale: 2);
       expect(_destinationRects(tester), baseline);
       expect(tester.getRect(find.byType(AppBottomNavigation)), bar);
@@ -178,7 +178,7 @@ void main() {
         );
       }
 
-      for (final selected in [2, 1, 3, 0, 2]) {
+      for (final selected in [2, 1, 3, 2, 0, 2]) {
         await _showNavigation(tester, selected: selected, textScale: 2);
         await tester.pump(const Duration(milliseconds: 40));
         expect(_destinationRects(tester), destinationRects);

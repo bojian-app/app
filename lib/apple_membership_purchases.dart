@@ -151,7 +151,7 @@ class AppleMembershipPurchases extends ChangeNotifier {
     if (transaction['transactionID'] is! String ||
         !RegExp(r'^\d+$').hasMatch(transaction['transactionID'] as String) ||
         !const ['Production', 'Sandbox'].contains(transaction['environment']) ||
-        !AppleMembershipProducts.productIDs.values.contains(
+        !AppleMembershipProducts.allProductIDs.values.contains(
           transaction['productID'],
         )) {
       return null;
@@ -263,7 +263,7 @@ class AppleMembershipPurchases extends ChangeNotifier {
       membershipRevision++;
       if (status == 'DELIVERED') {
         lastDeliveredProductID = transaction['productID'] as String;
-        _set(ApplePurchaseState.delivered, '购买已确认，会员权益已更新');
+        _set(ApplePurchaseState.delivered, null);
       } else {
         _set(
           ApplePurchaseState.idle,
@@ -279,7 +279,14 @@ class AppleMembershipPurchases extends ChangeNotifier {
     }
   }
 
-  Future<void> purchase(String planCode, {bool autoRenew = false}) async {
+  Future<void> purchase(String planCode, {bool autoRenew = false}) => _purchase(
+    AppleMembershipProducts.productKey(planCode, autoRenew: autoRenew),
+  );
+
+  /// 购买一档加购 AI 次数（消耗型商品），key 见 addonProductIDs。
+  Future<void> purchaseAddon(String key) => _purchase(key);
+
+  Future<void> _purchase(String key) async {
     if (busy || _disposed) return;
     final epoch = store.epoch;
     final userID = store.userID;
@@ -287,16 +294,17 @@ class AppleMembershipPurchases extends ChangeNotifier {
     _set(ApplePurchaseState.preparing, '正在准备 App Store 订单…');
     try {
       final config = await _configuration(epoch, userID);
-      final key = AppleMembershipProducts.productKey(
-        planCode,
-        autoRenew: autoRenew,
-      );
-      final productID = AppleMembershipProducts.productIDs[key];
+      final productID = AppleMembershipProducts.allProductIDs[key];
       final mapping = config['product_ids'];
-      if (config['available'] != true ||
-          productID == null ||
-          mapping is! Map ||
-          mapping[key] != productID) {
+      final addons = config['ai_addon_products'];
+      final listed =
+          (mapping is Map && mapping[key] == productID) ||
+          (addons is List &&
+              addons.any(
+                (product) =>
+                    product is Map && product['product_id'] == productID,
+              ));
+      if (config['available'] != true || productID == null || !listed) {
         throw const ApiFailure('Apple 内购暂不可用，请稍后刷新重试');
       }
       if (_pendingApprovals.contains(productID)) {
@@ -409,7 +417,7 @@ class AppleMembershipPurchases extends ChangeNotifier {
         _uncertainPurchases.clear();
         _set(
           ApplePurchaseState.idle,
-          matching > 0 ? '历史购买已核对，会员状态已更新' : '未找到属于当前博简账号的购买，请确认 Apple 账户与博简账号',
+          matching > 0 ? null : '未找到属于当前博简账号的购买，请确认 Apple 账户与博简账号',
         );
       }
     } catch (error) {
@@ -430,7 +438,7 @@ class AppleMembershipPurchases extends ChangeNotifier {
     _set(ApplePurchaseState.error, '$prefix$detail');
   }
 
-  void _set(ApplePurchaseState value, String text) {
+  void _set(ApplePurchaseState value, String? text) {
     state = value;
     message = text;
     _notify();

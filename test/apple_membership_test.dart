@@ -2,6 +2,7 @@ import 'package:bojian_mobile/apple_membership_products.dart';
 import 'package:bojian_mobile/apple_membership_purchases.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/membership_page.dart';
+import 'package:bojian_mobile/membership_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -95,9 +96,9 @@ void main() {
       expect(find.text(r'$19.99'), findsOneWidget);
       expect(find.textContaining('¥'), findsNothing);
       expect(find.text('自动续费'), findsNothing);
-      expect(find.text('卡包'), findsNothing);
+      expect(find.text('卡包'), findsOneWidget);
 
-      await tester.tap(find.text('查看购买详情'));
+      await tester.tap(find.text('立即开通'));
       await tester.pumpAndSettle();
       expect(find.text('会员月卡'), findsOneWidget);
       expect(find.text('App Store 内购'), findsOneWidget);
@@ -126,7 +127,9 @@ void main() {
       await tester.ensureVisible(find.text('年卡'));
       await tester.tap(find.text('年卡'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查看购买详情'));
+      await tester.ensureVisible(find.text('立即开通'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('立即开通'));
       await tester.pumpAndSettle();
       expect(find.text('会员年卡'), findsOneWidget);
       expect(find.text(r'$19.99'), findsNWidgets(2));
@@ -154,7 +157,7 @@ void main() {
       );
       expect(find.text('暂不可用'), findsWidgets);
       expect(find.textContaining('¥'), findsNothing);
-      await tester.tap(find.text('查看购买详情'));
+      await tester.tap(find.text('立即开通'));
       await tester.pumpAndSettle();
       expect(find.text('暂不可用'), findsNWidgets(2));
       await tester.tap(find.text('刷新'));
@@ -195,4 +198,114 @@ void main() {
     expect(appleCalls, 0);
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant({TargetPlatform.android}));
+
+  testWidgets('iOS members buy fixed App Store packs of extra AI uses', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 2400);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final purchased = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(AppleMembershipProducts.channel, (
+          call,
+        ) async {
+          if (call.method == 'products') {
+            return {
+              'products': [
+                ...(_products['products']!),
+                for (final entry
+                    in AppleMembershipProducts.addonProductIDs.entries)
+                  {
+                    'id': entry.value,
+                    'displayPrice':
+                        '¥${entry.key.endsWith('_1') || entry.key == 'TEXT_10'
+                            ? 1
+                            : entry.key.endsWith('_5') || entry.key == 'TEXT_50'
+                            ? 5
+                            : 10}',
+                  },
+              ],
+            };
+          }
+          if (call.method == 'unfinished' || call.method == 'restore') {
+            return {'transactions': []};
+          }
+          if (call.method == 'purchase') {
+            final productID = (call.arguments as Map)['productID'] as String;
+            purchased.add(productID);
+            return {
+              'status': 'verified',
+              'transaction': {
+                'transactionID': '9001',
+                'productID': productID,
+                'environment': 'Production',
+                'appAccountToken': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+              },
+            };
+          }
+          return null;
+        });
+    final ends = DateTime.now().add(const Duration(days: 20));
+    final api = FakeGateway();
+    api.documents['GetMembership'] = {
+      'active': true,
+      'ends_at': ends.toUtc().toIso8601String(),
+      'plan_code': 'MONTH',
+      'ai_addon': {
+        'ai_create_remaining': 0,
+        'ai_polish_remaining': 2,
+        'ai_text_remaining': 0,
+      },
+    };
+    api.documents['GetMembershipApple'] = {
+      'available': true,
+      'app_account_token': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      'product_ids': AppleMembershipProducts.productIDs,
+      'ai_addon_products': [
+        for (final id in AppleMembershipProducts.addonProductIDs.values)
+          {'product_id': id},
+      ],
+      'sandbox_allowed': false,
+    };
+    api.documents['PostMembershipAppleTransactions'] = {
+      'transaction_id': '9001',
+      'status': 'DELIVERED',
+      'membership': {'active': true},
+    };
+    api.documents['GetTemplates'] = {'items': []};
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(() {
+      AppleMembershipPurchases.forStore(store).dispose();
+      store.dispose();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: MembershipPage(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('加购 AI 次数'), findsOneWidget);
+    expect(find.text('1/5/10 次包 · 已加购剩余 2 次'), findsOneWidget);
+    expect(find.text('10/50/100 次包 · 已加购剩余 0 次'), findsOneWidget);
+    expect(find.textContaining('¥0.99'), findsNothing);
+
+    await tester.tap(find.text('加购').at(1));
+    await tester.pumpAndSettle();
+    expect(find.text('AI 简历优化'), findsOneWidget);
+    expect(find.text('5 次'), findsOneWidget);
+    expect(find.text('¥5'), findsWidgets);
+    await tester.tap(find.text('10 次'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('立即购买'));
+    await tester.pumpAndSettle();
+    expect(purchased, ['cn.kelance.bojian.ai.polish.10']);
+    expect(api.calls, contains('PostMembershipAppleTransactions'));
+    expect(find.text('立即购买'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    MembershipStatus.instance.reset();
+  }, variant: TargetPlatformVariant({TargetPlatform.iOS}));
 }

@@ -13,7 +13,7 @@ Story story() => Story(
   title: '文章本身的标题',
   author: '作者',
   role: '',
-  category: '经验分享',
+  category: '动态',
   excerpt: '',
   paragraphs: ['文章正文内容'],
   likes: 4,
@@ -43,7 +43,7 @@ void main() {
       );
       expect(find.text(article.title), findsOneWidget);
       expect(find.text('正文'), findsNothing);
-      expect(find.text('经验分享'), findsNothing);
+      expect(find.text('动态'), findsNothing);
       expect(find.text('文章正文内容'), findsOneWidget);
       final actions = find.byKey(const ValueKey('article-end-actions'));
       expect(

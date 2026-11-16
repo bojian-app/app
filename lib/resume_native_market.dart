@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
@@ -7,16 +8,93 @@ import 'package:flutter/services.dart';
 
 import 'api/bojian_api.dart';
 import 'resume_native_export.dart';
+import 'resume_system_fonts.dart';
 
 // A cached immutable DOM shares decoded asset bytes across its thumbnail and
 // detail. Weak keys release this map when the DOM leaves the bounded cache.
 final _nativeAssetBytes = Expando<Map<String, Uint8List>>();
 
-class NativeMarketDocument {
-  NativeMarketDocument(this.renderer, this.document);
-  final native.NativeLayoutRenderer renderer;
-  final native.NativeDocument document;
+class NativeMarketDocument extends ChangeNotifier {
+  NativeMarketDocument(this.renderer, this.document) {
+    if (renderer.useSystemFont) {
+      _systemFonts = ResumeSystemFontObserver(() {
+        _fontRevision++;
+        unawaited(_refreshSystemFonts());
+      });
+    }
+  }
+  native.NativeLayoutRenderer renderer;
+  native.NativeDocument document;
+  ResumeSystemFontObserver? _systemFonts;
+  int _fontRevision = 0, _appliedFontRevision = 0, _readers = 0;
+  bool _refreshingFonts = false;
   bool _disposed = false;
+
+  Future<void> _refreshSystemFonts() async {
+    if (_disposed ||
+        _refreshingFonts ||
+        _readers > 0 ||
+        _fontRevision == _appliedFontRevision) {
+      return;
+    }
+    _refreshingFonts = true;
+    final revision = _fontRevision;
+    final next = native.NativeLayoutRenderer(
+      renderer.layout,
+      renderer.fields,
+      renderer.assetBytes,
+      photoBytes: renderer.photoBytes,
+      useSystemFont: true,
+      bundledSystemBold: !ResumeSystemFonts.hasRealBold,
+    );
+    var replaced = false, failed = false;
+    try {
+      if (next.bundledSystemBold) {
+        await native.NativeLayoutRenderer.loadFonts(rootBundle);
+      }
+      // Reuse already fetched data and decoded image cache, without refetching
+      // the resume or changing the fonts embedded in exported documents.
+      await next.prepare();
+      if (_disposed || _readers > 0 || revision != _fontRevision) return;
+      final nextDocument = next.buildDocument();
+      final previousRenderer = renderer, previousDocument = document;
+      renderer = next;
+      document = nextDocument;
+      replaced = true;
+      _appliedFontRevision = revision;
+      notifyListeners();
+      // Existing CustomPainters may still reference the previous pictures
+      // until their next build. Release them after that frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        previousDocument.dispose();
+        previousRenderer.dispose();
+      });
+      WidgetsBinding.instance.ensureVisualUpdate();
+    } catch (error) {
+      failed = true;
+      debugPrint('简历系统字体刷新失败，保留当前预览：$error');
+    } finally {
+      if (!replaced) next.dispose();
+      _refreshingFonts = false;
+      if (!failed &&
+          !_disposed &&
+          _readers == 0 &&
+          _fontRevision != _appliedFontRevision) {
+        unawaited(_refreshSystemFonts());
+      }
+    }
+  }
+
+  Future<T> _withCurrentDocument<T>(Future<T> Function() action) async {
+    if (_disposed) throw const ApiFailure('导出已取消');
+    _readers++;
+    try {
+      return await action();
+    } finally {
+      _readers--;
+      unawaited(_refreshSystemFonts());
+    }
+  }
 
   static Future<NativeMarketDocument> load(
     Map payload,
@@ -36,9 +114,10 @@ class NativeMarketDocument {
       bytes,
       photoBytes: photo,
       useSystemFont: useSystemFont,
+      bundledSystemBold: useSystemFont && !ResumeSystemFonts.hasRealBold,
     );
     try {
-      if (!useSystemFont) {
+      if (!useSystemFont || renderer.bundledSystemBold) {
         await native.NativeLayoutRenderer.loadFonts(rootBundle);
       }
       await renderer.prepare();
@@ -50,6 +129,13 @@ class NativeMarketDocument {
   }
 
   Future<ResumeExportLayout> export({
+    required bool Function() isCancelled,
+    required ValueChanged<String> onProgress,
+  }) => _withCurrentDocument(
+    () => _export(isCancelled: isCancelled, onProgress: onProgress),
+  );
+
+  Future<ResumeExportLayout> _export({
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
   }) async {
@@ -300,6 +386,13 @@ class NativeMarketDocument {
   Future<List<Uint8List>> capture({
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
+  }) => _withCurrentDocument(
+    () => _capture(isCancelled: isCancelled, onProgress: onProgress),
+  );
+
+  Future<List<Uint8List>> _capture({
+    required bool Function() isCancelled,
+    required ValueChanged<String> onProgress,
   }) async {
     final output = <Uint8List>[];
     for (var i = 0; i < document.pages.length; i++) {
@@ -319,11 +412,14 @@ class NativeMarketDocument {
     return output;
   }
 
+  @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _systemFonts?.dispose();
     document.dispose();
     renderer.dispose();
+    super.dispose();
   }
 }
 
@@ -346,7 +442,12 @@ class NativeMarketPages extends StatelessWidget {
   /// Pinch to zoom. Without it the pages are a plain list at full width.
   final bool zoomable;
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: value,
+    builder: (context, _) => _buildPages(context),
+  );
+
+  Widget _buildPages(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final doc = value.document;
       final width = constraints.maxWidth - (thumbnail || !zoomable ? 0 : 24);
@@ -371,7 +472,7 @@ class NativeMarketPages extends StatelessWidget {
       }
       if (!zoomable) {
         return ListView(
-          key: ObjectKey(doc),
+          key: ObjectKey(value),
           padding: const EdgeInsets.only(bottom: 16),
           children: [
             ?header,
@@ -403,7 +504,7 @@ class NativeMarketPages extends StatelessWidget {
           (doc.pages.length - 1) * 12 +
           24;
       return InteractiveViewer(
-        key: ObjectKey(doc),
+        key: ObjectKey(value),
         alignment: Alignment.topLeft,
         constrained: false,
         minScale: 1,

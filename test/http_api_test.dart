@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -23,6 +24,41 @@ class StubClient extends MockClient {
 http.Response stubResponse(int status, Map<String, dynamic> body) =>
     http.Response.bytes(utf8.encode(jsonEncode(body)), status);
 void main() {
+  test('Resume import upload sends the file itself with the session', () async {
+    final directory = await Directory.systemTemp.createTemp('bojian-direct-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = await File('${directory.path}/resume.pdf')
+        .writeAsString('%PDF-direct-content');
+    http.Request? sent;
+    final client = MockClient((request) async {
+      sent = request;
+      return stubResponse(202, {
+        'data': {'id': 7, 'status': 'QUEUED'},
+      });
+    });
+    final api = BojianApi(client: client);
+    final result = await api.upload(
+      'PostResumeImportsUpload',
+      fields: {'name': '我的简历'},
+      file: ApiUploadFile(
+        path: file.path,
+        filename: '我的简历.pdf',
+        contentType: 'application/pdf',
+      ),
+      headers: {'authorization': 'Bearer current-session'},
+    );
+    expect(result.data['id'], 7);
+    expect(sent!.method, 'POST');
+    expect(sent!.url.path, '/api/v1/resume-imports/upload');
+    expect(sent!.headers['authorization'], 'Bearer current-session');
+    expect(sent!.headers['accept'], 'application/json');
+    expect(sent!.headers['content-type'], startsWith('multipart/form-data;'));
+    final body = utf8.decode(sent!.bodyBytes);
+    expect(body, contains('%PDF-direct-content'));
+    expect(body, contains('我的简历'));
+    expect(body, contains('application/pdf'));
+    await api.close();
+  });
   test(
     'Registration sends the optional inviter code only on confirmation',
     () async {

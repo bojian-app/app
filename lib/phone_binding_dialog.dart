@@ -122,7 +122,7 @@ class _PhoneBindingDialogState extends State<PhoneBindingDialog>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              '验证后，同一手机号下的微信、抖音和手机号账号将合并，简历、积分等数据会一并保留。',
+              '验证后，同一手机号下的微信、抖音和手机号账号将合并，简历等数据会一并保留。',
               style: TextStyle(fontSize: 12, height: 1.5),
             ),
             const SizedBox(height: 12),

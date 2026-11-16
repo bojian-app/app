@@ -131,7 +131,7 @@ class _StoryComposerState extends State<StoryComposer> {
         status = await widget.store.publish(
           title.text.trim(),
           text,
-          '经验分享',
+          '动态',
           content: content,
           onDraftSaved: (id) => createdDraftID = id,
         );

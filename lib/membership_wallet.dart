@@ -139,7 +139,9 @@ class _MembershipWalletPageState extends State<MembershipWalletPage> {
     final confirmed = await showAppConfirmation(
       context,
       title: '使用${card.plan.orderName}',
-      content: Text('使用后立即开通 ${card.plan.period} 会员；已是会员时在当前到期时间上顺延。'),
+      content: Text(
+        '使用后从现在起开通 ${card.plan.period} 会员，并一次性发放 AI 简历生成 ${card.plan.aiCreateQuota} 次、AI 简历优化 ${card.plan.aiPolishQuota} 次、单段 ${card.plan.aiTextQuota} 次，到期清零；不会在已有会员到期后顺延。',
+      ),
       confirmLabel: '立即使用',
     );
     if (confirmed != true || !mounted) return;
@@ -168,27 +170,34 @@ class _MembershipWalletPageState extends State<MembershipWalletPage> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final wallet = this.wallet;
+    // iOS 会员由 App Store 计费，不能叠加优惠券，只展示会员卡。
+    final showCoupons = !usesAppleMembership;
     return DefaultTabController(
-      length: 2,
+      length: showCoupons ? 2 : 1,
       child: Scaffold(
         backgroundColor: colors.canvas,
         appBar: AppPageBar(
           title: const Text('我的卡包'),
           backgroundColor: colors.canvas,
-          bottom: TabBar(
-            labelColor: colors.accent,
-            unselectedLabelColor: colors.muted,
-            indicatorColor: colors.accent,
-            indicatorSize: TabBarIndicatorSize.label,
-            dividerColor: Colors.transparent,
-            tabs: [
-              Tab(text: '优惠券${_count(wallet?.coupons.where((c) => c.usable))}'),
-              Tab(
-                text:
-                    '会员卡${_count(wallet?.cards.where((c) => c.status == 'AVAILABLE'))}',
-              ),
-            ],
-          ),
+          bottom: !showCoupons
+              ? null
+              : TabBar(
+                  labelColor: colors.accent,
+                  unselectedLabelColor: colors.muted,
+                  indicatorColor: colors.accent,
+                  indicatorSize: TabBarIndicatorSize.label,
+                  dividerColor: Colors.transparent,
+                  tabs: [
+                    Tab(
+                      text:
+                          '优惠券${_count(wallet?.coupons.where((c) => c.usable))}',
+                    ),
+                    Tab(
+                      text:
+                          '会员卡${_count(wallet?.cards.where((c) => c.status == 'AVAILABLE'))}',
+                    ),
+                  ],
+                ),
         ),
         body: wallet == null
             ? Center(
@@ -201,14 +210,15 @@ class _MembershipWalletPageState extends State<MembershipWalletPage> {
               )
             : TabBarView(
                 children: [
-                  _WalletList(
-                    onRefresh: _load,
-                    empty: '暂无优惠券',
-                    children: [
-                      for (final coupon in wallet.coupons)
-                        _CouponTile(coupon: coupon),
-                    ],
-                  ),
+                  if (showCoupons)
+                    _WalletList(
+                      onRefresh: _load,
+                      empty: '暂无优惠券',
+                      children: [
+                        for (final coupon in wallet.coupons)
+                          _CouponTile(coupon: coupon),
+                      ],
+                    ),
                   _WalletList(
                     onRefresh: _load,
                     empty: '暂无会员卡',
