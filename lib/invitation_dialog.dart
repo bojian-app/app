@@ -212,7 +212,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
     });
   }
 
-  /// One entry for entering a friend's code: shown while a new account may
+  /// One entry for entering a friend's code: shown while the account may
   /// still enter one, and as a record once entered.
   Widget friendCodeEntry() {
     final label = boundCode.isNotEmpty ? '已填写好友邀请码：$boundCode' : '填写好友邀请码';
@@ -1075,7 +1075,7 @@ class _FriendCodeDialogState extends State<_FriendCodeDialog> {
       children: [
         const SizedBox(height: 8),
         const Text(
-          '注册 7 天内可填写一次，填写后不能修改。你绑定手机号后，好友获得三天会员体验包。',
+          '每个账号只能填写一次，填写后不能修改。你绑定手机号后，好友获得三天会员体验包。',
           style: TextStyle(fontSize: 12),
         ),
         const SizedBox(height: 12),
