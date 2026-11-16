@@ -78,8 +78,6 @@ class _InvitationDialogState extends State<InvitationDialog> {
   late final int epoch;
   String get code => '${data?['invite_code'] ?? ''}'.trim();
 
-  /// The friend's code this account entered after registering, if any.
-  String get boundCode => '${data?['bound_invite_code'] ?? ''}'.trim();
   bool get canBind => data?['can_bind_invite_code'] == true;
   String get url => '${data?['download_url'] ?? ''}'.trim();
   String get invitationLink => Uri.parse(url)
@@ -212,27 +210,27 @@ class _InvitationDialogState extends State<InvitationDialog> {
     });
   }
 
-  /// One entry for entering a friend's code: shown while the account may
-  /// still enter one, and as a record once entered.
-  Widget friendCodeEntry() {
-    final label = boundCode.isNotEmpty ? '已填写好友邀请码：$boundCode' : '填写好友邀请码';
-    return tap(
-      key: const ValueKey('invitation-friend-code'),
-      label: label,
-      radius: 14,
-      onTap: boundCode.isEmpty ? enterFriendCode : null,
-      child: Center(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            text(label, size: 13, color: Colors.white, weight: FontWeight.w500),
-            if (boundCode.isEmpty)
-              const Icon(Icons.chevron_right, size: 16, color: Colors.white),
-          ],
-        ),
+  /// Entry for entering a friend's code; it disappears once one is entered.
+  Widget friendCodeEntry() => tap(
+    key: const ValueKey('invitation-friend-code'),
+    label: '填写好友邀请码',
+    radius: 14,
+    onTap: enterFriendCode,
+    child: Center(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          text(
+            '填写好友邀请码',
+            size: 13,
+            color: Colors.white,
+            weight: FontWeight.w500,
+          ),
+          const Icon(Icons.chevron_right, size: 16, color: Colors.white),
+        ],
       ),
-    );
-  }
+    ),
+  );
 
   Widget at(double x, double y, double width, double height, Widget child) =>
       Positioned(left: x, top: y, width: width, height: height, child: child);
@@ -691,8 +689,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
           'more',
           const ValueKey('invitation-more'),
         ),
-        if (current && (canBind || boundCode.isNotEmpty))
-          at(62.5, 558, 250, 28, friendCodeEntry()),
+        if (current && canBind) at(62.5, 558, 250, 28, friendCodeEntry()),
         at(
           172.5,
           602,

@@ -209,9 +209,7 @@ void _friendCodeTests() {
     await tester.tap(find.byKey(const ValueKey('friend-invite-submit')));
     await tester.pumpAndSettle();
     expect(api.calls, contains('PostInvitationsBind'));
-    expect(find.text('已填写好友邀请码：K7Q2M9XD'), findsOneWidget);
-    await tester.tap(find.text('已填写好友邀请码：K7Q2M9XD'));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('invitation-friend-code')), findsNothing);
     expect(find.byKey(const ValueKey('friend-invite-code')), findsNothing);
     expect(tester.takeException(), isNull);
   });
