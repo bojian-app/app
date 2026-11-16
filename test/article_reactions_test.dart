@@ -38,7 +38,7 @@ Story article() => Story(
   title: '测试',
   author: '作者',
   role: '',
-  category: '经验分享',
+  category: '动态',
   excerpt: '',
   paragraphs: [],
   likes: 3,

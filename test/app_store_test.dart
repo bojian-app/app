@@ -72,7 +72,6 @@ void main() {
       expect(store.inbox, isEmpty);
       expect(store.friends, isEmpty);
       expect(store.templates, isEmpty);
-      expect(store.points, isNull);
       expect(store.name, isEmpty);
       expect(store.isAuthenticated, isFalse);
     },

@@ -25,7 +25,6 @@ class MarketGateway extends FakeGateway {
       >[];
   Completer<ApiDocument>? delayed;
   final held = <String, Completer<ApiDocument>>{};
-  bool failOrderOnce = false;
   @override
   Future<ApiDocument> call(
     String method, {
@@ -49,23 +48,6 @@ class MarketGateway extends FakeGateway {
         documents[method] ?? {'items': []},
         nextCursor: documents[method]?['next_cursor'] as String? ?? '',
       );
-    }
-    if (method == 'PostTemplateOrders') {
-      calls.add(method);
-      if (failOrderOnce) {
-        failOrderOnce = false;
-        throw const ApiFailure('连接中断');
-      }
-      documents['GetMeTemplates'] = {
-        'items': [
-          {'id': 7, 'name': '商务设计', 'source': 'ACQUIRED'},
-        ],
-      };
-      documents['GetWallet'] = {'available_points': 120};
-      return ApiDocument({
-        'status': 'PAID',
-        'wallet': {'available_points': 120},
-      });
     }
     if (method == 'PostTemplatesIdAcquisitions') {
       calls.add(method);
@@ -124,13 +106,12 @@ void main() {
       'compatible': true,
       'status': 'PUBLISHED',
     };
-    api.documents['GetWallet'] = {'available_points': 200};
   });
   tearDown(() {
     market.dispose();
     store.dispose();
   });
-  for (final waitingMethod in ['GetMeTemplates', 'GetWallet']) {
+  for (final waitingMethod in ['GetMeTemplates']) {
     testWidgets(
       'Preview does not wait for $waitingMethod, purchase stays disabled',
       (tester) async {
@@ -159,13 +140,7 @@ void main() {
           isNull,
         );
         await tester.runAsync(() async {
-          waiting.complete(
-            ApiDocument(
-              waitingMethod == 'GetWallet'
-                  ? {'available_points': 200}
-                  : {'items': []},
-            ),
-          );
+          waiting.complete(ApiDocument({'items': []}));
           await Future<void>.delayed(Duration.zero);
         });
         await tester.pumpAndSettle();
@@ -173,7 +148,6 @@ void main() {
           tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
           isNotNull,
         );
-        expect(api.calls, isNot(contains('PostTemplateOrders')));
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );
@@ -236,92 +210,36 @@ void main() {
     market.select(TemplateMarketFilter.owned);
     expect(market.visible.map((row) => row['id']), [7]);
   });
-  test('Paid confirmation binds quote and reuses idempotency key after a failed request', () async {
-    api.failOrderOnce = true;
+  test(
+    'Acquisition binds the quoted revision and skips owned templates',
+    () async {
+      await market.acquire(id: 7, quotedRevision: 3);
+      expect(market.ownedIDs, {7});
+      expect(
+        api.calls.where((call) => call == 'PostTemplatesIdAcquisitions').length,
+        1,
+      );
+      await market.acquire(id: 7, quotedRevision: 3);
+      expect(
+        api.calls.where((call) => call == 'PostTemplatesIdAcquisitions').length,
+        1,
+      );
+    },
+  );
+  test('Changed revision and failed ownership check prevent any acquisition request', () async {
+    api.documents['GetTemplatesId']!['revision'] = 4;
     await expectLater(
-      market.acquire(
-        id: 7,
-        quotedPrice: 80,
-        quotedRevision: 3,
-        idempotencyKey: 'stable-key',
-      ),
+      market.acquire(id: 7, quotedRevision: 3),
       throwsA(isA<ApiFailure>()),
     );
-    await market.acquire(
-      id: 7,
-      quotedPrice: 80,
-      quotedRevision: 3,
-      idempotencyKey: 'stable-key',
+    expect(api.calls, isNot(contains('PostTemplatesIdAcquisitions')));
+    api.failing = 'GetMeTemplates';
+    await expectLater(
+      market.acquire(id: 7, quotedRevision: 4),
+      throwsA(isA<ApiFailure>()),
     );
-    final orders = api.requests
-        .where((r) => r.method == 'PostTemplateOrders')
-        .toList();
-    expect(orders.length, 2);
-    expect(orders.map((r) => r.headers['idempotency-key']), [
-      'stable-key',
-      'stable-key',
-    ]);
-    expect(orders.last.body!['expected_price_points'], 80);
-    expect(orders.last.body!['expected_template_revision'], 3);
-    expect(market.ownedIDs, {7});
-    expect(store.points, 120);
-    await market.acquire(
-      id: 7,
-      quotedPrice: 80,
-      quotedRevision: 3,
-      idempotencyKey: 'another-key',
-    );
-    expect(
-      api.requests.where((r) => r.method == 'PostTemplateOrders').length,
-      2,
-    );
-    expect(store.points, 120);
+    expect(api.calls, isNot(contains('PostTemplatesIdAcquisitions')));
   });
-  test(
-    'Changed price and failed ownership check prevent any purchase request',
-    () async {
-      api.documents['GetTemplatesId']!['price_points'] = 90;
-      await expectLater(
-        market.acquire(
-          id: 7,
-          quotedPrice: 80,
-          quotedRevision: 3,
-          idempotencyKey: 'key',
-        ),
-        throwsA(isA<ApiFailure>()),
-      );
-      expect(api.calls, isNot(contains('PostTemplateOrders')));
-      api.failing = 'GetMeTemplates';
-      await expectLater(
-        market.acquire(
-          id: 7,
-          quotedPrice: 90,
-          quotedRevision: 3,
-          idempotencyKey: 'key',
-        ),
-        throwsA(isA<ApiFailure>()),
-      );
-      expect(api.calls, isNot(contains('PostTemplateOrders')));
-    },
-  );
-  test(
-    'Free acquisition updates My templates without placing a paid order',
-    () async {
-      api.documents['GetTemplatesId']!.addAll({
-        'price_points': 0,
-        'pricing_type': 'FREE',
-      });
-      await market.acquire(
-        id: 7,
-        quotedPrice: 0,
-        quotedRevision: 3,
-        idempotencyKey: 'free-key',
-      );
-      expect(market.ownedIDs, {7});
-      expect(api.calls, contains('PostTemplatesIdAcquisitions'));
-      expect(api.calls, isNot(contains('PostTemplateOrders')));
-    },
-  );
   test(
     'Logout clears private ownership and prevents subsequent acquisition',
     () async {
@@ -336,15 +254,10 @@ void main() {
       expect(market.owned, isEmpty);
       expect(market.valid, isFalse);
       await expectLater(
-        market.acquire(
-          id: 7,
-          quotedPrice: 80,
-          quotedRevision: 3,
-          idempotencyKey: 'key',
-        ),
+        market.acquire(id: 7, quotedRevision: 3),
         throwsA(isA<ApiFailure>()),
       );
-      expect(api.calls, isNot(contains('PostTemplateOrders')));
+      expect(api.calls, isNot(contains('PostTemplatesIdAcquisitions')));
     },
   );
   testWidgets(
@@ -507,12 +420,9 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     await settlePreview(tester);
-    await tester.tap(find.text('积分兑换'));
-    await tester.pumpAndSettle();
-    expect(find.text('本次使用 80 积分'), findsOneWidget);
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-    expect(api.calls, isNot(contains('PostTemplateOrders')));
+    expect(find.text('会员专享'), findsWidgets);
+    expect(find.text('开通会员使用'), findsOneWidget);
+    expect(api.calls, isNot(contains('PostTemplatesIdAcquisitions')));
   });
   test(
     'New resume using an acquired template retains its real template ID',
@@ -578,7 +488,7 @@ void main() {
         findsNothing,
       );
       expect(tester.getSize(stage).height, greaterThan(100));
-      expect(find.text('积分兑换'), findsOneWidget);
+      expect(find.text('开通会员使用'), findsOneWidget);
       expect(api.calls, isNot(contains('GetTemplatesIdPreviewAssets')));
       expect(tester.takeException(), isNull);
       final web = preview.controllers.single;

@@ -1,5 +1,6 @@
 import 'package:bojian_mobile/main.dart';
 import 'package:bojian_mobile/app_store.dart';
+import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/account_pages.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:flutter/cupertino.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 import 'support/resume_editor_helpers.dart';
 
 Future<void> launch(
@@ -29,22 +31,23 @@ Future<void> launch(
 }
 
 void main() {
-  testWidgets('Profile menu exposes sign out and clears the session', (
+  testWidgets('Settings sign out confirms and clears the session', (
     tester,
   ) async {
     final api = FakeGateway();
     final store = await testStore(authenticated: true, api: api);
     await launch(tester, width: 360, store: store);
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
+    await tester.tap(find.byKey(ValueKey('nav-${AppShell.profileTab}')));
     await tester.pumpAndSettle();
     expect(find.text('每一点积累，都算数'), findsNothing);
     expect(find.text('动态'), findsOneWidget);
     expect(find.text('收藏'), findsOneWidget);
     expect(find.text('隐私与设置'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('profile-menu')));
+    await tester.tap(find.byKey(const ValueKey('profile-settings')));
     await tester.pumpAndSettle();
-    expect(find.text('隐私与设置'), findsOneWidget);
-    final signOut = find.byKey(const ValueKey('account-sign-out'));
+    expect(find.byType(SettingsPage), findsOneWidget);
+    final signOut = find.byKey(const ValueKey('settings-sign-out'));
+    await tester.scrollUntilVisible(signOut, 200);
     await tester.ensureVisible(signOut);
     await tester.pumpAndSettle();
     await tester.tap(signOut);
@@ -88,7 +91,7 @@ void main() {
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(844, 360);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('profile-menu')));
+    await openSharedAccountMenu(tester);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('account-sign-out')),
@@ -180,7 +183,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nav-3')));
     await tester.pumpAndSettle();
     expect(find.text('测试账号'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('profile-menu')));
+    await openSharedAccountMenu(tester);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-points-card')), findsNothing);
     expect(find.text('草稿箱'), findsOneWidget);
@@ -242,13 +245,15 @@ void main() {
   ) async {
     final store = await testStore(authenticated: true, seeded: true);
     await launch(tester, store: store);
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
+    await tester.tap(find.byKey(ValueKey('nav-${AppShell.profileTab}')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('profile-menu')));
+    await tester.tap(find.byKey(const ValueKey('profile-settings')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('account-sign-out')));
+    final signOut = find.byKey(const ValueKey('settings-sign-out'));
+    await tester.scrollUntilVisible(signOut, 200);
+    await tester.ensureVisible(signOut);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('account-sign-out')));
+    await tester.tap(signOut);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('confirm-sign-out')));
     await tester.pumpAndSettle();

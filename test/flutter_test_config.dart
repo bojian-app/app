@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:bojian_mobile/device_metadata.dart';
+import 'package:bojian_mobile/invite_floating_badge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // The endless invite pulse would keep pumpAndSettle from settling.
+  InviteFloatingBadge.pulse = false;
   // Native device information has no engine-side implementation in widget tests.
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(

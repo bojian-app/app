@@ -64,6 +64,7 @@ abstract final class AppIcons {
   static const notification = HugeIcons.strokeRoundedNotification01;
   static const notificationUnread = HugeIcons.strokeRoundedNotification02;
   static const notificationSettings = HugeIcons.strokeRoundedNotificationSquare;
+  static const wallet = HugeIcons.strokeRoundedTicket01;
   static const settings = HugeIcons.strokeRoundedSettings01;
   static const bold = HugeIcons.strokeRoundedTextBold;
   static const italic = HugeIcons.strokeRoundedTextItalic;
@@ -115,6 +116,7 @@ abstract final class AppIcons {
   static const gift = HugeIcons.strokeRoundedGift;
   static const accountChanged = HugeIcons.strokeRoundedUserBlock01;
   static const coins = HugeIcons.strokeRoundedCoins01;
+  static const membership = HugeIcons.strokeRoundedCrown;
 }
 
 /// Inherits icon size, color and disabled opacity from the surrounding controls.

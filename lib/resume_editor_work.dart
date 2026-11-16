@@ -123,7 +123,10 @@ extension _ResumeEditorWork on _ResumeEditorState {
       }
       _update(() => entry.fields['description']!.text = text.trim());
     } catch (error) {
-      if (mounted && isCurrent()) {
+      if (mounted &&
+          isCurrent() &&
+          !await showMembershipRequired(context, widget.store, error) &&
+          mounted) {
         toast(context, error is ApiFailure ? error.message : '生成失败，请稍后重试');
       }
     } finally {

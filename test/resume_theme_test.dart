@@ -294,4 +294,56 @@ void main() {
     );
     expect(lines.length, document.sectionTitles.length);
   });
+
+  test('Photo-less resumes skip photo artwork and use their own top', () async {
+    final theme = await resumeThemeOf(11, {
+      'format': resumeThemeFormat,
+      'theme': {
+        'format': resumeThemeFormat,
+        'page': {
+          'ornaments': [
+            {
+              'asset': 'assets/icon.svg',
+              'rect': [0, 0, 156, 65],
+              'photo': false,
+            },
+            {
+              'asset': 'assets/icon.svg',
+              'rect': [0, 0, 156, 150],
+              'photo': true,
+            },
+            {
+              'asset': 'assets/icon.svg',
+              'rect': [0, 0, 10, 10],
+            },
+          ],
+        },
+        'sidebar': {
+          'width': 156,
+          'padding': [34, 12, 40, 12],
+          'top_without_photo': 82,
+          'sections': ['contact'],
+        },
+        'header': {'style': 'sidebar'},
+      },
+      'theme_assets': {'assets/icon.svg': base64Encode(icon)},
+    });
+    expect([for (final o in theme.ornaments) o.photo], [false, true, null]);
+    double sidebarTop(String photoURL) {
+      final document = ResumeDocument(
+        resume,
+        fontFamily: null,
+        theme: theme,
+        photoURL: photoURL,
+      );
+      addTearDown(document.dispose);
+      return document.pages.first.ink
+          .where((ink) => ink.position.dx < 156)
+          .map((ink) => ink.position.dy)
+          .reduce((a, b) => a < b ? a : b);
+    }
+
+    expect(sidebarTop(''), greaterThanOrEqualTo(82));
+    expect(sidebarTop('x'), greaterThan(34 + theme.photoSize.height));
+  });
 }

@@ -10,19 +10,25 @@ import 'app_shell.dart';
 import 'app_environment.dart';
 import 'auth_page.dart';
 import 'app_store.dart';
+import 'membership_status.dart';
+import 'apple_membership_products.dart';
+import 'apple_membership_purchases.dart';
 import 'confirmation_dialog.dart';
 import 'design.dart';
 import 'banner_ads.dart';
 import 'startup_animation.dart';
 import 'resume_files.dart';
 import 'resume_pages.dart';
+import 'resume_system_fonts.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Keep decoded previews bounded while browsing; old entries are evicted by LRU.
   PaintingBinding.instance.imageCache
     ..maximumSize = 160
     ..maximumSizeBytes = 32 * 1024 * 1024;
+  // Previews pick their bold face synchronously; know it before the first one.
+  await ResumeSystemFonts.refresh();
   runApp(const MyApp());
 }
 
@@ -42,6 +48,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final AppStore store = widget.store ?? AppStore();
+  AppleMembershipPurchases? applePurchases;
   final navigatorKey = GlobalKey<NavigatorState>();
   final shellKey = GlobalKey<AppShellState>();
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -56,6 +63,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     entryAllowed = store.isAuthenticated || store.isGuest;
     store.addListener(sessionChanged);
+    if (usesAppleMembership) {
+      applePurchases = AppleMembershipPurchases.forStore(store);
+    }
     files.incoming.addListener(sharedFileChanged);
     files.error.addListener(sharedFileError);
     unawaited(files.start());
@@ -107,7 +117,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         );
       });
     }
-    if (store.isAuthenticated) sharedFileChanged();
+    if (store.isAuthenticated) {
+      sharedFileChanged();
+      unawaited(MembershipStatus.instance.refresh(store));
+    } else {
+      MembershipStatus.instance.reset();
+    }
   }
 
   void sharedFileChanged() {
@@ -133,7 +148,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             store: store,
             initialFile: file,
             onSaved: () {
-              shellKey.currentState?.select(3);
+              shellKey.currentState?.select(AppShell.profileTab);
               navigator.popUntil((route) => route.isFirst);
               navigator.push(
                 MaterialPageRoute<void>(
@@ -172,6 +187,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     store.removeListener(sessionChanged);
     files.incoming.removeListener(sharedFileChanged);
     files.error.removeListener(sharedFileError);
+    applePurchases?.dispose();
     store.dispose();
     super.dispose();
   }
@@ -180,6 +196,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       store.setForeground(true);
+      unawaited(applePurchases?.syncUnfinished());
+      unawaited(MembershipStatus.instance.refresh(store, force: true));
       sharedFileChanged();
     }
     if (state == AppLifecycleState.paused ||

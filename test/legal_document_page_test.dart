@@ -501,7 +501,7 @@ void main() {
       expect(store.isAuthenticated, isTrue);
       await tester.pageBack();
       await tester.pumpAndSettle();
-      expect(find.text('隐私与设置'), findsOneWidget);
+      expect(find.text('返回'), findsOneWidget);
       expect(store.isAuthenticated, isTrue);
     }
   });

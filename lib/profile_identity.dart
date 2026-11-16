@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'app_icons.dart';
 import 'app_store.dart';
 import 'design.dart';
-import 'developer_certification_badge.dart';
 import 'profile_avatar.dart';
 import 'profile_identity_data.dart';
 export 'profile_identity_data.dart';
@@ -85,7 +84,8 @@ class ProfileHeader extends StatelessWidget {
     this.identity,
     required this.onEdit,
     required this.onAvatar,
-    required this.onMenu,
+    this.onMenu,
+    this.onSettings,
     required this.onDetails,
     this.pullProgress = 0,
     this.collapseProgress = 0,
@@ -100,7 +100,8 @@ class ProfileHeader extends StatelessWidget {
   final ProfileIdentityData? identity;
   ProfileIdentityData get data =>
       identity ?? ProfileIdentityData.fromStore(store);
-  final VoidCallback onEdit, onAvatar, onMenu, onDetails;
+  final VoidCallback onEdit, onAvatar, onDetails;
+  final VoidCallback? onMenu, onSettings;
   final double pullProgress, collapseProgress, scrollOffset;
   final Key? nameKey, surfaceKey;
   final bool showName, transitionSnapshot, paintBackground;
@@ -116,21 +117,13 @@ class ProfileHeader extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final t = collapseProgress;
+      // Colors only switch once the header is fully collapsed.
+      final settled = t >= 1 ? 1.0 : 0.0;
       final inset = MediaQuery.paddingOf(context).top;
       final width = constraints.maxWidth;
-      final certified = identity == null && store.identityVerified;
-      final badgeSize = ui.lerpDouble(
-        DeveloperCertificationBadge.expandedSize,
-        DeveloperCertificationBadge.compactSize,
-        t,
-      )!;
-      final badgeGap = ui.lerpDouble(6, 4, t)!;
+      final verified = identity == null && store.identityVerified;
       final toolbar = toolbarHeight(context);
-      final color = Color.lerp(
-        Colors.white,
-        context.colors.ink,
-        Curves.easeOutCubic.transform(t),
-      )!;
+      final color = Color.lerp(Colors.white, context.colors.ink, settled)!;
       final sourceStyle = DefaultTextStyle.of(context).style.merge(
         TextStyle(
           fontSize: 20,
@@ -143,32 +136,30 @@ class ProfileHeader extends StatelessWidget {
       );
       // Reserve the expanded name's height while its one existing Text moves.
       // Its changing font/width must not change the Sliver's natural extent.
-      final namePainter =
-          TextPainter(
-            text: TextSpan(
-              text: userDisplayName(data.name),
-              style: sourceStyle,
-            ),
-            textDirection: Directionality.of(context),
-            textScaler: MediaQuery.textScalerOf(context),
-            locale: Localizations.maybeLocaleOf(context),
-            maxLines: 2,
-            ellipsis: '…',
-          )..layout(
-            maxWidth:
-                width -
-                32 -
-                (certified ? DeveloperCertificationBadge.expandedSize + 6 : 0),
-          );
-      final nameHeight = namePainter.height.clamp(
-        certified ? DeveloperCertificationBadge.expandedSize : 0.0,
-        double.infinity,
-      );
+      final namePainter = TextPainter(
+        text: TextSpan(text: userDisplayName(data.name), style: sourceStyle),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        locale: Localizations.maybeLocaleOf(context),
+        maxLines: 2,
+        ellipsis: '…',
+      )..layout(maxWidth: width - 32);
+      final nameHeight = namePainter.height;
       final avatarTop = inset + toolbar + 24 + pullProgress * pullExtent;
       final nameTop = avatarTop + 106;
+      final compactAvatarCenterX = identity == null
+          ? appPageHorizontalPadding + 13
+          : 74.0;
+      final compactNameLeft = identity == null
+          ? appPageHorizontalPadding + 26 + 12
+          : 104.0;
+      // Leave room for both 44px action buttons, their divider and a 12px gap.
+      final compactNameRight = identity == null
+          ? appPageHorizontalPadding + 89 + 12
+          : 100.0;
       final nameWidth = ui.lerpDouble(
         width - appPageHorizontalPadding * 2,
-        (width - 204).clamp(0, width),
+        (width - compactNameLeft - compactNameRight).clamp(0, width),
         t,
       )!;
       final nameLineHeight = MediaQuery.textScalerOf(context).scale(14) * 1.3;
@@ -194,23 +185,11 @@ class ProfileHeader extends StatelessWidget {
       namePainter
         ..text = TextSpan(text: userDisplayName(data.name), style: nameStyle)
         ..maxLines = t == 1 ? 1 : 2
-        ..layout(
-          maxWidth: (nameWidth - (certified ? badgeSize + badgeGap : 0)).clamp(
-            0,
-            width,
-          ),
-        );
-      final nameLineMetrics = namePainter.computeLineMetrics();
-      final firstLineHeight = nameLineMetrics.isEmpty
-          ? nameLineHeight
-          : nameLineMetrics.first.height;
-      final surfaceHeight =
-          (nameY +
-                  namePainter.height.clamp(
-                    certified ? badgeSize : 0.0,
-                    double.infinity,
-                  ))
-              .clamp(inset + toolbar, double.infinity);
+        ..layout(maxWidth: nameWidth.clamp(0, width));
+      final surfaceHeight = (nameY + namePainter.height).clamp(
+        inset + toolbar,
+        double.infinity,
+      );
       namePainter.dispose();
       final buttonStyle =
           (IconButtonTheme.of(context).style ?? const ButtonStyle()).copyWith(
@@ -252,19 +231,36 @@ class ProfileHeader extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (data.publicID.isNotEmpty ||
-                            data.ipLocation.isNotEmpty)
-                          Text(
-                            [
-                              if (data.publicID.isNotEmpty)
-                                'ID：${data.publicID}',
-                              if (data.ipLocation.isNotEmpty)
-                                'IP：${data.ipLocation.replaceFirst(RegExp(r'省$'), '')}',
-                            ].join(' / '),
-                            key: const ValueKey('profile-account-summary'),
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              color: Color(0xFFCDD2D9),
-                            ),
+                            data.ipLocation.isNotEmpty ||
+                            verified)
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  [
+                                    if (data.publicID.isNotEmpty)
+                                      'ID：${data.publicID}',
+                                    if (data.ipLocation.isNotEmpty)
+                                      'IP：${data.ipLocation.replaceFirst(RegExp(r'省$'), '')}',
+                                  ].join(' / '),
+                                  key: const ValueKey(
+                                    'profile-account-summary',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    color: Color(0xFFCDD2D9),
+                                  ),
+                                ),
+                              ),
+                              if (verified) ...[
+                                const SizedBox(width: 6),
+                                const _VerifiedTag(
+                                  key: ValueKey('profile-verified-tag'),
+                                ),
+                              ],
+                            ],
                           ),
                         const SizedBox(height: 10),
                         _ProfileAboutSummary(bio: data.bio, onTap: onDetails),
@@ -284,7 +280,7 @@ class ProfileHeader extends StatelessWidget {
                   key: surfaceKey,
                   child: IgnorePointer(
                     child: Opacity(
-                      opacity: t,
+                      opacity: settled,
                       child: ColoredBox(
                         key: t > 0
                             ? const ValueKey('profile-compact-header')
@@ -297,7 +293,7 @@ class ProfileHeader extends StatelessWidget {
               ),
             Positioned(
               left:
-                  ui.lerpDouble(width / 2, 74, t)! -
+                  ui.lerpDouble(width / 2, compactAvatarCenterX, t)! -
                   ui.lerpDouble(86, 44, t)! / 2,
               top: scrollOffset + avatarCenterY - ui.lerpDouble(86, 44, t)! / 2,
               width: ui.lerpDouble(86, 44, t),
@@ -340,27 +336,20 @@ class ProfileHeader extends StatelessWidget {
               ),
             ),
             Positioned(
-              left: ui.lerpDouble(appPageHorizontalPadding, 104, t),
+              left: ui.lerpDouble(appPageHorizontalPadding, compactNameLeft, t),
               top: scrollOffset + nameY,
               width: nameWidth,
               child: Opacity(
                 opacity: showName && !transitionSnapshot ? 1 : 0,
-                child: _ProfileCertifiedName(
-                  certified: certified,
-                  badgeSize: badgeSize,
-                  gap: badgeGap,
-                  firstLineHeight: firstLineHeight,
-                  badgeKey: const ValueKey('profile-developer-badge'),
-                  child: _ProfileMorphHero(
-                    store: store,
-                    identity: identity,
-                    child: Text(
-                      userDisplayName(data.name),
-                      key: const ValueKey('profile-identity-name'),
-                      maxLines: t == 1 ? 1 : 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: nameStyle,
-                    ),
+                child: _ProfileMorphHero(
+                  store: store,
+                  identity: identity,
+                  child: Text(
+                    userDisplayName(data.name),
+                    key: const ValueKey('profile-identity-name'),
+                    maxLines: t == 1 ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: nameStyle,
                   ),
                 ),
               ),
@@ -379,16 +368,13 @@ class ProfileHeader extends StatelessWidget {
                 data: IconButtonThemeData(style: buttonStyle),
                 child: Row(
                   children: [
-                    IconButton(
-                      key: const ValueKey('profile-menu'),
-                      tooltip: identity == null ? '展开菜单' : '返回',
-                      onPressed: onMenu,
-                      icon: AppIcon(
-                        identity == null ? AppIcons.menu : AppIcons.back,
-                        size: 20,
-                        color: color,
+                    if (identity != null)
+                      IconButton(
+                        key: const ValueKey('profile-menu'),
+                        tooltip: '返回',
+                        onPressed: onMenu,
+                        icon: AppIcon(AppIcons.back, size: 20, color: color),
                       ),
-                    ),
                     const Spacer(),
                     if (identity == null &&
                         store.loading.contains('profile') &&
@@ -417,7 +403,9 @@ class ProfileHeader extends StatelessWidget {
                                 key: const ValueKey('profile-actions-capsule'),
                                 decoration: ShapeDecoration(
                                   color: color.withValues(
-                                    alpha: context.isDark ? .10 : .10 * (1 - t),
+                                    alpha: context.isDark
+                                        ? .10
+                                        : .10 * (1 - settled),
                                   ),
                                   shape: StadiumBorder(
                                     side: BorderSide(
@@ -448,11 +436,15 @@ class ProfileHeader extends StatelessWidget {
                                   color: color.withValues(alpha: .28),
                                 ),
                               ),
-                              MessagesButton(
-                                key: const ValueKey('profile-messages'),
-                                store: store,
-                                color: color,
-                                iconSize: 18,
+                              IconButton(
+                                key: const ValueKey('profile-settings'),
+                                tooltip: '隐私与设置',
+                                onPressed: onSettings,
+                                icon: AppIcon(
+                                  AppIcons.settings,
+                                  size: 18,
+                                  color: color,
+                                ),
                               ),
                             ],
                           ),
@@ -499,6 +491,7 @@ class ProfileContentTabs extends StatelessWidget
       Tab(key: ValueKey('profile-tab-resumes'), text: '简历', height: 36),
       Tab(key: ValueKey('profile-tab-saved'), text: '收藏', height: 36),
       Tab(key: ValueKey('profile-tab-articles'), text: '动态', height: 36),
+      Tab(key: ValueKey('profile-tab-drafts'), text: '草稿箱', height: 36),
     ],
   });
   final TabController? controller;
@@ -847,6 +840,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                       collapseProgress: widget.initialCollapse,
                       scrollOffset: widget.initialScrollOffset,
                       onMenu: () {},
+                      onSettings: () {},
                       onEdit: () {},
                       onAvatar: () {},
                       onDetails: () {},
@@ -944,38 +938,22 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
   );
 }
 
-class _ProfileCertifiedName extends StatelessWidget {
-  const _ProfileCertifiedName({
-    required this.child,
-    required this.certified,
-    required this.badgeSize,
-    required this.gap,
-    required this.firstLineHeight,
-    this.badgeKey,
-  });
-  final Widget child;
-  final bool certified;
-  final double badgeSize, gap, firstLineHeight;
-  final Key? badgeKey;
-
+/// Shown after the IP location once the account owner passed real-name
+/// verification.
+class _VerifiedTag extends StatelessWidget {
+  const _VerifiedTag({super.key});
   @override
-  Widget build(BuildContext context) {
-    if (!certified) return child;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Flexible(child: child),
-        SizedBox(width: gap),
-        Padding(
-          padding: EdgeInsets.only(
-            top: ((firstLineHeight - badgeSize) / 2).clamp(0, double.infinity),
-          ),
-          child: DeveloperCertificationBadge(key: badgeKey, size: badgeSize),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .16),
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: const Text(
+      '已实名',
+      style: TextStyle(fontSize: 10, height: 1.3, color: Colors.white),
+    ),
+  );
 }
 
 class _ProfileMorphHero extends StatelessWidget {
@@ -1139,32 +1117,19 @@ class _ProfileDetailsLayout extends StatelessWidget {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          _ProfileCertifiedName(
-                                            certified:
-                                                identity == null &&
-                                                store.identityVerified,
-                                            badgeSize:
-                                                DeveloperCertificationBadge
-                                                    .expandedSize,
-                                            gap: 6,
-                                            firstLineHeight:
-                                                MediaQuery.textScalerOf(context)
-                                                    .scale(22) *
-                                                1.25,
-                                            child: _ProfileMorphHero(
-                                              store: store,
-                                              identity: identity,
-                                              child: Text(
-                                                userDisplayName(data.name),
-                                                key: const ValueKey(
-                                                  'profile-details-name',
-                                                ),
-                                                style: const TextStyle(
-                                                  fontSize: 22,
-                                                  height: 1.25,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.white,
-                                                ),
+                                          _ProfileMorphHero(
+                                            store: store,
+                                            identity: identity,
+                                            child: Text(
+                                              userDisplayName(data.name),
+                                              key: const ValueKey(
+                                                'profile-details-name',
+                                              ),
+                                              style: const TextStyle(
+                                                fontSize: 22,
+                                                height: 1.25,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.white,
                                               ),
                                             ),
                                           ),
@@ -1256,6 +1221,7 @@ class _ProfileAccountDetails extends StatelessWidget {
   final ProfileIdentityData? identity;
   ProfileIdentityData get data =>
       identity ?? ProfileIdentityData.fromStore(store);
+  bool get verified => identity == null && store.identityVerified;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -1278,15 +1244,27 @@ class _ProfileAccountDetails extends StatelessWidget {
             color: Colors.white,
           ),
         ),
-      if (data.ipLocation.isNotEmpty)
-        Text(
-          'IP属地：${data.ipLocation}',
-          key: const ValueKey('profile-details-ip-location'),
-          style: const TextStyle(
-            fontSize: 12,
-            height: 1.6,
-            color: Colors.white,
-          ),
+      if (data.ipLocation.isNotEmpty || verified)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (data.ipLocation.isNotEmpty)
+              Flexible(
+                child: Text(
+                  'IP属地：${data.ipLocation}',
+                  key: const ValueKey('profile-details-ip-location'),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.6,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            if (verified) ...[
+              if (data.ipLocation.isNotEmpty) const SizedBox(width: 6),
+              const _VerifiedTag(key: ValueKey('profile-details-verified-tag')),
+            ],
+          ],
         ),
     ],
   );

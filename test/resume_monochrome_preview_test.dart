@@ -68,7 +68,7 @@ void main() {
   );
 
   testWidgets(
-    'Native grayscale produces equal RGB channels and retains tonal contrast',
+    'Native grayscale preserves quadrant orientation and tonal contrast',
     (tester) async {
       final key = GlobalKey();
       await tester.pumpWidget(
@@ -80,31 +80,43 @@ void main() {
                 monochrome: true,
                 child: SizedBox(
                   width: 40,
-                  height: 10,
-                  child: Row(
+                  height: 40,
+                  child: Column(
                     children: [
                       Expanded(
-                        child: ColoredBox(
-                          color: Colors.red,
-                          child: SizedBox.expand(),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ColoredBox(
+                                color: Color(0xFFFF0000),
+                                child: SizedBox.expand(),
+                              ),
+                            ),
+                            Expanded(
+                              child: ColoredBox(
+                                color: Color(0xFF00FF00),
+                                child: SizedBox.expand(),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       Expanded(
-                        child: ColoredBox(
-                          color: Colors.green,
-                          child: SizedBox.expand(),
-                        ),
-                      ),
-                      Expanded(
-                        child: ColoredBox(
-                          color: Colors.blue,
-                          child: SizedBox.expand(),
-                        ),
-                      ),
-                      Expanded(
-                        child: ColoredBox(
-                          color: Colors.white,
-                          child: SizedBox.expand(),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ColoredBox(
+                                color: Color(0xFF0000FF),
+                                child: SizedBox.expand(),
+                              ),
+                            ),
+                            Expanded(
+                              child: ColoredBox(
+                                color: Colors.white,
+                                child: SizedBox.expand(),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -125,8 +137,8 @@ void main() {
             format: ui.ImageByteFormat.rawRgba,
           ))!;
           final gray = <int>[];
-          for (final x in [5, 15, 25, 35]) {
-            final offset = (5 * image.width + x) * 4;
+          for (final (x, y) in [(10, 10), (30, 10), (10, 30), (30, 30)]) {
+            final offset = (y * image.width + x) * 4;
             final red = bytes.getUint8(offset);
             expect(bytes.getUint8(offset + 1), closeTo(red, 1));
             expect(bytes.getUint8(offset + 2), closeTo(red, 1));
@@ -134,6 +146,9 @@ void main() {
             gray.add(red);
           }
           expect(gray.toSet(), hasLength(4));
+          // Unequal rows and columns expose vertical flips and mirroring.
+          expect(gray[1], greaterThan(gray[0]));
+          expect(gray[0], greaterThan(gray[2]));
           expect(gray.last, 255);
         } finally {
           image.dispose();

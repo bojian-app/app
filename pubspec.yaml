@@ -88,10 +88,16 @@ flutter:
   shaders:
     - shaders/print_gray.frag
   assets:
-    - assets/invitation/reward-envelope.webp
+    - assets/invitation/reward-envelope-blank.png
     - assets/invitation/icons/
     - assets/branding/app_icon.png
-    - assets/badges/developer_crystal_v1.webp
+    - assets/membership/platinum_emblem_blue.png
+    - assets/membership/card_chip.png
+    - assets/membership/invite_badge.png
+    - assets/membership/badge-year-blue.png
+    - assets/membership/badge-month-blue.png
+    - assets/payment/alipay.svg
+    - assets/payment/wechat_pay.svg
     - assets/login/happy-cat.svg
     - assets/login/ILLLUSTRATIONS-LICENSE.txt
     - assets/login/OPEN-DOODLES-LICENSE.txt
@@ -103,12 +109,6 @@ flutter:
     - assets/resume_ai/identity-graduate.webp
     - assets/resume_ai/identity-professional.webp
     - assets/templates/
-    - assets/points/coin-3d.webp
-    - assets/points/coin-stack.webp
-    - assets/points/tasks/publish-material.webp
-    - assets/points/tasks/request-material.webp
-    - assets/points/tasks/review-material.webp
-    - assets/points/tasks/icons/video.svg
     - assets/fonts/OFL.txt
     - assets/fonts/resume-sans-regular.ttf
     - assets/fonts/resume-sans-medium.ttf

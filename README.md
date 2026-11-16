@@ -451,6 +451,8 @@ AI 问答与快速生成要求补齐全部必填内容，缺省姓名/邮箱为�
 
 应用包名统一为 `cn.kelance.bojian`。Android 当前使用调试证书签名，正式发布前需配置发布证书。iOS 使用 Xcode 配置对应的开发团队和签名。
 
+iOS 的“博简会员”入口使用 StoreKit 2 查询和购买会员，价格以 App Store 为准：下单页默认购买非续期订阅 `cn.kelance.bojian.membership.month` / `.year`；勾选“自动续费”（默认不勾选，旁边列出扣费与取消规则）则购买自动续期订阅 `cn.kelance.bojian.membership.month.auto` / `.year.auto`，“管理自动续费”打开 App Store 订阅管理；服务端核验交易并发放权益后才完成交易。支持恢复购买和未完成交易重试，购买须绑定当前博简账号，沙盒仅向服务端指定的测试账号开放。
+
 ## 开发与验证
 
 使用满足 `pubspec.yaml` 中 Dart SDK 约束的 Flutter 工具链，依赖版本以 `pubspec.lock` 为准。

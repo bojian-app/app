@@ -30,19 +30,14 @@ class AcquisitionGateway extends FakeGateway {
     Map<String, dynamic>? body,
     Map<String, String> headers = const {},
   }) async {
-    if (method == 'PostTemplatesIdAcquisitions' ||
-        method == 'PostTemplateOrders') {
+    if (method == 'PostTemplatesIdAcquisitions') {
       calls.add(method);
       documents['GetMeTemplates'] = {
         'items': [
           {'id': 4, 'version': 1, 'source': 'ACQUIRED'},
         ],
       };
-      return ApiDocument({
-        'acquired': true,
-        'status': 'PAID',
-        'wallet': {'available_points': 10},
-      });
+      return ApiDocument({'acquired': true});
     }
     if (method == 'GetTemplatesIdDom' && download != null) {
       calls.add(method);
@@ -128,12 +123,7 @@ void main() {
           });
         }
         api.download = Completer<ApiDocument>();
-        await market.acquire(
-          id: 4,
-          quotedPrice: paid ? 20 : 0,
-          quotedRevision: 2,
-          idempotencyKey: 'fixture',
-        );
+        await market.acquire(id: 4, quotedRevision: 2);
         expect(market.ownedIDs, contains(4));
         final pending = loadTemplatePreviewDOM(store, 4, 1, persist: true);
         api.download!.complete(ApiDocument(dom(1)));

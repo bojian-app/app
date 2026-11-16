@@ -1,4 +1,5 @@
 import 'package:bojian_mobile/main.dart';
+import 'package:bojian_mobile/settings_page.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,19 +29,19 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('nav-3')));
         await tester.pumpAndSettle();
-        final menu = find.byKey(const ValueKey('profile-menu'));
-        expect(menu, findsOneWidget);
+        final settings = find.byKey(const ValueKey('profile-settings'));
+        expect(settings, findsOneWidget);
         final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: Offset.zero);
-        await mouse.moveTo(tester.getCenter(menu));
+        await mouse.moveTo(tester.getCenter(settings));
         await tester.pump(const Duration(seconds: 2));
         await tester.pumpAndSettle();
-        expect(find.text('展开菜单'), findsNothing);
-        expect(TooltipVisibility.of(tester.element(menu)), isFalse);
+        expect(find.text('隐私与设置'), findsNothing);
+        expect(TooltipVisibility.of(tester.element(settings)), isFalse);
         await mouse.removePointer();
-        await tester.tap(menu);
+        await tester.tap(settings);
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
+        expect(find.byType(SettingsPage), findsOneWidget);
 
         var taps = 0;
         final context = tester.element(find.byType(Navigator).first);

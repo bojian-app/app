@@ -200,7 +200,7 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                '填写好友邀请码，注册成功后好友可得 500 积分。',
+                '填写好友邀请码，注册成功后好友可得三天会员体验包。',
                 style: TextStyle(fontSize: 12),
               ),
             ],

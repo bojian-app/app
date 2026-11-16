@@ -10,6 +10,7 @@ import 'package:file_selector/file_selector.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'membership_page.dart';
 import 'resume_creation.dart';
 import 'resume_creation_answers.dart';
 import 'resume_document.dart';
@@ -126,7 +127,9 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
       });
       unawaited(checkJob());
     } catch (e) {
-      if (mounted && widget.store.isAuthenticated) setState(() => error = '$e');
+      if (!mounted || !widget.store.isAuthenticated) return;
+      if (await showMembershipRequired(context, widget.store, e)) return;
+      if (mounted) setState(() => error = '$e');
     }
   }
 

@@ -246,16 +246,15 @@ void main() {
         expect(scrolling.maxScrollExtent, greaterThan(start + 1));
         expect(compact, findsNothing);
         final avatar = find.byKey(const ValueKey('profile-identity-avatar'));
-        final menu = find.byKey(const ValueKey('profile-menu'));
+        final settings = find.byKey(const ValueKey('profile-settings'));
         final shared = [
           avatar,
           name,
-          menu,
+          settings,
           find.byKey(const ValueKey('profile-edit')),
-          find.byKey(const ValueKey('profile-messages')),
         ];
         final elements = shared.map(tester.element).toList();
-        final menuRect = tester.getRect(menu);
+        final settingsRect = tester.getRect(settings);
         var previousAvatar = tester.getRect(avatar);
         for (final fraction in [.25, .5, .75, 1.0]) {
           scrolling.jumpTo(start * fraction);
@@ -268,12 +267,12 @@ void main() {
           expect(actual.width, lessThanOrEqualTo(previousAvatar.width));
           expect(actual.center.dx, lessThanOrEqualTo(previousAvatar.center.dx));
           expect(actual.center.dy, lessThanOrEqualTo(previousAvatar.center.dy));
-          expect(tester.getRect(menu), menuRect);
+          expect(tester.getRect(settings), settingsRect);
           expect(
             tester.getSize(
-              find.descendant(of: menu, matching: find.byType(AppIcon)),
+              find.descendant(of: settings, matching: find.byType(AppIcon)),
             ),
-            const Size.square(20),
+            const Size.square(18),
           );
           previousAvatar = actual;
           if (config.name == 'light') {

@@ -10,7 +10,10 @@ out vec4 fragColor;
 // Same tone curve as printedLightness in lib/resume_preview_color.dart.
 void main() {
   vec2 uv = FlutterFragCoord().xy / uSize;
-#ifdef IMPELLER_TARGET_OPENGLES
+// Flutter 3.47+ stores GLES render targets top-down, like Metal and Vulkan.
+// Only older GLES engines need this compensation; applying it twice flips
+// the resume vertically on devices using the GLES backend.
+#if defined(IMPELLER_TARGET_OPENGLES) && !defined(IMPELLER_OPENGLES_UNFLIPPED_DEPRECATED)
   uv.y = 1.0 - uv.y;
 #endif
   vec4 color = texture(uTexture, uv);

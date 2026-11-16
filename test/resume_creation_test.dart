@@ -692,9 +692,7 @@ void main() {
     (tester) async {
       final api = CreationGateway()..fail = true;
       const originalText = '姓名：参考用户。未结构化事实：曾带领志愿者完成无障碍活动改进。';
-      api.documents['PostFilesUploads'] = {'id': 9};
-      api.documents['PostFilesUploadsIdComplete'] = {};
-      api.documents['PostResumeImports'] = {'id': 11};
+      api.documents['PostResumeImportsUpload'] = {'id': 11};
       api.documents['GetResumeImportsId'] = {
         'id': 11,
         'status': 'WAITING_CONFIRMATION',
@@ -705,11 +703,7 @@ void main() {
       };
       final store = await testStore(authenticated: true, api: api);
       addTearDown(store.dispose);
-      final importer = ResumeImporter(
-        store: store,
-        upload: (_, _, _) async {},
-        delay: (_) async {},
-      );
+      final importer = ResumeImporter(store: store, delay: (_) async {});
       await tester.pumpWidget(
         MaterialApp(
           theme: appTheme,

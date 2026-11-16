@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 ThemeData previewTheme(ThemeData theme) => theme.copyWith(
   textTheme: theme.textTheme.apply(fontFamily: 'ReferenceLayoutPreview'),
@@ -125,7 +126,7 @@ void main() {
         await capture(tester, 'discovery-reference-${config.name}');
 
         if (config.scale == 1) {
-          await tester.tap(find.text('简历求指点'));
+          await tester.tap(find.text('简历分享'));
           await tester.pumpAndSettle();
           expect(find.text('还没有发布的内容'), findsOneWidget);
           expect(find.text(story.title), findsNothing);
@@ -144,7 +145,7 @@ void main() {
         await capture(tester, 'profile-reference-${config.name}');
 
         expect(find.text('隐私与设置'), findsNothing);
-        await tester.tap(find.byKey(const ValueKey('profile-menu')));
+        await openSharedAccountMenu(tester);
         await tester.pumpAndSettle();
         final menuScroll = find.descendant(
           of: find.byKey(const ValueKey('profile-drawer')),
@@ -170,7 +171,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         final profileTabs = find.byKey(const ValueKey('profile-tabs'));
-        for (final label in ['动态', '收藏', '简历']) {
+        for (final label in ['动态', '收藏', '简历', '草稿箱']) {
           expect(
             find.descendant(of: profileTabs, matching: find.text(label)),
             findsOneWidget,

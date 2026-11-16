@@ -261,8 +261,10 @@ class ResumeTheme {
   final double certificationColumnGap, certificationRowGap;
   final ResumeThemeText certificationTitle;
 
-  /// Artwork placed at fixed page coordinates.
-  final List<({ResumeThemeGraphic art, Rect rect, bool firstPage})> ornaments;
+  /// Artwork placed at fixed page coordinates. [photo] limits one to resumes
+  /// with (true) or without (false) a photo, such as a photo frame.
+  final List<({ResumeThemeGraphic art, Rect rect, bool firstPage, bool? photo})>
+  ornaments;
 
   /// A full-height column at the left edge holding the photo and short
   /// sections; the page margin keeps the main column clear of it.
@@ -524,6 +526,9 @@ class ResumeTheme {
                 width: _number(sidebar['width'], 150),
                 fill: _color(sidebar['fill'], ink)!,
                 padding: _insets(sidebar['padding'], const EdgeInsets.all(18)),
+                topWithoutPhoto: sidebar['top_without_photo'] is num
+                    ? (sidebar['top_without_photo'] as num).toDouble()
+                    : null,
                 sections: [
                   for (final section
                       in sidebar['sections'] is List
@@ -568,6 +573,7 @@ class ResumeTheme {
                   art: art,
                   rect: _rect(item['rect'])!,
                   firstPage: item['pages'] == 'first',
+                  photo: item['photo'] is bool ? item['photo'] as bool : null,
                 ),
         ],
         splitHeader: header['style'] == 'split',
@@ -739,6 +745,7 @@ class ResumeThemeSidebar {
     required this.width,
     required this.fill,
     required this.padding,
+    this.topWithoutPhoto,
     required this.sections,
     required this.text,
     required this.muted,
@@ -765,6 +772,10 @@ class ResumeThemeSidebar {
   final Color fill;
   final Color? ring;
   final EdgeInsets padding;
+
+  /// Where content starts when the resume has no photo; defaults to the top
+  /// padding. Lets a theme clear artwork drawn for the photo-less layout.
+  final double? topWithoutPhoto;
 
   /// Sidebar modules in order: contact, skills or certifications.
   final List<String> sections;

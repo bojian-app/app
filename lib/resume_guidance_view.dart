@@ -911,7 +911,7 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
                 ? '简历详情'
                 : ownerReview && reviewerKey != null
                 ? '审阅指点'
-                : '简历指点',
+                : '简历分享',
           ),
           actions: [
             if (!widget.notification &&

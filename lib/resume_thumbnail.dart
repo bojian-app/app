@@ -11,6 +11,7 @@ import 'resume_document.dart';
 import 'resume_market_document.dart';
 import 'resume_native_market.dart';
 import 'resume_theme.dart';
+import 'resume_system_fonts.dart';
 
 // Template covers use fictional sample data rather than the saved resume content.
 class MarketResumeThumbnail extends StatelessWidget {
@@ -58,6 +59,7 @@ class StandardResumeThumbnail extends StatefulWidget {
 }
 
 class _StandardResumeThumbnailState extends State<StandardResumeThumbnail> {
+  late final ResumeSystemFontObserver systemFonts;
   late var document = ResumeDocument(
     widget.resume,
     fontFamily: null,
@@ -65,8 +67,18 @@ class _StandardResumeThumbnailState extends State<StandardResumeThumbnail> {
     theme: widget.theme,
   );
   @override
+  void initState() {
+    super.initState();
+    systemFonts = ResumeSystemFontObserver(() => setState(rebuildDocument));
+  }
+
+  @override
   void didUpdateWidget(covariant StandardResumeThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
+    rebuildDocument();
+  }
+
+  void rebuildDocument() {
     document.dispose();
     document = ResumeDocument(
       widget.resume,
@@ -78,6 +90,7 @@ class _StandardResumeThumbnailState extends State<StandardResumeThumbnail> {
 
   @override
   void dispose() {
+    systemFonts.dispose();
     document.dispose();
     super.dispose();
   }
@@ -302,6 +315,7 @@ class ResumeThemeSamplePages extends StatefulWidget {
 }
 
 class _ResumeThemeSamplePagesState extends State<ResumeThemeSamplePages> {
+  late final ResumeSystemFontObserver systemFonts;
   late var document = ResumeDocument(
     templateThumbnailResume,
     fontFamily: null,
@@ -310,9 +324,19 @@ class _ResumeThemeSamplePagesState extends State<ResumeThemeSamplePages> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    systemFonts = ResumeSystemFontObserver(() => setState(rebuildDocument));
+  }
+
+  @override
   void didUpdateWidget(covariant ResumeThemeSamplePages oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.theme == widget.theme) return;
+    rebuildDocument();
+  }
+
+  void rebuildDocument() {
     document.dispose();
     document = ResumeDocument(
       templateThumbnailResume,
@@ -324,6 +348,7 @@ class _ResumeThemeSamplePagesState extends State<ResumeThemeSamplePages> {
 
   @override
   void dispose() {
+    systemFonts.dispose();
     document.dispose();
     super.dispose();
   }

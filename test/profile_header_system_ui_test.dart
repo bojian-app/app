@@ -87,7 +87,7 @@ void main() {
         );
         expect(tester.getTopLeft(backdrop).dy, 0);
         expect(
-          tester.getTopLeft(find.byKey(const ValueKey('profile-menu'))).dy,
+          tester.getTopLeft(find.byKey(const ValueKey('profile-settings'))).dy,
           greaterThanOrEqualTo(inset),
         );
         final center = tester.getCenter(header).dx;
@@ -108,7 +108,7 @@ void main() {
         }
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.light);
         expect(statusStyle(tester).statusBarColor, Colors.transparent);
-        await tester.tap(find.byKey(const ValueKey('profile-menu')));
+        await tester.tap(find.byKey(const ValueKey('profile-settings')));
         await tester.pumpAndSettle();
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.dark);
         await tester.binding.handlePopRoute();
@@ -130,7 +130,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          tester.getTopLeft(find.byKey(const ValueKey('profile-menu'))).dy,
+          tester.getTopLeft(find.byKey(const ValueKey('profile-settings'))).dy,
           greaterThanOrEqualTo(inset),
         );
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.light);
@@ -149,9 +149,9 @@ void main() {
         expect(tester.state(find.byType(ProfilePage)), same(profileState));
         expect(scroll.offset, closeTo(offset, .01));
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.dark);
-        await tester.tap(find.byKey(const ValueKey('profile-messages')));
+        await tester.tap(find.byKey(const ValueKey('profile-settings')));
         await tester.pumpAndSettle();
-        expect(find.byType(MessagesPage), findsOneWidget);
+        expect(find.byType(SettingsPage), findsOneWidget);
         await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.dark);

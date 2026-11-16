@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 /// Original 32-unit tab icons: shared rounded strokes and blue filled states.
@@ -72,7 +70,7 @@ class _NavigationPainter extends CustomPainter {
 
     switch (index) {
       case 0:
-        // A softly squared compass with a floating north star.
+        // A softly squared compass.
         shape(round(4, 5, 24, 24, 10));
         final needle = Path()
           ..moveTo(20.9, 11.1)
@@ -94,7 +92,6 @@ class _NavigationPainter extends CustomPainter {
             ..strokeWidth = 1.3
             ..strokeCap = StrokeCap.round,
         );
-        _sparkle(canvas, const Offset(25.5, 5.5), 4.2, progress);
       case 1:
         // One centered layout card, with a header and two content columns.
         shape(round(5, 3, 22, 26, 5));
@@ -110,15 +107,20 @@ class _NavigationPainter extends CustomPainter {
         canvas.drawLine(const Offset(19, 18), const Offset(22, 18), detail);
         canvas.drawLine(const Offset(19, 22), const Offset(22, 22), detail);
       case 2:
-        // One centered star coin with no offset or duplicate silhouette.
-        shape(round(3.5, 3.5, 25, 25, 12.5));
-        final star = _star(const Offset(16, 16), 7, 3.5);
-        canvas.drawPath(
-          star,
-          Paint()
-            ..color = Color.lerp(Colors.transparent, Colors.white, progress)!,
+        // A single crown, using the same rounded outline and blue fill.
+        shape(
+          Path()
+            ..moveTo(5, 11)
+            ..lineTo(11, 16)
+            ..lineTo(16, 5)
+            ..lineTo(21, 16)
+            ..lineTo(27, 11)
+            ..lineTo(24.5, 25)
+            ..lineTo(7.5, 25)
+            ..close(),
         );
-        canvas.drawPath(star, detail);
+        canvas.drawLine(const Offset(10, 21), const Offset(22, 21), detail);
+        canvas.drawLine(const Offset(9, 29), const Offset(23, 29), stroke);
       default:
         // Friendly profile badge: a rounded silhouette, never a copied mascot.
         final profile = Path()
@@ -139,58 +141,7 @@ class _NavigationPainter extends CustomPainter {
             ..cubicTo(9, 17.5, 23, 17.5, 23, 24),
           detail,
         );
-        _sparkle(canvas, const Offset(27, 5), 3.6, progress);
     }
-  }
-
-  Path _star(Offset center, double outer, double inner) {
-    final path = Path();
-    for (var i = 0; i < 10; i++) {
-      final angle = -math.pi / 2 + i * math.pi / 5;
-      final radius = i.isEven ? outer : inner;
-      final x = center.dx + math.cos(angle) * radius;
-      final y = center.dy + math.sin(angle) * radius;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    return path..close();
-  }
-
-  void _sparkle(Canvas canvas, Offset center, double radius, double alpha) {
-    if (alpha == 0) return;
-    final path = Path()
-      ..moveTo(center.dx, center.dy - radius)
-      ..quadraticBezierTo(
-        center.dx + .8,
-        center.dy - .8,
-        center.dx + radius,
-        center.dy,
-      )
-      ..quadraticBezierTo(
-        center.dx + .8,
-        center.dy + .8,
-        center.dx,
-        center.dy + radius,
-      )
-      ..quadraticBezierTo(
-        center.dx - .8,
-        center.dy + .8,
-        center.dx - radius,
-        center.dy,
-      )
-      ..quadraticBezierTo(
-        center.dx - .8,
-        center.dy - .8,
-        center.dx,
-        center.dy - radius,
-      );
-    canvas.drawPath(
-      path,
-      Paint()..color = const Color(0xFF8DD9FF).withValues(alpha: alpha),
-    );
   }
 
   @override

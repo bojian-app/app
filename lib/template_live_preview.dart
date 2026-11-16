@@ -24,7 +24,7 @@ class TemplateLivePreview extends StatefulWidget {
     required this.store,
     required this.templateID,
     required this.version,
-    required this.watermark,
+    this.watermark,
     this.initialPage = 0,
     this.fullscreen = false,
     this.onOpenPage,
@@ -32,7 +32,9 @@ class TemplateLivePreview extends StatefulWidget {
   });
   final AppStore store;
   final int templateID, version;
-  final String watermark;
+
+  /// Tiled over each page when set; the marketplace shows none.
+  final String? watermark;
   final int initialPage;
   final bool fullscreen;
   final ValueChanged<int>? onOpenPage;
@@ -112,7 +114,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
   Future<void> updateWatermark() async {
     try {
       await controller?.runJavaScript(
-        'window.updatePreviewWatermark?.(${jsonEncode(widget.watermark)});',
+        'window.updatePreviewWatermark?.(${jsonEncode(widget.watermark ?? '')});',
       );
     } on PlatformException {
       // The next page-finished callback applies the latest watermark.
@@ -289,7 +291,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
           dom: result.data,
           rendererScript: resources.renderer,
           previewScript: resources.preview,
-          watermark: widget.watermark,
+          watermark: widget.watermark ?? '',
           initialPage: widget.initialPage,
           showPageActions: widget.onOpenPage != null,
           photo: resources.portrait,
@@ -386,7 +388,7 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
         )
       : nativeDocument != null && error == null
       ? Semantics(
-          label: '$pages 页简历预览，水印：${widget.watermark}',
+          label: '$pages 页简历预览$_watermarkLabel',
           child: NativeMarketPages(
             value: nativeDocument!,
             watermark: widget.watermark,
@@ -396,13 +398,18 @@ class _TemplateLivePreviewState extends State<TemplateLivePreview> {
         )
       : PreviewWithHeader(header: widget.header, child: _browser(context));
 
+  String get _watermarkLabel => switch (widget.watermark) {
+    final String text => '，水印：$text',
+    null => '',
+  };
+
   Widget _browser(BuildContext context) => Stack(
     key: const ValueKey('template-preview-stage'),
     fit: StackFit.expand,
     children: [
       if (controller != null && error == null)
         Semantics(
-          label: ready ? '$pages 页简历预览，水印：${widget.watermark}' : '简历预览',
+          label: ready ? '$pages 页简历预览$_watermarkLabel' : '简历预览',
           child: WebViewWidget(
             controller: controller!,
             gestureRecognizers: {

@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:cronet_http/cronet_http.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:http/io_client.dart';
 
 import 'generated/auth.pb.dart' as auth;
@@ -80,12 +81,28 @@ class CaptchaChallenge {
   final int pieceY, maxX;
 }
 
+class ApiUploadFile {
+  const ApiUploadFile({
+    required this.path,
+    required this.filename,
+    required this.contentType,
+  });
+  final String path, filename, contentType;
+}
+
 abstract class ApiGateway {
   Future<ApiDocument> call(
     String method, {
     Map<String, String> path = const {},
     Map<String, String> query = const {},
     Map<String, dynamic>? body,
+    Map<String, String> headers = const {},
+  });
+  Future<ApiDocument> upload(
+    String method, {
+    Map<String, String> path = const {},
+    required Map<String, String> fields,
+    required ApiUploadFile file,
     Map<String, String> headers = const {},
   });
   Future<CaptchaChallenge> createCaptcha(Map<String, String> headers);
@@ -162,31 +179,55 @@ class BojianApi implements ApiGateway {
   final Uri baseURL;
   final http.Client client;
 
+  Uri _uri(String route, [Map<String, String> query = const {}]) {
+    final prefix = baseURL.path.replaceFirst(RegExp(r'/$'), '');
+    return baseURL.replace(
+      path: '$prefix$route',
+      queryParameters: query.isEmpty ? null : query,
+    );
+  }
+
   Future<ApiDocument> send(
     String verb,
     String route, {
     Map<String, String> query = const {},
     Map<String, dynamic>? body,
     Map<String, String> headers = const {},
-  }) async {
-    final prefix = baseURL.path.replaceFirst(RegExp(r'/$'), '');
-    final uri = baseURL.replace(
-      path: '$prefix$route',
-      queryParameters: query.isEmpty ? null : query,
+  }) {
+    final request = http.Request(verb, _uri(route, query));
+    request.headers.addAll(headers);
+    if (body != null) {
+      request.headers['content-type'] = 'application/json; charset=utf-8';
+      request.body = jsonEncode(body);
+    }
+    return _exchange(
+      request,
+      Duration(
+        seconds:
+            route == '/resume-work-descriptions' ||
+                route == '/resume-project-descriptions' ||
+                route == '/resume-project-achievements'
+            ? 50
+            : route == '/me/identity-verification/ocr' ||
+                  route.startsWith('/me/identity-verification/face-sessions')
+            ? 45
+            : 20,
+      ),
     );
+  }
+
+  Future<ApiDocument> _exchange(
+    http.BaseRequest request,
+    Duration timeout,
+  ) async {
     try {
       return await (() async {
-        final request = http.Request(verb, uri);
         request.followRedirects = false;
         request.headers.addAll({
           'accept': 'application/json',
           'X-Template-Protocol': '3',
-          ...headers,
+          ...request.headers,
         });
-        if (body != null) {
-          request.headers['content-type'] = 'application/json; charset=utf-8';
-          request.body = jsonEncode(body);
-        }
         final response = await http.Response.fromStream(
           await client.send(request),
         );
@@ -224,19 +265,7 @@ class BojianApi implements ApiGateway {
               (envelope?['meta']?['next_cursor'] ?? data['next_cursor'] ?? '')
                   as String,
         );
-      })().timeout(
-        Duration(
-          seconds:
-              route == '/resume-work-descriptions' ||
-                  route == '/resume-project-descriptions' ||
-                  route == '/resume-project-achievements'
-              ? 50
-              : route == '/me/identity-verification/ocr' ||
-                    route.startsWith('/me/identity-verification/face-sessions')
-              ? 45
-              : 20,
-        ),
-      );
+      })().timeout(timeout);
     } on HandshakeException catch (e) {
       throw ApiFailure('无法建立服务器安全连接，请稍后重试', cause: e);
     } on SocketException catch (e) {
@@ -252,6 +281,43 @@ class BojianApi implements ApiGateway {
     }
   }
 
+  String _route(String method, Map<String, String> path) {
+    final route = httpRoutes[method];
+    if (route == null) throw const ApiFailure('接口配置无效');
+    return route.$2.replaceAllMapped(RegExp(r'\{([^}]+)\}'), (match) {
+      final value = path[match[1]];
+      if (value == null) throw const ApiFailure('缺少接口路径参数');
+      return Uri.encodeComponent(value);
+    });
+  }
+
+  @override
+  Future<ApiDocument> upload(
+    String method, {
+    Map<String, String> path = const {},
+    required Map<String, String> fields,
+    required ApiUploadFile file,
+    Map<String, String> headers = const {},
+  }) async {
+    final verb = httpRoutes[method]?.$1;
+    final request = http.MultipartRequest(
+      verb ?? 'POST',
+      _uri(_route(method, path)),
+    );
+    request.headers.addAll(headers);
+    request.fields.addAll(fields);
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        file.path,
+        filename: file.filename,
+        contentType: MediaType.parse(file.contentType),
+      ),
+    );
+    // A 20 MB file over a slow mobile uplink needs far longer than JSON calls.
+    return _exchange(request, const Duration(minutes: 3));
+  }
+
   @override
   Future<ApiDocument> call(
     String method, {
@@ -262,12 +328,13 @@ class BojianApi implements ApiGateway {
   }) {
     final route = httpRoutes[method];
     if (route == null) throw const ApiFailure('接口配置无效');
-    final url = route.$2.replaceAllMapped(RegExp(r'\{([^}]+)\}'), (match) {
-      final value = path[match[1]];
-      if (value == null) throw const ApiFailure('缺少接口路径参数');
-      return Uri.encodeComponent(value);
-    });
-    return send(route.$1, url, query: query, body: body, headers: headers);
+    return send(
+      route.$1,
+      _route(method, path),
+      query: query,
+      body: body,
+      headers: headers,
+    );
   }
 
   @override

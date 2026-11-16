@@ -143,6 +143,25 @@ void main() {
         );
         expect(identical(first.value, updated.value), isTrue);
         expect(updated.watermark, '作者乙');
+        final oldDocument = updated.value.document;
+        final requestCount = api.calls.length;
+        await tester.binding.handleSystemMessage({'type': 'fontsChange'});
+        await tester.pump();
+        for (
+          var i = 0;
+          i < 100 && identical(oldDocument, updated.value.document);
+          i++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+          await tester.pump();
+        }
+        expect(identical(oldDocument, updated.value.document), isFalse);
+        expect(updated.value.renderer.textStyle('body').fontFamily, isNull);
+        expect(api.calls.length, requestCount);
+        await tester.pump(); // Old page pictures are released after repaint.
+        expect(tester.takeException(), isNull);
         // Account changes must remove the old account's prepared document.
         store.epoch++;
         store.notifyListeners();

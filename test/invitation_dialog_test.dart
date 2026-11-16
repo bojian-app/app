@@ -15,9 +15,9 @@ void main() {
     await (FontLoader(
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
-    await (FontLoader('ResumeDocument')
-          ..addFont(rootBundle.load('assets/fonts/resume-sans-bold.ttf')))
-        .load();
+    await (FontLoader(
+      'ResumeDocument',
+    )..addFont(rootBundle.load('assets/fonts/resume-sans-bold.ttf'))).load();
   });
   for (final size in [
     const Size(390, 844),
@@ -62,13 +62,11 @@ void main() {
         ),
       );
       final api = FakeGateway();
-      api.documents['GetWalletInvitations'] = {
+      api.documents['GetInvitations'] = {
         'invite_code': 'BJ-6018',
-        'points_per_invitee': 500,
         'download_url': 'https://bojian.kelance.cn',
         'completed_count': 2,
         'pending_count': 1,
-        'awarded_points': 1000,
       };
       final store = await testStore(authenticated: true, api: api);
       addTearDown(store.dispose);
@@ -104,7 +102,7 @@ void main() {
       if (size.width == 390) {
         await tester.runAsync(() async {
           await precacheImage(
-            const AssetImage('assets/invitation/reward-envelope.webp'),
+            const AssetImage('assets/invitation/reward-envelope-blank.png'),
             tester.element(find.byType(InvitationDialog)),
           );
         });
@@ -153,7 +151,7 @@ void main() {
   testWidgets('Invitation request failure can retry without fabricated code', (
     tester,
   ) async {
-    final api = FakeGateway()..failing = 'GetWalletInvitations';
+    final api = FakeGateway()..failing = 'GetInvitations';
     final store = await testStore(authenticated: true, api: api);
     addTearDown(store.dispose);
     await tester.pumpWidget(MaterialApp(home: InvitationDialog(store: store)));
@@ -164,15 +162,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('邀请码已复制'), findsNothing);
     api.failing = null;
-    api.documents['GetWalletInvitations'] = {
+    api.documents['GetInvitations'] = {
       'invite_code': 'BJ-42',
       'download_url': 'https://bojian.kelance.cn',
-      'points_per_invitee': 600,
     };
     await tester.ensureVisible(find.byKey(const ValueKey('invitation-retry')));
     await tester.tap(find.byKey(const ValueKey('invitation-retry')));
     await tester.pumpAndSettle();
-    expect(find.text('600积分'), findsOneWidget);
+    expect(find.text('三天会员体验包'), findsOneWidget);
     expect(find.text('BJ-42'), findsOneWidget);
     expect(find.text('邀请信息加载失败，点击重试'), findsNothing);
     expect(tester.takeException(), isNull);

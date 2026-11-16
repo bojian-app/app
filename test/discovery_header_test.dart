@@ -11,7 +11,7 @@ import 'support/fake_gateway.dart';
 
 void main() {
   for (final width in [320.0, 390.0]) {
-    testWidgets('Collapsed discovery keeps menu and messages usable ($width)', (
+    testWidgets('Collapsed discovery keeps tabs and messages usable ($width)', (
       tester,
     ) async {
       tester.view.physicalSize = Size(width, 720);
@@ -27,7 +27,6 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final menu = find.byKey(const ValueKey('discovery-menu'));
       final messages = find.byKey(const ValueKey('discovery-messages'));
       final messagesState = tester.state(messages);
       final scroll = tester
@@ -35,30 +34,23 @@ void main() {
           .outerController;
       scroll.jumpTo(scroll.position.maxScrollExtent);
       await tester.pumpAndSettle();
-      for (final button in [menu, messages]) {
-        expect(button.hitTestable(), findsOneWidget);
-        expect(tester.getRect(button).top, greaterThanOrEqualTo(0));
-        expect(tester.getRect(button).right, lessThanOrEqualTo(width));
-      }
+      expect(messages.hitTestable(), findsOneWidget);
+      expect(tester.getRect(messages).top, greaterThanOrEqualTo(0));
+      expect(tester.getRect(messages).right, lessThanOrEqualTo(width));
       expect(tester.state(messages), same(messagesState));
       final tabs = tester.getRect(find.byKey(const ValueKey('discovery-tabs')));
-      expect(tabs.left, greaterThanOrEqualTo(tester.getRect(menu).right));
+      expect(tabs.left, greaterThanOrEqualTo(0));
       expect(tabs.right, lessThanOrEqualTo(tester.getRect(messages).left));
       expect(
         find.byKey(const ValueKey('discovery-search')).hitTestable(),
         findsNothing,
       );
-      await tester.tap(menu);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('profile-drawer')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('profile-menu-close')));
-      await tester.pumpAndSettle();
       await tester.tap(messages);
       await tester.pumpAndSettle();
       expect(find.byType(MessagesPage), findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      final experience = find.text('经验分享');
+      final experience = find.text('动态');
       await tester.ensureVisible(experience);
       await tester.pumpAndSettle();
       await tester.tap(experience);
@@ -173,7 +165,7 @@ void main() {
           title: '简历讨论',
           author: '阿明',
           role: '',
-          category: '简历求指点',
+          category: '简历分享',
           excerpt: '经历怎么写',
           paragraphs: [],
         ),
