@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fake_gateway.dart';
 
 void main() {
+  _friendCodeTests();
   setUpAll(() async {
     await (FontLoader(
       'MaterialIcons',
@@ -173,5 +174,58 @@ void main() {
     expect(find.text('BJ-42'), findsOneWidget);
     expect(find.text('邀请信息加载失败，点击重试'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+}
+
+void _friendCodeTests() {
+  testWidgets('New accounts enter a friend code once in the invitation popup', (
+    tester,
+  ) async {
+    final api = FakeGateway();
+    api.documents['GetInvitations'] = {
+      'invite_code': 'BJ-42',
+      'download_url': 'https://bojian.kelance.cn',
+      'bound_invite_code': null,
+      'can_bind_invite_code': true,
+    };
+    api.documents['PostInvitationsBind'] = {
+      'invite_code': 'BJ-42',
+      'download_url': 'https://bojian.kelance.cn',
+      'bound_invite_code': 'K7Q2M9XD',
+      'can_bind_invite_code': false,
+    };
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(MaterialApp(home: InvitationDialog(store: store)));
+    await tester.pumpAndSettle();
+    final entry = find.byKey(const ValueKey('invitation-friend-code'));
+    await tester.ensureVisible(entry);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('friend-invite-code')),
+      'k7q2m9xd',
+    );
+    await tester.tap(find.byKey(const ValueKey('friend-invite-submit')));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('PostInvitationsBind'));
+    expect(find.text('已填写好友邀请码：K7Q2M9XD'), findsOneWidget);
+    await tester.tap(find.text('已填写好友邀请码：K7Q2M9XD'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('friend-invite-code')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Older accounts see no friend code entry', (tester) async {
+    final api = FakeGateway();
+    api.documents['GetInvitations'] = {
+      'invite_code': 'BJ-42',
+      'download_url': 'https://bojian.kelance.cn',
+      'can_bind_invite_code': false,
+    };
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(MaterialApp(home: InvitationDialog(store: store)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('invitation-friend-code')), findsNothing);
   });
 }

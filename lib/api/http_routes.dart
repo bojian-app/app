@@ -209,6 +209,7 @@ const httpRoutes = <String, (String, String)>{
   'PostMembershipAiAddonOrders': ('POST', '/membership/ai-addon-orders'),
   'GetMembershipAiAddonOrdersId': ('GET', '/membership/ai-addon-orders/{id}'),
   'GetInvitations': ('GET', '/invitations'),
+  'PostInvitationsBind': ('POST', '/invitations/bind'),
   'GetMembershipWallet': ('GET', '/membership/wallet'),
   'PostMembershipCardsIdUse': ('POST', '/membership/cards/{id}/use'),
   'PostRechargeOrders': ('POST', '/recharge-orders'),

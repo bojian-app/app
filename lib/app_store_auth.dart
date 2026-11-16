@@ -184,9 +184,7 @@ extension AppStoreAuth on AppStore {
         response.registrationToken,
         legalAgreementVersions,
         headers,
-        inviteCode: registrationInviteCode,
       );
-      registrationInviteCode = '';
     }
     await _finishSignIn(
       response,
@@ -283,7 +281,6 @@ extension AppStoreAuth on AppStore {
     guidanceReviewDrafts.clear();
     contentSubmissions.clear();
     userID = 0;
-    registrationInviteCode = '';
     publicProfile = true;
     stories.clear();
     resumes.clear();

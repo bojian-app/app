@@ -59,25 +59,6 @@ void main() {
     expect(body, contains('application/pdf'));
     await api.close();
   });
-  test(
-    'Registration sends the optional inviter code only on confirmation',
-    () async {
-      final client = StubClient(
-        stubResponse(200, {
-          'data': {'access_token': 'test'},
-        }),
-      );
-      final api = BojianApi(client: client);
-      await api.confirmRegistration(
-        'proof',
-        {'terms': '1.0', 'privacy': '1.0'},
-        {},
-        inviteCode: ' 123456 ',
-      );
-      expect(jsonDecode(client.request!.body)['invite_code'], '123456');
-      await api.close();
-    },
-  );
   for (final entry in {
     'PostMePhoneSMSCodes': '/api/v1/me/phone/sms-codes',
     'PostMePhone': '/api/v1/me/phone',

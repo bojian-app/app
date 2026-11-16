@@ -129,9 +129,8 @@ abstract class ApiGateway {
   Future<auth.LoginResponse> confirmRegistration(
     String registrationToken,
     Map<String, String> agreementVersions,
-    Map<String, String> headers, {
-    String inviteCode = '',
-  });
+    Map<String, String> headers,
+  );
   Future<auth.LoginResponse> loginWithDouyin(
     String code,
     Map<String, String> agreementVersions,
@@ -449,15 +448,13 @@ class BojianApi implements ApiGateway {
   Future<auth.LoginResponse> confirmRegistration(
     String registrationToken,
     Map<String, String> agreementVersions,
-    Map<String, String> headers, {
-    String inviteCode = '',
-  }) async => _loginResponse(
+    Map<String, String> headers,
+  ) async => _loginResponse(
     (await send(
       'POST',
       '/auth/registrations/confirm',
       body: {
         'registration_token': registrationToken,
-        if (inviteCode.trim().isNotEmpty) 'invite_code': inviteCode.trim(),
         'confirmed': true,
         'agreement_versions': agreementVersions,
       },

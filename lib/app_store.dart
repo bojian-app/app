@@ -336,7 +336,6 @@ class AppStore extends ChangeNotifier {
   bool get hasBoundPhone => phoneMasked.isNotEmpty;
   int _phoneBindingRevision = 0;
   int userID = 0;
-  String registrationInviteCode = '';
 
   bool publicProfile = true;
   final stories = <Story>[];

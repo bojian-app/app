@@ -2,15 +2,18 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluwx_no_pay/fluwx_no_pay.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design_shapes.dart';
 import 'invitation_qr_panel.dart';
+import 'invitation_scan_page.dart';
 import 'wechat_login.dart';
 
 Future<void> showInvitationDialog(BuildContext context, AppStore store) =>
@@ -65,7 +68,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
 
   /// The poster is laid out in the design's 375-wide coordinates and scaled
   /// to the screen as one piece.
-  static const posterWidth = 375.0, posterHeight = 600.0;
+  static const posterWidth = 375.0, posterHeight = 636.0;
 
   Map<String, dynamic>? data;
   String? error;
@@ -74,6 +77,10 @@ class _InvitationDialogState extends State<InvitationDialog> {
   Fluwx? wechat;
   late final int epoch;
   String get code => '${data?['invite_code'] ?? ''}'.trim();
+
+  /// The friend's code this account entered after registering, if any.
+  String get boundCode => '${data?['bound_invite_code'] ?? ''}'.trim();
+  bool get canBind => data?['can_bind_invite_code'] == true;
   String get url => '${data?['download_url'] ?? ''}'.trim();
   String get invitationLink => Uri.parse(url)
       .replace(
@@ -165,7 +172,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
             ],
             fileNameOverrides: ['博简邀请二维码.png'],
             title: '邀请你加入博简',
-            text: '注册时填写邀请码：$code\n$invitationLink',
+            text: '注册博简后，在“邀请好友”里填写我的邀请码：$code\n$invitationLink',
             sharePositionOrigin: box == null
                 ? null
                 : Rect.fromPoints(
@@ -190,6 +197,41 @@ class _InvitationDialogState extends State<InvitationDialog> {
     } finally {
       if (mounted) setState(() => imageBusy = false);
     }
+  }
+
+  Future<void> enterFriendCode() async {
+    if (!current || !canBind) return;
+    final summary = await showCupertinoDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _FriendCodeDialog(store: widget.store),
+    );
+    if (summary == null || !mounted || !current) return;
+    setState(() {
+      data = {...?data, ...summary};
+      actionMessage = '已填写好友邀请码';
+    });
+  }
+
+  /// One entry for entering a friend's code: shown while a new account may
+  /// still enter one, and as a record once entered.
+  Widget friendCodeEntry() {
+    final label = boundCode.isNotEmpty ? '已填写好友邀请码：$boundCode' : '填写好友邀请码';
+    return tap(
+      key: const ValueKey('invitation-friend-code'),
+      label: label,
+      radius: 14,
+      onTap: boundCode.isEmpty ? enterFriendCode : null,
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            text(label, size: 13, color: Colors.white, weight: FontWeight.w500),
+            if (boundCode.isEmpty)
+              const Icon(Icons.chevron_right, size: 16, color: Colors.white),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget at(double x, double y, double width, double height, Widget child) =>
@@ -497,7 +539,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
           FittedBox(
             fit: BoxFit.scaleDown,
             child: text(
-              actionMessage ?? '扫码下载，注册时填写邀请码',
+              actionMessage ?? '扫码下载，注册后填写邀请码',
               color: actionMessage == null ? ink : accent,
             ),
           ),
@@ -649,9 +691,11 @@ class _InvitationDialogState extends State<InvitationDialog> {
           'more',
           const ValueKey('invitation-more'),
         ),
+        if (current && (canBind || boundCode.isNotEmpty))
+          at(62.5, 558, 250, 28, friendCodeEntry()),
         at(
           172.5,
-          566,
+          602,
           30,
           30,
           tap(
@@ -961,5 +1005,121 @@ class _EnvelopeReward extends StatelessWidget {
         ),
       ),
     ),
+  );
+}
+
+/// Enters a friend's invitation code, typed or scanned from their QR code.
+/// Pops the updated invitation summary once the server accepts it.
+class _FriendCodeDialog extends StatefulWidget {
+  const _FriendCodeDialog({required this.store});
+  final AppStore store;
+
+  @override
+  State<_FriendCodeDialog> createState() => _FriendCodeDialogState();
+}
+
+class _FriendCodeDialogState extends State<_FriendCodeDialog> {
+  final controller = TextEditingController();
+  bool busy = false;
+  String? error;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> scan() async {
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const InvitationScanPage()),
+    );
+    if (mounted && code != null) {
+      setState(() {
+        controller.text = code;
+        error = null;
+      });
+    }
+  }
+
+  Future<void> submit() async {
+    final code = controller.text.trim();
+    if (busy) return;
+    if (code.isEmpty) {
+      setState(() => error = '请输入好友的邀请码');
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final result = await widget.store.request(
+        'PostInvitationsBind',
+        body: {'invite_code': code},
+      );
+      if (mounted) Navigator.pop(context, result.data);
+    } on ApiFailure catch (e) {
+      if (mounted) setState(() => error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => error = '提交失败，请重试');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => CupertinoAlertDialog(
+    title: const Text('填写好友邀请码'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: 8),
+        const Text(
+          '注册 7 天内可填写一次，填写后不能修改。你绑定手机号后，好友获得三天会员体验包。',
+          style: TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        CupertinoTextField(
+          key: const ValueKey('friend-invite-code'),
+          controller: controller,
+          placeholder: '好友邀请码',
+          maxLength: 8,
+          autocorrect: false,
+          autofocus: true,
+          enabled: !busy,
+          textCapitalization: TextCapitalization.characters,
+          padding: const EdgeInsets.all(12),
+          onSubmitted: (_) => submit(),
+          suffix: IconButton(
+            key: const ValueKey('friend-invite-scan'),
+            tooltip: '扫好友邀请二维码',
+            onPressed: busy ? null : scan,
+            icon: const Icon(Icons.qr_code_scanner, size: 20),
+          ),
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            error!,
+            style: const TextStyle(
+              fontSize: 12,
+              color: CupertinoColors.destructiveRed,
+            ),
+          ),
+        ],
+      ],
+    ),
+    actions: [
+      CupertinoDialogAction(
+        onPressed: busy ? null : () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      CupertinoDialogAction(
+        key: const ValueKey('friend-invite-submit'),
+        isDefaultAction: true,
+        onPressed: busy ? null : submit,
+        child: Text(busy ? '提交中…' : '确定'),
+      ),
+    ],
   );
 }

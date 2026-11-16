@@ -10,7 +10,6 @@ import 'package:flutter/cupertino.dart' show CupertinoTextField;
 
 import 'app_store.dart';
 import 'app_environment.dart';
-import 'app_icons.dart';
 import 'design.dart';
 import 'sms_code_flow.dart';
 import 'login_widgets.dart';
@@ -18,7 +17,6 @@ import 'login_illustration.dart';
 import 'api/bojian_api.dart';
 import 'api/generated/auth.pb.dart' as auth;
 import 'login_phone_binding_page.dart';
-import 'invitation_scan_page.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key, required this.store});
@@ -42,7 +40,6 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
     if (mounted) setState(() {});
   }
 
-  final inviteCode = TextEditingController();
   @override
   final phone = TextEditingController(text: AppEnvironment.defaultTestPhone);
   @override
@@ -174,54 +171,14 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
           dialogKey: const ValueKey('auth-registration-dialog'),
           barrierDismissible: false,
           title: '该账号尚未注册',
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('是否创建博简账号并完成登录？'),
-              const SizedBox(height: 14),
-              CupertinoTextField(
-                key: const ValueKey('registration-invite-code'),
-                controller: inviteCode,
-                placeholder: '邀请码（选填）',
-                maxLength: 8,
-                autocorrect: false,
-                textCapitalization: TextCapitalization.characters,
-                padding: const EdgeInsets.all(12),
-                suffix: IconButton(
-                  key: const ValueKey('registration-scan-invitation'),
-                  tooltip: '扫好友邀请二维码',
-                  onPressed: scanInvitation,
-                  icon: AppIcon(
-                    AppIcons.scan,
-                    size: 20,
-                    color: context.loginMuted,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '填写好友邀请码，注册成功后好友可得三天会员体验包。',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
+          content: const Text('是否创建博简账号并完成登录？'),
           cancelLabel: '暂不注册',
           cancelKey: const ValueKey('auth-registration-cancel'),
           confirmLabel: '确认注册并登录',
           confirmKey: const ValueKey('auth-registration-confirm'),
         ) ??
         false;
-    widget.store.registrationInviteCode = confirmed
-        ? inviteCode.text.trim()
-        : '';
     return confirmed;
-  }
-
-  Future<void> scanInvitation() async {
-    final code = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const InvitationScanPage()),
-    );
-    if (mounted && code != null) inviteCode.text = code;
   }
 
   Future<void> legal(bool privacy) async {
@@ -419,7 +376,6 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
 
   @override
   void dispose() {
-    inviteCode.dispose();
     phone.dispose();
     code.dispose();
     widget.store.removeListener(refreshState);

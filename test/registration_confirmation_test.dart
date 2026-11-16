@@ -58,9 +58,8 @@ class _RegistrationGateway extends FakeGateway {
   Future<auth.LoginResponse> confirmRegistration(
     String token,
     Map<String, String> agreements,
-    Map<String, String> headers, {
-    String inviteCode = '',
-  }) async {
+    Map<String, String> headers,
+  ) async {
     calls.add('ConfirmRegistration');
     expect(token, 'private-registration-ticket');
     expect(agreements, legalAgreementVersions);

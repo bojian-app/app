@@ -67,7 +67,7 @@ Future<Uint8List> createInvitationQrPng({
   }
 
   write('邀请你加入博简', 55, 56, const Color(0xFF182A96));
-  write('扫码下载，注册时填写邀请码', 145, 33, const Color(0xFF535B8C));
+  write('扫码下载，注册后填写邀请码', 145, 33, const Color(0xFF535B8C));
   canvas.save();
   canvas.translate(100, 220);
   InvitationQrPainter(link).paint(canvas, const Size(760, 760));
