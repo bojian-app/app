@@ -123,8 +123,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('加购 AI 次数'), findsOneWidget);
-    expect(find.text('¥0.99/次 · 已加购剩余 3 次'), findsOneWidget);
-    expect(find.text('¥0.10/次 · 已加购剩余 25 次'), findsOneWidget);
+    expect(find.text('¥0.99/次 · 剩 3 次'), findsOneWidget);
+    expect(find.text('¥0.10/次 · 剩 25 次'), findsOneWidget);
     await tester.tap(find.text('加购').first);
     await tester.pumpAndSettle();
     expect(find.text('¥4.95'), findsWidgets);

@@ -288,8 +288,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('加购 AI 次数'), findsOneWidget);
-    expect(find.text('1/5/10 次包 · 已加购剩余 2 次'), findsOneWidget);
-    expect(find.text('10/50/100 次包 · 已加购剩余 0 次'), findsOneWidget);
+    expect(find.text('1/5/10 次包 · 剩 2 次'), findsOneWidget);
+    expect(find.text('10/50/100 次包 · 剩 0 次'), findsOneWidget);
     expect(find.textContaining('¥0.99'), findsNothing);
 
     await tester.tap(find.text('加购').at(1));

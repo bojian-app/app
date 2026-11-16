@@ -97,58 +97,69 @@ class _AIAddonSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionTitle('加购 AI 次数'),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
-          '会员期内可用，不会过期；会员到期后冻结，续费后恢复。会员赠送的次数先用，加购的最后用。',
-          style: TextStyle(fontSize: 12, height: 1.5, color: palette.muted),
+          '会员期内可用、不过期，赠送次数用完后再扣',
+          style: TextStyle(fontSize: 12, color: palette.muted),
         ),
-        const SizedBox(height: 12),
-        for (final offer in offers)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-              decoration: BoxDecoration(
-                color: palette.surfaceHi,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: palette.surfaceHi,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              for (final (i, offer) in offers.indexed) ...[
+                if (i > 0)
+                  Divider(
+                    height: 1,
+                    indent: 14,
+                    endIndent: 14,
+                    color: palette.muted.withValues(alpha: 0.15),
+                  ),
+                InkWell(
+                  onTap: () => onBuy(offer),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+                    child: Row(
                       children: [
                         Text(
-                          offer.name,
+                          offer.name.replaceFirst('AI ', ''),
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: palette.text,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${_priceLabel(offer)} · 剩 ${balance.of(offer.kind)} 次',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: palette.muted,
+                            ),
+                          ),
+                        ),
                         Text(
-                          '${_priceLabel(offer)} · 已加购剩余 ${balance.of(offer.kind)} 次',
-                          style: TextStyle(fontSize: 12, color: palette.muted),
+                          '加购',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: palette.accent,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: () => onBuy(offer),
-                    style: TextButton.styleFrom(
-                      foregroundColor: palette.accent,
-                      minimumSize: const Size(64, 40),
-                    ),
-                    child: const Text(
-                      '加购',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
+              ],
+            ],
           ),
+        ),
       ],
     );
   }
