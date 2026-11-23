@@ -37,9 +37,7 @@ Map<String, dynamic> result() => {
     'diagnosis': {
       'score': 7,
       'overall': '项目职责清楚，但成果缺少依据',
-      'highlights': ['支付项目写清了回调容错'],
-      'priorities': ['删去各项目重复的通用流程职责'],
-      'risks': ['两段任职之间相隔约 3 个月'],
+      'problems': ['各项目重复通用流程职责', '两段任职之间相隔约 3 个月'],
       'dimensions': [
         {'key': 'relevance', 'level': 'good', 'comment': '前端经历与岗位一致'},
         {'key': 'evidence', 'level': 'weak', 'comment': '平台项目未说明作用'},
@@ -116,10 +114,9 @@ void main() {
       await open(tester, store);
       expect(find.text('诊断结论'), findsOneWidget);
       expect(find.text('项目职责清楚，但成果缺少依据'), findsOneWidget);
-      expect(find.text('优先处理'), findsNothing);
       expect(find.byKey(const ValueKey('resume-ai-score')), findsOneWidget);
-      expect(find.text('支付项目写清了回调容错'), findsOneWidget);
-      expect(find.text('面试可能追问'), findsOneWidget);
+      expect(find.text('主要问题'), findsOneWidget);
+      expect(find.text('各项目重复通用流程职责'), findsOneWidget);
       expect(find.text('两段任职之间相隔约 3 个月'), findsOneWidget);
       expect(find.text('岗位匹配度'), findsOneWidget);
       expect(find.text('待加强'), findsOneWidget);

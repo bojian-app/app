@@ -93,30 +93,22 @@ class PolishDiagnosis {
   const PolishDiagnosis(
     this.overall,
     this.dimensions, {
-    this.priorities = const [],
+    this.problems = const [],
     this.score,
-    this.highlights = const [],
-    this.risks = const [],
   });
   final String overall;
   final List<PolishDimension> dimensions;
 
-  /// The few whole-resume actions worth doing first.
-  final List<String> priorities;
+  /// The main weaknesses of the whole resume, most damaging first.
+  final List<String> problems;
 
   /// Overall competitiveness for the target role, 1 to 10.
   final int? score;
 
-  /// What already works and should be kept.
-  final List<String> highlights;
-
-  /// Points an interviewer is likely to probe, such as employment gaps.
-  final List<String> risks;
-
   static List<String> _list(Object? value) => [
     for (final item in value is List ? value : const [])
       if ('$item'.trim().isNotEmpty) '$item'.trim(),
-  ].take(3).toList();
+  ].take(5).toList();
 
   static PolishDiagnosis? from(Object? value) {
     if (value is! Map) return null;
@@ -136,28 +128,22 @@ class PolishDiagnosis {
       }
     }
     final overall = '${value['overall'] ?? ''}'.trim();
-    final priorities = _list(value['priorities']);
-    final highlights = _list(value['highlights']);
-    final risks = _list(value['risks']);
+    final problems = _list(value['problems']);
     final rawScore = value['score'];
     final score = rawScore is num && rawScore >= 1 && rawScore <= 10
         ? rawScore.round()
         : null;
     if (overall.isEmpty &&
         rows.isEmpty &&
-        priorities.isEmpty &&
-        highlights.isEmpty &&
-        risks.isEmpty &&
+        problems.isEmpty &&
         score == null) {
       return null;
     }
     return PolishDiagnosis(
       overall,
       rows,
-      priorities: priorities,
+      problems: problems,
       score: score,
-      highlights: highlights,
-      risks: risks,
     );
   }
 }

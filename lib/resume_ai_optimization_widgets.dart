@@ -221,20 +221,15 @@ class _PolishDiagnosisCardState extends State<PolishDiagnosisCard> {
           ],
           if (widget.summary.isNotEmpty && !foldSummary)
             Text(widget.summary, style: summaryStyle),
-          if (dimensions.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            for (final d in dimensions) _DimensionRow(d),
-          ],
           _DiagnosisList(
-            title: '亮点',
-            items: diagnosis?.highlights ?? const [],
-            color: context.polishLevel(PolishLevel.good),
-          ),
-          _DiagnosisList(
-            title: '面试可能追问',
-            items: diagnosis?.risks ?? const [],
+            title: '主要问题',
+            items: diagnosis?.problems ?? const [],
             color: context.polishWarning,
           ),
+          if (dimensions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            for (final d in dimensions) _DimensionRow(d),
+          ],
           const SizedBox(height: 10),
           Row(
             children: [
