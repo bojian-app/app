@@ -108,7 +108,7 @@ class PolishDiagnosis {
   static List<String> _list(Object? value) => [
     for (final item in value is List ? value : const [])
       if ('$item'.trim().isNotEmpty) '$item'.trim(),
-  ].take(5).toList();
+  ].take(6).toList();
 
   static PolishDiagnosis? from(Object? value) {
     if (value is! Map) return null;
