@@ -10,6 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'about_page.dart';
+import 'feedback_page.dart';
+import 'app_appearance.dart';
+import 'panel_sheet.dart';
 import 'app_icons.dart';
 import 'app_update.dart';
 import 'account_deletion_dialog.dart';
@@ -24,6 +27,9 @@ import 'network_image_cache.dart';
 import 'profile_avatar.dart';
 import 'sign_out_dialog.dart';
 
+const _rowPadding = 16.0;
+const _avatarSize = 42.0;
+const _labelOffset = _avatarSize + 12;
 const _settingsChannel = MethodChannel('cn.kelance.bojian/settings');
 
 class SettingsPage extends StatefulWidget {
@@ -103,6 +109,44 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  Future<void> _chooseAppearance<T extends Enum>({
+    required String title,
+    required List<T> choices,
+    required T selected,
+    required String Function(T) label,
+    required Future<void> Function(T) save,
+  }) async {
+    Future<dynamic>? sheetClosed;
+    final choice = await showPanelSheet<T>(
+      context,
+      builder: (context) => PanelSheet(
+        title: title,
+        child: ListView(
+          children: [
+            for (final item in choices)
+              ListTile(
+                selected: item == selected,
+                leading: item is AppAccent
+                    ? CircleAvatar(radius: 10, backgroundColor: item.seed)
+                    : null,
+                title: Text(label(item)),
+                trailing: item == selected
+                    ? AppIcon(AppIcons.confirm, color: context.colors.accent)
+                    : null,
+                onTap: () {
+                  sheetClosed = ModalRoute.of(context)?.completed;
+                  Navigator.pop(context, item);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null || choice == selected) return;
+    await sheetClosed;
+    if (mounted) await runRequest(context, () => save(choice));
+  }
+
   Future<void> _legal(LegalDocumentKind kind) async {
     await openPage<void>(context, LegalDocumentPage(kind: kind));
   }
@@ -155,13 +199,18 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           if (store.isAuthenticated) ...[
             Padding(
-              padding: const EdgeInsets.only(bottom: 28),
+              padding: const EdgeInsets.fromLTRB(
+                _rowPadding,
+                0,
+                _rowPadding,
+                28,
+              ),
               child: Row(
                 children: [
                   ProfileAvatar(
                     seed: profileAvatarSeed(store),
                     url: store.avatarURL,
-                    size: 42,
+                    size: _avatarSize,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -187,6 +236,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                   TextButton(
+                    style: TextButton.styleFrom(
+                      alignment: Alignment.centerRight,
+                      minimumSize: const Size(48, 48),
+                      padding: EdgeInsets.zero,
+                    ),
                     onPressed: () async {
                       await Clipboard.setData(
                         ClipboardData(
@@ -208,47 +262,76 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsRow(
                   icon: AppIcons.accountSecurity,
                   title: '账号安全',
-                  subtitle: '管理登录设备与账号',
-                  onTap: () => openPage(context, _SecurityPage(store: store)),
+                  onTap: () =>
+                      openPage(context, AccountSecurityPage(store: store)),
                 ),
                 _SettingsRow(
                   icon: AppIcons.publicProfile,
                   title: '公开个人介绍',
-                  subtitle: '允许其他用户查看你的简介',
                   trailing: savingPrivacy
                       ? const SizedBox.square(
                           dimension: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Switch.adaptive(
+                          padding: EdgeInsets.zero,
                           value: store.publicProfile,
-                          activeTrackColor: blue,
+                          activeTrackColor: context.colors.palette.seed,
                           onChanged: savingPrivacy ? null : _privacy,
                         ),
                 ),
               ],
             ),
           ],
+          ValueListenableBuilder<AppearanceChoice>(
+            valueListenable: store.appearance,
+            builder: (context, choice, _) => _SettingsGroup(
+              '外观',
+              children: [
+                _SettingsRow(
+                  icon: AppIcons.templates,
+                  title: '主题色',
+                  value: choice.accent.label,
+                  onTap: () => _chooseAppearance<AppAccent>(
+                    title: '主题色',
+                    choices: AppAccent.values,
+                    selected: choice.accent,
+                    label: (item) => item.label,
+                    save: (item) => store.appearance.update(accent: item),
+                  ),
+                ),
+                _SettingsRow(
+                  icon: AppIcons.monochrome,
+                  title: '外观模式',
+                  value: choice.mode.label,
+                  onTap: () => _chooseAppearance<ThemeMode>(
+                    title: '外观模式',
+                    choices: ThemeMode.values,
+                    selected: choice.mode,
+                    label: (item) => item.label,
+                    save: (item) => store.appearance.update(mode: item),
+                  ),
+                ),
+              ],
+            ),
+          ),
           _SettingsGroup(
             '应用管理',
             children: [
               _SettingsRow(
                 icon: AppIcons.notificationSettings,
                 title: '通知设置',
-                subtitle: '管理系统通知的显示方式',
                 onTap: () => _systemSettings('openNotifications'),
               ),
               _SettingsRow(
                 icon: AppIcons.permissions,
                 title: '系统权限',
-                subtitle: '查看与管理博简的设备权限',
                 onTap: () => _systemSettings('openPermissions'),
               ),
               _SettingsRow(
                 icon: AppIcons.imageCache,
                 title: '图片缓存',
                 value: cached,
-                subtitle: '头像、封面等图片保存在本机，最多 200 MB，自动淘汰旧图片',
                 onTap: _clearImages,
               ),
             ],
@@ -260,7 +343,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsRow(
                   icon: AppIcons.feedback,
                   title: '意见反馈',
-                  onTap: () => openPage(context, _FeedbackPage(store: store)),
+                  onTap: () => openPage(context, buildFeedbackPage(store)),
                 ),
               _SettingsRow(
                 key: const ValueKey('settings-user-agreement'),
@@ -322,9 +405,9 @@ class _SettingsListPage extends StatelessWidget {
     this.actions,
     this.backgroundColor,
     this.padding = const EdgeInsets.fromLTRB(
-      appPageHorizontalPadding,
+      appPageHorizontalPadding - _rowPadding,
       16,
-      appPageHorizontalPadding,
+      appPageHorizontalPadding - _rowPadding,
       32,
     ),
   });
@@ -360,7 +443,7 @@ class _SettingsGroup extends StatelessWidget {
   const _SettingsGroup(
     this.title, {
     required this.children,
-    this.dividerInset = 54,
+    this.dividerInset = _rowPadding + _labelOffset,
   });
   final String title;
   final List<Widget> children;
@@ -372,7 +455,7 @@ class _SettingsGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 2, bottom: 10),
+          padding: const EdgeInsets.only(left: _rowPadding, bottom: 10),
           child: Text(
             title,
             style: TextStyle(
@@ -391,7 +474,10 @@ class _SettingsGroup extends StatelessWidget {
               for (var i = 0; i < children.length; i++) ...[
                 if (i > 0)
                   Padding(
-                    padding: EdgeInsets.only(left: dividerInset, right: 16),
+                    padding: EdgeInsets.only(
+                      left: dividerInset,
+                      right: _rowPadding,
+                    ),
                     child: const Divider(height: 1),
                   ),
                 children[i],
@@ -425,12 +511,20 @@ class _SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+      padding: const EdgeInsets.symmetric(
+        horizontal: _rowPadding,
+        vertical: 17,
+      ),
       child: Row(
         children: [
           if (icon != null) ...[
-            AppIcon(icon!, size: 20, color: context.colors.ink),
-            const SizedBox(width: 14),
+            SizedBox(
+              width: _labelOffset,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: AppIcon(icon!, size: 20, color: context.colors.ink),
+              ),
+            ),
           ],
           Expanded(
             child: Column(
@@ -477,17 +571,30 @@ class _SettingsRow extends StatelessWidget {
   );
 }
 
-class _FeedbackPage extends StatefulWidget {
-  const _FeedbackPage({required this.store, this.appeal = false});
+/// 意见反馈 / 账号申诉页，供在线客服等入口使用。
+Widget buildFeedbackPage(
+  AppStore store, {
+  bool appeal = false,
+  String initialText = '',
+}) => appeal
+    ? _AppealPage(store: store, initialText: initialText)
+    : FeedbackPage(store: store, initialText: initialText);
+
+class _AppealPage extends StatefulWidget {
+  const _AppealPage({required this.store, this.initialText = ''});
+  final String initialText;
   final AppStore store;
-  final bool appeal;
   @override
-  State<_FeedbackPage> createState() => _FeedbackPageState();
+  State<_AppealPage> createState() => _AppealPageState();
 }
 
-class _FeedbackPageState extends State<_FeedbackPage> {
-  final text = TextEditingController();
-  String category = 'BUG';
+class _AppealPageState extends State<_AppealPage> {
+  late final text = TextEditingController.fromValue(
+    TextEditingValue(
+      text: widget.initialText,
+      selection: TextSelection.collapsed(offset: widget.initialText.length),
+    ),
+  );
   bool sending = false;
   @override
   void dispose() {
@@ -501,7 +608,7 @@ class _FeedbackPageState extends State<_FeedbackPage> {
       toast(context, '请填写反馈内容');
       return;
     }
-    if (utf8.encode(text.text.trim()).length > (widget.appeal ? 1000 : 2000)) {
+    if (utf8.encode(text.text.trim()).length > 1000) {
       toast(context, '反馈内容过长，请适当缩短');
       return;
     }
@@ -509,24 +616,18 @@ class _FeedbackPageState extends State<_FeedbackPage> {
     setState(() => sending = true);
     final done = await runRequest(context, () async {
       await widget.store.request(
-        widget.appeal ? 'PostAppeals' : 'PostFeedback',
-        body: widget.appeal
-            ? {
-                'subject_type': 'USER',
-                'subject_id': widget.store.userID,
-                'reason': text.text.trim(),
-              }
-            : {
-                'category': category,
-                'content': text.text.trim(),
-                'diagnostic_consent': false,
-              },
+        'PostAppeals',
+        body: {
+          'subject_type': 'USER',
+          'subject_id': widget.store.userID,
+          'reason': text.text.trim(),
+        },
       );
     });
     if (!mounted) return;
     if (done) {
       Navigator.pop(context);
-      toast(context, widget.appeal ? '申诉已提交' : '反馈已提交');
+      toast(context, '申诉已提交');
     } else {
       setState(() => sending = false);
     }
@@ -534,45 +635,30 @@ class _FeedbackPageState extends State<_FeedbackPage> {
 
   @override
   Widget build(BuildContext context) => _SettingsListPage(
-    title: widget.appeal ? '账号申诉' : '意见反馈',
+    title: '账号申诉',
     actions: const [DismissKeyboardButton()],
     padding: const EdgeInsets.symmetric(
       horizontal: appPageHorizontalPadding,
       vertical: 24,
     ),
     children: [
-      if (widget.appeal)
-        Text(
-          '请描述账号遇到的问题，并留下可联系的方式，便于核实和处理。',
-          style: TextStyle(
-            fontSize: 13,
-            color: context.colors.muted,
-            height: 1.6,
-          ),
-        )
-      else
-        Wrap(
-          spacing: 8,
-          children: [
-            for (final choice in {'BUG': '遇到问题', 'SUGGESTION': '功能建议'}.entries)
-              ChoiceChip(
-                label: Text(choice.value),
-                selected: category == choice.key,
-                onSelected: sending
-                    ? null
-                    : (_) => setState(() => category = choice.key),
-              ),
-          ],
+      Text(
+        '请描述账号遇到的问题，并留下可联系的方式，便于核实和处理。',
+        style: TextStyle(
+          fontSize: 13,
+          color: context.colors.muted,
+          height: 1.6,
         ),
+      ),
       const SizedBox(height: 20),
       TextField(
         controller: text,
         enabled: !sending,
         minLines: 8,
         maxLines: 14,
-        maxLength: widget.appeal ? 300 : 600,
+        maxLength: 300,
         decoration: InputDecoration(
-          hintText: widget.appeal ? '问题描述与联系方式…' : '描述你遇到的问题或建议…',
+          hintText: '问题描述与联系方式…',
           fillColor: context.colors.surface,
         ),
         style: const TextStyle(fontSize: 14, height: 1.7),
@@ -580,26 +666,20 @@ class _FeedbackPageState extends State<_FeedbackPage> {
       const SizedBox(height: 20),
       FilledButton(
         onPressed: sending ? null : submit,
-        child: Text(
-          sending
-              ? '正在提交…'
-              : widget.appeal
-              ? '提交申诉'
-              : '提交反馈',
-        ),
+        child: Text(sending ? '正在提交…' : '提交申诉'),
       ),
     ],
   );
 }
 
-class _SecurityPage extends StatefulWidget {
-  const _SecurityPage({required this.store});
+class AccountSecurityPage extends StatefulWidget {
+  const AccountSecurityPage({super.key, required this.store});
   final AppStore store;
   @override
-  State<_SecurityPage> createState() => _SecurityPageState();
+  State<AccountSecurityPage> createState() => _SecurityPageState();
 }
 
-class _SecurityPageState extends State<_SecurityPage> {
+class _SecurityPageState extends State<AccountSecurityPage> {
   Future<void> bindPhone() async {
     await showPhoneBindingDialog(context, store: widget.store);
     if (mounted) setState(() {});
@@ -715,24 +795,28 @@ class _SecurityPageState extends State<_SecurityPage> {
         : '';
     final busy = revoking.contains(integer(session['id']));
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      child: Row(
+      padding: const EdgeInsets.symmetric(
+        horizontal: _rowPadding,
+        vertical: 10,
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 3),
-            child: AppIcon(
-              desktop ? AppIcons.computer : AppIcons.phone,
-              size: 21,
-              color: context.colors.ink,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
+          Row(
+            children: [
+              SizedBox(
+                width: _labelOffset,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppIcon(
+                    desktop ? AppIcons.computer : AppIcons.phone,
+                    size: 21,
+                    color: context.colors.ink,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Wrap(
                   spacing: 8,
                   runSpacing: 6,
                   crossAxisAlignment: WrapCrossAlignment.center,
@@ -753,7 +837,7 @@ class _SecurityPageState extends State<_SecurityPage> {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: blue.withValues(alpha: .08),
+                          color: context.colors.accent.withValues(alpha: .08),
                           borderRadius: BorderRadius.circular(5),
                         ),
                         child: Text(
@@ -766,7 +850,27 @@ class _SecurityPageState extends State<_SecurityPage> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 7),
+              ),
+              const SizedBox(width: 10),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(48, 48),
+                  alignment: Alignment.centerRight,
+                ),
+                onPressed: busy ? null : () => revokeSession(session),
+                child: Text(
+                  busy ? '正在退出…' : '退出登录',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: _labelOffset, bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
                   '系统：${platformName(session['platform'])}${osVersion.isEmpty ? '' : ' $osVersion'}',
                   style: TextStyle(fontSize: 11, color: context.colors.muted),
@@ -777,14 +881,6 @@ class _SecurityPageState extends State<_SecurityPage> {
                   style: TextStyle(fontSize: 11, color: context.colors.muted),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          TextButton(
-            onPressed: busy ? null : () => revokeSession(session),
-            child: Text(
-              busy ? '正在退出…' : '退出登录',
-              style: const TextStyle(fontSize: 12),
             ),
           ),
         ],
@@ -806,7 +902,10 @@ class _SecurityPageState extends State<_SecurityPage> {
             )
           else if (error != null)
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(
+                horizontal: _rowPadding,
+                vertical: 20,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -827,7 +926,7 @@ class _SecurityPageState extends State<_SecurityPage> {
       ),
       _SettingsGroup(
         '账号管理',
-        dividerInset: 16,
+        dividerInset: _rowPadding,
         children: [
           ListenableBuilder(
             listenable: widget.store,
@@ -846,10 +945,7 @@ class _SecurityPageState extends State<_SecurityPage> {
           _SettingsRow(
             title: '账号申诉',
             subtitle: '账号使用遇到问题，提交申诉协助处理',
-            onTap: () => openPage(
-              context,
-              _FeedbackPage(store: widget.store, appeal: true),
-            ),
+            onTap: () => openPage(context, _AppealPage(store: widget.store)),
           ),
           _SettingsRow(
             title: deleting ? '正在申请注销…' : '账号注销',

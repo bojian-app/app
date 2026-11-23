@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_qr_scanner.dart';
+import 'design.dart';
 
 final _inviteCodePattern = RegExp(r'^[2-9A-HJKMNP-Z]{8}$');
 
@@ -46,9 +47,7 @@ class _InvitationScanPageState extends State<InvitationScanPage> {
     }
     // The scanner stops after one result; remount it for another try.
     setState(() => _scannerKey = UniqueKey());
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('请扫描好友分享的博简邀请二维码')));
+    toast(context, '请扫描好友分享的博简邀请二维码');
   }
 
   @override

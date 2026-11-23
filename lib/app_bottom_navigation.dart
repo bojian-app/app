@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'navigation_icon.dart';
+import 'update_badge.dart';
 import 'design.dart';
 
 /// Four persistent tabs.
@@ -14,7 +15,11 @@ class AppBottomNavigation extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
-  static const _destinations = ['发现', '模版市场', '会员', '我的'];
+  static const _destinations = ['发现', '会员中心', '在线客服', '我的'];
+
+  /// Painter shape for each tab (the shared icon set keeps its own numbering).
+  static const _icons = [0, 2, 4, 3];
+  static const _profileIndex = 3;
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +81,11 @@ class AppBottomNavigation extends StatelessWidget {
               activeColor,
               progress,
             )!;
+            final icon = NavigationIcon(
+              index: _icons[index],
+              progress: progress,
+              color: foreground,
+            );
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Column(
@@ -86,11 +96,9 @@ class AppBottomNavigation extends StatelessWidget {
                     width: 50,
                     height: 32,
                     child: Center(
-                      child: NavigationIcon(
-                        index: index,
-                        progress: progress,
-                        color: foreground,
-                      ),
+                      child: index == _profileIndex
+                          ? UpdateBadge(child: icon)
+                          : icon,
                     ),
                   ),
                   const SizedBox(height: 4),

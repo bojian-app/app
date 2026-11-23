@@ -19,6 +19,10 @@ final class BojianAppleProducts {
     "cn.kelance.bojian.membership.year": .nonRenewable,
     "cn.kelance.bojian.membership.month.auto": .autoRenewable,
     "cn.kelance.bojian.membership.year.auto": .autoRenewable,
+    "cn.kelance.bojian.template.9": .nonConsumable,
+    "cn.kelance.bojian.template.10": .nonConsumable,
+    "cn.kelance.bojian.template.11": .nonConsumable,
+    "cn.kelance.bojian.template.12": .nonConsumable,
     // Members buy extra AI uses as fixed consumable packs.
     "cn.kelance.bojian.ai.create.1": .consumable,
     "cn.kelance.bojian.ai.create.5": .consumable,
@@ -89,11 +93,11 @@ final class BojianAppleProducts {
           !identifiers.isEmpty,
           identifiers.count <= Self.productIDs.count,
           Set(identifiers).isSubset(of: Self.productIDs) else {
-      throw BridgeError(code: "INVALID_PRODUCTS", message: "会员商品参数无效")
+      throw BridgeError(code: "INVALID_PRODUCTS", message: "商品参数无效")
     }
     let products = try await Product.products(for: Set(identifiers))
     guard products.allSatisfy({ Self.productTypes[$0.id] == $0.type }) else {
-      throw BridgeError(code: "INVALID_PRODUCT_TYPE", message: "会员商品暂不可用")
+      throw BridgeError(code: "INVALID_PRODUCT_TYPE", message: "商品暂不可用")
     }
     let foundIDs = Set(products.map(\.id))
     let values: [[String: Any]] = products.sorted { $0.id < $1.id }.map { product in
@@ -125,7 +129,7 @@ final class BojianAppleProducts {
     defer { purchasing = false }
     guard let product = try await Product.products(for: [identifier]).first,
           product.id == identifier, Self.productTypes[identifier] == product.type else {
-      throw BridgeError(code: "PRODUCT_UNAVAILABLE", message: "该会员商品暂不可购买，请稍后刷新")
+      throw BridgeError(code: "PRODUCT_UNAVAILABLE", message: "该商品暂不可购买，请稍后刷新")
     }
     switch try await product.purchase(options: [.appAccountToken(token)]) {
     case .success(let verification):

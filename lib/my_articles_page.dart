@@ -1,5 +1,6 @@
 import 'article_owner_actions.dart';
 import 'app_page_bar.dart';
+import 'panel_sheet.dart';
 import 'playful_refresh.dart';
 
 import 'dart:async';
@@ -251,7 +252,7 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
       await widget.store.request('DeleteArticlesId', path: {'id': id});
       if (!mounted || widget.store.epoch != session) return;
       setState(() => articles.removeWhere((item) => '${item['id']}' == id));
-      toast(context, '草稿已删除');
+      toast(context, '草稿已删除', success: true);
     } catch (e) {
       if (mounted) toast(context, '$e');
     } finally {
@@ -312,7 +313,8 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                if (!widget.embedded || !widget.publishedOnly)
+                if (!widget.embedded ||
+                    (!widget.publishedOnly && !widget.draftsOnly))
                   SliverToBoxAdapter(
                     child: Column(
                       children: [
@@ -410,7 +412,7 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(
                     feedLayout ? 0 : appPageHorizontalPadding,
-                    feedLayout ? 0 : 12,
+                    feedLayout || widget.draftsOnly ? 0 : 12,
                     feedLayout ? 0 : appPageHorizontalPadding,
                     24,
                   ),
@@ -475,6 +477,22 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                         for (final row in visible)
                           if (feedLayout)
                             _feedCard(row)
+                          else if (row['status'] == 'DRAFT')
+                            _DraftRow(
+                              key: ValueKey((
+                                widget.store,
+                                widget.store.epoch,
+                                row['id'],
+                                row['updated_at'],
+                              )),
+                              store: widget.store,
+                              row: row,
+                              busy:
+                                  opening == '${row['id']}' ||
+                                  deleting == '${row['id']}',
+                              onOpen: () => _open(row),
+                              onDelete: () => _deleteDraft(row),
+                            )
                           else
                             Padding(
                               padding: const EdgeInsets.only(bottom: 14),
@@ -484,9 +502,6 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                                     opening == '${row['id']}' ||
                                     deleting == '${row['id']}',
                                 onTap: () => _open(row),
-                                onDelete: row['status'] == 'DRAFT'
-                                    ? () => _deleteDraft(row)
-                                    : null,
                               ),
                             ),
                         PageLoadingFooter(visible: loadingMore),
@@ -513,20 +528,274 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
   }
 }
 
+enum _DraftAction { edit, delete }
+
+class _DraftRow extends StatefulWidget {
+  const _DraftRow({
+    super.key,
+    required this.store,
+    required this.row,
+    required this.busy,
+    required this.onOpen,
+    required this.onDelete,
+  });
+  final AppStore store;
+  final Map<String, dynamic> row;
+  final bool busy;
+  final VoidCallback onOpen, onDelete;
+
+  @override
+  State<_DraftRow> createState() => _DraftRowState();
+}
+
+class _DraftRowState extends State<_DraftRow> {
+  // The list endpoint can return metadata only. Fetch text when the row is built.
+  late final Future<String> excerpt = _excerpt();
+
+  Future<String> _excerpt() async {
+    final row = widget.row;
+    if (row.containsKey('content')) return plainContent(row['content']);
+    try {
+      final detail = await widget.store.request(
+        'GetArticlesId',
+        path: {'id': '${row['id']}'},
+      );
+      if (detail.data['id'] == row['id'] && detail.data['status'] == 'DRAFT') {
+        return plainContent(detail.data['content']);
+      }
+    } catch (_) {
+      // The title still opens the draft when a preview is unavailable.
+    }
+    return '';
+  }
+
+  Future<void> _showActions() async {
+    final draftID = widget.row['id'];
+    final title = '${widget.row['title'] ?? ''}'.trim();
+    final edited = _time(widget.row['updated_at']);
+    final action = await showPanelSheet<_DraftAction>(
+      context,
+      useRootNavigator: true,
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: .5,
+        child: PanelSheet(
+          header: Padding(
+            padding: const EdgeInsets.fromLTRB(0, 8, 8, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title.isEmpty ? '无标题草稿' : title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: sheetContext.colors.ink,
+                  ),
+                ),
+                if (edited.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '上次编辑 $edited',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: sheetContext.colors.muted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          backgroundColor: sheetContext.isDark
+              ? null
+              : sheetContext.colors.surface,
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              PanelGroup(
+                outlined: true,
+                children: [
+                  _DraftActionTile(
+                    label: '继续编辑',
+                    icon: AppIcons.edit,
+                    color: sheetContext.colors.accent,
+                    onTap: () => Navigator.pop(sheetContext, _DraftAction.edit),
+                  ),
+                  _DraftActionTile(
+                    key: ValueKey('draft-delete-$draftID'),
+                    label: '删除草稿',
+                    icon: AppIcons.delete,
+                    color: Theme.of(sheetContext).colorScheme.error,
+                    destructive: true,
+                    onTap: () =>
+                        Navigator.pop(sheetContext, _DraftAction.delete),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || widget.busy) return;
+    switch (action) {
+      case _DraftAction.edit:
+        widget.onOpen();
+      case _DraftAction.delete:
+        widget.onDelete();
+      case null:
+        return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final title = '${widget.row['title'] ?? ''}'.trim();
+    final edited = _time(widget.row['updated_at']);
+    return Column(
+      children: [
+        Material(
+          color: colors.surface,
+          child: InkWell(
+            onTap: widget.busy ? null : widget.onOpen,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title.isEmpty ? '无标题草稿' : title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: colors.ink,
+                          ),
+                        ),
+                        FutureBuilder<String>(
+                          future: excerpt,
+                          builder: (context, state) {
+                            final text = (state.data ?? '')
+                                .replaceAll(RegExp(r'\s+'), ' ')
+                                .trim();
+                            if (text.isEmpty || text == title) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                text,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: colors.muted,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        if (edited.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              '上次编辑 $edited',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colors.muted,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (widget.busy)
+                    const SizedBox(
+                      width: 48,
+                      child: Center(
+                        child: SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      key: ValueKey('draft-more-${widget.row['id']}'),
+                      tooltip: '更多操作',
+                      onPressed: _showActions,
+                      icon: AppIcon(
+                        AppIcons.more,
+                        size: 20,
+                        color: colors.muted,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Divider(height: 1, color: colors.border),
+      ],
+    );
+  }
+}
+
+class _DraftActionTile extends StatelessWidget {
+  const _DraftActionTile({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.destructive = false,
+  });
+  final String label;
+  final AppIconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+    horizontalTitleGap: 12,
+    minLeadingWidth: 34,
+    leading: SizedBox(
+      width: 34,
+      child: Center(
+        widthFactor: 1,
+        heightFactor: 1,
+        child: AppIcon(icon, size: 20, color: color),
+      ),
+    ),
+    title: Text(
+      label,
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+        color: destructive ? color : context.colors.ink,
+      ),
+    ),
+    onTap: onTap,
+  );
+}
+
 class _ArticleCard extends StatelessWidget {
   const _ArticleCard({
     required this.row,
     required this.busy,
     required this.onTap,
-    this.onDelete,
   });
   final Map<String, dynamic> row;
   final bool busy;
   final VoidCallback onTap;
-
-  /// Only drafts can be deleted from the list; other states are managed from
-  /// the article itself.
-  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -566,24 +835,6 @@ class _ArticleCard extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  if (onDelete != null && !busy)
-                    IconButton(
-                      key: ValueKey('draft-delete-${row['id']}'),
-                      tooltip: '删除草稿',
-                      onPressed: onDelete,
-                      visualDensity: VisualDensity.compact,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                      padding: EdgeInsets.zero,
-                      icon: AppIcon(
-                        AppIcons.delete,
-                        size: 18,
-                        color: context.colors.muted,
-                      ),
-                    ),
-                  const SizedBox(width: 12),
                   if (busy)
                     const SizedBox(
                       width: 16,

@@ -6,9 +6,19 @@ import 'app_icons.dart';
 
 const brandBlue = Color(0xFF2867EE);
 
+enum AppAccent {
+  blue('博简蓝', brandBlue),
+  warm('珊瑚暖色', Color(0xFFC64350));
+
+  const AppAccent(this.label, this.seed);
+  final String label;
+  final Color seed;
+}
+
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
   const AppColors({
+    this.palette = AppAccent.blue,
     required this.canvas,
     required this.surface,
     required this.inset,
@@ -22,11 +32,12 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.warningSoft,
   });
 
+  final AppAccent palette;
   final Color canvas, surface, inset, ink, muted, border;
   final Color accent, accentSoft, success, successSoft, warningSoft;
 
   static const light = AppColors(
-    canvas: Color(0xFFF7F8FA),
+    canvas: Colors.white,
     surface: Colors.white,
     inset: Color(0xFFF3F5F8),
     ink: Color(0xFF202C41),
@@ -55,6 +66,7 @@ class AppColors extends ThemeExtension<AppColors> {
 
   @override
   AppColors copyWith({
+    AppAccent? palette,
     Color? canvas,
     Color? surface,
     Color? inset,
@@ -67,6 +79,7 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? successSoft,
     Color? warningSoft,
   }) => AppColors(
+    palette: palette ?? this.palette,
     canvas: canvas ?? this.canvas,
     surface: surface ?? this.surface,
     inset: inset ?? this.inset,
@@ -84,6 +97,7 @@ class AppColors extends ThemeExtension<AppColors> {
   AppColors lerp(covariant AppColors? other, double t) {
     if (other == null) return this;
     return AppColors(
+      palette: t < .5 ? palette : other.palette,
       canvas: Color.lerp(canvas, other.canvas, t)!,
       surface: Color.lerp(surface, other.surface, t)!,
       inset: Color.lerp(inset, other.inset, t)!,
@@ -141,21 +155,40 @@ extension AppButtonHoverStyle on ButtonStyle {
   );
 }
 
-final appTheme = _buildTheme(Brightness.light);
-final appDarkTheme = _buildTheme(Brightness.dark);
+final appTheme = _buildTheme(Brightness.light, AppAccent.blue);
+final appDarkTheme = _buildTheme(Brightness.dark, AppAccent.blue);
+final _warmTheme = _buildTheme(Brightness.light, AppAccent.warm);
+final _warmDarkTheme = _buildTheme(Brightness.dark, AppAccent.warm);
 
-ThemeData _buildTheme(Brightness brightness) {
+extension AccentThemes on AppAccent {
+  ThemeData get lightTheme => this == AppAccent.blue ? appTheme : _warmTheme;
+  ThemeData get darkTheme =>
+      this == AppAccent.blue ? appDarkTheme : _warmDarkTheme;
+}
+
+ThemeData _buildTheme(Brightness brightness, AppAccent palette) {
   final dark = brightness == Brightness.dark;
-  final colors = dark ? AppColors.dark : AppColors.light;
+  final defaults = dark ? AppColors.dark : AppColors.light;
+  final colors = palette == AppAccent.blue
+      ? defaults
+      : defaults.copyWith(
+          palette: palette,
+          accent: dark ? const Color(0xFFFFA2A6) : palette.seed,
+          accentSoft: dark ? const Color(0xFF472932) : const Color(0xFFFFEFF0),
+        );
   final base = ThemeData(brightness: brightness, useMaterial3: true);
   final scheme =
       ColorScheme.fromSeed(
-        seedColor: brandBlue,
+        seedColor: palette.seed,
         brightness: brightness,
         surface: colors.surface,
       ).copyWith(
         primary: colors.accent,
-        onPrimary: dark ? const Color(0xFF102244) : Colors.white,
+        onPrimary: dark
+            ? (palette == AppAccent.warm
+                  ? const Color(0xFF361722)
+                  : const Color(0xFF102244))
+            : Colors.white,
         onSurface: colors.ink,
         onSurfaceVariant: colors.muted,
         outline: colors.border,
@@ -230,7 +263,7 @@ ThemeData _buildTheme(Brightness brightness) {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         elevation: 0,
-        backgroundColor: brandBlue,
+        backgroundColor: palette.seed,
         foregroundColor: Colors.white,
         minimumSize: const Size(0, 48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

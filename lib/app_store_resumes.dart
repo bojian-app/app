@@ -124,17 +124,40 @@ extension AppStoreResumes on AppStore {
   }
 
   Future<ResumeDraft> copyResume(int id) async {
+    if (copyingResume) throw const ApiFailure('正在创建副本，请稍候');
     final version = epoch;
-    final response = await request('PostResumesIdCopies', path: {'id': '$id'});
-    if (!alive || epoch != version) throw const ApiFailure('账号已切换');
-    final copied = decodeResume(response.data);
-    if (copied.id <= 0 || copied.id == id) {
-      throw const ApiFailure('副本结果无效，请刷新简历列表确认');
-    }
-    resumes.removeWhere((resume) => resume.id == copied.id);
-    resumes.insert(0, copied);
+    copyingResume = true;
     changed();
-    return copied;
+    var success = false;
+    try {
+      final response = await request(
+        'PostResumesIdCopies',
+        path: {'id': '$id'},
+      );
+      if (!alive || epoch != version) throw const ApiFailure('账号已切换');
+      final copied = decodeResume(response.data);
+      if (copied.id <= 0 || copied.id == id) {
+        throw const ApiFailure('副本结果无效，请刷新简历列表确认');
+      }
+      resumes.removeWhere((resume) => resume.id == copied.id);
+      resumes.insert(0, copied);
+      success = true;
+      changed();
+      return copied;
+    } finally {
+      void release() {
+        if (!alive) return;
+        copyingResume = false;
+        changed();
+      }
+
+      // 成功后保持锁定，覆盖页面转场与新页面刚出现的阶段；失败则立即允许重试。
+      if (success) {
+        Timer(const Duration(seconds: 1), release);
+      } else {
+        release();
+      }
+    }
   }
 
   Future<void> deleteResume(int id) async {
@@ -192,14 +215,14 @@ extension AppStoreResumes on AppStore {
     await load('resumes');
   }
 
-  /// Only acquired marketplace templates are offered; authored drafts are excluded.
+  /// Acquired templates, plus every paid one for members; authored drafts are excluded.
   Future<List<Map<String, dynamic>>> purchasedResumeTemplates() async {
     final result = await request('GetMeTemplates');
     final seen = <int>{};
     return items(result.data)
         .where(
           (row) =>
-              row['source'] == 'ACQUIRED' &&
+              (row['source'] == 'ACQUIRED' || row['source'] == 'MEMBER') &&
               integer(row['id']) > 0 &&
               seen.add(integer(row['id'])),
         )

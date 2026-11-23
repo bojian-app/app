@@ -91,7 +91,7 @@ class _MembershipOrderResultPageState extends State<MembershipOrderResultPage> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: paid
-                        ? const LinearGradient(colors: _blueGradient)
+                        ? context.colors.palette.purchaseGradient
                         : null,
                     color: paid ? null : colors.border,
                   ),
@@ -157,7 +157,7 @@ class _MembershipOrderResultPageState extends State<MembershipOrderResultPage> {
                 if (paidAt != null) _OrderLine('支付时间', _dateTime(paidAt)),
                 if (paid && endsAt != null)
                   _OrderLine('会员有效期至', _dateTime(endsAt)),
-                _OrderLine('订单编号', '${order['id']}'),
+                _OrderLine('订单编号', '${order['out_trade_no'] ?? '—'}'),
               ],
             ),
           ),
@@ -179,7 +179,7 @@ class _MembershipOrderResultPageState extends State<MembershipOrderResultPage> {
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(23),
-              gradient: const LinearGradient(colors: _blueGradient),
+              gradient: context.colors.palette.purchaseGradient,
             ),
             child: FilledButton(
               onPressed: () => Navigator.of(context).pop(),

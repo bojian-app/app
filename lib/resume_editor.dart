@@ -1021,24 +1021,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
             )
           : null,
       body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            stops: const [0, .45, 1],
-            colors: context.isDark
-                ? [
-                    context.colors.canvas,
-                    context.colors.canvas,
-                    context.colors.canvas,
-                  ]
-                : [
-                    const Color(0xFFE8F3FF),
-                    context.colors.canvas,
-                    context.colors.canvas,
-                  ],
-          ),
-        ),
+        decoration: BoxDecoration(color: context.colors.canvas),
         child: ReorderableListView.builder(
           key: const ValueKey('resume-modules'),
           scrollController: _moduleScroll,

@@ -28,9 +28,7 @@ class WalletCoupon {
   bool get usable => status == 'AVAILABLE';
   bool appliesTo(String plan) => planCode == null || planCode == plan;
 
-  /// 支付渠道不接受 0 元，抵扣后至少支付 0.01 元。
-  int discountFor(MembershipPlan plan) =>
-      min(amountCents, plan.amountCents - 1);
+  int discountFor(MembershipPlan plan) => min(amountCents, plan.amountCents);
 
   String get scope => switch (planCode) {
     'MONTH' => '仅限月卡',
@@ -166,40 +164,83 @@ class _MembershipWalletPageState extends State<MembershipWalletPage> {
     }
   }
 
+  Future<void> _useCoupon(WalletCoupon coupon) async {
+    final plans = membershipPlans
+        .where((p) => coupon.appliesTo(p.code))
+        .toList();
+    if (plans.isEmpty) return;
+    final plan = plans.length == 1
+        ? plans.first
+        : await showPanelSheet<MembershipPlan>(
+            context,
+            builder: (context) => PanelSheet(
+              title: '选择使用套餐',
+              child: ListView(
+                children: [
+                  for (final p in plans)
+                    ListTile(
+                      title: Text(p.orderName),
+                      trailing: Text('¥${p.price}'),
+                      onTap: () => Navigator.pop(context, p),
+                    ),
+                ],
+              ),
+            ),
+          );
+    if (!mounted || plan == null) return;
+    await openPage<void>(
+      context,
+      MembershipCheckoutPage(
+        store: widget.store,
+        plan: plan,
+        initialCoupon: coupon,
+      ),
+    );
+    if (mounted) await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final wallet = this.wallet;
-    // iOS 会员由 App Store 计费，不能叠加优惠券，只展示会员卡。
+    final c = context.colors;
+    final data = wallet;
     final showCoupons = !usesAppleMembership;
     return DefaultTabController(
       length: showCoupons ? 2 : 1,
+      initialIndex: showCoupons ? 1 : 0,
       child: Scaffold(
-        backgroundColor: colors.canvas,
-        appBar: AppPageBar(
-          title: const Text('我的卡包'),
-          backgroundColor: colors.canvas,
-          bottom: !showCoupons
-              ? null
-              : TabBar(
-                  labelColor: colors.accent,
-                  unselectedLabelColor: colors.muted,
-                  indicatorColor: colors.accent,
-                  indicatorSize: TabBarIndicatorSize.label,
-                  dividerColor: Colors.transparent,
-                  tabs: [
-                    Tab(
-                      text:
-                          '优惠券${_count(wallet?.coupons.where((c) => c.usable))}',
+        backgroundColor: c.canvas,
+        appBar: AppBar(
+          backgroundColor: c.canvas,
+          foregroundColor: c.ink,
+          centerTitle: true,
+          scrolledUnderElevation: 0,
+          title: showCoupons
+              ? SizedBox(
+                  width: 176,
+                  child: TabBar(
+                    labelColor: c.ink,
+                    unselectedLabelColor: c.muted,
+                    dividerColor: Colors.transparent,
+                    indicatorSize: TabBarIndicatorSize.label,
+                    indicatorColor: c.accent,
+                    labelPadding: EdgeInsets.zero,
+                    labelStyle: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
                     ),
-                    Tab(
-                      text:
-                          '会员卡${_count(wallet?.cards.where((c) => c.status == 'AVAILABLE'))}',
-                    ),
-                  ],
-                ),
+                    tabs: const [
+                      Tab(text: '会员卡'),
+                      Tab(text: '优惠券'),
+                    ],
+                  ),
+                )
+              : const Text('会员卡'),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Divider(height: 1, color: c.border),
+          ),
         ),
-        body: wallet == null
+        body: data == null
             ? Center(
                 child: error == null
                     ? const CircularProgressIndicator()
@@ -210,71 +251,446 @@ class _MembershipWalletPageState extends State<MembershipWalletPage> {
               )
             : TabBarView(
                 children: [
+                  _WalletList(
+                    cards: data.cards,
+                    onUseCard: using == null ? _use : null,
+                    onRefresh: _load,
+                  ),
                   if (showCoupons)
                     _WalletList(
+                      coupons: data.coupons,
+                      onUseCoupon: _useCoupon,
                       onRefresh: _load,
-                      empty: '暂无优惠券',
-                      children: [
-                        for (final coupon in wallet.coupons)
-                          _CouponTile(coupon: coupon),
-                      ],
                     ),
-                  _WalletList(
-                    onRefresh: _load,
-                    empty: '暂无会员卡',
-                    children: [
-                      for (final card in wallet.cards)
-                        _MembershipCardTile(
-                          card: card,
-                          busy: using == card.id,
-                          onUse: using == null ? () => _use(card) : null,
-                        ),
-                    ],
-                  ),
                 ],
               ),
       ),
     );
   }
+}
 
-  String _count(Iterable<Object>? usable) {
-    final count = usable?.length ?? 0;
-    return count == 0 ? '' : ' $count';
+class _WalletList extends StatefulWidget {
+  const _WalletList({
+    this.cards,
+    this.coupons,
+    this.onUseCard,
+    this.onUseCoupon,
+    required this.onRefresh,
+  });
+  final List<WalletCard>? cards;
+  final List<WalletCoupon>? coupons;
+  final ValueChanged<WalletCard>? onUseCard;
+  final ValueChanged<WalletCoupon>? onUseCoupon;
+  final Future<void> Function() onRefresh;
+  @override
+  State<_WalletList> createState() => _WalletListState();
+}
+
+class _WalletListState extends State<_WalletList> {
+  String filter = '全部';
+  bool matches(String? code) =>
+      filter == '全部' ||
+      code == null ||
+      code == (filter == '月卡适用' ? 'MONTH' : 'YEAR');
+
+  String get rules => widget.cards != null
+      ? '会员卡须在标注的期限内使用。确认后即开通对应时长的会员并发放 AI 次数，会员有效期从使用时起计算。'
+      : '优惠券仅用于适用的会员套餐，每笔订单可使用一张。实际抵扣金额以确认订单页为准。';
+
+  List<Widget> tickets({required bool history}) => [
+    for (final card in widget.cards ?? const <WalletCard>[])
+      if ((card.status != 'AVAILABLE') == history &&
+          (history || matches(card.planCode)))
+        _WalletTicket(
+          key: ValueKey(card.id),
+          face: card.planCode == 'YEAR' ? '年卡' : '月卡',
+          caption: '会员卡',
+          title: card.plan.orderName,
+          date: card.status == 'USED'
+              ? '会员有效期至 ${_day(card.membershipEndsAt)}'
+              : '使用期限至 ${_day(card.expiresAt)}',
+          rule: '开通 ${card.plan.period} 会员，并发放对应 AI 次数。',
+          status: card.status,
+          onUse: widget.onUseCard == null
+              ? null
+              : () => widget.onUseCard!(card),
+        ),
+    for (final coupon in widget.coupons ?? const <WalletCoupon>[])
+      if (!coupon.usable == history && (history || matches(coupon.planCode)))
+        _WalletTicket(
+          key: ValueKey(coupon.id),
+          face: '¥${_yuan(coupon.amountCents)}',
+          caption: '会员立减',
+          title: coupon.title,
+          date: '有效期至 ${_day(coupon.expiresAt)}',
+          rule: '${coupon.scope}。每单限用一张。',
+          status: coupon.status,
+          onUse: () => widget.onUseCoupon!(coupon),
+        ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final visible = tickets(history: false);
+    return SafeArea(
+      top: false,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                child: Row(
+                  children: [
+                    PopupMenuButton<String>(
+                      tooltip: '筛选',
+                      initialValue: filter,
+                      onSelected: (v) => setState(() => filter = v),
+                      itemBuilder: (_) => [
+                        for (final name in ['全部', '月卡适用', '年卡适用'])
+                          PopupMenuItem(value: name, child: Text(name)),
+                      ],
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.inset,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              '$filter（${visible.length}）',
+                              style: TextStyle(color: c.ink, fontSize: 13),
+                            ),
+                            Icon(Icons.arrow_drop_down, size: 18, color: c.ink),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        final past = tickets(history: true);
+                        openPage<void>(
+                          context,
+                          Scaffold(
+                            backgroundColor: c.canvas,
+                            appBar: const AppPageBar(title: Text('历史记录')),
+                            body: SafeArea(
+                              child: ListView(
+                                padding: const EdgeInsets.all(16),
+                                children: past.isEmpty
+                                    ? [
+                                        const SizedBox(height: 100),
+                                        const Center(child: Text('暂无历史记录')),
+                                      ]
+                                    : past,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Text(
+                            '历史记录',
+                            style: TextStyle(color: c.muted, fontSize: 13),
+                          ),
+                          AppIcon(AppIcons.forward, size: 14, color: c.muted),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: widget.onRefresh,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    children: visible.isEmpty
+                        ? [
+                            const SizedBox(height: 100),
+                            Center(
+                              child: Text(
+                                filter != '全部'
+                                    ? '暂无符合条件的卡券'
+                                    : widget.cards != null
+                                    ? '暂无可用会员卡'
+                                    : '暂无可用优惠券',
+                                style: TextStyle(color: c.muted),
+                              ),
+                            ),
+                          ]
+                        : visible,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => showPanelSheet<void>(
+                  context,
+                  builder: (_) => PanelSheet(
+                    title: '规则说明',
+                    child: ListView(
+                      children: [
+                        Text(rules, style: const TextStyle(height: 1.7)),
+                      ],
+                    ),
+                  ),
+                ),
+                child: const Text('规则说明'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
-class _WalletList extends StatelessWidget {
-  const _WalletList({
-    required this.onRefresh,
-    required this.empty,
-    required this.children,
+class _WalletTicket extends StatefulWidget {
+  const _WalletTicket({
+    super.key,
+    required this.face,
+    required this.caption,
+    required this.title,
+    required this.date,
+    required this.rule,
+    required this.status,
+    required this.onUse,
   });
-  final Future<void> Function() onRefresh;
-  final String empty;
-  final List<Widget> children;
-
+  final String face, caption, title, date, rule, status;
+  final VoidCallback? onUse;
   @override
-  Widget build(BuildContext context) => RefreshIndicator(
-    onRefresh: onRefresh,
-    child: children.isEmpty
-        ? ListView(
-            children: [
-              const SizedBox(height: 160),
-              Center(
-                child: Text(
-                  empty,
-                  style: TextStyle(fontSize: 14, color: context.colors.muted),
+  State<_WalletTicket> createState() => _WalletTicketState();
+}
+
+class _WalletTicketState extends State<_WalletTicket> {
+  bool expanded = false;
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final active = widget.status == 'AVAILABLE';
+    final tone = active ? c.accent : c.muted;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: c.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: tone.withValues(alpha: .22)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color.alphaBlend(tone.withValues(alpha: .11), c.surface),
+                    Color.alphaBlend(tone.withValues(alpha: .05), c.surface),
+                  ],
                 ),
               ),
-            ],
-          )
-        : ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            itemCount: children.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (_, index) => children[index],
-          ),
-  );
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    left: 85,
+                    width: 8,
+                    child: CustomPaint(
+                      painter: _TicketSeam(
+                        tone.withValues(alpha: .32),
+                        c.canvas,
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 85,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 12,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  widget.face,
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w700,
+                                    color: tone,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                widget.caption,
+                                style: TextStyle(fontSize: 12, color: tone),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 12, 12, 12),
+                          child: LayoutBuilder(
+                            builder: (context, box) {
+                              final details = Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '博简会员',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: c.muted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    widget.title,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: c.ink,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    widget.date,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: c.muted,
+                                    ),
+                                  ),
+                                ],
+                              );
+                              final action = active
+                                  ? FilledButton(
+                                      onPressed: widget.onUse,
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: c.palette.seed,
+                                        minimumSize: const Size(56, 32),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            5,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        widget.caption == '会员卡'
+                                            ? '立即使用'
+                                            : '去使用',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    )
+                                  : Text(
+                                      _walletStatus(widget.status),
+                                      style: TextStyle(
+                                        color: c.muted,
+                                        fontSize: 12,
+                                      ),
+                                    );
+                              if (box.maxWidth <
+                                  185 *
+                                      MediaQuery.textScalerOf(context)
+                                          .scale(1)) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [details, action],
+                                );
+                              }
+                              return Row(
+                                children: [
+                                  Expanded(child: details),
+                                  const SizedBox(width: 6),
+                                  action,
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            InkWell(
+              onTap: () => setState(() => expanded = !expanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '使用须知：${widget.rule}',
+                        maxLines: expanded ? null : 1,
+                        overflow: expanded ? null : TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: c.muted,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: c.muted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TicketSeam extends CustomPainter {
+  const _TicketSeam(this.line, this.cutout);
+  final Color line, cutout;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final x = size.width / 2;
+    final ink = Paint()..color = line;
+    for (double y = 5; y < size.height - 4; y += 5) {
+      canvas.drawLine(Offset(x, y), Offset(x, y + 2), ink);
+    }
+    ink.color = cutout;
+    canvas.drawCircle(Offset(x, 0), x, ink);
+    canvas.drawCircle(Offset(x, size.height), x, ink);
+  }
+
+  @override
+  bool shouldRepaint(_TicketSeam old) =>
+      old.line != line || old.cutout != cutout;
 }
 
 String _walletStatus(String status) => switch (status) {
@@ -380,92 +796,6 @@ class _CouponTile extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MembershipCardTile extends StatelessWidget {
-  const _MembershipCardTile({
-    required this.card,
-    required this.busy,
-    required this.onUse,
-  });
-  final WalletCard card;
-  final bool busy;
-  final VoidCallback? onUse;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final available = card.status == 'AVAILABLE';
-    final plan = card.plan;
-    return Opacity(
-      opacity: available ? 1 : .55,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            _PlanThumb(plan: plan),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    plan.orderName,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: colors.ink,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    card.status == 'USED'
-                        ? '已使用 · 会员有效期至 ${_day(card.membershipEndsAt)}'
-                        : '会员 ${plan.period} · ${_day(card.expiresAt)} 前使用',
-                    style: TextStyle(fontSize: 12, color: colors.muted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (available)
-              SizedBox(
-                height: 32,
-                child: FilledButton(
-                  onPressed: onUse,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colors.accent,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  child: busy
-                      ? const SizedBox.square(
-                          dimension: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('立即使用'),
-                ),
-              )
-            else
-              Text(
-                _walletStatus(card.status),
-                style: TextStyle(fontSize: 12, color: colors.muted),
-              ),
-          ],
         ),
       ),
     );

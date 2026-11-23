@@ -45,10 +45,13 @@ class _AboutPageState extends State<AboutPage> with WidgetsBindingObserver {
     if (updates.loading) return;
     await updates.refresh(widget.store, force: true);
     if (!mounted) return;
+    final pendingDownload = _pendingDownloadMessage(updates);
     if (updates.failed) {
       toast(context, '检查失败，请重试');
-    } else if (updates.installedBuild <= 0) {
-      toast(context, '暂时无法读取当前版本');
+    } else if (pendingDownload != null) {
+      toast(context, pendingDownload);
+    } else if (updates.latest != null && updates.latestComparison == null) {
+      toast(context, '版本信息不足，暂时无法判断是否有更新');
     } else if (updates.loaded && !updates.hasUpdate) {
       toast(context, '已是最新版本');
     }
@@ -93,7 +96,10 @@ class _AboutPageState extends State<AboutPage> with WidgetsBindingObserver {
                     32,
                   ),
                   children: [
-                    _Identity(version: updates.installedVersion),
+                    _Identity(
+                      version: updates.installedVersion,
+                      buildNumber: updates.installedBuild,
+                    ),
                     const SizedBox(height: 36),
                     _UpdateRow(
                       updates: updates,
@@ -144,8 +150,9 @@ class _AboutPageState extends State<AboutPage> with WidgetsBindingObserver {
 }
 
 class _Identity extends StatelessWidget {
-  const _Identity({required this.version});
+  const _Identity({required this.version, required this.buildNumber});
   final String version;
+  final int buildNumber;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -166,10 +173,14 @@ class _Identity extends StatelessWidget {
           color: context.colors.ink,
         ),
       ),
-      if (version.isNotEmpty) ...[
+      if (version.isNotEmpty || buildNumber > 0) ...[
         const SizedBox(height: 8),
         Text(
-          'v$version',
+          [
+            if (version.isNotEmpty) _versionLabel(version),
+            if (buildNumber > 0) '构建号 ${_displayBuildNumber(buildNumber)}',
+          ].join(' · '),
+          textAlign: TextAlign.center,
           style: TextStyle(fontSize: 13, color: context.colors.muted),
         ),
       ],
@@ -195,6 +206,9 @@ class _UpdateRow extends StatelessWidget {
     final colors = context.colors;
     final release = updates.latest;
     final hasUpdate = updates.hasUpdate && release != null;
+    final blockReason = updates.installBlockReason;
+    final message =
+        blockReason ?? _pendingDownloadMessage(updates) ?? installer.message;
     final downloading = installer.busy;
     final installing = installer.stage == AppUpdateStage.installing;
     final waiting = startingInstall || installing || updates.loading;
@@ -205,6 +219,8 @@ class _UpdateRow extends StatelessWidget {
       title = '正在打开安装器';
     } else if (updates.loading && !hasUpdate) {
       title = '检查中…';
+    } else if (blockReason != null) {
+      title = '重新检查更新';
     } else if (hasUpdate) {
       title = installer.stage == AppUpdateStage.failed ? '重试更新' : '立即更新';
     } else {
@@ -219,7 +235,7 @@ class _UpdateRow extends StatelessWidget {
           child: InkWell(
             onTap: waiting || downloading
                 ? null
-                : hasUpdate
+                : hasUpdate && blockReason == null
                 ? onInstall
                 : onCheck,
             child: Padding(
@@ -232,6 +248,14 @@ class _UpdateRow extends StatelessWidget {
                       style: TextStyle(fontSize: 15, color: colors.ink),
                     ),
                   ),
+                  if (hasUpdate)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Badge(
+                        smallSize: 8,
+                        backgroundColor: Color(0xFFE5322D),
+                      ),
+                    ),
                   if (downloading)
                     Text(
                       '${(installer.progress * 100).round()}%',
@@ -251,7 +275,7 @@ class _UpdateRow extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.only(left: 12, right: 8),
                           child: Text(
-                            'v${release.versionName}',
+                            _versionLabel(release.versionName),
                             textAlign: TextAlign.end,
                             style: TextStyle(
                               fontSize: 13,
@@ -277,11 +301,11 @@ class _UpdateRow extends StatelessWidget {
               backgroundColor: colors.border,
             ),
           ),
-        if (installer.message != null)
+        if (message != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: Text(
-              installer.message!,
+              message,
               style: TextStyle(
                 fontSize: 12,
                 height: 1.5,
@@ -316,13 +340,18 @@ class _ReleaseEntry extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                'v${release.versionName}',
+                _versionLabel(release.versionName),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: colors.ink,
                 ),
               ),
+              if (release.buildNumber > 0)
+                Text(
+                  '构建号 ${_displayBuildNumber(release.buildNumber)}',
+                  style: TextStyle(fontSize: 12, color: colors.muted),
+                ),
               if (release.releasedAt != null)
                 Text(
                   _date(release.releasedAt!),
@@ -351,3 +380,29 @@ class _ReleaseEntry extends StatelessWidget {
 
 String _date(DateTime value) =>
     '${value.year}.${value.month.toString().padLeft(2, '0')}.${value.day.toString().padLeft(2, '0')}';
+
+String _versionLabel(String version) =>
+    version.startsWith('v') || version.startsWith('V') ? version : 'v$version';
+
+String? _pendingDownloadMessage(AppUpdates updates) {
+  final release = updates.latest;
+  if (release == null ||
+      release.downloadURL.isNotEmpty ||
+      (updates.latestComparison ?? 0) <= 0) {
+    return null;
+  }
+  final name = release.versionName.trim();
+  return name.isEmpty ? '新版本已发布，暂未提供下载' : '已发布 ${_versionLabel(name)}，暂未提供下载';
+}
+
+String _displayBuildNumber(int number) {
+  final raw = number.toString();
+  if (raw.length != 10 || !raw.startsWith('20')) return raw;
+  final year = int.parse(raw.substring(0, 4));
+  final month = int.parse(raw.substring(4, 6));
+  final day = int.parse(raw.substring(6, 8));
+  final date = DateTime.utc(year, month, day);
+  return date.year == year && date.month == month && date.day == day
+      ? raw.substring(2)
+      : raw;
+}

@@ -170,9 +170,6 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
     await tester.pumpAndSettle();
     expect(find.text('这里还没有内容'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('nav-1')));
-    await tester.pumpAndSettle();
-    expect(find.byType(TemplateMarket), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('nav-0')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('discovery-messages')));

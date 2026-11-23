@@ -3,6 +3,8 @@ import 'content_moderation.dart';
 
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart'
+    show CupertinoAlertDialog, CupertinoDialogAction;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -10,6 +12,7 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'app_icons.dart';
 import 'app_store.dart';
 import 'article_rich_content.dart';
+import 'article_declaration.dart';
 import 'confirmation_dialog.dart';
 import 'design.dart';
 
@@ -36,13 +39,21 @@ class StoryComposer extends StatefulWidget {
   State<StoryComposer> createState() => _StoryComposerState();
 }
 
+enum _ComposerAction { save, publish }
+
+enum _ExitAction { save, discard }
+
 class _StoryComposerState extends State<StoryComposer> {
   final title = TextEditingController();
   late final quill.QuillController editor;
   final bodyFocus = FocusNode();
   final bodyScroll = ScrollController();
-  bool publishing = false, allowExit = false;
+  _ComposerAction? pendingAction;
+  bool get busy => pendingAction != null;
+  bool allowExit = false;
   late final String initialTitle, initialDelta;
+  late final ArticleDeclaration initialDeclaration;
+  late ArticleDeclaration declaration;
   late final int session;
   Map<String, dynamic> get originalContent =>
       Map<String, dynamic>.from(widget.draft?['content'] as Map? ?? {});
@@ -50,12 +61,14 @@ class _StoryComposerState extends State<StoryComposer> {
   int? createdDraftID;
   int get draftID => createdDraftID ?? integer(widget.draft?['id']);
   bool get dirty =>
+      declaration != initialDeclaration ||
       title.text != initialTitle ||
       jsonEncode(editor.document.toDelta().toJson()) != initialDelta;
   @override
   void initState() {
     super.initState();
     session = widget.store.epoch;
+    declaration = initialDeclaration = readArticleDeclaration(originalContent);
     title.text = initialTitle = '${widget.draft?['title'] ?? ''}';
     editor = widget.draft == null
         ? quill.QuillController.basic()
@@ -90,27 +103,51 @@ class _StoryComposerState extends State<StoryComposer> {
   }
 
   Future<void> exit() async {
-    if (publishing) return;
-    final discard =
-        !dirty ||
-        await showAppConfirmation(
-              context,
-              title: widget.draft == null ? '放弃这篇文章？' : '放弃本次修改？',
-              content: Text(
-                widget.draft == null ? '离开后，尚未提交的内容不会保存。' : '离开后，本次修改不会保存。',
+    if (busy) return;
+    if (dirty) {
+      final existing = widget.draft != null;
+      final action = await showAppDialog<_ExitAction>(
+        context,
+        barrierDismissible: true,
+        builder: (dialog) => CupertinoAlertDialog(
+          title: Text(existing ? '保存这次修改？' : '放弃这篇文章？'),
+          actions: [
+            if (existing)
+              CupertinoDialogAction(
+                isDefaultAction: true,
+                onPressed: () => Navigator.pop(dialog, _ExitAction.save),
+                child: const Text('保存草稿'),
               ),
-              cancelLabel: '继续编辑',
-              confirmLabel: '放弃',
-              destructive: true,
-            ) ==
-            true;
-    if (!discard || !mounted) return;
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(dialog),
+              child: const Text('继续编辑'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.pop(dialog, _ExitAction.discard),
+              child: Text(existing ? '放弃修改' : '放弃'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || action == null) return;
+      if (action == _ExitAction.save) {
+        await publish(submit: false);
+        return;
+      }
+    }
     setState(() => allowExit = true);
     Navigator.pop(context);
   }
 
+  Future<void> chooseDeclaration() async {
+    dismissKeyboard();
+    final selected = await editArticleDeclaration(context, declaration);
+    if (mounted && selected != null) setState(() => declaration = selected);
+  }
+
   Future<void> publish({bool submit = true}) async {
-    if (publishing) return;
+    if (busy) return;
     final text = editor.document.toPlainText().trim();
     if (title.text.trim().isEmpty || (!guidance && text.isEmpty)) {
       toast(context, '请填写标题和正文');
@@ -123,8 +160,22 @@ class _StoryComposerState extends State<StoryComposer> {
         : widget.draft != null && jsonEncode(operations) == initialDelta
         ? originalContent
         : {...originalContent, ...articleContentFromDelta(operations)};
+    if (declaration != initialDeclaration) {
+      if (declaration.label.isEmpty) {
+        content.remove('declaration');
+      } else {
+        content['declaration'] = {
+          'original': declaration.original,
+          'type': declaration.notice.name,
+        };
+      }
+    }
     editor.readOnly = true;
-    setState(() => publishing = true);
+    setState(
+      () => pendingAction = submit
+          ? _ComposerAction.publish
+          : _ComposerAction.save,
+    );
     var status = SubmissionStatus.pending;
     final saved = await runRequest(context, () async {
       if (draftID == 0) {
@@ -158,7 +209,7 @@ class _StoryComposerState extends State<StoryComposer> {
       toast(context, submit ? articleSubmissionMessage(status) : '草稿已保存');
     } else {
       editor.readOnly = false;
-      setState(() => publishing = false);
+      setState(() => pendingAction = null);
     }
   }
 
@@ -171,10 +222,10 @@ class _StoryComposerState extends State<StoryComposer> {
       isSelected: active,
       style: IconButton.styleFrom(
         backgroundColor: active
-            ? blue.withValues(alpha: .08)
+            ? context.colors.accent.withValues(alpha: .08)
             : Colors.transparent,
       ).withoutHover(),
-      onPressed: publishing
+      onPressed: busy
           ? null
           : () {
               editor.formatSelection(
@@ -218,43 +269,55 @@ class _StoryComposerState extends State<StoryComposer> {
       quill.FlutterQuillLocalizations.delegate,
     ],
     child: PopScope(
-      canPop: allowExit || (!dirty && !publishing),
+      canPop: allowExit || (!dirty && !busy),
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) exit();
       },
       child: Scaffold(
         backgroundColor: context.colors.surface,
         appBar: AppPageBar(
+          title: Text(widget.draft == null ? '写动态' : '编辑草稿'),
           leading: IconButton(
-            tooltip: '关闭',
-            onPressed: publishing ? null : exit,
-            icon: const AppIcon(AppIcons.close, size: 22),
+            tooltip: '返回',
+            onPressed: busy ? null : exit,
+            icon: const AppIcon(AppIcons.back, size: 22),
           ),
           actions: [
-            if (widget.draft != null)
-              TextButton(
-                onPressed: publishing ? null : () => publish(submit: false),
-                child: const Text('保存'),
-              ),
             Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: IconButton(
-                tooltip: '提交审核',
-                onPressed: publishing ? null : () => publish(),
-                icon: publishing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: blue,
-                        ),
-                      )
-                    : AppIcon(
-                        AppIcons.submitReview,
-                        size: 22,
-                        color: context.colors.accent,
+              child: Center(
+                child: Tooltip(
+                  message: '提交审核',
+                  child: TextButton(
+                    onPressed:
+                        busy ||
+                            title.text.trim().isEmpty ||
+                            (!guidance &&
+                                editor.document.toPlainText().trim().isEmpty)
+                        ? null
+                        : () => publish(),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(56, 34),
+                      padding: const EdgeInsets.symmetric(horizontal: 13),
+                      backgroundColor: context.colors.palette.seed,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: context.colors.inset,
+                      disabledForegroundColor: context.colors.muted,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
+                      textStyle: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+                    ).withoutHover(),
+                    child: Text(
+                      pendingAction == _ComposerAction.publish
+                          ? '发布中…'
+                          : widget.draft == null
+                          ? '发布'
+                          : '重新发布',
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -295,21 +358,21 @@ class _StoryComposerState extends State<StoryComposer> {
                 TextField(
                   key: const ValueKey('composer-title'),
                   controller: title,
-                  enabled: !publishing,
+                  enabled: !busy,
                   maxLength: widget.draft == null ? 60 : 200,
                   minLines: 1,
                   maxLines: 3,
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => bodyFocus.requestFocus(),
                   style: const TextStyle(
-                    fontSize: 28,
+                    fontSize: 22,
                     height: 1.35,
                     fontWeight: FontWeight.w700,
                   ),
                   decoration: InputDecoration(
                     hintText: '标题',
                     hintStyle: TextStyle(
-                      fontSize: 28,
+                      fontSize: 22,
                       fontWeight: FontWeight.w700,
                       color: context.colors.muted.withValues(alpha: .6),
                     ),
@@ -328,9 +391,9 @@ class _StoryComposerState extends State<StoryComposer> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
                 const Divider(height: 1),
-                const SizedBox(height: 22),
+                const SizedBox(height: 16),
                 ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 280),
                   child: quill.QuillEditor.basic(
@@ -371,100 +434,128 @@ class _StoryComposerState extends State<StoryComposer> {
                 child: TextFieldTapRegion(
                   child: SafeArea(
                     top: false,
-                    child: Container(
+                    child: Ink(
                       decoration: BoxDecoration(
                         color: context.colors.surface,
                         border: Border(
                           top: BorderSide(color: context.colors.border),
                         ),
                       ),
-                      child: Row(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(
-                            child: SingleChildScrollView(
-                              key: const ValueKey('composer-format-bar'),
-                              scrollDirection: Axis.horizontal,
-                              // The app dismisses the keyboard on drag; this
-                              // bar sits on the keyboard and must keep it.
-                              keyboardDismissBehavior:
-                                  ScrollViewKeyboardDismissBehavior.manual,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  key: const ValueKey('composer-format-bar'),
+                                  scrollDirection: Axis.horizontal,
+                                  // The app dismisses the keyboard on drag; this
+                                  // bar sits on the keyboard and must keep it.
+                                  keyboardDismissBehavior:
+                                      ScrollViewKeyboardDismissBehavior.manual,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      format(
+                                        '粗体',
+                                        AppIcons.bold,
+                                        quill.Attribute.bold,
+                                      ),
+                                      format(
+                                        '斜体',
+                                        AppIcons.italic,
+                                        quill.Attribute.italic,
+                                      ),
+                                      format(
+                                        '下划线',
+                                        AppIcons.underline,
+                                        quill.Attribute.underline,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      format(
+                                        '小标题',
+                                        AppIcons.heading,
+                                        quill.Attribute.h2,
+                                      ),
+                                      format(
+                                        '无序列表',
+                                        AppIcons.bullets,
+                                        quill.Attribute.ul,
+                                      ),
+                                      format(
+                                        '有序列表',
+                                        AppIcons.numbering,
+                                        quill.Attribute.ol,
+                                      ),
+                                      format(
+                                        '引用',
+                                        AppIcons.quote,
+                                        quill.Attribute.blockQuote,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        tooltip: '撤销',
+                                        onPressed: busy || !editor.hasUndo
+                                            ? null
+                                            : editor.undo,
+                                        icon: const AppIcon(
+                                          AppIcons.undo,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: '重做',
+                                        onPressed: busy || !editor.hasRedo
+                                            ? null
+                                            : editor.redo,
+                                        icon: const AppIcon(
+                                          AppIcons.redo,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              child: Row(
-                                children: [
-                                  format(
-                                    '粗体',
-                                    AppIcons.bold,
-                                    quill.Attribute.bold,
-                                  ),
-                                  format(
-                                    '斜体',
-                                    AppIcons.italic,
-                                    quill.Attribute.italic,
-                                  ),
-                                  format(
-                                    '下划线',
-                                    AppIcons.underline,
-                                    quill.Attribute.underline,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  format(
-                                    '小标题',
-                                    AppIcons.heading,
-                                    quill.Attribute.h2,
-                                  ),
-                                  format(
-                                    '无序列表',
-                                    AppIcons.bullets,
-                                    quill.Attribute.ul,
-                                  ),
-                                  format(
-                                    '有序列表',
-                                    AppIcons.numbering,
-                                    quill.Attribute.ol,
-                                  ),
-                                  format(
-                                    '引用',
-                                    AppIcons.quote,
-                                    quill.Attribute.blockQuote,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  IconButton(
-                                    tooltip: '撤销',
-                                    onPressed: publishing || !editor.hasUndo
-                                        ? null
-                                        : editor.undo,
-                                    icon: const AppIcon(
-                                      AppIcons.undo,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    tooltip: '重做',
-                                    onPressed: publishing || !editor.hasRedo
-                                        ? null
-                                        : editor.redo,
-                                    icon: const AppIcon(
-                                      AppIcons.redo,
-                                      size: 20,
-                                    ),
-                                  ),
-                                ],
+                              if (MediaQuery.viewInsetsOf(context).bottom > 0)
+                                IconButton(
+                                  tooltip: '内容声明',
+                                  onPressed: busy ? null : chooseDeclaration,
+                                  icon: const AppIcon(AppIcons.about, size: 20),
+                                ),
+                              IconButton(
+                                tooltip: '收起键盘',
+                                onPressed: dismissKeyboard,
+                                icon: AppIcon(
+                                  AppIcons.hideKeyboard,
+                                  size: 20,
+                                  color: context.colors.muted,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 6),
+                            ],
                           ),
-                          IconButton(
-                            tooltip: '收起键盘',
-                            onPressed: dismissKeyboard,
-                            icon: AppIcon(
-                              AppIcons.hideKeyboard,
-                              size: 20,
-                              color: context.colors.muted,
+                          if (MediaQuery.viewInsetsOf(context).bottom == 0)
+                            ListTile(
+                              enabled: !busy,
+                              onTap: chooseDeclaration,
+                              leading: const AppIcon(AppIcons.about, size: 19),
+                              title: const Text(
+                                '内容声明',
+                                style: TextStyle(fontSize: 14),
+                              ),
+                              trailing: const AppIcon(
+                                AppIcons.forward,
+                                size: 16,
+                              ),
+                              subtitle: declaration.label.isEmpty
+                                  ? null
+                                  : Text(declaration.label),
                             ),
-                          ),
-                          const SizedBox(width: 6),
                         ],
                       ),
                     ),

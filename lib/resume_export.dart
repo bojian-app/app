@@ -197,7 +197,7 @@ class ResumeExportSheet extends StatefulWidget {
 class _ResumeExportSheetState extends State<ResumeExportSheet> {
   bool busy = false;
   String progress = '';
-  String? error, notice;
+  String? error;
   XFile? file;
   @override
   void dispose() {
@@ -210,7 +210,6 @@ class _ResumeExportSheetState extends State<ResumeExportSheet> {
     setState(() {
       busy = true;
       error = null;
-      notice = null;
     });
     final epoch = widget.store.epoch;
     bool cancelled() =>
@@ -224,9 +223,6 @@ class _ResumeExportSheetState extends State<ResumeExportSheet> {
               isCancelled: cancelled,
               onProgress: (value) {
                 if (mounted) setState(() => progress = value);
-              },
-              onNotice: (value) {
-                if (mounted) setState(() => notice = value);
               },
             )
           : await ResumeExporter(widget.store).export(
@@ -351,17 +347,6 @@ class _ResumeExportSheetState extends State<ResumeExportSheet> {
             ),
           if (file != null) ...[
             Text(file!.name, style: ResumeEditorTypography.entryTitle),
-            if (notice != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                notice!,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.5,
-                  color: context.colors.muted,
-                ),
-              ),
-            ],
             const SizedBox(height: 12),
             PanelGroup(
               children: [

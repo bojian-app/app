@@ -565,7 +565,7 @@ void main() {
       for (final text in ['找到适合你的模版', '简历库', '最近更新']) {
         expect(find.text(text), findsNothing);
       }
-      expect(find.text('产品经理 · 社招简历'), findsOneWidget);
+      expect(find.bySemanticsLabel('产品经理 · 社招简历预览'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('profile-add-resume')));
       await tester.pumpAndSettle();
       for (final label in ['AI生成简历', '手动添加', '从微信导入', '从手机文件导入']) {
@@ -743,14 +743,14 @@ void main() {
       await tester.tap(find.text('重新加载'));
       await tester.pumpAndSettle();
       expect(api.calls, contains('GetResumes'));
-      expect(find.text('产品经理 · 社招简历'), findsOneWidget);
+      expect(find.bySemanticsLabel('产品经理 · 社招简历预览'), findsOneWidget);
       expect(find.text('添加简历'), findsOneWidget);
       expect(find.text('创建简历'), findsNothing);
       expect(find.text('导入简历'), findsNothing);
       for (final text in ['找到适合你的模版']) {
         expect(find.text(text), findsNothing);
       }
-      await tester.tap(find.byType(LinearProgressIndicator));
+      await tester.tap(find.bySemanticsLabel('产品经理 · 社招简历预览'));
       await tester.pumpAndSettle();
       expect(find.byType(ResumePreview), findsOneWidget);
       expect(tester.takeException(), isNull);

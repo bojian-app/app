@@ -9,6 +9,7 @@ import 'package:bojian_mobile/resume_market_document.dart';
 import 'package:bojian_mobile/resume_native_export.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xml/xml.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +41,71 @@ void main() {
       ZipDecoder().decodeBytes(bytes).findFile('word/document.xml')!.content,
     );
   }
+
+  test(
+    'Word preserves the usable width of indented template body columns',
+    () async {
+      for (final geometry in [
+        (left: 61.5, width: 500.78, marginLeft: 37.5, marginRight: 33.0),
+        (left: 174.0, width: 397.28, marginLeft: 174.0, marginRight: 24.0),
+        (left: 238.0, width: 333.28, marginLeft: 238.0, marginRight: 24.0),
+      ]) {
+        final layout = ResumeExportLayout(
+          [
+            ResumeExportPage(
+              wordFlow: true,
+              lines: [
+                ResumeExportLine(
+                  top: 180,
+                  height: 14,
+                  baseline: 190,
+                  paragraphId: 'work-body',
+                  paragraphField: 'work_experiences.0.description',
+                  paragraphLeft: geometry.left,
+                  paragraphWidth: geometry.width,
+                  spans: [
+                    ResumeExportSpan(
+                      text: '正文宽度检查',
+                      x: geometry.left,
+                      width: 70,
+                      size: 10,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+          nativeFlowGeometry: true,
+          wordMargins: {
+            'top': 28,
+            'bottom': 30,
+            'left': geometry.marginLeft,
+            'right': geometry.marginRight,
+          },
+        );
+        final xml = XmlDocument.parse(
+          await word(layout, 'column-${geometry.left}'),
+        );
+        final paragraph = xml
+            .findAllElements('w:p')
+            .singleWhere(
+              (p) =>
+                  p.findAllElements('w:t').any((t) => t.innerText == '正文宽度检查'),
+            );
+        final indent = paragraph.findAllElements('w:ind').firstOrNull;
+        double points(String key) =>
+            double.parse(indent?.getAttribute(key) ?? '0') / 20;
+        final left = geometry.marginLeft + points('w:left');
+        final right = layout.width - geometry.marginRight - points('w:right');
+        expect(left, closeTo(geometry.left, .03));
+        expect(
+          right - left,
+          closeTo(geometry.width, .03),
+          reason: 'Word must not subtract the left inset twice',
+        );
+      }
+    },
+  );
 
   test(
     'V2 capture without Word structure cannot fall back to text boxes',
@@ -97,7 +163,7 @@ void main() {
   );
 
   test(
-    'A module starting on the next template page keeps its break and top gap',
+    'A source page boundary keeps its gap without forcing another Word page',
     () async {
       final xml = await word(
         ResumeExportLayout([
@@ -124,10 +190,10 @@ void main() {
       final heading = RegExp(r'<w:p>.*?</w:p>')
           .allMatches(xml)
           .singleWhere((match) => match[0]!.contains('项目经历'))[0]!;
-      expect(heading, contains('<w:pageBreakBefore/>'));
+      expect(heading, isNot(contains('<w:pageBreakBefore/>')));
       expect(heading, contains('<w:keepNext/>'));
       expect(heading, contains('w:before="280"'));
-      expect(RegExp('<w:pageBreakBefore/>').allMatches(xml), hasLength(1));
+      expect(xml, isNot(contains('<w:pageBreakBefore/>')));
     },
   );
 
@@ -186,7 +252,7 @@ void main() {
       final projectHeading = RegExp(r'<w:p>.*?</w:p>')
           .allMatches(xml)
           .singleWhere((match) => match[0]!.contains('>项目经历</w:t>'))[0]!;
-      expect(projectHeading, contains('<w:pageBreakBefore/>'));
+      expect(projectHeading, isNot(contains('<w:pageBreakBefore/>')));
       expect(projectHeading, isNot(contains('w:before="0"')));
       for (final page in pages) {
         for (final line in (page['lines'] as List).cast<Map>()) {

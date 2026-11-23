@@ -46,12 +46,20 @@ abstract final class AppIcons {
   static const arrowForward = HugeIcons.strokeRoundedArrowRight02;
   static const external = HugeIcons.strokeRoundedArrowUpRight01;
   static const like = HugeIcons.strokeRoundedFavourite;
-  static const liked = HugeIcons.strokeRoundedFavourite;
+  static const bookmark = HugeIcons.strokeRoundedStar;
+  static final liked = _filled(like);
+  static final bookmarked = _filled(bookmark);
+
+  static AppIconData _filled(AppIconData outline) => [
+    for (final element in outline)
+      [
+        element[0],
+        {...element[1] as Map<String, dynamic>, 'fill': 'currentColor'},
+      ],
+  ];
   static const thumbUp = HugeIcons.strokeRoundedThumbsUp;
   static const thumbDown = HugeIcons.strokeRoundedThumbsDown;
   static const comment = HugeIcons.strokeRoundedBubbleChat;
-  static const bookmark = HugeIcons.strokeRoundedBookmark02;
-  static const bookmarked = HugeIcons.strokeRoundedBookmarkCheck02;
   static const send = HugeIcons.strokeRoundedSent;
   static const clear = HugeIcons.strokeRoundedCancelCircle;
   static const confirm = HugeIcons.strokeRoundedTick02;
@@ -65,6 +73,7 @@ abstract final class AppIcons {
   static const notificationUnread = HugeIcons.strokeRoundedNotification02;
   static const notificationSettings = HugeIcons.strokeRoundedNotificationSquare;
   static const wallet = HugeIcons.strokeRoundedTicket01;
+  static const cart = HugeIcons.strokeRoundedShoppingCart01;
   static const settings = HugeIcons.strokeRoundedSettings01;
   static const bold = HugeIcons.strokeRoundedTextBold;
   static const italic = HugeIcons.strokeRoundedTextItalic;
@@ -92,7 +101,6 @@ abstract final class AppIcons {
   static const certificate = HugeIcons.strokeRoundedCertificate01;
   static const article = HugeIcons.strokeRoundedNote01;
   static const createArticle = HugeIcons.strokeRoundedQuillWrite01;
-  static const submitReview = HugeIcons.strokeRoundedFileValidation;
   static const avatarUpload = HugeIcons.strokeRoundedImageUpload;
   static const avatarEdit = HugeIcons.strokeRoundedImageAdd02;
   static const wechat = HugeIcons.strokeRoundedWechat;

@@ -33,6 +33,7 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
   @override
   void initState() {
     super.initState();
+    widget.store.confirmDeletionCancel = confirmDeletionCancel;
     widget.store.addListener(refreshState);
   }
 
@@ -161,6 +162,21 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
     } finally {
       if (mounted) setState(() => signingInWith = null);
     }
+  }
+
+  Future<bool> confirmDeletionCancel(DateTime? executeAfter) async {
+    if (!mounted) return false;
+    final d = executeAfter?.toLocal();
+    final when = d == null ? '' : '（原定 ${d.year}年${d.month}月${d.day}日 执行）';
+    return await showAppConfirmation(
+          context,
+          barrierDismissible: false,
+          title: '账号正在注销冷静期',
+          content: Text('该账号已申请注销$when。继续登录将终止注销，账号和数据会被完整保留；不想保留请返回。'),
+          cancelLabel: '返回',
+          confirmLabel: '终止注销并登录',
+        ) ??
+        false;
   }
 
   Future<bool> confirmRegistration() async {
@@ -376,6 +392,9 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
 
   @override
   void dispose() {
+    if (widget.store.confirmDeletionCancel == confirmDeletionCancel) {
+      widget.store.confirmDeletionCancel = null;
+    }
     phone.dispose();
     code.dispose();
     widget.store.removeListener(refreshState);

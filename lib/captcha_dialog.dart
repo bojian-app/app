@@ -247,11 +247,11 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
             trackHeight: 36,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 20),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
-            activeTrackColor: blue.withValues(alpha: .15),
+            activeTrackColor: context.colors.accent.withValues(alpha: .15),
             inactiveTrackColor: (context.isDark
                 ? context.colors.accentSoft
                 : const Color(0xFFF0F3F8)),
-            thumbColor: blue,
+            thumbColor: context.colors.palette.seed,
           ),
           child: Slider(
             key: const ValueKey('captcha-slider'),

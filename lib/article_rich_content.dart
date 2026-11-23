@@ -356,7 +356,9 @@ class ArticleRichBody extends StatelessWidget {
             decoration: BoxDecoration(
               color: context.colors.canvas,
               border: quote
-                  ? const Border(left: BorderSide(color: blue, width: 3))
+                  ? Border(
+                      left: BorderSide(color: context.colors.accent, width: 3),
+                    )
                   : null,
             ),
             child: child,

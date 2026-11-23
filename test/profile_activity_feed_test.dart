@@ -198,7 +198,7 @@ void main() {
   ) async {
     final api = ActivityGateway()..details = [article(1, guidance: true)];
     await mount(tester, api);
-    await tester.tap(find.text('查看简历'));
+    await tester.tap(find.byKey(const ValueKey('guidance-resume-title-1')));
     await tester.pumpAndSettle();
     expect(find.byType(ResumeGuidanceView), findsOneWidget);
     expect(api.calls, contains('GetArticlesIdGuidance'));

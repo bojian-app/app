@@ -93,6 +93,7 @@ class Story {
     required this.excerpt,
     required this.paragraphs,
     this.likes = 0,
+    this.favorites = 0,
     this.content = const {},
     this.comments = const [],
     this.commentCount = 0,
@@ -115,8 +116,21 @@ class Story {
   final String authorAvatarURL;
   final String publishedAt;
   final bool hasGuidance;
-  int likes;
+  int likes, favorites;
   bool liked, saved;
+
+  void setBookmark(bool active) {
+    if (saved == active) return;
+    saved = active;
+    favorites = (favorites + (active ? 1 : -1)).clamp(0, 1 << 31);
+  }
+
+  void readBookmarkMetrics(Map<String, dynamic> data) {
+    if (data.containsKey('is_favorited')) saved = data['is_favorited'] == true;
+    if (data.containsKey('favorite_count'))
+      favorites = integer(data['favorite_count']);
+  }
+
   List<ArticleComment> comments;
 
   /// Where the next page of top-level comments starts; empty at the end.
@@ -285,6 +299,7 @@ Story decodeStory(Map<String, dynamic> v) {
         ? Map<String, dynamic>.from(content)
         : richContent(body),
     likes: integer(v['like_count']),
+    favorites: integer(v['favorite_count']),
     commentCount: integer(v['comment_count']),
     liked: v['is_liked'] == true,
     saved: v['is_favorited'] == true,

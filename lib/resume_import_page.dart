@@ -374,7 +374,7 @@ class _ImportResumeState extends State<ImportResume> {
             '从本机文件上传',
             '选择手机或文件应用中的简历',
             AppIcons.folder,
-            blue,
+            context.colors.accent,
             chooseLocal,
           ),
         if (picking)

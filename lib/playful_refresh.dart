@@ -65,6 +65,44 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
   bool _visible = false;
   int? _pointer;
   bool _ownsScroll = false;
+  // Set once the current touch has scrolled content away from the top. A
+  // refresh needs a touch that begins at the top: reaching the top mid-drag
+  // and continuing down must not refresh; lift and pull again.
+  bool _movedAwayFromTop = false;
+  // Scrollables above this one (e.g. a NestedScrollView header). Their offset
+  // is invisible to this widget's notifications, so they are polled directly.
+  List<ScrollPosition> _ancestors = const [];
+
+  void _watchAncestors() {
+    final found = <ScrollPosition>[];
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is ScrollableState) {
+        final position = (element.state as ScrollableState).position;
+        if (axisDirectionToAxis(position.axisDirection) == Axis.vertical) {
+          found.add(position);
+        }
+      }
+      return true;
+    });
+    _ancestors = found;
+    _checkAncestors();
+  }
+
+  void _checkAncestors() {
+    for (final position in _ancestors) {
+      if (position.hasPixels &&
+          position.pixels - position.minScrollExtent > .5) {
+        _movedAwayFromTop = true;
+        return;
+      }
+    }
+  }
+
+  bool get _indicatorActive =>
+      _status == RefreshIndicatorStatus.drag ||
+      _status == RefreshIndicatorStatus.armed ||
+      _status == RefreshIndicatorStatus.snap ||
+      _status == RefreshIndicatorStatus.refresh;
   bool get _reduceMotion => MediaQuery.disableAnimationsOf(context);
 
   @override
@@ -149,6 +187,18 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
   }
 
   bool _accept(ScrollNotification notification) {
+    if (_pointer != null &&
+        (notification is ScrollStartNotification ||
+            notification is ScrollUpdateNotification) &&
+        axisDirectionToAxis(notification.metrics.axisDirection) ==
+            Axis.vertical &&
+        notification.metrics.extentBefore > .5) {
+      _movedAwayFromTop = true;
+    }
+    // Only veto a refresh that has not begun. Once the indicator is active it
+    // must keep seeing notifications, or it never receives the cancel/end and
+    // leaves the reveal area stuck open (a blank strip above the content).
+    if (_movedAwayFromTop && !_indicatorActive) return false;
     if (notification.depth != 0 ||
         axisDirectionToAxis(notification.metrics.axisDirection) !=
             Axis.vertical ||
@@ -211,7 +261,15 @@ class _PlayfulRefreshState extends State<PlayfulRefresh>
       ? widget.child
       : Listener(
           behavior: HitTestBehavior.translucent,
-          onPointerDown: (event) => _pointer ??= event.pointer,
+          onPointerDown: (event) {
+            if (_pointer != null) return;
+            _pointer = event.pointer;
+            _movedAwayFromTop = false;
+            _watchAncestors();
+          },
+          onPointerMove: (_) {
+            if (_pointer != null && !_movedAwayFromTop) _checkAncestors();
+          },
           onPointerUp: _endPointer,
           onPointerCancel: _endPointer,
           child: NotificationListener<ScrollNotification>(

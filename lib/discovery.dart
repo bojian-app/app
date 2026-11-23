@@ -7,20 +7,25 @@ import 'playful_refresh.dart';
 import 'dart:async';
 
 import 'article_rich_content.dart';
+import 'article_declaration.dart';
 import 'article_reaction_button.dart';
 import 'resume_guidance_view.dart';
 import 'guidance_feed_card.dart';
+import 'resume_updated_label.dart';
 export 'story_composer.dart';
 import 'profile_avatar.dart';
 import 'profile_identity.dart';
 import 'article_comment_tile.dart';
+import 'withdraw_comment_button.dart';
 import 'app_icons.dart';
 
+import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
 
 import 'app_store.dart';
 import 'discovery_banner.dart';
 import 'invite_floating_badge.dart';
+import 'invitation_dialog.dart';
 import 'app_search_field.dart';
 import 'comment_composer.dart';
 import 'design.dart';
@@ -29,6 +34,9 @@ import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
 import 'story_author_identity.dart';
 import 'user_profile_page.dart';
+
+Color _discoveryGapColor(BuildContext context) =>
+    context.isDark ? context.colors.canvas : context.colors.inset;
 
 class DiscoveryPage extends StatefulWidget {
   const DiscoveryPage({super.key, required this.store});
@@ -39,6 +47,19 @@ class DiscoveryPage extends StatefulWidget {
 
 class _DiscoveryPageState extends State<DiscoveryPage> {
   static const categories = ['推荐', '简历分享', '动态'];
+  static const headerActionsWidth = 88.0;
+  bool scanning = false;
+
+  Future<void> scan() async {
+    if (scanning || ModalRoute.of(context)?.isCurrent != true) return;
+    setState(() => scanning = true);
+    try {
+      await scanAndBindInvitation(context, widget.store);
+    } finally {
+      if (mounted) setState(() => scanning = false);
+    }
+  }
+
   final search = TextEditingController();
   final searchFocus = FocusNode();
   String query = '';
@@ -109,6 +130,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                   key: ValueKey('discovery-story-${story.id}'),
                   animate: added.contains(story.id),
                   child: FeedRow(
+                    gapColor: _discoveryGapColor(context),
                     child: StoryCard(
                       story: story,
                       store: widget.store,
@@ -141,7 +163,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
         );
     return Padding(
       // Align the search field to the page gutter while preserving the
-      // message icon's artwork alignment at the opposite edge.
+      // scan icon's artwork alignment at the opposite edge.
       padding: const EdgeInsets.fromLTRB(
         appPageHorizontalPadding,
         0,
@@ -238,7 +260,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
             ),
             const SizedBox(width: 8),
             SizedBox(
-              width: 44,
+              width: headerActionsWidth,
               height: 44,
               child: ColoredBox(
                 color: context.colors.surface,
@@ -252,6 +274,15 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                           key: const ValueKey('discovery-messages'),
                           store: widget.store,
                           iconSize: 20,
+                        ),
+                      ),
+                      SizedBox.square(
+                        dimension: 44,
+                        child: IconButton(
+                          key: const ValueKey('discovery-scan'),
+                          tooltip: '扫一扫',
+                          onPressed: scanning ? null : scan,
+                          icon: const AppIcon(AppIcons.scan, size: 20),
                         ),
                       ),
                     ],
@@ -292,10 +323,12 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                               children: [
                                 Positioned(
                                   // Collapsed tabs keep their page gutter and
-                                  // leave room for the message button on the right.
+                                  // leave room for the two actions on the right.
                                   left: 0,
                                   right:
-                                      (appPageHorizontalPadding - 13 + 44) *
+                                      (appPageHorizontalPadding -
+                                          13 +
+                                          headerActionsWidth) *
                                       collapse,
                                   bottom:
                                       (((MediaQuery.textScalerOf(context)
@@ -337,7 +370,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                 SliverToBoxAdapter(child: DiscoveryBanner(store: widget.store)),
                 SliverToBoxAdapter(
                   child: ColoredBox(
-                    color: context.colors.canvas,
+                    color: _discoveryGapColor(context),
                     child: const SizedBox(height: 8),
                   ),
                 ),
@@ -441,13 +474,14 @@ class _FeedArticleEntranceState extends State<_FeedArticleEntrance>
 
 /// Full-bleed white feed row with a 6pt canvas gap, centring its card.
 class FeedRow extends StatelessWidget {
-  const FeedRow({super.key, required this.child});
+  const FeedRow({super.key, required this.child, this.gapColor});
 
   final Widget child;
+  final Color? gapColor;
 
   @override
   Widget build(BuildContext context) => ColoredBox(
-    color: context.colors.canvas,
+    color: gapColor ?? context.colors.canvas,
     child: Container(
       color: context.colors.surface,
       margin: const EdgeInsets.only(bottom: 6),
@@ -472,6 +506,8 @@ class StoryCard extends StatelessWidget {
     this.authorName,
     this.authorAvatarURL,
     this.authorNavigationEnabled = true,
+    this.onBookmark,
+    this.onDetailClosed,
   });
   final Story story;
   final AppStore store;
@@ -479,6 +515,22 @@ class StoryCard extends StatelessWidget {
   final bool compactTypography;
   final String? authorName, authorAvatarURL;
   final bool authorNavigationEnabled;
+  final VoidCallback? onBookmark, onDetailClosed;
+  Future<void> _openDetail(BuildContext context) async {
+    dismissKeyboard();
+    await Navigator.of(context).push(
+      _StoryDetailRoute(
+        builder: (_) => StoryDetail(story: story, store: store),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : Theme.of(context).platform == TargetPlatform.android
+            ? const Duration(milliseconds: 260)
+            : null,
+      ),
+    );
+    onDetailClosed?.call();
+  }
+
   @override
   Widget build(BuildContext context) => story.hasGuidance
       ? GuidanceFeedCard(
@@ -492,6 +544,7 @@ class StoryCard extends StatelessWidget {
         )
       : _StorySurface(
           flat: flat,
+          onTap: () => _openDetail(context),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -517,96 +570,97 @@ class StoryCard extends StatelessWidget {
                   ),
                 ],
               ),
-              SizedBox(height: flat ? 8 : 12),
-              InkWell(
-                onTap: () =>
-                    openPage(context, StoryDetail(story: story, store: store)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      story.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: compactTypography ? 14 : 16,
-                        fontWeight: FontWeight.w600,
-                        height: 1.4,
+              SizedBox(height: flat ? 5 : 12),
+              if (story.title.trim().isNotEmpty)
+                Text(
+                  story.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compactTypography ? 14 : (flat ? 18 : 16),
+                    fontWeight: feedTitleWeight,
+                    color: context.colors.ink,
+                    height: 1.4,
+                  ),
+                ),
+              ArticleDeclarationLabel(story.content),
+              if (story.excerpt.trim().isNotEmpty) ...[
+                if (story.title.trim().isNotEmpty)
+                  SizedBox(height: flat ? 2 : 6),
+                Text(
+                  story.excerpt,
+                  maxLines: flat ? 3 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compactTypography ? 13 : (flat ? 14 : 11.5),
+                    fontWeight: FontWeight.normal,
+                    color: flat ? context.colors.ink : context.colors.muted,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+              if (story.cover == 1) ...[
+                const SizedBox(height: 15),
+                _StoryCover(),
+              ],
+              if (story.cover == 2) ...[
+                const SizedBox(height: 15),
+                Container(
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: (context.isDark
+                        ? context.colors.successSoft
+                        : const Color(0xFFF5F8F7)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      AppIcon(
+                        AppIcons.resume,
+                        color: Color(0xFF509B87),
+                        size: 23,
                       ),
-                    ),
-                    SizedBox(height: flat ? 4 : 6),
-                    Text(
-                      story.excerpt,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: compactTypography ? 12 : (flat ? 13 : 11.5),
-                        color: flat ? context.colors.ink : context.colors.muted,
-                        height: 1.5,
-                      ),
-                    ),
-                    if (story.cover == 1) ...[
-                      const SizedBox(height: 15),
-                      _StoryCover(),
-                    ],
-                    if (story.cover == 2) ...[
-                      const SizedBox(height: 15),
-                      Container(
-                        padding: const EdgeInsets.all(13),
-                        decoration: BoxDecoration(
-                          color: (context.isDark
-                              ? context.colors.successSoft
-                              : const Color(0xFFF5F8F7)),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
+                      SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            AppIcon(
-                              AppIcons.resume,
-                              color: Color(0xFF509B87),
-                              size: 23,
-                            ),
-                            SizedBox(width: 11),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '产品经理 · 转行简历',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    '希望得到具体的修改建议',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: context.colors.muted,
-                                    ),
-                                  ),
-                                ],
+                            Text(
+                              '产品经理 · 转行简历',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                            AppIcon(
-                              AppIcons.external,
-                              size: 14,
-                              color: context.colors.muted,
+                            SizedBox(height: 4),
+                            Text(
+                              '希望得到具体的修改建议',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: context.colors.muted,
+                              ),
                             ),
                           ],
                         ),
                       ),
+                      AppIcon(
+                        AppIcons.external,
+                        size: 14,
+                        color: context.colors.muted,
+                      ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
+              ],
+              SizedBox(height: flat ? 2 : 8),
               Row(
                 children: [
                   Expanded(
                     child: Text(
-                      story.publishedAt.split('T').first,
+                      switch (DateTime.tryParse(story.publishedAt)) {
+                        final date? => resumeUpdatedLabel(date),
+                        null => '',
+                      },
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -621,29 +675,24 @@ class StoryCard extends StatelessWidget {
                     count: story.likes,
                     compact: true,
                     active: story.liked,
-                    onTap: store.pending.contains('like-${story.id}')
-                        ? null
-                        : () => runRequest(context, () => store.like(story)),
+                    onTap: () => runRequest(context, () => store.like(story)),
                   ),
                   SizedBox(width: flat ? 12 : 16),
                   _Reaction(
                     icon: AppIcons.comment,
                     label: '${story.commentCount}',
-                    onTap: () => openPage(
-                      context,
-                      StoryDetail(story: story, store: store),
-                    ),
+                    onTap: () => _openDetail(context),
                   ),
                   SizedBox(width: flat ? 12 : 16),
                   ArticleReactionButton(
                     key: ValueKey('story-bookmark-${story.id}'),
                     reaction: ArticleReaction.bookmark,
                     compact: true,
+                    count: story.favorites,
                     active: story.saved,
-                    onTap: store.pending.contains('bookmark-${story.id}')
-                        ? null
-                        : () =>
-                              runRequest(context, () => store.bookmark(story)),
+                    onTap:
+                        onBookmark ??
+                        () => runRequest(context, () => store.bookmark(story)),
                   ),
                 ],
               ),
@@ -663,44 +712,40 @@ class _FeedSkeleton extends StatelessWidget {
       key: const ValueKey('discovery-feed-skeleton'),
       children: [
         for (var i = 0; i < 4; i++)
-          Container(
-            color: context.colors.surface,
-            margin: const EdgeInsets.only(bottom: 6),
-            padding: const EdgeInsets.symmetric(
-              horizontal: feedOuterPadding + feedContentPadding,
-              vertical: 12,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 7),
-                      child: Row(
-                        children: [
-                          SkeletonBox(width: 30, height: 30, radius: 15),
-                          SizedBox(width: 15),
-                          SkeletonBox(width: 88, height: 12),
-                        ],
-                      ),
+          FeedRow(
+            gapColor: _discoveryGapColor(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: feedContentPadding,
+                vertical: 12,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 7),
+                    child: Row(
+                      children: [
+                        SkeletonBox(width: 30, height: 30, radius: 15),
+                        SizedBox(width: 15),
+                        SkeletonBox(width: 88, height: 12),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    FractionallySizedBox(
-                      widthFactor: i.isEven ? 0.72 : 0.56,
-                      child: const SkeletonBox(height: 18),
-                    ),
-                    const SizedBox(height: 10),
-                    const SkeletonBox(height: 12),
-                    const SizedBox(height: 8),
-                    const FractionallySizedBox(
-                      widthFactor: 0.82,
-                      child: SkeletonBox(height: 12),
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  FractionallySizedBox(
+                    widthFactor: i.isEven ? 0.72 : 0.56,
+                    child: const SkeletonBox(height: 18),
+                  ),
+                  const SizedBox(height: 10),
+                  const SkeletonBox(height: 12),
+                  const SizedBox(height: 8),
+                  const FractionallySizedBox(
+                    widthFactor: 0.82,
+                    child: SkeletonBox(height: 12),
+                  ),
+                  const SizedBox(height: 6),
+                ],
               ),
             ),
           ),
@@ -710,25 +755,38 @@ class _FeedSkeleton extends StatelessWidget {
 }
 
 class _StorySurface extends StatelessWidget {
-  const _StorySurface({required this.flat, required this.child});
+  const _StorySurface({
+    required this.flat,
+    required this.onTap,
+    required this.child,
+  });
   final bool flat;
+  final VoidCallback onTap;
   final Widget child;
+
   @override
-  Widget build(BuildContext context) => flat
-      ? Material(
-          color: context.colors.surface,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: feedContentPadding,
-              vertical: 12,
-            ),
-            child: child,
-          ),
-        )
-      : Panel(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(flat ? 0 : 20);
+    return Material(
+      color: context.colors.surface,
+      borderRadius: radius,
+      child: InkWell(
+        borderRadius: radius,
+        onTap: onTap,
+        child: Padding(
+          padding: flat
+              ? const EdgeInsets.fromLTRB(
+                  feedContentPadding,
+                  8,
+                  feedContentPadding,
+                  2,
+                )
+              : const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: child,
-        );
+        ),
+      ),
+    );
+  }
 }
 
 class _Reaction extends StatelessWidget {
@@ -825,6 +883,15 @@ class _StoryCover extends StatelessWidget {
   );
 }
 
+class _StoryDetailRoute extends CupertinoPageRoute<void> {
+  _StoryDetailRoute({required super.builder, required this.duration});
+
+  final Duration? duration;
+
+  @override
+  Duration get transitionDuration => duration ?? super.transitionDuration;
+}
+
 class StoryDetail extends StatefulWidget {
   const StoryDetail({super.key, required this.story, required this.store});
   final Story story;
@@ -834,7 +901,13 @@ class StoryDetail extends StatefulWidget {
 }
 
 class _StoryDetailState extends State<StoryDetail> {
-  late Map<String, dynamic> bodyContent = widget.story.content;
+  late ArticleRichBody body = _buildBody(widget.story.content);
+
+  ArticleRichBody _buildBody(Map<String, dynamic> content) => ArticleRichBody(
+    content: content.isEmpty
+        ? richContent(widget.story.paragraphs.join('\n'))
+        : content,
+  );
   String? bodyError;
   Future<void> loadBody() async {
     try {
@@ -849,7 +922,15 @@ class _StoryDetailState extends State<StoryDetail> {
           articleRemoved = true;
         }
         if (result.data['content'] != null) {
-          bodyContent = decodeStory(result.data).content;
+          final content = result.data['content'];
+          body = _buildBody(
+            content is Map
+                ? Map<String, dynamic>.from(content)
+                : richContent(plainContent(content)),
+          );
+        }
+        if (!widget.store.pending.contains('bookmark-${widget.story.id}')) {
+          widget.story.readBookmarkMetrics(result.data);
         }
         if (!widget.store.pending.contains('like-${widget.story.id}') &&
             result.data.containsKey('like_count')) {
@@ -971,43 +1052,63 @@ class _StoryDetailState extends State<StoryDetail> {
     ];
   }
 
-  Widget commentTile(ArticleComment c, {bool nested = false}) =>
-      ArticleCommentTile(
-        comment: c,
-        articleAuthorID: widget.story.authorID,
-        currentUserID: widget.store.userID,
-        nested: nested,
-        onAuthorTap: () =>
-            openUserProfile(context, store: widget.store, userID: c.authorID),
-        onReply: c.visible ? () => reply(c) : null,
-        onReport: () => reportContent(
-          context,
-          store: widget.store,
-          subjectType: 'COMMENT',
-          subjectID: c.id,
-        ),
-        onRetry: c.local == null
-            ? null
-            : () => widget.store.sendContent(c.local!),
-        onEdit: () => setState(() {
-          comment.text = c.content;
-          replyTarget = c.replyToID == null
-              ? null
-              : ArticleComment(
-                  id: c.replyToID!,
-                  authorID: 0,
-                  author: c.replyToName,
-                  content: '',
-                  parentID: c.parentID,
-                );
-          commentFocus.requestFocus();
-        }),
-        onLike: () => react(c, false),
-        onDislike: () => react(c, true),
-        pending: widget.store.pending.contains(
-          'comment-reaction-${widget.story.id}-${c.id}',
-        ),
-      );
+  Widget commentTile(
+    ArticleComment c, {
+    bool nested = false,
+  }) => ArticleCommentTile(
+    comment: c,
+    articleAuthorID: widget.story.authorID,
+    currentUserID: widget.store.userID,
+    nested: nested,
+    withdrawButton: c.id > 0 && !c.deleted && c.authorID == widget.store.userID
+        ? WithdrawCommentButton(
+            store: widget.store,
+            method: 'DeleteArticlesIdCommentsCommentID',
+            submissionMethod: 'PostArticlesIdComments',
+            commentID: c.id,
+            path: {'id': '${widget.story.id}', 'commentID': '${c.id}'},
+            onWithdrawn: () async {
+              if (!mounted) return;
+              setState(() {
+                if (replyTarget?.id == c.id) replyTarget = null;
+                if (nested)
+                  threads[c.parentID]?.removeWhere((item) => item.id == c.id);
+              });
+              await loadComments(silent: true);
+              if (mounted && nested && c.parentID != null)
+                await loadThread(c.parentID!);
+            },
+          )
+        : null,
+    onAuthorTap: () =>
+        openUserProfile(context, store: widget.store, userID: c.authorID),
+    onReply: c.visible ? () => reply(c) : null,
+    onReport: () => reportContent(
+      context,
+      store: widget.store,
+      subjectType: 'COMMENT',
+      subjectID: c.id,
+    ),
+    onRetry: c.local == null ? null : () => widget.store.sendContent(c.local!),
+    onEdit: () => setState(() {
+      comment.text = c.content;
+      replyTarget = c.replyToID == null
+          ? null
+          : ArticleComment(
+              id: c.replyToID!,
+              authorID: 0,
+              author: c.replyToName,
+              content: '',
+              parentID: c.parentID,
+            );
+      commentFocus.requestFocus();
+    }),
+    onLike: () => react(c, false),
+    onDislike: () => react(c, true),
+    pending: widget.store.pending.contains(
+      'comment-reaction-${widget.story.id}-${c.id}',
+    ),
+  );
   Widget thread(ArticleComment root) {
     final expanded = expandedThreads.contains(root.id);
     return Padding(
@@ -1068,13 +1169,29 @@ class _StoryDetailState extends State<StoryDetail> {
   Timer? refreshTimer;
   Timer? moderationTimer;
   bool refreshingComments = false, refreshCommentsPending = false;
+  Animation<double>? opening;
+
+  void _onOpeningStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    opening?.removeStatusListener(_onOpeningStatus);
+    opening = null;
+    // The feed already supplies the first screen. Refresh comments after the
+    // slide so the store does not rebuild both pages in the middle of it.
+    if (!articleRemoved) unawaited(loadComments(silent: true));
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         loadBody();
-        loadComments();
+        opening = ModalRoute.of(context)?.animation;
+        if (opening == null || opening!.isCompleted) {
+          _onOpeningStatus(AnimationStatus.completed);
+        } else {
+          opening!.addStatusListener(_onOpeningStatus);
+        }
       }
     });
     moderationTimer = Timer.periodic(const Duration(seconds: 3), (_) {
@@ -1123,7 +1240,7 @@ class _StoryDetailState extends State<StoryDetail> {
       refreshTimer = Timer(const Duration(milliseconds: 200), () {
         if (mounted) {
           loadBody();
-          loadComments(silent: true);
+          if (opening == null) loadComments(silent: true);
           for (final root in expandedThreads.toList()) {
             loadThread(root);
           }
@@ -1172,6 +1289,7 @@ class _StoryDetailState extends State<StoryDetail> {
 
   @override
   void dispose() {
+    opening?.removeStatusListener(_onOpeningStatus);
     refreshTimer?.cancel();
     moderationTimer?.cancel();
     unawaited(realtime?.cancel());
@@ -1183,7 +1301,12 @@ class _StoryDetailState extends State<StoryDetail> {
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.store,
-    builder: (context, _) => Scaffold(
+    builder: (context, _) => _buildPage(context),
+  );
+
+  Widget _buildPage(BuildContext context) {
+    final comments = displayedComments;
+    return Scaffold(
       backgroundColor: context.colors.surface,
       appBar: AppPageBar(
         actions: [
@@ -1227,6 +1350,7 @@ class _StoryDetailState extends State<StoryDetail> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  ArticleDeclarationLabel(body.content),
                   const SizedBox(height: 20),
                   Row(
                     children: [
@@ -1287,11 +1411,7 @@ class _StoryDetailState extends State<StoryDetail> {
                         child: const Text('查看简历'),
                       ),
                     ),
-                  ArticleRichBody(
-                    content: bodyContent.isEmpty
-                        ? richContent(widget.story.paragraphs.join('\n'))
-                        : bodyContent,
-                  ),
+                  body,
                   if (bodyError != null)
                     TextButton(
                       onPressed: loadBody,
@@ -1322,6 +1442,7 @@ class _StoryDetailState extends State<StoryDetail> {
                         ArticleReactionButton(
                           key: const ValueKey('detail-bookmark'),
                           reaction: ArticleReaction.bookmark,
+                          count: widget.story.favorites,
                           active: widget.story.saved,
                           onTap:
                               widget.store.pending.contains(
@@ -1363,17 +1484,13 @@ class _StoryDetailState extends State<StoryDetail> {
                     const Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                  if (displayedComments.isEmpty &&
+                  if (comments.isEmpty &&
                       commentError == null &&
                       !commentsLoading)
                     const EmptyState('还没有评论，聊聊你的看法', '', compact: true),
-                  for (
-                    var index = 0;
-                    index < displayedComments.length;
-                    index++
-                  ) ...[
-                    commentTile(displayedComments[index]),
-                    thread(displayedComments[index]),
+                  for (final c in comments) ...[
+                    commentTile(c),
+                    thread(c),
                     const SizedBox(height: 10),
                   ],
                   PageLoadingFooter(visible: loadingMoreComments),
@@ -1519,8 +1636,9 @@ class _StoryDetailState extends State<StoryDetail> {
                 ),
               ),
             ),
-    ),
-  );
+    );
+  }
+
   Future<void> _send() async {
     final text = comment.text.trim();
     if (text.isEmpty) return;

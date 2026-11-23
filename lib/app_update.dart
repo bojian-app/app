@@ -11,6 +11,38 @@ import 'app_store.dart';
 
 const _channel = MethodChannel('cn.kelance.bojian/settings');
 
+// 和发布接口使用同一套顺序。旧标签只在双方都无法解析时按构建号比较。
+final _releaseVersionPattern = RegExp(
+  r'^[vV]?(\d+)(?:\.(\d+))?(?:\.(\d+))?'
+  r'(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?'
+  r'(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$',
+);
+final _numericIdentifier = RegExp(r'^\d+$');
+
+int _compareReleaseVersions(RegExpMatch left, RegExpMatch right) {
+  for (var i = 1; i <= 3; i++) {
+    final result = BigInt.parse(left[i] ?? '0')
+        .compareTo(BigInt.parse(right[i] ?? '0'));
+    if (result != 0) return result;
+  }
+  final leftPre = left[4]?.split('.');
+  final rightPre = right[4]?.split('.');
+  if (leftPre == null) return rightPre == null ? 0 : 1;
+  if (rightPre == null) return -1;
+  for (var i = 0; i < leftPre.length && i < rightPre.length; i++) {
+    final a = leftPre[i];
+    final b = rightPre[i];
+    final aNumeric = _numericIdentifier.hasMatch(a);
+    final bNumeric = _numericIdentifier.hasMatch(b);
+    if (aNumeric != bNumeric) return aNumeric ? -1 : 1;
+    final result = aNumeric
+        ? BigInt.parse(a).compareTo(BigInt.parse(b))
+        : a.compareTo(b);
+    if (result != 0) return result;
+  }
+  return leftPre.length.compareTo(rightPre.length);
+}
+
 /// 服务端发布的一个 App 版本。
 class AppRelease {
   const AppRelease({
@@ -30,7 +62,7 @@ class AppRelease {
       for (final note in json['notes'] is List ? json['notes'] as List : [])
         if ('$note'.trim().isNotEmpty) '$note'.trim(),
     ],
-    downloadURL: '${json['download_url'] ?? ''}',
+    downloadURL: '${json['download_url'] ?? ''}'.trim(),
     sizeBytes: integer(json['size_bytes']),
     sha256: '${json['sha256'] ?? ''}',
     releasedAt: DateTime.tryParse('${json['released_at'] ?? ''}')?.toLocal(),
@@ -58,13 +90,38 @@ class AppUpdates extends ChangeNotifier {
 
   AppRelease? get latest => releases.isEmpty ? null : releases.first;
 
-  /// 没有下载地址的版本（例如 iOS 尚未上架）不提示更新。
-  bool get hasUpdate {
+  /// 正数表示远端更新，null 表示版本信息不足以比较。
+  int? get latestComparison {
     final release = latest;
-    return release != null &&
-        installedBuild > 0 &&
-        release.buildNumber > installedBuild &&
-        release.downloadURL.isNotEmpty;
+    if (release == null) return null;
+    final remote = _releaseVersionPattern.firstMatch(
+      release.versionName.trim(),
+    );
+    final local = _releaseVersionPattern.firstMatch(installedVersion.trim());
+    if (remote != null && local != null) {
+      final result = _compareReleaseVersions(remote, local);
+      if (result != 0) return result;
+    } else if (remote != null || local != null) {
+      return null;
+    }
+    if (release.buildNumber <= 0 || installedBuild <= 0) return null;
+    return release.buildNumber.compareTo(installedBuild);
+  }
+
+  /// 红点和安装入口只针对已提供下载的新版。
+  bool get hasUpdate =>
+      latest?.downloadURL.isNotEmpty == true && (latestComparison ?? 0) > 0;
+
+  String? get installBlockReason {
+    final release = latest;
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        release != null &&
+        release.buildNumber > 0 &&
+        release.buildNumber < installedBuild &&
+        hasUpdate) {
+      return '已发现新版本，但发布记录中的 Android 版本码低于本机，暂时无法覆盖安装。请等待新的安装包。';
+    }
+    return null;
   }
 
   static String get _platform => Platform.isIOS ? 'IOS' : 'ANDROID';
@@ -145,6 +202,7 @@ class AppUpdateInstaller extends ChangeNotifier {
   Future<void> install(AppStore store) async {
     if (busy) return;
     final updates = AppUpdates.instance;
+    if (updates.installBlockReason != null) return;
     // 先确认安装权限，再下载，避免授权回来后白白重新下载。
     if (Platform.isAndroid) {
       try {
@@ -170,6 +228,10 @@ class AppUpdateInstaller extends ChangeNotifier {
     final release = updates.latest;
     if (!updates.hasUpdate || release == null) {
       _set(AppUpdateStage.failed, text: '暂时无法获取更新包，请稍后重试');
+      return;
+    }
+    if (updates.installBlockReason != null) {
+      _set(AppUpdateStage.idle);
       return;
     }
     await _download(release);

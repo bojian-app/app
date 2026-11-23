@@ -2,13 +2,24 @@ import 'dart:ui' as ui;
 
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/design.dart';
+import 'package:bojian_mobile/app_icons.dart';
+import 'package:bojian_mobile/profile_avatar.dart';
 import 'package:bojian_mobile/device_metadata.dart';
 import 'package:bojian_mobile/settings_page.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 
 import 'support/fake_gateway.dart';
+
+class _FeedbackGallery extends ImagePickerPlatform {
+  @override
+  Future<XFile?> getImageFromSource({
+    required ImageSource source,
+    ImagePickerOptions options = const ImagePickerOptions(),
+  }) async => XFile('assets/branding/app_icon.png');
+}
 
 class SettingsGateway extends FakeGateway {
   @override
@@ -42,6 +53,58 @@ Future<void> tapText(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('设置页的头像、分组、文字与操作列对齐', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.reset);
+    final api = FakeGateway();
+    api.documents['GetMeSessions'] = {
+      'items': [
+        {
+          'id': 1,
+          'platform': 'ANDROID',
+          'device_name': '一加 12',
+          'is_current': true,
+        },
+      ],
+    };
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: SettingsPage(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final avatar = tester.getRect(find.byType(ProfileAvatar));
+    final label = tester.getTopLeft(find.textContaining('用户 ID：')).dx;
+    final divider = tester.getRect(find.byType(Divider).first);
+    final icon = find.byWidgetPredicate(
+      (w) => w is AppIcon && w.icon == AppIcons.accountSecurity,
+    );
+    expect(tester.getTopLeft(icon).dx, avatar.left);
+    expect(tester.getTopLeft(find.text('外观')).dx, avatar.left);
+    expect(tester.getTopLeft(find.text('主题色')).dx, label);
+    expect(divider.left, label);
+    expect(tester.getTopRight(find.text('复制')).dx, divider.right);
+    expect(tester.getTopRight(find.byType(Switch)).dx, divider.right);
+    await tapText(tester, '账号安全');
+    for (final text in ['登录设备', '账号管理', '手机号', '账号申诉', '账号注销']) {
+      expect(tester.getTopLeft(find.text(text)).dx, avatar.left);
+    }
+    expect(tester.getTopLeft(find.text('一加 12')).dx, label);
+    expect(tester.getTopLeft(find.textContaining('登录时间：')).dx, label);
+    final logout = find.text('退出登录');
+    expect(tester.getTopRight(logout).dx, divider.right);
+    expect(
+      tester.getCenter(logout).dy,
+      closeTo(tester.getCenter(find.text('一加 12')).dy, 1),
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'Cache size updates after decoding and clearing removes the entry',
     (tester) async {
@@ -229,6 +292,42 @@ void main() {
     expect(tester.widget<Switch>(find.byType(Switch)).value, false);
   });
 
+  testWidgets('反馈图片可在提交前添加与移除，最多保留三张', (tester) async {
+    final original = ImagePickerPlatform.instance;
+    ImagePickerPlatform.instance = _FeedbackGallery();
+    addTearDown(() => ImagePickerPlatform.instance = original);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.reset);
+    final api = SettingsGateway();
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(MaterialApp(home: buildFeedbackPage(store)));
+    for (var n = 1; n <= 3; n++) {
+      await tester.tap(find.byTooltip('添加图片'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('photo-source-gallery')));
+      await tester.pumpAndSettle();
+      for (
+        var tick = 0;
+        tick < 100 && find.byTooltip('移除图片').evaluate().length < n;
+        tick++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump();
+      }
+      expect(find.byTooltip('移除图片'), findsNWidgets(n));
+    }
+    expect(find.byTooltip('添加图片'), findsNothing);
+    await tester.tap(find.byTooltip('移除图片').first);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('移除图片'), findsNWidgets(2));
+    expect(find.byTooltip('添加图片'), findsOneWidget);
+    expect(api.calls, isNot(contains('PostFilesUploads')));
+  });
+
   testWidgets(
     'Feedback preserves input on failure and submits correct category',
     (tester) async {
@@ -242,20 +341,21 @@ void main() {
         ),
       );
       await tapText(tester, '意见反馈');
-      await tapText(tester, '功能建议');
-      await tester.enterText(find.byType(TextField), ' 希望增加更多模板 ');
-      await tapText(tester, '提交反馈');
+      await tapText(tester, '要投诉');
+      await tester.enterText(find.byType(TextField).first, ' 希望增加更多模板 ');
+      await tester.enterText(find.byType(TextField).last, 'mail@example.com');
+      await tapText(tester, '提交');
       expect(
-        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        tester.widget<TextField>(find.byType(TextField).first).controller!.text,
         ' 希望增加更多模板 ',
       );
       expect(api.lastBody, {
-        'category': 'SUGGESTION',
-        'content': '希望增加更多模板',
+        'category': 'COMPLAINT',
+        'content': '希望增加更多模板\n问题类型：功能使用与体验\n联系方式：mail@example.com',
         'diagnostic_consent': false,
       });
       api.failing = null;
-      await tapText(tester, '提交反馈');
+      await tapText(tester, '提交');
       expect(find.byType(TextField), findsNothing);
       expect(find.text('返回'), findsOneWidget);
     },

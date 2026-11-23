@@ -4,8 +4,8 @@ import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/discovery.dart';
-import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/membership_page.dart';
+import 'package:bojian_mobile/customer_service_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,7 +57,7 @@ Future<AppStore> _showShell(
 int _pageIndex(Type pageType) => {
   DiscoveryPage: 0,
   MembershipPage: AppShell.membershipTab,
-  TemplateMarket: 1,
+  CustomerServicePage: AppShell.serviceTab,
   ProfilePage: AppShell.profileTab,
 }[pageType]!;
 
@@ -80,7 +80,7 @@ void main() {
     tester,
   ) async {
     final store = await _showShell(tester);
-    await tester.tap(find.byKey(const ValueKey('nav-2')));
+    await tester.tap(find.byKey(const ValueKey('nav-1')));
     await tester.pumpAndSettle();
     final membership = tester.widget<MembershipPage>(
       find.byType(MembershipPage),
@@ -97,7 +97,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nav-3')));
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('nav-2')));
+    await tester.tap(find.byKey(const ValueKey('nav-1')));
     await tester.pumpAndSettle();
     expect(tester.state(find.byType(MembershipPage)), same(state));
     expect(membership.store, same(store));
@@ -117,68 +117,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('nav-2')));
+    await tester.tap(find.byKey(const ValueKey('nav-1')));
     await tester.pumpAndSettle();
     expect(find.byType(MembershipPage), findsNothing);
     expect(find.text('登录 / 注册'), findsOneWidget);
     expect(api.calls, isNot(contains('GetMembership')));
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets(
-    'The market filters and keyboard fit a small dark screen with 2x text',
-    (tester) async {
-      await _showShell(
-        tester,
-        size: const Size(320, 640),
-        textScale: 2,
-        dark: true,
-      );
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
-      await tester.pumpAndSettle();
-      // Owned templates moved out of the market tabs; use the last filter.
-      final paid = find.byKey(const ValueKey('market-tab-paid'));
-      await tester.ensureVisible(paid);
-      await tester.pumpAndSettle();
-      await tester.tap(paid);
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      addTearDown(tester.view.resetViewInsets);
-      tester.view.viewInsets = const FakeViewPadding(bottom: 260);
-      await tester.pumpAndSettle();
-      expect(find.byType(AppBottomNavigation), findsNothing);
-      expect(find.byType(TextField).hitTestable(), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'The second destination opens the existing template market and retains search',
-    (tester) async {
-      await _showShell(tester);
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
-      await tester.pumpAndSettle();
-      expect(find.byType(TemplateMarket), findsOneWidget);
-      expect(find.byType(MessagesPage), findsNothing);
-      expect(find.byKey(const ValueKey('nav-unread-badge')), findsNothing);
-      final page = tester.element(find.byType(TemplateMarket));
-      final field = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.hintText == '搜索模板',
-      );
-      await tester.enterText(field, '工程');
-      await tester.testTextInput.receiveAction(TextInputAction.search);
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-0')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
-      await tester.pumpAndSettle();
-      expect(tester.element(find.byType(TemplateMarket)), same(page));
-      expect(tester.widget<TextField>(field).controller!.text, '工程');
-      expect(tester.takeException(), isNull);
-    },
-  );
 
   testWidgets(
     'Top message and settings entries return to their tabs without losing scroll',
@@ -246,7 +191,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.semantics.byLabel(RegExp(r'^推荐')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('nav-2')));
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pump();
 
       final startOpacity = _pageFade(tester, MembershipPage).opacity.value;
@@ -291,6 +236,11 @@ void main() {
     (tester) async {
       await _showShell(tester);
       for (final index in [1, 2, 0, 3]) {
+        if (index == 0) {
+          expect(find.byType(AppBottomNavigation), findsNothing);
+          await tester.tap(find.byTooltip('返回'));
+          await tester.pumpAndSettle();
+        }
         await tester.tap(find.byKey(ValueKey('nav-$index')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 30));
@@ -306,7 +256,11 @@ void main() {
       expect(find.byType(ProfilePage), findsOneWidget);
       expect(_pageFade(tester, ProfilePage).opacity.value, 1);
       expect(_pageOffset(tester, ProfilePage), Offset.zero);
-      for (final pageType in [DiscoveryPage, MembershipPage, TemplateMarket]) {
+      for (final pageType in [
+        DiscoveryPage,
+        MembershipPage,
+        CustomerServicePage,
+      ]) {
         expect(find.byType(pageType), findsNothing);
         final retained = find.byType(pageType, skipOffstage: false);
         expect(retained, findsOneWidget);
@@ -325,14 +279,14 @@ void main() {
     'Repeated selection and store updates do not restart a transition',
     (tester) async {
       final store = await _showShell(tester);
-      await tester.tap(find.byKey(const ValueKey('nav-2')));
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
       final page = tester.element(find.byType(MembershipPage));
       final opacity = _pageFade(tester, MembershipPage).opacity.value;
       expect(opacity, allOf(greaterThan(0), lessThan(1)));
 
-      await tester.tap(find.byKey(const ValueKey('nav-2')));
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pump();
       expect(
         _pageFade(tester, MembershipPage).opacity.value,
@@ -346,7 +300,7 @@ void main() {
       );
       expect(tester.element(find.byType(MembershipPage)), same(page));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-2')));
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pump();
       expect(_pageFade(tester, MembershipPage).opacity.value, 1);
       expect(_pageOffset(tester, MembershipPage), Offset.zero);
@@ -374,7 +328,7 @@ void main() {
       await tester.pumpAndSettle();
       final offset = nested.outerController.position.pixels;
 
-      await tester.tap(find.byKey(const ValueKey('nav-2')));
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pumpAndSettle();
       await store.load('profile');
       await tester.pumpAndSettle();
@@ -400,7 +354,7 @@ void main() {
     tester,
   ) async {
     await _showShell(tester, reduceMotion: true);
-    await tester.tap(find.byKey(const ValueKey('nav-2')));
+    await tester.tap(find.byKey(const ValueKey('nav-1')));
     await tester.pump();
 
     expect(_pageFade(tester, MembershipPage).opacity.value, 1);
@@ -420,7 +374,7 @@ void main() {
       final motionPreference = ValueNotifier(false);
       addTearDown(motionPreference.dispose);
       await _showShell(tester, motionPreference: motionPreference);
-      await tester.tap(find.byKey(const ValueKey('nav-2')));
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
       expect(
@@ -490,7 +444,7 @@ void main() {
       expect(tester.widget<TextField>(search).controller, same(controller));
       expect(controller.text, '发现搜索草稿');
 
-      await tester.tap(find.byKey(const ValueKey('nav-2')));
+      await tester.tap(find.byKey(const ValueKey('nav-1')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('nav-0')));
       await tester.pumpAndSettle();

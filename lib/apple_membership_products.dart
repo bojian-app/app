@@ -31,7 +31,28 @@ class AppleMembershipProducts extends ChangeNotifier {
     'TEXT_100': 'cn.kelance.bojian.ai.text.100',
   };
 
-  static const allProductIDs = {...productIDs, ...addonProductIDs};
+  static const templateProductIDs = {
+    9: 'cn.kelance.bojian.template.9',
+    10: 'cn.kelance.bojian.template.10',
+    11: 'cn.kelance.bojian.template.11',
+    12: 'cn.kelance.bojian.template.12',
+  };
+
+  static final allProductIDs = {
+    ...productIDs,
+    ...addonProductIDs,
+    for (final entry in templateProductIDs.entries)
+      'TEMPLATE_${entry.key}': entry.value,
+  };
+
+  static int? templateID(String productID) {
+    for (final entry in templateProductIDs.entries) {
+      if (entry.value == productID) return entry.key;
+    }
+    return null;
+  }
+
+  String? templatePrice(int id) => price('TEMPLATE_$id');
 
   /// 某类加购的各档（商品键、次数），按次数升序。
   static List<(String, int)> addonPacks(String kind) => [

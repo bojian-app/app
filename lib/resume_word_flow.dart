@@ -2,7 +2,7 @@ part of 'resume_native_export.dart';
 
 // Default and V2 marketplace templates use editable Word document flow. Source fields are
 // block-level rich-text controls, so explicit paragraphs and page continuations
-// remain in the same editing region. New blocks retain template page starts.
+// remain in the same editing region. Word owns pagination after reflow.
 class _WordFlowParagraph {
   _WordFlowParagraph(this.page, ResumeExportLine line)
     : endPage = page,
@@ -139,7 +139,9 @@ String _flowWord(
       0.0,
       event.top - (startsPage ? layout.wordMargins['top']! : previousBottom),
     );
-    final pageBreak = startsPage ? '<w:pageBreakBefore/>' : '';
+    // A preview boundary can fall after Word has already overflowed onto a
+    // new page. Forcing it again leaves nearly empty intervening pages.
+    const pageBreak = '';
     final rule = event.rule;
     if (rule != null) {
       field(null);
@@ -306,10 +308,21 @@ String _flowWord(
         layout.width -
         layout.wordMargins['left']! -
         layout.wordMargins['right']!;
+    final leftInset = layout.nativeFlowGeometry
+        ? math.max(
+            0.0,
+            (paragraph.first.paragraphLeft ?? layout.wordMargins['left']!) -
+                layout.wordMargins['left']!,
+          )
+        : 0.0;
+    // The measured column width already excludes its left inset. Word applies
+    // both indents, so only the remaining space belongs in the right indent.
     var rightInset = paragraph.field != null
         ? math.max(
             0.0,
-            contentWidth - (paragraph.first.paragraphWidth ?? contentWidth),
+            contentWidth -
+                leftInset -
+                (paragraph.first.paragraphWidth ?? contentWidth),
           )
         : 0.0;
     if (paragraph.field == null && paragraph.page == 0) {
@@ -324,13 +337,6 @@ String _flowWord(
         }
       }
     }
-    final leftInset = layout.nativeFlowGeometry
-        ? math.max(
-            0.0,
-            (paragraph.first.paragraphLeft ?? layout.wordMargins['left']!) -
-                layout.wordMargins['left']!,
-          )
-        : 0.0;
     final decoration =
         art[paragraph.first.paragraphId]?.call(paragraph.top) ?? '';
     var spacing = before;

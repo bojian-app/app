@@ -53,6 +53,59 @@ void main() {
     expect(card.membershipEndsAt, isNull);
   });
 
+  testWidgets('卡包可筛选、查看历史并用指定券确认订单', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 780);
+    addTearDown(tester.view.reset);
+    final api = FakeGateway();
+    api.documents['GetMembershipWallet'] = {
+      'coupons': [
+        {
+          'id': 1,
+          'title': '月卡小额券',
+          'amount_cents': 100,
+          'plan_code': 'MONTH',
+          'status': 'AVAILABLE',
+        },
+        {'id': 2, 'title': '通用五元券', 'amount_cents': 500, 'status': 'AVAILABLE'},
+        {'id': 3, 'title': '往期券', 'amount_cents': 100, 'status': 'EXPIRED'},
+      ],
+      'cards': [],
+    };
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: MembershipWalletPage(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('往期券'), findsNothing);
+    await tester.tap(find.text('历史记录'));
+    await tester.pumpAndSettle();
+    expect(find.text('往期券'), findsOneWidget);
+    expect(find.text('已过期'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('筛选'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('年卡适用'));
+    await tester.pumpAndSettle();
+    expect(find.text('月卡小额券'), findsNothing);
+    expect(find.text('通用五元券'), findsOneWidget);
+    await tester.tap(find.byTooltip('筛选'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全部'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('去使用').first);
+    await tester.pumpAndSettle();
+    expect(find.text('确认订单'), findsOneWidget);
+    expect(find.textContaining('1.00'), findsWidgets);
+    expect(api.calls, isNot(contains('PostMembershipOrders')));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Benefit notification opens the wallet and marks it read', (
     tester,
   ) async {

@@ -454,9 +454,9 @@ class _AppleMembershipResultPageState
                   width: 64,
                   height: 64,
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(colors: _blueGradient),
+                    gradient: context.colors.palette.purchaseGradient,
                   ),
                   child: const HugeIcon(
                     icon: HugeIcons.strokeRoundedTick02,
@@ -518,7 +518,7 @@ class _AppleMembershipResultPageState
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(23),
-              gradient: const LinearGradient(colors: _blueGradient),
+              gradient: context.colors.palette.purchaseGradient,
             ),
             child: FilledButton(
               onPressed: () => Navigator.of(context).pop(),

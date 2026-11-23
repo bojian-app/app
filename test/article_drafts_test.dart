@@ -107,6 +107,12 @@ Future<AppStore> mount(
 quill.QuillEditor bodyEditor(WidgetTester tester) => tester
     .widget<quill.QuillEditor>(find.byKey(const ValueKey('composer-body')));
 
+Future<void> saveDraft(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('返回'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('保存草稿'));
+}
+
 void main() {
   testWidgets(
     'Draft box only lists drafts and reopens unchanged content without a discard prompt',
@@ -118,15 +124,21 @@ void main() {
       expect(find.byKey(const ValueKey('articles-SUBMITTED')), findsNothing);
       expect(find.text('写文章'), findsNothing);
       expect(find.text('已发布内容'), findsNothing);
-      await tester.tap(find.text('求职复盘'));
+      expect(find.text('原有内容'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('draft-more-8')));
+      await tester.pumpAndSettle();
+      final sheet = tester.getRect(find.byType(BottomSheet));
+      expect(sheet.height, closeTo(844 / 2, 1));
+      expect(sheet.bottom, 844);
+      await tester.tap(find.text('继续编辑'));
       await tester.pumpAndSettle();
       expect(find.byType(StoryComposer), findsOneWidget);
       expect(bodyEditor(tester).controller.document.toPlainText(), '原有内容\n');
       expect(find.text('审核意见：请补充具体项目成果'), findsOneWidget);
-      await tester.tap(find.byTooltip('关闭'));
+      await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
       expect(find.byType(StoryComposer), findsNothing);
-      expect(find.text('放弃本次修改？'), findsNothing);
+      expect(find.text('保存这次修改？'), findsNothing);
       expect(api.mutations, isEmpty);
     },
   );
@@ -135,6 +147,8 @@ void main() {
     final api = DraftGateway();
     await mount(tester, api);
     expect(find.byKey(const ValueKey('draft-delete-9')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('draft-more-8')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('draft-delete-8')));
     await tester.pumpAndSettle();
     expect(find.text('删除这篇草稿？'), findsOneWidget);
@@ -144,6 +158,8 @@ void main() {
     expect(find.text('求职复盘'), findsOneWidget);
 
     api.failing = 'DeleteArticlesId';
+    await tester.tap(find.byKey(const ValueKey('draft-more-8')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('draft-delete-8')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('draft-delete-confirm-8')));
@@ -151,6 +167,8 @@ void main() {
     expect(find.text('求职复盘'), findsOneWidget);
 
     api.failing = null;
+    await tester.tap(find.byKey(const ValueKey('draft-more-8')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('draft-delete-8')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('draft-delete-confirm-8')));
@@ -160,6 +178,45 @@ void main() {
     expect(find.text('求职复盘'), findsNothing);
     expect(find.text('草稿已删除'), findsOneWidget);
   });
+
+  testWidgets(
+    'Declarations survive saving and can be cleared before republishing',
+    (tester) async {
+      final api = DraftGateway();
+      await mount(tester, api);
+      await tester.tap(find.text('求职复盘'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('内容声明'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('含 AI 生成内容'));
+      await tester.tap(find.text('查看说明'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      await saveDraft(tester);
+      await tester.pumpAndSettle();
+      expect(api.draft['content']['declaration'], {
+        'original': false,
+        'type': 'ai',
+      });
+      await tester.tap(find.text('求职复盘'));
+      await tester.pumpAndSettle();
+      expect(find.text('含 AI 生成内容'), findsOneWidget);
+      await tester.tap(find.text('内容声明'));
+      await tester.pumpAndSettle();
+      final clear = find.text('无需标注');
+      await tester.ensureVisible(clear);
+      await tester.tap(clear);
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('重新发布'));
+      await tester.pumpAndSettle();
+      expect(api.draft['content'], richContent('原有内容'));
+      expect(api.submitted, isTrue);
+    },
+  );
 
   testWidgets('Save updates the original draft and refreshes the draft box', (
     tester,
@@ -180,7 +237,7 @@ void main() {
       const TextSelection.collapsed(offset: 6),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
+    await saveDraft(tester);
     await tester.pumpAndSettle();
     expect(find.byType(StoryComposer), findsNothing);
     expect(find.text('修改后的复盘'), findsOneWidget);
@@ -203,13 +260,13 @@ void main() {
         find.byKey(const ValueKey('composer-title')),
         '补充成果后的复盘',
       );
-      await tester.tap(find.byTooltip('提交审核'));
+      await tester.tap(find.widgetWithText(TextButton, '重新发布'));
       await tester.pumpAndSettle();
       expect(find.byType(StoryComposer), findsOneWidget);
       expect(find.text('补充成果后的复盘'), findsOneWidget);
       expect(bodyEditor(tester).controller.readOnly, isFalse);
       api.failing = null;
-      await tester.tap(find.byTooltip('提交审核'));
+      await tester.tap(find.widgetWithText(TextButton, '重新发布'));
       await tester.pumpAndSettle();
       expect(find.byType(StoryComposer), findsNothing);
       expect(find.text('暂无草稿的文章'), findsOneWidget);
@@ -252,7 +309,7 @@ void main() {
         const TextSelection.collapsed(offset: 9),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('保存'));
+      await saveDraft(tester);
       await tester.pumpAndSettle();
       expect(editor.controller.readOnly, isFalse);
       expect(editor.controller.document.toPlainText(), '请帮我看看项目经历\n');
@@ -262,7 +319,7 @@ void main() {
       });
       expect(api.calls, isNot(contains('PostArticlesIdPublish')));
       api.failing = null;
-      await tester.tap(find.text('保存'));
+      await saveDraft(tester);
       await tester.pumpAndSettle();
       expect(api.draft['content'], {...original, 'question': '请帮我看看项目经历'});
     },
@@ -312,7 +369,7 @@ void main() {
         const TextSelection.collapsed(offset: 2),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('保存'));
+      await saveDraft(tester);
       await tester.pumpAndSettle();
       final content = api.mutations.single.$3['content'] as Map;
       expect(content['schema_version'], 2);
@@ -331,7 +388,7 @@ void main() {
       final store = await mount(tester, api);
       await tester.tap(find.text('求职复盘'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('提交审核'));
+      await tester.tap(find.widgetWithText(TextButton, '重新发布'));
       await tester.pump();
       await store.endSession(remote: false);
       api.saving!.complete();
@@ -348,7 +405,8 @@ void main() {
       await mount(tester, api, large: true);
       await tester.tap(find.text('求职复盘'));
       await tester.pumpAndSettle();
-      expect(find.text('保存'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '重新发布'), findsOneWidget);
+      expect(find.text('保存草稿'), findsNothing);
       expect(
         tester.getRect(find.byTooltip('提交审核')).right,
         lessThanOrEqualTo(320),

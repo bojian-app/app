@@ -11,170 +11,174 @@ class ResumeLibrary extends StatelessWidget {
     child: PlayfulRefresh(
       hasError: () => store.errors['resumes'] != null,
       onRefresh: () => store.load('resumes'),
-      child: ListView(
-        key: PageStorageKey(embedded ? 'profile-resumes' : 'resume-library'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(top: embedded ? 8 : 0, bottom: 24),
-        children: [
-          if (!embedded) ...[
-            const Padding(
-              padding: EdgeInsets.fromLTRB(
-                appPageHorizontalPadding,
-                18,
-                appPageHorizontalPadding,
-                16,
-              ),
-              child: Text(
-                '我的简历',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -.5,
-                ),
-              ),
-            ),
-          ],
-          if (!embedded)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: appPageHorizontalPadding,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _actionCard(
-                      context,
-                      label: '创建简历',
-                      icon: AppIcons.add,
-                      onTap: () => _create(context),
+      child: embedded
+          ? _profileGrid(context)
+          : ListView(
+              key: const PageStorageKey('resume-library'),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 24),
+              children: [
+                if (!embedded) ...[
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      18,
+                      appPageHorizontalPadding,
+                      16,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _actionCard(
-                      context,
-                      label: '导入简历',
-                      icon: AppIcons.importResume,
-                      onTap: () => _import(context),
+                    child: Text(
+                      '我的简历',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -.5,
+                      ),
                     ),
                   ),
                 ],
-              ),
-            ),
-          if (!embedded) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                appPageHorizontalPadding,
-                14,
-                appPageHorizontalPadding,
-                18,
-              ),
-              child: InkWell(
-                onTap: () => openPage(context, TemplateMarket(store: store)),
-                borderRadius: BorderRadius.circular(18),
-                child: Panel(
-                  padding: EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: (context.isDark
-                              ? context.colors.warningSoft
-                              : Color(0xFFFFF4E5)),
-                          borderRadius: BorderRadius.all(Radius.circular(12)),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.all(10),
-                          child: AppIcon(
-                            AppIcons.templateMarket,
-                            color: Color(0xFFD69B4C),
-                            size: 22,
+                if (!embedded)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: appPageHorizontalPadding,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _actionCard(
+                            context,
+                            label: '创建简历',
+                            icon: AppIcons.add,
+                            onTap: () => _create(context),
                           ),
                         ),
-                      ),
-                      SizedBox(width: 13),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '找到适合你的模版',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              '逛逛模板市场，让经历更出彩',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: context.colors.muted,
-                              ),
-                            ),
-                          ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _actionCard(
+                            context,
+                            label: '导入简历',
+                            icon: AppIcons.importResume,
+                            onTap: () => _import(context),
+                          ),
                         ),
-                      ),
-                      AppIcon(
-                        AppIcons.forward,
-                        color: context.colors.muted,
-                        size: 14,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                appPageHorizontalPadding,
-                0,
-                appPageHorizontalPadding,
-                12,
-              ),
-              child: Row(
-                children: [
-                  const Text(
-                    '简历库',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${store.resumes.length} 份',
-                    style: TextStyle(color: context.colors.muted, fontSize: 11),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '最近更新',
-                    style: TextStyle(color: context.colors.muted, fontSize: 11),
+                if (!embedded) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      0,
+                      appPageHorizontalPadding,
+                      12,
+                    ),
+                    child: Row(
+                      children: [
+                        const Text(
+                          '简历库',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${store.resumes.length} 份',
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontSize: 11,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '最近更新',
+                          style: TextStyle(
+                            color: context.colors.muted,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
-              ),
+                DataStatus(
+                  store: store,
+                  section: 'resumes',
+                  empty: store.resumes.isEmpty,
+                  title: embedded ? '这里还没有内容' : '创建你的第一份简历',
+                  subtitle: embedded ? '下拉刷新，查看最新内容。' : '从一份空白简历开始，逐步整理你的经历。',
+                ),
+                for (final resume in store.resumes)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      appPageHorizontalPadding,
+                      0,
+                      appPageHorizontalPadding,
+                      12,
+                    ),
+                    child: _resumeCard(context, resume),
+                  ),
+                PageLoadingFooter(
+                  visible: store.loadingMore.contains('resumes'),
+                ),
+              ],
             ),
-          ],
-          if (embedded) const SizedBox(height: 4),
-          DataStatus(
-            store: store,
-            section: 'resumes',
-            empty: store.resumes.isEmpty,
-            title: embedded ? '这里还没有内容' : '创建你的第一份简历',
-            subtitle: embedded ? '下拉刷新，查看最新内容。' : '从一份空白简历开始，逐步整理你的经历。',
-          ),
-          for (final resume in store.resumes)
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                appPageHorizontalPadding,
-                0,
-                appPageHorizontalPadding,
-                12,
-              ),
-              child: _resumeCard(context, resume),
-            ),
-          PageLoadingFooter(visible: store.loadingMore.contains('resumes')),
-        ],
-      ),
     ),
   );
+  Widget _profileGrid(BuildContext context) => CustomScrollView(
+    key: const PageStorageKey('profile-resumes'),
+    physics: const AlwaysScrollableScrollPhysics(),
+    slivers: [
+      SliverToBoxAdapter(
+        child: DataStatus(
+          store: store,
+          section: 'resumes',
+          empty: store.resumes.isEmpty,
+          title: '这里还没有内容',
+          subtitle: '下拉刷新，查看最新内容。',
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(
+          appPageHorizontalPadding,
+          8,
+          appPageHorizontalPadding,
+          24,
+        ),
+        sliver: SliverGrid.builder(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 12,
+            childAspectRatio: resumePaperSize.aspectRatio,
+          ),
+          itemCount: store.resumes.length,
+          itemBuilder: (context, index) {
+            final resume = store.resumes[index];
+            return Material(
+              key: ValueKey('resume-card-${resume.id}'),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
+              elevation: 1,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(4),
+                onTap: () => openPage(
+                  context,
+                  ResumePreview(store: store, resumeId: resume.id),
+                ),
+                child: ResumeCardThumbnail(store: store, resume: resume),
+              ),
+            );
+          },
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: PageLoadingFooter(
+          visible: store.loadingMore.contains('resumes'),
+        ),
+      ),
+    ],
+  );
+
   Widget _actionCard(
     BuildContext context, {
     required String label,

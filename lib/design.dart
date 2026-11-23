@@ -18,17 +18,85 @@ import 'skeleton.dart';
 const appPageHorizontalPadding = 24.0;
 const feedOuterPadding = 12.0;
 const feedContentPadding = appPageHorizontalPadding - feedOuterPadding;
+const feedTitleWeight = FontWeight.bold;
 
 const blue = Color(0xFF2867EE);
 const ink = Color(0xFF202C41);
 const muted = Color(0xFF8A94A5);
-const canvasColor = Color(0xFFF7F8FA);
+const canvasColor = Colors.white;
 const borderColor = Color(0xFFEEF0F4);
 
-void toast(BuildContext context, String message) {
+SnackBar appFeedbackBar(
+  BuildContext context,
+  String message, {
+  bool success = false,
+  SnackBarAction? action,
+}) {
+  final colors = context.colors;
+  final style = Theme.of(context).textTheme.bodyMedium!.copyWith(
+    color: colors.ink,
+    fontSize: 14,
+    height: 1.4,
+    fontWeight: FontWeight.w500,
+  );
+  final text = TextPainter(
+    text: TextSpan(text: message, style: style),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: 1,
+  )..layout();
+  const markSize = 26.0, gap = 6.0;
+  final left = success ? 8.0 : 16.0;
+  const right = 16.0;
+  final width =
+      text.width.ceilToDouble() +
+      left +
+      right +
+      (success ? markSize + gap : 0) +
+      2;
+  text.dispose();
+  final maxWidth = (MediaQuery.sizeOf(context).width - 32).clamp(1.0, 380.0);
+  return SnackBar(
+    behavior: SnackBarBehavior.floating,
+    width: action == null ? width.clamp(1.0, maxWidth) : maxWidth,
+    backgroundColor: colors.accentSoft,
+    elevation: 0,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    duration: Duration(seconds: success && action == null ? 2 : 4),
+    padding: EdgeInsets.fromLTRB(left, 7, right, 7),
+    content: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: markSize),
+      child: Row(
+        children: [
+          if (success) ...[
+            Image.asset(
+              'assets/branding/app_icon.png',
+              width: markSize,
+              height: markSize,
+              cacheWidth: 104,
+              excludeFromSemantics: true,
+            ),
+            const SizedBox(width: gap),
+          ],
+          Flexible(child: Text(message, style: style)),
+        ],
+      ),
+    ),
+    action: action,
+  );
+}
+
+void toast(
+  BuildContext context,
+  String message, {
+  bool success = false,
+  SnackBarAction? action,
+}) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+    ..showSnackBar(
+      appFeedbackBar(context, message, success: success, action: action),
+    );
 }
 
 void dismissKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
@@ -40,7 +108,9 @@ Future<bool> runRequest(
 }) async {
   try {
     await request();
-    if (success != null && context.mounted) toast(context, success);
+    if (success != null && context.mounted) {
+      toast(context, success, success: true);
+    }
     return true;
   } catch (e) {
     if (context.mounted) await showRequestFailure(context, e);

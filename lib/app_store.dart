@@ -1,4 +1,5 @@
 import 'content_moderation.dart';
+import 'app_appearance.dart';
 import 'user_display_name.dart';
 
 import 'dart:async';
@@ -40,10 +41,14 @@ class AppStore extends ChangeNotifier {
        weChatAuthorizer = weChatAuthorizer ?? NativeWeChatAuthorizer(),
        douyinAuthorizer = douyinAuthorizer ?? NativeDouyinAuthorizer();
   final WeChatAuthorizer weChatAuthorizer;
+
+  /// Asks whether to abort a pending account deletion by signing in.
+  Future<bool> Function(DateTime? executeAfter)? confirmDeletionCancel;
   final DouyinAuthorizer douyinAuthorizer;
   final guidanceReviewDrafts = <String, Set<int>>{};
   final ApiGateway api;
   final SessionStorage storage;
+  late final appearance = AppAppearance(storage);
   final RealtimeConnector? realtimeConnector;
   final _realtimeEvents = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get realtimeEvents => _realtimeEvents.stream;
@@ -300,6 +305,9 @@ class AppStore extends ChangeNotifier {
   String deviceID = '';
   Map<String, dynamic>? session;
   int epoch = 0;
+
+  /// 创建副本进行中或刚完成的冷却期；跨页面共享，避免跳转到副本页后再次触发。
+  bool copyingResume = false;
   bool alive = true;
   bool restoring = true;
   bool isGuest = false;
@@ -725,6 +733,7 @@ class AppStore extends ChangeNotifier {
   @override
   void dispose() {
     alive = false;
+    appearance.dispose();
     ++epoch;
     _realtimeRefresh?.cancel();
     _deliveryTimer?.cancel();

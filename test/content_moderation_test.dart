@@ -186,6 +186,7 @@ void main() {
         '保留原文',
         const TextSelection.collapsed(offset: 4),
       );
+      await tester.pump();
       await tester.tap(find.byTooltip('提交审核'));
       // The blocked editor remains busy while the reason dialog is open.
       await tester.pump();

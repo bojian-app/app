@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'api/bojian_api.dart';
 import 'app_store.dart';
+import 'design.dart' show openPage, toast;
 import 'design_shapes.dart';
 import 'invitation_qr_panel.dart';
 import 'invitation_scan_page.dart';
@@ -33,6 +34,48 @@ Future<void> showInvitationDialog(BuildContext context, AppStore store) =>
           child: child,
         ),
       ),
+    );
+
+Future<void> scanAndBindInvitation(BuildContext context, AppStore store) async {
+  if (!store.isAuthenticated) {
+    toast(context, '请先登录，再扫描好友的邀请码');
+    return;
+  }
+  final epoch = store.epoch;
+  final code = await openPage<String>(context, const InvitationScanPage());
+  if (code == null || !context.mounted || store.epoch != epoch) return;
+  try {
+    await _bindInvitation(store, code);
+  } catch (error) {
+    if (context.mounted && store.epoch == epoch) {
+      toast(context, error is ApiFailure ? error.message : '绑定失败，请重新扫码');
+    }
+    return;
+  }
+  if (context.mounted && store.epoch == epoch) {
+    await _showInvitationReward(context);
+  }
+}
+
+Future<Map<String, dynamic>> _bindInvitation(
+  AppStore store,
+  String code,
+) async {
+  final result = await store.request(
+    'PostInvitationsBind',
+    body: {'invite_code': code},
+  );
+  return result.data;
+}
+
+Future<void> _showInvitationReward(BuildContext context) =>
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, _, _) => const _RewardSuccessDialog(),
     );
 
 class InvitationDialog extends StatefulWidget {
@@ -208,6 +251,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
       data = {...?data, ...summary};
       actionMessage = '已填写好友邀请码';
     });
+    await _showInvitationReward(context);
   }
 
   /// Entry for entering a friend's code; it disappears once one is entered.
@@ -1050,11 +1094,8 @@ class _FriendCodeDialogState extends State<_FriendCodeDialog> {
       error = null;
     });
     try {
-      final result = await widget.store.request(
-        'PostInvitationsBind',
-        body: {'invite_code': code},
-      );
-      if (mounted) Navigator.pop(context, result.data);
+      final summary = await _bindInvitation(widget.store, code);
+      if (mounted) Navigator.pop(context, summary);
     } on ApiFailure catch (e) {
       if (mounted) setState(() => error = e.message);
     } catch (_) {
@@ -1119,4 +1160,129 @@ class _FriendCodeDialogState extends State<_FriendCodeDialog> {
       ),
     ],
   );
+}
+
+/// Celebration shown after a friend's invitation code is accepted.
+class _RewardSuccessDialog extends StatefulWidget {
+  const _RewardSuccessDialog();
+
+  @override
+  State<_RewardSuccessDialog> createState() => _RewardSuccessDialogState();
+}
+
+class _RewardSuccessDialogState extends State<_RewardSuccessDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..forward();
+
+  @override
+  void initState() {
+    super.initState();
+    HapticFeedback.mediumImpact();
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      child: SizedBox(
+        width: 280,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                key: const ValueKey('invite-reward-animation'),
+                width: 160,
+                height: 120,
+                child: AnimatedBuilder(
+                  animation: controller,
+                  builder: (_, _) => CustomPaint(
+                    painter: _RewardBurstPainter(controller.value),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '领取成功',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '邀请码已填写，好友将获得三天会员体验包',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Color(0xFF666666)),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('好的'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _RewardBurstPainter extends CustomPainter {
+  const _RewardBurstPainter(this.t);
+  final double t;
+
+  static const colors = [
+    Color(0xFF2F80ED),
+    Color(0xFFFFB020),
+    Color(0xFF27AE60),
+    Color(0xFFEB5757),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final pop = Curves.elasticOut.transform((t / 0.5).clamp(0, 1));
+    canvas.drawCircle(c, 38 * pop, Paint()..color = const Color(0xFF2F80ED));
+    final check = Path()
+      ..moveTo(c.dx - 15, c.dy)
+      ..lineTo(c.dx - 4, c.dy + 11)
+      ..lineTo(c.dx + 16, c.dy - 10);
+    final draw = ((t - 0.3) / 0.3).clamp(0.0, 1.0);
+    for (final m in check.computeMetrics()) {
+      canvas.drawPath(
+        m.extractPath(0, m.length * draw),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 6
+          ..strokeCap = StrokeCap.round
+          ..color = Colors.white,
+      );
+    }
+    final burst = ((t - 0.2) / 0.8).clamp(0.0, 1.0);
+    final ease = Curves.easeOutCubic.transform(burst);
+    for (var i = 0; i < 16; i++) {
+      final a = i * math.pi * 2 / 16;
+      final r = 46 + (i.isEven ? 26 : 14) * ease;
+      canvas.drawCircle(
+        c + Offset(math.cos(a), math.sin(a)) * r,
+        (i.isEven ? 4 : 3) * (1 - burst),
+        Paint()..color = colors[i % colors.length],
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RewardBurstPainter old) => old.t != t;
 }

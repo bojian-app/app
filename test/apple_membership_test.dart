@@ -259,6 +259,16 @@ void main() {
         'ai_text_remaining': 0,
       },
     };
+    api.documents['GetMembershipPlans'] = {
+      'ai_addons': [
+        {
+          'kind': 'POLISH',
+          'name': 'AI 简历优化',
+          'unit_price_cents': 99,
+          'max_quantity': 200,
+        },
+      ],
+    };
     api.documents['GetMembershipApple'] = {
       'available': true,
       'app_account_token': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
@@ -287,12 +297,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('加购 AI 次数'), findsOneWidget);
-    expect(find.text('1/5/10 次包 · 剩 2 次'), findsOneWidget);
-    expect(find.text('10/50/100 次包 · 剩 0 次'), findsOneWidget);
-    expect(find.textContaining('¥0.99'), findsNothing);
-
-    await tester.tap(find.text('加购').at(1));
+    expect(find.bySemanticsLabel('简历优化剩余 2 次'), findsOneWidget);
+    await tester.tap(find.text('加购次数'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'AI 简历优化'));
     await tester.pumpAndSettle();
     expect(find.text('AI 简历优化'), findsOneWidget);
     expect(find.text('5 次'), findsOneWidget);

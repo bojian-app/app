@@ -18,7 +18,9 @@ extension AppStoreAuth on AppStore {
     }
     await initialize();
     final version = epoch;
-    final response = await api.login(phone, code, headers);
+    final response = await _resumeAfterDeletionPrompt(
+      () => api.login(phone, code, headers),
+    );
     return _resolveSignIn(
       response,
       version,
@@ -37,10 +39,8 @@ extension AppStoreAuth on AppStore {
     final code = await weChatAuthorizer.authorize();
     if (version != epoch || !alive) throw const ApiFailure('登录已取消');
     if (code == null) return false;
-    final response = await api.loginWithWeChat(
-      code,
-      legalAgreementVersions,
-      headers,
+    final response = await _resumeAfterDeletionPrompt(
+      () => api.loginWithWeChat(code, legalAgreementVersions, headers),
     );
     return _resolveSignIn(
       response,
@@ -59,10 +59,8 @@ extension AppStoreAuth on AppStore {
     final code = await douyinAuthorizer.authorize();
     if (version != epoch || !alive) throw const ApiFailure('登录已取消');
     if (code == null) return false;
-    final response = await api.loginWithDouyin(
-      code,
-      legalAgreementVersions,
-      headers,
+    final response = await _resumeAfterDeletionPrompt(
+      () => api.loginWithDouyin(code, legalAgreementVersions, headers),
     );
     return _resolveSignIn(
       response,
@@ -130,13 +128,36 @@ extension AppStoreAuth on AppStore {
     String token,
     String phone,
     String code,
-  ) => api.confirmLoginPhoneBinding(
-    token,
-    phone,
-    code,
-    legalAgreementVersions,
-    headers,
+  ) => _resumeAfterDeletionPrompt(
+    () => api.confirmLoginPhoneBinding(
+      token,
+      phone,
+      code,
+      legalAgreementVersions,
+      headers,
+    ),
   );
+
+  /// A sign-in during the deletion cooling-off period needs the user's consent;
+  /// the server hands back a ticket that completes it and cancels the deletion.
+  Future<auth.LoginResponse> _resumeAfterDeletionPrompt(
+    Future<auth.LoginResponse> Function() login,
+  ) async {
+    try {
+      return await login();
+    } on ApiFailure catch (e) {
+      final details = e.details;
+      if (e.code != 'ACCOUNT_DELETION_PENDING' || details is! Map) rethrow;
+      final token = '${details['registration_token'] ?? ''}';
+      final prompt = confirmDeletionCancel;
+      if (token.isEmpty || prompt == null) rethrow;
+      final when = DateTime.tryParse('${details['execute_after'] ?? ''}');
+      if (!await prompt(when)) {
+        throw const ApiFailure('已取消登录，账号注销申请仍将继续');
+      }
+      return api.confirmRegistration(token, legalAgreementVersions, headers);
+    }
+  }
 
   Future<bool> _resolveSignIn(
     auth.LoginResponse response,

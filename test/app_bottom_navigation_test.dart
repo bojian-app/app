@@ -1,3 +1,4 @@
+import 'package:bojian_mobile/app_update.dart';
 import 'package:bojian_mobile/app_bottom_navigation.dart';
 import 'package:bojian_mobile/navigation_icon.dart';
 import 'package:bojian_mobile/design.dart';
@@ -6,8 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 const _destinations = [
   (index: 0, label: '发现'),
-  (index: 1, label: '模版市场'),
-  (index: 2, label: '会员'),
+  (index: 1, label: '会员中心'),
+  (index: 2, label: '在线客服'),
   (index: 3, label: '我的'),
 ];
 
@@ -54,6 +55,34 @@ List<Rect> _destinationRects(WidgetTester tester) => [
 ];
 
 void main() {
+  testWidgets('Only the profile tab shows an available newer build', (
+    tester,
+  ) async {
+    final updates = AppUpdates.instance;
+    final installed = updates.installedBuild;
+    final releases = updates.releases;
+    addTearDown(() {
+      updates.installedBuild = installed;
+      updates.releases = releases;
+    });
+    updates.installedBuild = 1;
+    updates.releases = [
+      AppRelease.fromJson({
+        'build_number': 2,
+        'download_url': 'https://example.com/app.apk',
+      }),
+    ];
+    await _showNavigation(tester);
+    final badge = find.descendant(
+      of: find.byKey(const ValueKey('nav-3')),
+      matching: find.byType(Badge),
+    );
+    expect(tester.widget<Badge>(badge).isLabelVisible, isTrue);
+    expect(find.byType(Badge), findsOneWidget);
+    updates.installedBuild = 2;
+    await _showNavigation(tester);
+    expect(tester.widget<Badge>(badge).isLabelVisible, isFalse);
+  });
   for (final textScale in [1.5, 2.0]) {
     testWidgets(
       'Four destinations fit one row at 320px and text scale $textScale',
@@ -128,7 +157,7 @@ void main() {
         await tester.tap(find.byKey(ValueKey('nav-${destination.index}')));
         await tester.pumpAndSettle();
       }
-      tester.semantics.tap(find.semantics.byLabel('模版市场'));
+      tester.semantics.tap(find.semantics.byLabel('会员中心'));
       await tester.pump();
       expect(selected, [0, 1, 2, 3, 1]);
       expect(tester.takeException(), isNull);

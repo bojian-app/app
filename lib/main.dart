@@ -1,4 +1,5 @@
 import 'app_page_bar.dart';
+import 'app_appearance.dart';
 
 import 'dart:async';
 
@@ -11,11 +12,13 @@ import 'app_environment.dart';
 import 'auth_page.dart';
 import 'app_store.dart';
 import 'membership_status.dart';
+import 'app_update.dart';
 import 'apple_membership_products.dart';
 import 'apple_membership_purchases.dart';
 import 'confirmation_dialog.dart';
 import 'design.dart';
 import 'banner_ads.dart';
+import 'privacy_consent.dart';
 import 'startup_animation.dart';
 import 'resume_files.dart';
 import 'resume_pages.dart';
@@ -38,10 +41,14 @@ class MyApp extends StatefulWidget {
     this.startupAnimationEnabled = true,
     this.bannerAdsEnabled = true,
     this.store,
+    this.requirePrivacyConsent,
   });
   final bool startupAnimationEnabled;
   final bool bannerAdsEnabled;
   final AppStore? store;
+
+  /// 启动时是否先弹隐私政策；默认只有使用真实存储（未注入 store）时弹出。
+  final bool? requirePrivacyConsent;
   @override
   State<MyApp> createState() => _MyAppState();
 }
@@ -63,9 +70,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     entryAllowed = store.isAuthenticated || store.isGuest;
     store.addListener(sessionChanged);
-    if (usesAppleMembership) {
-      applePurchases = AppleMembershipPurchases.forStore(store);
-    }
     files.incoming.addListener(sharedFileChanged);
     files.error.addListener(sharedFileError);
     unawaited(files.start());
@@ -74,9 +78,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> prepareStartup() async {
     try {
-      // Restore the session while the local animation plays; never request an ad.
-      final initialization = store.initialize();
       await WidgetsBinding.instance.endOfFrame;
+      // 同意隐私政策前不读取设备信息、不恢复登录、不初始化任何 SDK。
+      if (widget.requirePrivacyConsent ?? widget.store == null) {
+        await PrivacyConsent.ensure(
+          store.storage,
+          () => navigatorKey.currentContext!,
+        );
+        if (!mounted) return;
+      }
+      if (usesAppleMembership) {
+        applePurchases = AppleMembershipPurchases.forStore(store);
+      }
+      // Restore the session while the local animation plays; never request an ad.
+      unawaited(AppUpdates.instance.refresh(store));
+      final initialization = store.initialize();
       final reduceMotion = WidgetsBinding
           .instance
           .platformDispatcher
@@ -84,6 +100,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           .disableAnimations;
       await Future.wait([
         initialization,
+        store.appearance.restore(),
         if (widget.startupAnimationEnabled && !reduceMotion)
           Future<void>.delayed(startupAnimationDuration),
       ]);
@@ -173,9 +190,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     files.error.value = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        messengerKey.currentState?.showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        final messenger = messengerKey.currentState;
+        if (messenger != null) {
+          messenger.showSnackBar(appFeedbackBar(messenger.context, message));
+        }
       }
     });
   }
@@ -196,6 +214,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       store.setForeground(true);
+      if (!preparingStartup) unawaited(AppUpdates.instance.refresh(store));
       unawaited(applePurchases?.syncUnfinished());
       unawaited(MembershipStatus.instance.refresh(store, force: true));
       sharedFileChanged();
@@ -246,45 +265,50 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         );
       },
     );
-    return MaterialApp(
-      title: '博简',
-      locale: const Locale('zh', 'CN'),
-      supportedLocales: const [Locale('zh', 'CN')],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      navigatorKey: navigatorKey,
-      scaffoldMessengerKey: messengerKey,
-      debugShowCheckedModeBanner: false,
-      theme: appTheme,
-      darkTheme: appDarkTheme,
-      themeMode: ThemeMode.system,
-      scrollBehavior: const MaterialScrollBehavior().copyWith(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      ),
-      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-        value: appSystemUiStyle(context),
-        child: Actions(
-          actions: {
-            EditableTextTapOutsideIntent:
-                CallbackAction<EditableTextTapOutsideIntent>(
-                  onInvoke: (intent) {
-                    intent.focusNode.unfocus();
-                    return null;
-                  },
-                ),
-          },
-          child: TooltipVisibility(
-            visible: false,
-            child: AppEnvironment.isLocal
-                ? Banner(
-                    message: '本地测试',
-                    location: BannerLocation.topEnd,
-                    child: child!,
-                  )
-                : child!,
+    return ValueListenableBuilder<AppearanceChoice>(
+      valueListenable: store.appearance,
+      child: home,
+      builder: (context, appearance, home) => MaterialApp(
+        themeAnimationStyle: AnimationStyle.noAnimation,
+        title: '博简',
+        locale: const Locale('zh', 'CN'),
+        supportedLocales: const [Locale('zh', 'CN')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        navigatorKey: navigatorKey,
+        scaffoldMessengerKey: messengerKey,
+        debugShowCheckedModeBanner: false,
+        theme: appearance.accent.lightTheme,
+        darkTheme: appearance.accent.darkTheme,
+        themeMode: appearance.mode,
+        scrollBehavior: const MaterialScrollBehavior().copyWith(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        ),
+        builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value: appSystemUiStyle(context),
+          child: Actions(
+            actions: {
+              EditableTextTapOutsideIntent:
+                  CallbackAction<EditableTextTapOutsideIntent>(
+                    onInvoke: (intent) {
+                      intent.focusNode.unfocus();
+                      return null;
+                    },
+                  ),
+            },
+            child: TooltipVisibility(
+              visible: false,
+              child: AppEnvironment.isLocal
+                  ? Banner(
+                      message: '本地测试',
+                      location: BannerLocation.topEnd,
+                      child: child!,
+                    )
+                  : child!,
+            ),
           ),
         ),
+        home: home,
       ),
-      home: home,
     );
   }
 }

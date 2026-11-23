@@ -45,10 +45,14 @@ class AppleMembershipPurchases extends ChangeNotifier {
   String? message;
   String? lastDeliveredProductID;
   int membershipRevision = 0;
+  int templateRevision = 0;
 
   bool get busy => _userOperation || _inFlight.isNotEmpty;
   bool get needsRetry => _unconfirmed.isNotEmpty;
   bool get needsRestore => _uncertainPurchases.isNotEmpty;
+  bool awaitingTemplateApproval(int id) => _pendingApprovals.contains(
+    AppleMembershipProducts.templateProductIDs[id],
+  );
   bool awaitingApproval(String planCode, {bool autoRenew = false}) =>
       _pendingApprovals.contains(
         AppleMembershipProducts.productIDs[AppleMembershipProducts.productKey(
@@ -232,7 +236,7 @@ class AppleMembershipPurchases extends ChangeNotifier {
   ) async {
     final key = _key(transaction);
     _unconfirmed[key] = transaction;
-    _set(ApplePurchaseState.confirming, '正在确认订单与会员权益…');
+    _set(ApplePurchaseState.confirming, '正在确认订单与购买权益…');
     try {
       _requireCurrent(epoch, userID);
       final result = await store.request(
@@ -245,7 +249,13 @@ class AppleMembershipPurchases extends ChangeNotifier {
       );
       _requireCurrent(epoch, userID);
       final status = result.data['status'];
+      final templateID = AppleMembershipProducts.templateID(
+        transaction['productID'] as String,
+      );
       if (result.data['transaction_id'] != transaction['transactionID'] ||
+          (templateID != null &&
+              (result.data['product_id'] != transaction['productID'] ||
+                  result.data['template_id'] != templateID)) ||
           !const ['DELIVERED', 'EXPIRED', 'REVOKED'].contains(status)) {
         throw const ApiFailure('订单尚未确认，请稍后重试确认');
       }
@@ -260,14 +270,18 @@ class AppleMembershipPurchases extends ChangeNotifier {
       _unconfirmed.remove(key);
       _pendingApprovals.remove(transaction['productID']);
       _uncertainPurchases.remove(transaction['productID']);
-      membershipRevision++;
+      if (templateID != null) {
+        templateRevision++;
+      } else {
+        membershipRevision++;
+      }
       if (status == 'DELIVERED') {
         lastDeliveredProductID = transaction['productID'] as String;
         _set(ApplePurchaseState.delivered, null);
       } else {
         _set(
           ApplePurchaseState.idle,
-          status == 'EXPIRED' ? '历史购买已核对，该笔会员已到期' : '该笔购买已退款或撤销，会员状态已更新',
+          status == 'EXPIRED' ? '历史购买已核对，该笔会员已到期' : '该笔购买已退款或撤销，购买权益已更新',
         );
       }
       return true;
@@ -286,6 +300,8 @@ class AppleMembershipPurchases extends ChangeNotifier {
   /// 购买一档加购 AI 次数（消耗型商品），key 见 addonProductIDs。
   Future<void> purchaseAddon(String key) => _purchase(key);
 
+  Future<void> purchaseTemplate(int id) => _purchase('TEMPLATE_$id');
+
   Future<void> _purchase(String key) async {
     if (busy || _disposed) return;
     final epoch = store.epoch;
@@ -297,18 +313,27 @@ class AppleMembershipPurchases extends ChangeNotifier {
       final productID = AppleMembershipProducts.allProductIDs[key];
       final mapping = config['product_ids'];
       final addons = config['ai_addon_products'];
+      final templates = config['template_products'];
       final listed =
           (mapping is Map && mapping[key] == productID) ||
           (addons is List &&
               addons.any(
                 (product) =>
                     product is Map && product['product_id'] == productID,
+              )) ||
+          (templates is List &&
+              templates.any(
+                (product) =>
+                    product is Map &&
+                    product['product_id'] == productID &&
+                    product['template_id'] ==
+                        AppleMembershipProducts.templateID(productID ?? ''),
               ));
       if (config['available'] != true || productID == null || !listed) {
         throw const ApiFailure('Apple 内购暂不可用，请稍后刷新重试');
       }
       if (_pendingApprovals.contains(productID)) {
-        _set(ApplePurchaseState.pending, '购买正在等待批准，批准后会自动确认会员权益');
+        _set(ApplePurchaseState.pending, '购买正在等待批准，批准后会自动确认购买权益');
         return;
       }
       // Before any new charge, retry purchases left unfinished after a network
@@ -347,10 +372,13 @@ class AppleMembershipPurchases extends ChangeNotifier {
         case 'pending':
           _uncertainPurchases.remove(productID);
           _pendingApprovals.add(productID);
-          _set(ApplePurchaseState.pending, '购买正在等待批准，批准后会自动确认会员权益');
+          _set(ApplePurchaseState.pending, '购买正在等待批准，批准后会自动确认购买权益');
         case 'verified':
           final transaction = _transaction(response?['transaction']);
-          if (transaction == null || !_belongsToAccount(transaction)) {
+          if (transaction == null ||
+              !_belongsToAccount(transaction) ||
+              (key.startsWith('TEMPLATE_') &&
+                  transaction['productID'] != productID)) {
             throw const ApiFailure('交易账号信息不匹配，请恢复购买重试');
           }
           await _deliver(transaction, epoch, userID);

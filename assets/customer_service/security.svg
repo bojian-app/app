@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="body" x1="0%" y1="0%" x2="73%" y2="98%">
+      <stop stop-color="#A6EFFF"/>
+      <stop offset=".47" stop-color="#40B8FF"/>
+      <stop offset="1" stop-color="#2575F8"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="94%" y1="3%" x2="10%" y2="97%">
+      <stop stop-color="#A6EFFF" stop-opacity=".68"/>
+      <stop offset=".56" stop-color="#40B8FF" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#40B8FF" stop-opacity=".82"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="5%" y1="0%" x2="80%" y2="100%">
+      <stop stop-color="white" stop-opacity=".92"/>
+      <stop offset=".49" stop-color="#A6EFFF" stop-opacity=".60"/>
+      <stop offset="1" stop-color="#40B8FF" stop-opacity=".62"/>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(-38 16 16)">
+    <path d="M18.1 11.7h4.7v9.1H25v3.1h-2.2v2.5H18z" fill="url(#glass)" stroke="url(#rim)" stroke-width=".8"/>
+    <path d="M11.3 11.6h5.8v8.2h2.8v3.7h-2.8v2.4h-2.4v2.9h-3.4z" fill="url(#body)"/>
+    <rect x="6.8" y="2.1" width="14.5" height="13.3" rx="5.7" fill="url(#body)"/>
+    <rect x="10.7" y="5.9" width="6.5" height="2.8" rx="1.4" fill="white"/>
+    <circle cx="20.8" cy="11.9" r="5.6" fill="url(#glass)" stroke="url(#rim)" stroke-width=".8"/>
+    <circle cx="20.8" cy="11.9" r="1.5" fill="white" fill-opacity=".85"/>
+  </g>
+</svg>

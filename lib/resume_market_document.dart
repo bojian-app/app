@@ -1,6 +1,5 @@
 import 'resume_native_market.dart';
 import 'resume_preview_color.dart';
-import 'template_preview_data.dart';
 import 'resume_module_order.dart';
 
 import 'resume_photo_image.dart';
@@ -306,8 +305,8 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
     if (oldWidget.monochrome != widget.monochrome && controller != null) {
       unawaited(updatePreviewColor(controller!));
     }
-    if ((!widget.thumbnail &&
-            oldWidget.resume.revision != widget.resume.revision) ||
+    if (oldWidget.resume.id != widget.resume.id ||
+        oldWidget.resume.revision != widget.resume.revision ||
         oldWidget.thumbnail != widget.thumbnail ||
         oldWidget.resume.marketTemplateID != widget.resume.marketTemplateID) {
       load();
@@ -370,13 +369,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
 
   Future<void> load() async {
     final request = ++operation, epoch = widget.store.epoch;
-    final resume = widget.thumbnail
-        ? ResumeDraft(
-            id: widget.resume.id,
-            title: '模板示例',
-            marketTemplateID: widget.resume.marketTemplateID,
-          )
-        : widget.resume.copy();
+    final resume = widget.resume.copy();
     loadTimeout?.cancel();
     loadTimeout = Timer(const Duration(seconds: 45), () {
       if (mounted && request == operation && !ready && error == null) {
@@ -435,21 +428,19 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       if ((dom.data['html'] as String? ?? '').trim().isEmpty) {
         throw const ApiFailure('模板版面暂不可用');
       }
-      final photo = !widget.thumbnail && resume.photoFileID > 0
-          ? await photoData(detail!.data['photo_url'] as String? ?? '')
+      final photoURL = detail?.data['photo_url'] as String? ?? resume.photoURL;
+      final photo =
+          resume.photoFileID > 0 && (!widget.thumbnail || photoURL.isNotEmpty)
+          ? await photoData(photoURL)
           : '';
       final nativePayload = schema is Map ? schema['native'] : null;
       if (nativePayload is Map) {
-        final nativePhoto = widget.thumbnail
-            ? (await rootBundle.load('assets/templates/preview_portrait.png'))
-                  .buffer
-                  .asUint8List()
-            : photo.isEmpty
+        final nativePhoto = photo.isEmpty
             ? null
             : base64Decode(photo.split(',').last);
         final value = await NativeMarketDocument.load(
           nativePayload,
-          widget.thumbnail ? templatePreviewFields : marketResumeFields(resume),
+          marketResumeFields(resume),
           nativePhoto,
         );
         if (!mounted || request != operation || epoch != widget.store.epoch) {
@@ -485,9 +476,8 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       final htmlFile = await resources.createDocument(
         marketDocumentHtml(
           dom: dom.data,
-          resume: widget.thumbnail ? ResumeDraft(id: 0, title: '模板示例') : resume,
-          fields: widget.thumbnail ? templatePreviewFields : null,
-          photo: widget.thumbnail ? resources.portrait : photo,
+          resume: resume,
+          photo: photo,
           captureScript: '',
           rendererScript: resources.renderer,
           fontStyles: resumeDocumentFontStyles,
@@ -806,13 +796,7 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
       if (theme case final ResumeTheme theme when error == null)
         Positioned.fill(
           child: widget.thumbnail
-              ? StandardResumeThumbnail(
-                  resume: templateThumbnailResume,
-                  photo: const AssetImage(
-                    'assets/templates/preview_portrait.png',
-                  ),
-                  theme: theme,
-                )
+              ? StandardResumeThumbnail(resume: widget.resume, theme: theme)
               : ResumePreviewColor(
                   monochrome: widget.monochrome,
                   child: ResumeDocumentView(

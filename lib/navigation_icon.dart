@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
+
 /// Original 32-unit tab icons: shared rounded strokes and blue filled states.
 class NavigationIcon extends StatelessWidget {
   const NavigationIcon({
@@ -15,12 +17,20 @@ class NavigationIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox.square(
     dimension: 28,
-    child: CustomPaint(painter: _NavigationPainter(index, progress, color)),
+    child: CustomPaint(
+      painter: _NavigationPainter(
+        index,
+        progress,
+        color,
+        context.colors.palette,
+      ),
+    ),
   );
 }
 
 class _NavigationPainter extends CustomPainter {
-  const _NavigationPainter(this.index, this.progress, this.color);
+  const _NavigationPainter(this.index, this.progress, this.color, this.palette);
+  final AppAccent palette;
   final int index;
   final double progress;
   final Color color;
@@ -38,9 +48,15 @@ class _NavigationPainter extends CustomPainter {
       ..shader = LinearGradient(
         stops: const [0, .59, 1],
         colors: [
-          const Color(0xFF72B2FF).withValues(alpha: progress),
-          const Color(0xFF4A8BF7).withValues(alpha: progress),
-          const Color(0xFF2867EE).withValues(alpha: progress),
+          (palette == AppAccent.blue
+                  ? const Color(0xFF72B2FF)
+                  : const Color(0xFFFFAE89))
+              .withValues(alpha: progress),
+          (palette == AppAccent.blue
+                  ? const Color(0xFF4A8BF7)
+                  : const Color(0xFFEE7972))
+              .withValues(alpha: progress),
+          palette.seed.withValues(alpha: progress),
         ],
       ).createShader(const Rect.fromLTWH(2, 2, 28, 28));
     final detail = Paint()
@@ -88,7 +104,7 @@ class _NavigationPainter extends CustomPainter {
           const Offset(14, 13.4),
           const Offset(18, 19.8),
           Paint()
-            ..color = Color.lerp(color, const Color(0xFF2867EE), progress)!
+            ..color = Color.lerp(color, palette.seed, progress)!
             ..strokeWidth = 1.3
             ..strokeCap = StrokeCap.round,
         );
@@ -107,20 +123,51 @@ class _NavigationPainter extends CustomPainter {
         canvas.drawLine(const Offset(19, 18), const Offset(22, 18), detail);
         canvas.drawLine(const Offset(19, 22), const Offset(22, 22), detail);
       case 2:
-        // A single crown, using the same rounded outline and blue fill.
+        // A cushion-cut gem with a broad table and two readable facets.
+        final gem = Path()
+          ..moveTo(10, 6)
+          ..lineTo(22, 6)
+          ..quadraticBezierTo(23, 6, 23.6, 6.8)
+          ..lineTo(28, 12.5)
+          ..quadraticBezierTo(28.8, 13.6, 27.9, 14.7)
+          ..lineTo(17.2, 27)
+          ..quadraticBezierTo(16, 28.4, 14.8, 27)
+          ..lineTo(4.1, 14.7)
+          ..quadraticBezierTo(3.2, 13.6, 4, 12.5)
+          ..lineTo(8.4, 6.8)
+          ..quadraticBezierTo(9, 6, 10, 6)
+          ..close();
+        canvas.drawPath(gem, body);
+        canvas.save();
+        canvas.clipPath(gem);
+        canvas.drawLine(const Offset(3, 13.5), const Offset(29, 13.5), detail);
+        canvas.drawPath(
+          Path()
+            ..moveTo(11, 13.5)
+            ..lineTo(16, 27.7)
+            ..lineTo(21, 13.5),
+          detail,
+        );
+        canvas.restore();
+        canvas.drawPath(gem, stroke);
+      case 4:
+        // A speech bubble with a tail and three dots: online support.
         shape(
           Path()
-            ..moveTo(5, 11)
-            ..lineTo(11, 16)
-            ..lineTo(16, 5)
-            ..lineTo(21, 16)
-            ..lineTo(27, 11)
-            ..lineTo(24.5, 25)
-            ..lineTo(7.5, 25)
+            ..addRRect(
+              RRect.fromRectAndRadius(
+                const Rect.fromLTWH(4, 5, 24, 18),
+                const Radius.circular(8),
+              ),
+            )
+            ..moveTo(10, 22)
+            ..lineTo(9, 28)
+            ..lineTo(16, 23)
             ..close(),
         );
-        canvas.drawLine(const Offset(10, 21), const Offset(22, 21), detail);
-        canvas.drawLine(const Offset(9, 29), const Offset(23, 29), stroke);
+        for (final x in [11.0, 16.0, 21.0]) {
+          canvas.drawLine(Offset(x, 14), Offset(x + .1, 14), detail);
+        }
       default:
         // Friendly profile badge: a rounded silhouette, never a copied mascot.
         final profile = Path()
@@ -148,5 +195,6 @@ class _NavigationPainter extends CustomPainter {
   bool shouldRepaint(_NavigationPainter oldDelegate) =>
       oldDelegate.index != index ||
       oldDelegate.progress != progress ||
-      oldDelegate.color != color;
+      oldDelegate.color != color ||
+      oldDelegate.palette != palette;
 }

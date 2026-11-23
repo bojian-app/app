@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_icons.dart';
+import 'update_badge.dart';
 import 'app_store.dart';
 import 'design.dart';
 import 'profile_avatar.dart';
@@ -117,8 +118,10 @@ class ProfileHeader extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final t = collapseProgress;
-      // Colors only switch once the header is fully collapsed.
-      final settled = t >= 1 ? 1.0 : 0.0;
+      // The dark header cross-fades into the compact bar over the last 20% of
+      // the collapse instead of switching in one frame, so a fast fling never
+      // shows a white bar with a leftover dark strip and bio text below it.
+      final settled = Curves.easeInOut.transform(((t - .8) / .2).clamp(0, 1));
       final inset = MediaQuery.paddingOf(context).top;
       final width = constraints.maxWidth;
       final verified = identity == null && store.identityVerified;
@@ -270,7 +273,23 @@ class ProfileHeader extends StatelessWidget {
                 ],
               ),
             ),
-            if (paintBackground)
+            if (paintBackground) ...[
+              // Cross-fade to the compact bar with plain translucent fills: no
+              // saveLayer over the blurred backdrop, so the transition costs
+              // nothing extra per frame. The fill covers the bar and the
+              // remainder below it with one alpha, so they fade as one.
+              if (settled > 0)
+                Positioned(
+                  top: scrollOffset + surfaceHeight,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: ColoredBox(
+                      color: context.colors.surface.withValues(alpha: settled),
+                    ),
+                  ),
+                ),
               Positioned(
                 top: scrollOffset,
                 left: 0,
@@ -279,18 +298,16 @@ class ProfileHeader extends StatelessWidget {
                 child: KeyedSubtree(
                   key: surfaceKey,
                   child: IgnorePointer(
-                    child: Opacity(
-                      opacity: settled,
-                      child: ColoredBox(
-                        key: t > 0
-                            ? const ValueKey('profile-compact-header')
-                            : null,
-                        color: context.colors.surface,
-                      ),
+                    child: ColoredBox(
+                      key: t > 0
+                          ? const ValueKey('profile-compact-header')
+                          : null,
+                      color: context.colors.surface.withValues(alpha: settled),
                     ),
                   ),
                 ),
               ),
+            ],
             Positioned(
               left:
                   ui.lerpDouble(width / 2, compactAvatarCenterX, t)! -
@@ -440,10 +457,12 @@ class ProfileHeader extends StatelessWidget {
                                 key: const ValueKey('profile-settings'),
                                 tooltip: '隐私与设置',
                                 onPressed: onSettings,
-                                icon: AppIcon(
-                                  AppIcons.settings,
-                                  size: 18,
-                                  color: color,
+                                icon: UpdateBadge(
+                                  child: AppIcon(
+                                    AppIcons.settings,
+                                    size: 18,
+                                    color: color,
+                                  ),
                                 ),
                               ),
                             ],

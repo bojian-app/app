@@ -35,6 +35,12 @@ void main() {
       scroll.jumpTo(scroll.position.maxScrollExtent);
       await tester.pumpAndSettle();
       expect(messages.hitTestable(), findsOneWidget);
+      final scan = find.byKey(const ValueKey('discovery-scan'));
+      expect(scan.hitTestable(), findsOneWidget);
+      expect(
+        tester.getRect(scan).left,
+        greaterThanOrEqualTo(tester.getRect(messages).right),
+      );
       expect(tester.getRect(messages).top, greaterThanOrEqualTo(0));
       expect(tester.getRect(messages).right, lessThanOrEqualTo(width));
       expect(tester.state(messages), same(messagesState));

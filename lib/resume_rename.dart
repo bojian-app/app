@@ -187,7 +187,7 @@ class _ResumeInlineNameState extends State<ResumeInlineName> {
                         ),
                       ),
                       focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: blue),
+                        borderSide: BorderSide(color: context.colors.accent),
                       ),
                     ),
                   ),

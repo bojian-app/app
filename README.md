@@ -451,7 +451,11 @@ AI 问答与快速生成要求补齐全部必填内容，缺省姓名/邮箱为�
 
 应用包名统一为 `cn.kelance.bojian`。Android 当前使用调试证书签名，正式发布前需配置发布证书。iOS 使用 Xcode 配置对应的开发团队和签名。
 
+订单记录可从会员页右上角“订单”或“我的”侧边菜单进入，按时间倒序展示会员、模板、AI 加购和 Apple 交易，支持刷新、加载更多和复制订单号。
+
 iOS 的“博简会员”入口使用 StoreKit 2 查询和购买会员，价格以 App Store 为准：下单页默认购买非续期订阅 `cn.kelance.bojian.membership.month` / `.year`；勾选“自动续费”（默认不勾选，旁边列出扣费与取消规则）则购买自动续期订阅 `cn.kelance.bojian.membership.month.auto` / `.year.auto`，“管理自动续费”打开 App Store 订阅管理；服务端核验交易并发放权益后才完成交易。支持恢复购买和未完成交易重试，购买须绑定当前博简账号，沙盒仅向服务端指定的测试账号开放。
+
+iOS 的付费模板（9、10、11、12）使用 Apple 非消耗型商品 `cn.kelance.bojian.template.<id>` 单独购买，显示 App Store 当地价格；服务端确认后永久拥有，不增加会员或 AI 次数。模板详情提供恢复购买，未确认交易重试不会再次发起扣款；退款后重新读取服务端使用权。
 
 ## 开发与验证
 
@@ -480,7 +484,7 @@ sh scripts/build_android_release.sh
 
 可通过 `FLUTTER_BIN` 指定 Flutter 可执行文件。脚本按 `armeabi-v7a`、`arm64-v8a`、`x86_64` 分别生成 APK，并把安装包和配套 Dart 调试符号归档到 `artifacts/android/<UTC时间>/`。
 
-手机只安装匹配其处理器架构的 APK。发布时应一起备份 APK 和调试符号；构建脚本保留 `pubspec.yaml` 的版本号，正式升级前需递增构建号。
+手机只安装匹配其处理器架构的 APK。发布 1.1.0 这样的新版本时，用 `--build-name=1.1.0` 指定版本名，用 `--build-number=<完整十进制版本码>` 指定高于已分发 Android 包的版本码。省略参数时沿用 `pubspec.yaml`。脚本打印归档 APK 对应的版本名和完整版本码，发布登记应与这两个值一致。归档保留 APK、调试符号和 Gradle 构建元数据。
 
 只构建 ARM64 真机包时可使用 `flutter build apk --release --target-platform android-arm64 --build-number <构建号> --split-debug-info=<符号归档目录>`。Gradle 原生库过滤会跟随 `target-platform`，避免把其他架构的第三方 SDK 打入单架构包；使用 `--split-per-abi` 时由 Flutter 管理拆分。不指定目标时保留 Flutter 默认多架构行为。
 
@@ -510,7 +514,7 @@ flutter build ios --release --no-codesign --dart-define=BOJIAN_ENV=production
 - `tool/verify_resume_native_export.py`：检查测试生成的 PDF/Word 原生文字及可编辑性。
 - `scripts/harmonyos_profile_info.py`：从鸿蒙签名 Profile 提取公开的应用登记字段。
 
-简历支持 PDF、DOC、DOCX 导入，大小上限 20 MB；校对后保存。Android 支持从微信通过“用其他应用打开”接收文件；iOS 可先保存到“文件”再选择。简历预览和 PDF/Word 导出共用排版结果，PDF 保留可复制文字、Word 保留可编辑文字。字体、模板脚本及许可证属于 App 运行资源，应随仓库保留。
+简历支持 PDF、DOC、DOCX 导入，大小上限 20 MB；校对后保存。Android 支持从微信通过“用其他应用打开”接收文件；iOS 可先保存到“文件”再选择。当前标准及主题模板的预览、缩略图和 PDF 统一使用内置文档字体与排版器；PDF 保留可复制文字。Word 保留可编辑正文并遵循模板的正文宽度和页码设置，续页背景随实际页数重复；不按预览页再次强制分页。字体替换及自动重排仍可能改变换行与分页。字体、模板脚本及许可证属于 App 运行资源，应随仓库保留。
 
 ## 本地文件与缓存
 

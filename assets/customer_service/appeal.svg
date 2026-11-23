@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="body" x1="0%" y1="0%" x2="73%" y2="98%">
+      <stop stop-color="#FFBCD9"/>
+      <stop offset=".47" stop-color="#FF78AE"/>
+      <stop offset="1" stop-color="#F33987"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="94%" y1="3%" x2="10%" y2="97%">
+      <stop stop-color="#FFBCD9" stop-opacity=".68"/>
+      <stop offset=".56" stop-color="#FF78AE" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#FF78AE" stop-opacity=".82"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="5%" y1="0%" x2="80%" y2="100%">
+      <stop stop-color="white" stop-opacity=".92"/>
+      <stop offset=".49" stop-color="#FFBCD9" stop-opacity=".60"/>
+      <stop offset="1" stop-color="#FF78AE" stop-opacity=".62"/>
+    </linearGradient>
+  </defs>
+  <path d="m3 13.1 10.2-8.5c1.2-.9 2.2-.8 3.5.1l10 7.2-1.2 9.1-20 .4z" fill="url(#body)"/>
+  <g transform="rotate(9 18 12)">
+    <rect x="9.9" y="2" width="16.8" height="17.9" rx="2.6" fill="#FFE3EF"/>
+    <path d="M13.5 7h9m-9 3h5.6" stroke="#FF93C5" stroke-width="1.45" stroke-linecap="round"/>
+  </g>
+  <path d="m2.8 11.7 11.7 7 11.7-7.6v12.3a3 3 0 0 1-3 3.1H5.9a3 3 0 0 1-3-3.1z" fill="url(#body)"/>
+  <g transform="rotate(-14 24 23)">
+    <rect x="18.6" y="17.2" width="11.8" height="12.4" rx="3.1" fill="url(#glass)" stroke="url(#rim)" stroke-width=".8"/>
+    <path d="m21.7 23.6 1.7 1.7 3.9-4.2" stroke="white" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -224,7 +224,8 @@ class GuidanceParticipantList extends StatelessWidget {
                                           vertical: 4,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: blue.withValues(alpha: .07),
+                                          color: context.colors.accent
+                                              .withValues(alpha: .07),
                                           borderRadius: BorderRadius.circular(
                                             8,
                                           ),

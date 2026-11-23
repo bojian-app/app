@@ -48,12 +48,6 @@ class _AIAddonBalance {
 
   bool get isEmpty => create == 0 && polish == 0 && text == 0;
 
-  int of(String kind) => switch (kind) {
-    'CREATE' => create,
-    'POLISH' => polish,
-    _ => text,
-  };
-
   static _AIAddonBalance parse(Object? value) => value is Map
       ? _AIAddonBalance(
           create: _count(value['ai_create_remaining']),
@@ -63,104 +57,36 @@ class _AIAddonBalance {
       : const _AIAddonBalance();
 }
 
-/// 加购余额一行：会员期内可用，到期后冻结。
-String? _aiAddonLine(_AIAddonBalance addon, {required bool member}) {
-  if (addon.isEmpty) return null;
-  final counts =
-      '加购：简历生成 ${addon.create} 次 · 简历优化 ${addon.polish} 次 · 单段 ${addon.text} 次';
-  return member ? '$counts，不过期' : '$counts，会员到期已冻结，开通后恢复';
-}
-
-/// 会员页的加购入口，仅对有效会员展示。
-class _AIAddonSection extends StatelessWidget {
-  const _AIAddonSection({
-    required this.offers,
-    required this.balance,
-    required this.onBuy,
-    this.apple = false,
-  });
+/// 先选择次数类型，再复用各平台的数量选择与支付流程。
+class _AIAddonPicker extends StatelessWidget {
+  const _AIAddonPicker({required this.offers});
   final List<AIAddonOffer> offers;
-  final _AIAddonBalance balance;
-  final ValueChanged<AIAddonOffer> onBuy;
-
-  /// iOS 卖固定次数包，不显示按次单价。
-  final bool apple;
-
-  String _priceLabel(AIAddonOffer offer) => apple
-      ? '${AppleMembershipProducts.addonPacks(offer.kind).map((pack) => pack.$2).join('/')} 次包'
-      : '¥${offer.unitPrice}/次';
 
   @override
   Widget build(BuildContext context) {
     final palette = _MembershipColors.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionTitle('加购 AI 次数'),
-        const SizedBox(height: 4),
-        Text(
-          '会员期内可用、不过期，赠送次数用完后再扣',
-          style: TextStyle(fontSize: 12, color: palette.muted),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: palette.surfaceHi,
+    return PanelSheet(
+      title: '选择加购类型',
+      child: ListView.separated(
+        itemCount: offers.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          final offer = offers[index];
+          return Material(
+            color: palette.surface,
             borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            children: [
-              for (final (i, offer) in offers.indexed) ...[
-                if (i > 0)
-                  Divider(
-                    height: 1,
-                    indent: 14,
-                    endIndent: 14,
-                    color: palette.muted.withValues(alpha: 0.15),
-                  ),
-                InkWell(
-                  onTap: () => onBuy(offer),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
-                    child: Row(
-                      children: [
-                        Text(
-                          offer.name.replaceFirst('AI ', ''),
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: palette.text,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '${_priceLabel(offer)} · 剩 ${balance.of(offer.kind)} 次',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: palette.muted,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '加购',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: palette.accent,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              title: Text(
+                offer.name,
+                style: TextStyle(fontSize: 14, color: palette.text),
+              ),
+              trailing: Icon(Icons.chevron_right_rounded, color: palette.muted),
+              onTap: () => Navigator.of(context).pop(offer),
+            ),
+          );
+        },
+      ),
     );
   }
 }

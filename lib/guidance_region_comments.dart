@@ -1,5 +1,6 @@
 import 'resume_guidance_review.dart' show guidanceRecords;
 import 'content_report.dart';
+import 'withdraw_comment_button.dart';
 import 'content_moderation.dart';
 
 import 'dart:async';
@@ -605,6 +606,25 @@ class _RegionCommentsState extends State<_RegionComments>
                               ? context.colors.muted
                               : Color(0xFFB0B3B9)),
                         ),
+                      ),
+                    if (own && integer(item['id']) > 0)
+                      WithdrawCommentButton.guidance(
+                        store: widget.store,
+                        id: widget.id,
+                        notification: widget.notification,
+                        item: item,
+                        onWithdrawn: () async {
+                          if (!mounted) return;
+                          setState(() {
+                            items?.removeWhere(
+                              (row) =>
+                                  row['id'] == item['id'] &&
+                                  row['legacy'] == item['legacy'],
+                            );
+                            if (reply?['id'] == item['id']) reply = null;
+                          });
+                          await load();
+                        },
                       ),
                     if (item['legacy'] != true && contentVisible(item))
                       TextButton.icon(

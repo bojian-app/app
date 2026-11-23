@@ -53,7 +53,7 @@ void main() {
       expect(xml, contains('<wp:extent cx="6391656" cy="444500"/>'));
       expect(xml, contains('<wp:extent cx="3810000" cy="508000"/>'));
       expect(xml, contains('<wp:extent cx="6391656" cy="190500"/>'));
-      expect(xml, contains('<w:pageBreakBefore/>'));
+      expect(xml, isNot(contains('<w:pageBreakBefore/>')));
       expect(RegExp('w:before="0" w:after="0"').allMatches(xml), hasLength(3));
       expect(xml, contains('<w:ind w:left="480" w:right="3586"/>'));
       final pixels = zip.files
@@ -348,6 +348,7 @@ void main() {
     expect(xml, contains('<w:u w:val="single"/>'));
     expect(RegExp('<w:br w:type="page"/>').allMatches(xml).length, 0);
     expect(xml, isNot(contains('<wps:txbx>')));
+    expect(xml, isNot(contains('<w:pageBreakBefore/>')));
     expect(zip.findFile('word/footer.xml'), isNotNull);
     expect(
       zip.files.where((f) => f.name.startsWith('word/media/image')).length,
@@ -547,4 +548,68 @@ void main() {
       }
     },
   );
+
+  test('PDF resets character spacing so letter-spaced headings do not widen body text', () async {
+    ResumeExportLine line(double top, ResumeExportSpan span) =>
+        ResumeExportLine(
+          top: top,
+          height: 12,
+          baseline: top + 9,
+          spans: [span],
+        );
+    final pdf = await encodeNativeResume(
+      ResumeExportLayout([
+        ResumeExportPage(
+          lines: [
+            line(
+              5,
+              const ResumeExportSpan(
+                text: '工作经历',
+                x: 20,
+                width: 60,
+                size: 11,
+                weight: 600,
+                letterSpacing: 1.2,
+              ),
+            ),
+            line(
+              25,
+              const ResumeExportSpan(text: '正文内容', x: 20, width: 34, size: 8.5),
+            ),
+          ],
+        ),
+      ]),
+      'PDF',
+      regular,
+      bold,
+      medium: medium,
+    );
+    final streams = RegExp(r'stream\r?\n')
+        .allMatches(latin1.decode(pdf))
+        .length;
+    expect(streams, greaterThan(0));
+    final content = [
+      for (final file in _pdfStreams(pdf))
+        if (file.contains(' Tf')) file,
+    ].join();
+    // Every text object states its own spacing, so 1.2 cannot leak forward.
+    expect(
+      RegExp(r' Tc ').allMatches(content).length,
+      RegExp(r'BT').allMatches(content).length,
+    );
+  });
+}
+
+Iterable<String> _pdfStreams(Uint8List pdf) sync* {
+  final text = latin1.decode(pdf);
+  for (final match in RegExp(r'stream\r?\n').allMatches(text)) {
+    final end = text.indexOf('endstream', match.end);
+    if (end < 0) continue;
+    final raw = pdf.sublist(match.end, end);
+    try {
+      yield latin1.decode(ZLibDecoder().decodeBytes(raw));
+    } catch (_) {
+      yield latin1.decode(raw);
+    }
+  }
 }

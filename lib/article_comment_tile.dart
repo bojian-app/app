@@ -23,6 +23,7 @@ class ArticleCommentTile extends StatelessWidget {
     this.pending = false,
     this.onEdit,
     this.onRetry,
+    this.withdrawButton,
     this.onReport,
   });
   final ArticleComment comment;
@@ -30,6 +31,7 @@ class ArticleCommentTile extends StatelessWidget {
   final bool nested;
   final VoidCallback? onReply, onLike, onDislike, onAuthorTap;
   final bool pending;
+  final Widget? withdrawButton;
   final VoidCallback? onEdit, onRetry, onReport;
 
   @override
@@ -59,7 +61,7 @@ class ArticleCommentTile extends StatelessWidget {
     Widget reaction(bool dislike) {
       final active = dislike ? comment.disliked : comment.liked;
       final count = dislike ? comment.dislikes : comment.likes;
-      final color = active ? blue : const Color(0xFF9B9FA7);
+      final color = active ? context.colors.accent : const Color(0xFF9B9FA7);
       return TextButton(
         key: ValueKey('comment-${dislike ? 'dislike' : 'like'}-${comment.id}'),
         onPressed: pending ? null : (dislike ? onDislike : onLike),
@@ -246,6 +248,8 @@ class ArticleCommentTile extends StatelessWidget {
                   if (comment.status == 'FAILED' && onRetry != null)
                     TextButton(onPressed: onRetry, child: const Text('重试')),
                 ],
+                if (isOwn && !comment.visible && withdrawButton != null)
+                  withdrawButton!,
                 if (!comment.deleted && comment.visible) ...[
                   const SizedBox(height: 3),
                   Wrap(
@@ -270,6 +274,7 @@ class ArticleCommentTile extends StatelessWidget {
                         ),
                       if (onLike != null) reaction(false),
                       if (onDislike != null) reaction(true),
+                      if (isOwn && withdrawButton != null) withdrawButton!,
                     ],
                   ),
                 ],

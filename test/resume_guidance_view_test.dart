@@ -87,9 +87,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ResumeDocumentView), findsOneWidget);
       expect(find.text('简历详情'), findsOneWidget);
-      expect(api.calls, isNot(contains('GetArticlesIdGuidanceAnnotations')));
+      expect(api.calls, contains('GetArticlesIdGuidanceAnnotations'));
+      expect(find.byTooltip('全部评论'), findsOneWidget);
       final view = tester.widget<ResumeDocumentView>(
         find.byType(ResumeDocumentView),
+      );
+      expect(view.onAnnotate, isNull);
+      expect(
+        view.reviewHighlights.any((mark) => mark.commentCount == 1),
+        isTrue,
       );
       expect(view.resume.name, '测试用户');
       expect(view.resume.phone, '13800000000');
@@ -204,7 +210,7 @@ void main() {
       expect(find.text('22'), findsNothing);
       expect(find.text('33'), findsNothing);
       expect(find.text('不应展示的完整简历正文'), findsNothing);
-      await tester.tap(find.text('查看简历'));
+      await tester.tap(find.byKey(const ValueKey('guidance-resume-title-77')));
       await tester.pumpAndSettle();
       expect(find.byType(ResumeGuidanceView), findsOneWidget);
       expect(api.calls, contains('GetArticlesIdGuidance'));

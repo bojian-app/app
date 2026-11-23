@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
 import 'app_store.dart';
+import 'api/bojian_api.dart';
 import 'app_search_field.dart';
 import 'design.dart';
 import 'discovery.dart';
@@ -25,6 +26,7 @@ class SavedArticlesPage extends StatefulWidget {
 class _SavedArticlesPageState extends State<SavedArticlesPage> {
   final search = TextEditingController();
   List<Map<String, dynamic>> rows = [];
+  final feedStories = <int, Story>{};
   String query = '';
   String? error, moreError, opening;
   String cursor = '';
@@ -63,12 +65,54 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
       );
       if (mounted && request == generation) {
         final page = items(result.data);
+        final loaded = <int, Story>{};
+        if (widget.embedded) {
+          final session = widget.store.epoch;
+          for (var start = 0; start < page.length; start += 4) {
+            final stories = await Future.wait(
+              page.skip(start).take(4).map((row) async {
+                final id = integer(row['id']);
+                try {
+                  final result = await widget.store.request(
+                    'GetArticlesId',
+                    path: {'id': '$id'},
+                    expectedEpoch: session,
+                  );
+                  return decodeStory({
+                    ...row,
+                    'is_favorited': true,
+                    ...result.data,
+                  });
+                } on ApiFailure catch (e) {
+                  if (e.code == 'ARTICLE_NOT_FOUND' || e.code == 'NOT_FOUND')
+                    return null;
+                  rethrow;
+                }
+              }),
+            );
+            if (!mounted ||
+                session != widget.store.epoch ||
+                request != generation)
+              return;
+            for (final story in stories.whereType<Story>()) {
+              if (story.saved) loaded[story.id] = story;
+            }
+          }
+          if (!more) feedStories.clear();
+          feedStories.addAll(loaded);
+        }
         setState(() {
           rows = [
             if (more) ...rows,
-            ...page.where(
-              (row) => !more || !rows.any((v) => v['id'] == row['id']),
-            ),
+            ...page
+                .where(
+                  (row) =>
+                      !widget.embedded ||
+                      loaded.containsKey(integer(row['id'])),
+                )
+                .where(
+                  (row) => !more || !rows.any((v) => v['id'] == row['id']),
+                ),
           ];
           cursor = result.nextCursor;
         });
@@ -86,7 +130,7 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
 
   void _sync(String id, bool saved) {
     for (final story in widget.store.stories) {
-      if ('${story.id}' == id) story.saved = saved;
+      if ('${story.id}' == id) story.setBookmark(saved);
     }
     widget.store.changed();
   }
@@ -108,15 +152,18 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
       setState(() {
         rows.removeWhere((value) => '${value['id']}' == id);
         loading = false;
+        loadingMore = false;
       });
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: const Text('已取消收藏'),
-            action: SnackBarAction(label: '撤销', onPressed: () => _restore(row)),
-          ),
-        );
+      toast(
+        context,
+        '已取消收藏',
+        success: true,
+        action: SnackBarAction(
+          label: '撤销',
+          textColor: context.colors.accent,
+          onPressed: () => _restore(row),
+        ),
+      );
     } catch (e) {
       if (mounted) toast(context, '$e');
     } finally {
@@ -179,7 +226,9 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
       onTap: dismissKeyboard,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 680),
+          constraints: BoxConstraints(
+            maxWidth: widget.embedded ? double.infinity : 680,
+          ),
           child: AutoPaginate(
             canLoad:
                 cursor.isNotEmpty &&
@@ -218,16 +267,18 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                       ),
                     ),
                   SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      appPageHorizontalPadding,
-                      widget.embedded ? 16 : 0,
-                      appPageHorizontalPadding,
-                      28,
-                    ),
+                    padding: widget.embedded
+                        ? const EdgeInsets.only(bottom: 28)
+                        : const EdgeInsets.fromLTRB(
+                            appPageHorizontalPadding,
+                            0,
+                            appPageHorizontalPadding,
+                            28,
+                          ),
                     sliver: SliverList.builder(
                       itemCount: loading || error != null || visible.isEmpty
                           ? 1
-                          : visible.length + 2,
+                          : visible.length + (widget.embedded ? 1 : 2),
                       itemBuilder: (context, index) {
                         if (loading) {
                           return const Padding(
@@ -270,7 +321,7 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                             query.isEmpty ? '文章中的书签按钮，可以把内容留在这里。' : '试试其他标题关键词',
                           );
                         }
-                        if (index == 0) {
+                        if (!widget.embedded && index == 0) {
                           return Padding(
                             padding: EdgeInsets.fromLTRB(2, 0, 2, 14),
                             child: Text(
@@ -283,7 +334,8 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                             ),
                           );
                         }
-                        if (index > visible.length) {
+                        final rowIndex = widget.embedded ? index : index - 1;
+                        if (rowIndex >= visible.length) {
                           return moreError == null
                               ? PageLoadingFooter(visible: loadingMore)
                               : TextButton(
@@ -291,8 +343,55 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                                   child: const Text('加载失败，点击重试'),
                                 );
                         }
-                        final row = visible[index - 1];
+                        final row = visible[rowIndex];
                         final id = '${row['id']}';
+                        if (widget.embedded) {
+                          final story = feedStories[integer(row['id'])]!;
+                          return FeedRow(
+                            child: ListenableBuilder(
+                              listenable: widget.store,
+                              builder: (context, _) => Stack(
+                                children: [
+                                  StoryCard(
+                                    key: ValueKey('saved-story-$id'),
+                                    story: story,
+                                    store: widget.store,
+                                    flat: true,
+                                    compactTypography: true,
+                                    onBookmark: () => _remove(row),
+                                    onDetailClosed: () {
+                                      if (!mounted || story.saved) return;
+                                      ++generation;
+                                      setState(() {
+                                        rows.removeWhere(
+                                          (r) => r['id'] == row['id'],
+                                        );
+                                        loading = false;
+                                        loadingMore = false;
+                                      });
+                                    },
+                                  ),
+                                  if (story.hasGuidance)
+                                    Positioned(
+                                      right: feedContentPadding,
+                                      bottom: 0,
+                                      child: IconButton(
+                                        tooltip: '取消收藏',
+                                        onPressed: busy.contains(id)
+                                            ? null
+                                            : () => _remove(row),
+                                        icon: AppIcon(
+                                          AppIcons.bookmarked,
+                                          size: 18,
+                                          color: const Color(0xFFCA963A),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 14),
                           child: _SavedCard(
@@ -378,8 +477,8 @@ class _SavedCard extends StatelessWidget {
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : AppIcon(
-                            AppIcons.bookmarked,
+                        : Icon(
+                            Icons.star_rounded,
                             size: 21,
                             color: context.colors.accent,
                           ),

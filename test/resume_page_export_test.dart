@@ -7,12 +7,78 @@ import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_document.dart';
 import 'package:bojian_mobile/resume_guidance_review.dart';
 import 'package:bojian_mobile/resume_native_export.dart';
+import 'package:bojian_mobile/resume_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('Word honors the theme page-number setting', (tester) async {
+    final regular = (await rootBundle.load(resumeFontRegularAsset)).buffer
+        .asUint8List();
+    final bold = (await rootBundle.load(resumeFontBoldAsset)).buffer
+        .asUint8List();
+    for (final enabled in [false, true]) {
+      final theme = await ResumeTheme.load('page-numbers-$enabled', {
+        'page': {'page_numbers': enabled},
+      }, {});
+      final key = GlobalKey<ResumeDocumentViewState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ResumeDocumentView(
+              key: key,
+              resume: ResumeDraft(id: 0, title: '页码检查', name: '林知远'),
+              theme: theme,
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        final layout = await key.currentState!.captureLayout(
+          isCancelled: () => false,
+          onProgress: (_) {},
+        );
+        expect(layout.wordLayout!.wordPageNumbers, enabled);
+        final archive = ZipDecoder().decodeBytes(
+          await encodeNativeResume(layout, 'DOCX', regular, bold),
+        );
+        expect(archive.findFile('word/footer.xml') != null, enabled);
+        final documentXml = utf8.decode(
+          archive.findFile('word/document.xml')!.content,
+        );
+        expect(
+          documentXml,
+          contains('<w:headerReference w:type="first" r:id="firstPage"/>'),
+        );
+        expect(
+          documentXml,
+          contains('<w:headerReference w:type="default" r:id="continuation"/>'),
+        );
+        expect(documentXml, contains('<w:titlePg/>'));
+        for (final name in ['firstPage', 'continuation']) {
+          expect(archive.findFile('word/$name.xml'), isNotNull);
+          expect(archive.findFile('word/_rels/$name.xml.rels'), isNotNull);
+          expect(archive.findFile('word/media/$name.png'), isNotNull);
+        }
+        for (final name in [
+          'word/document.xml',
+          'word/_rels/document.xml.rels',
+          '[Content_Types].xml',
+        ]) {
+          final xml = utf8.decode(archive.findFile(name)!.content);
+          expect(
+            xml.contains(
+              name == 'word/document.xml' ? 'footerReference' : 'footer.xml',
+            ),
+            enabled,
+            reason: name,
+          );
+        }
+      });
+    }
+  });
   testWidgets(
     'Native preview pages retain A4 size and every page in both formats',
     (tester) async {

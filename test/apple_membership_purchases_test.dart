@@ -5,6 +5,8 @@ import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/apple_membership_products.dart';
 import 'package:bojian_mobile/apple_membership_purchases.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:bojian_mobile/template_market_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
@@ -25,6 +27,7 @@ const _delivered = {
 class _Gateway extends FakeGateway {
   Completer<ApiDocument>? confirmation;
   final confirming = Completer<void>();
+  bool grantTemplate = false;
 
   @override
   Future<ApiDocument> call(
@@ -44,6 +47,18 @@ class _Gateway extends FakeGateway {
     if (method == 'PostMembershipAppleTransactions') {
       if (!confirming.isCompleted) confirming.complete();
       if (confirmation != null) return confirmation!.future;
+      if (grantTemplate) {
+        documents['GetMeTemplates'] = {
+          'items': [
+            {
+              'id': 9,
+              'source': 'ACQUIRED',
+              'pricing_type': 'PAID',
+              'expires_at': null,
+            },
+          ],
+        };
+      }
     }
     return response;
   }
@@ -68,6 +83,10 @@ class _Harness {
       'app_account_token': _token,
       'product_ids': AppleMembershipProducts.productIDs,
       'sandbox_allowed': true,
+      'template_products': [
+        for (final p in AppleMembershipProducts.templateProductIDs.entries)
+          {'template_id': p.key, 'product_id': p.value},
+      ],
     };
     api.documents['PostMembershipAppleTransactions'] = _delivered;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -82,6 +101,14 @@ class _Harness {
             },
             'restore' => {'transactions': history, 'unverified': unverified},
             'purchase' => purchaseResult,
+            'products' => {
+              'products': [
+                {
+                  'id': 'cn.kelance.bojian.template.9',
+                  'displayPrice': r'A$1.49',
+                },
+              ],
+            },
             _ => null,
           };
         });
@@ -318,5 +345,147 @@ void main() {
     expect(h.nativeCount('finish'), 0);
     expect(h.purchases.needsRetry, isTrue);
     expect(h.purchases.state, ApplePurchaseState.error);
+  });
+
+  group('Apple templates', () {
+    final transaction = {
+      ..._transaction,
+      'productID': 'cn.kelance.bojian.template.9',
+    };
+    final delivered = {
+      ..._delivered,
+      'product_id': 'cn.kelance.bojian.template.9',
+      'template_id': 9,
+      'membership': {'active': false},
+    };
+    setUp(() {
+      h.purchaseResult = {'status': 'verified', 'transaction': transaction};
+      h.api.documents['PostMembershipAppleTransactions'] = delivered;
+      h.api.documents['GetMeTemplates'] = {'items': []};
+    });
+
+    test(
+      'simultaneous callbacks deliver one template without changing membership',
+      () async {
+        h.api.confirmation = Completer<ApiDocument>();
+        final purchase = h.purchases.purchaseTemplate(9);
+        await h.api.confirming.future;
+        final event = h.event(transaction);
+        await Future<void>.delayed(Duration.zero);
+        expect(h.submissions, 1);
+        expect(h.nativeCount('finish'), 0);
+        h.api.confirmation!.complete(ApiDocument(delivered));
+        await Future.wait([purchase, event]);
+        expect(h.nativeCount('finish'), 1);
+        expect(h.purchases.templateRevision, 1);
+        expect(h.purchases.membershipRevision, 0);
+      },
+    );
+
+    test(
+      'failed template acknowledgement retries without another purchase',
+      () async {
+        h.api.failing = 'PostMembershipAppleTransactions';
+        await h.purchases.purchaseTemplate(9);
+        expect(h.nativeCount('finish'), 0);
+        expect(h.purchases.templateRevision, 0);
+        h.api.failing = null;
+        await h.purchases.purchaseTemplate(9);
+        expect(h.nativeCount('purchase'), 1);
+        expect(h.nativeCount('finish'), 1);
+        expect(h.purchases.templateRevision, 1);
+      },
+    );
+
+    test('mismatched template acknowledgement remains unfinished', () async {
+      h.api.documents['PostMembershipAppleTransactions'] = {
+        ...delivered,
+        'template_id': 10,
+      };
+      await h.purchases.purchaseTemplate(9);
+      expect(h.nativeCount('finish'), 0);
+      expect(h.purchases.templateRevision, 0);
+      expect(h.purchases.needsRetry, isTrue);
+    });
+
+    test(
+      'unlisted templates and wrong native products never deliver',
+      () async {
+        await h.purchases.purchaseTemplate(99);
+        expect(h.nativeCount('purchase'), 0);
+        h.purchaseResult = {
+          'status': 'verified',
+          'transaction': {
+            ...transaction,
+            'productID': 'cn.kelance.bojian.template.10',
+          },
+        };
+        await h.purchases.purchaseTemplate(9);
+        expect(h.submissions, 0);
+        expect(h.nativeCount('finish'), 0);
+        expect(h.purchases.needsRestore, isTrue);
+      },
+    );
+
+    test(
+      'restoring refunded template refreshes access without purchasing',
+      () async {
+        h.history = [transaction];
+        h.api.documents['PostMembershipAppleTransactions'] = {
+          ...delivered,
+          'status': 'REVOKED',
+        };
+        await h.purchases.restore();
+        expect(h.nativeCount('purchase'), 0);
+        expect(h.nativeCount('finish'), 1);
+        expect(h.purchases.templateRevision, 1);
+        expect(h.purchases.lastDeliveredProductID, isNull);
+      },
+    );
+
+    test('market uses localized price and server ownership, then prevents repurchase', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final market = TemplateMarketStore(h.store);
+      try {
+        await market.applePurchases!.syncUnfinished();
+        await market.appleProducts!.load();
+        expect(market.priceLabel(9, 0), r'A$1.49');
+        expect(market.canPurchase(10), isFalse);
+        h.api.grantTemplate = true;
+        expect(await market.purchase(id: 9), isTrue);
+        expect(market.ownedIDs, contains(9));
+        expect(await market.purchase(id: 9), isTrue);
+        expect(h.nativeCount('purchase'), 1);
+        expect(h.api.calls, isNot(contains('PostTemplateOrders')));
+      } finally {
+        market.dispose();
+        market.applePurchases!.dispose();
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    test(
+      'market does not grant ownership from StoreKit success alone',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        final market = TemplateMarketStore(h.store);
+        try {
+          await market.applePurchases!.syncUnfinished();
+          await market.appleProducts!.load();
+          h.api.failing = 'PostMembershipAppleTransactions';
+          await expectLater(market.purchase(id: 9), throwsA(isA<ApiFailure>()));
+          expect(market.ownedIDs, isEmpty);
+          expect(h.nativeCount('finish'), 0);
+          h.api.failing = null;
+          h.api.grantTemplate = true;
+          expect(await market.purchase(id: 9), isTrue);
+          expect(h.nativeCount('purchase'), 1);
+        } finally {
+          market.dispose();
+          market.applePurchases!.dispose();
+          debugDefaultTargetPlatformOverride = null;
+        }
+      },
+    );
   });
 }

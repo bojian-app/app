@@ -1,3 +1,4 @@
+import 'app_icons.dart';
 import 'guidance_hot_comment.dart';
 import 'article_owner_actions.dart';
 import 'api/bojian_api.dart';
@@ -348,36 +349,32 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
     ResumeDraft? fullResume;
     var nextRecords = <Map<String, dynamic>>[];
     final owner = value['is_owner'] == true;
-    if (owner && !widget.fromNotification) {
-      value = {...value, 'suggestions': <dynamic>[]};
-    } else {
-      final response = widget.store.isAuthenticated
-          ? await widget.store.request(
-              annotationMethod(widget.notification, 'Get'),
-              path: {'id': '${widget.id}'},
+    final response = widget.store.isAuthenticated
+        ? await widget.store.request(
+            annotationMethod(widget.notification, 'Get'),
+            path: {'id': '${widget.id}'},
+          )
+        : null;
+    if (!mounted) return;
+    nextRecords =
+        guidanceRecords(
+              widget.store.mergeContent(
+                annotationMethod(widget.notification, 'Post'),
+                widget.id,
+                (response?.data['items'] as List? ?? [])
+                    .whereType<Map>()
+                    .map((v) => Map<String, dynamic>.from(v))
+                    .toList(),
+              ),
+              value['suggestions'] as List? ?? [],
             )
-          : null;
-      if (!mounted) return;
-      nextRecords =
-          guidanceRecords(
-                widget.store.mergeContent(
-                  annotationMethod(widget.notification, 'Post'),
-                  widget.id,
-                  (response?.data['items'] as List? ?? [])
-                      .whereType<Map>()
-                      .map((v) => Map<String, dynamic>.from(v))
-                      .toList(),
-                ),
-                value['suggestions'] as List? ?? [],
-              )
-              .where(
-                (record) =>
-                    owner ||
-                    '${record['replacement'] ?? ''}'.isEmpty ||
-                    integer(record['reviewer_id']) == widget.store.userID,
-              )
-              .toList();
-    }
+            .where(
+              (record) =>
+                  owner ||
+                  '${record['replacement'] ?? ''}'.isEmpty ||
+                  integer(record['reviewer_id']) == widget.store.userID,
+            )
+            .toList();
     if (owner) {
       final target = nextRecords
           .where(
@@ -466,6 +463,7 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   }
 
   Future<void> annotate(String path, String selected, bool replace) async {
+    if (!otherViewer) return;
     selected = canonicalSelection(path, selected);
     if (!replace) {
       await showRegionComments(
@@ -633,24 +631,23 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
               resumePaperSize.height - 100,
             ),
           ),
-      if (!ownerDetail)
-        for (final group in commentGroups.entries)
-          if (popularGuidanceComment(group.value) case final record?)
-            ResumeReviewNote(
-              key: 'comments:${group.key}',
-              fieldPath: '${group.value.first['field_path'] ?? ''}',
-              selectedText: previewQuote(
-                '${group.value.first['field_path'] ?? ''}',
-                '${group.value.first['selected_text'] ?? ''}',
-              ),
-              height:
-                  guidanceHotCommentHeight(
-                    context,
-                    '${record['suggestion'] ?? ''}',
-                    width,
-                  ) /
-                  scale,
+      for (final group in commentGroups.entries)
+        if (popularGuidanceComment(group.value) case final record?)
+          ResumeReviewNote(
+            key: 'comments:${group.key}',
+            fieldPath: '${group.value.first['field_path'] ?? ''}',
+            selectedText: previewQuote(
+              '${group.value.first['field_path'] ?? ''}',
+              '${group.value.first['selected_text'] ?? ''}',
             ),
+            height:
+                guidanceHotCommentHeight(
+                  context,
+                  '${record['suggestion'] ?? ''}',
+                  width,
+                ) /
+                scale,
+          ),
     ];
   }
 
@@ -914,6 +911,27 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
                 : '简历分享',
           ),
           actions: [
+            if (ownerDetail)
+              IconButton(
+                tooltip: '全部评论',
+                icon: const AppIcon(AppIcons.comment, size: 20),
+                onPressed: () async {
+                  await openPage(
+                    context,
+                    GuidanceAnnotations(
+                      store: widget.store,
+                      id: widget.id,
+                      notification: widget.notification,
+                      owner: true,
+                      commentsOnly: true,
+                      initialItems: records,
+                      onChanged: refreshAnnotations,
+                      currentSnapshot: data?['snapshot'] as Map?,
+                    ),
+                  );
+                  if (mounted) await refreshAnnotations();
+                },
+              ),
             if (!widget.notification &&
                 data?['is_owner'] == true &&
                 !ownerReview)
@@ -1024,10 +1042,8 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
                                 : annotate,
                             reviewNotes: inlineNotes(context),
                             reviewNoteBuilder: reviewNote,
-                            reviewHighlights: ownerDetail
-                                ? const []
-                                : reviewHighlights,
-                            onReviewTap: ownerDetail ? null : openReviewMarks,
+                            reviewHighlights: reviewHighlights,
+                            onReviewTap: openReviewMarks,
                           ),
                   ),
                 ],

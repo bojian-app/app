@@ -97,7 +97,7 @@ class CommentSendButton extends StatelessWidget {
           key: buttonKey,
           onPressed: sending || value.text.trim().isEmpty ? null : onPressed,
           style: FilledButton.styleFrom(
-            backgroundColor: blue,
+            backgroundColor: context.colors.palette.seed,
             disabledBackgroundColor: context.isDark
                 ? context.colors.inset
                 : const Color(0xFFF0F1F4),

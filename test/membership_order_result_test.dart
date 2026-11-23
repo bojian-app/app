@@ -36,7 +36,7 @@ void main() {
     api.documents['PostMembershipOrders'] = {
       'id': 42,
       'plan_code': 'MONTH',
-      'amount_cents': 2500,
+      'amount_cents': 900,
       'discount_cents': 0,
       'channel': 'ALIPAY',
       'status': 'PENDING',
@@ -79,7 +79,7 @@ void main() {
       settled: {
         'id': 42,
         'plan_code': 'MONTH',
-        'amount_cents': 2000,
+        'amount_cents': 400,
         'discount_cents': 500,
         'channel': 'ALIPAY',
         'status': 'PAID',
@@ -88,7 +88,7 @@ void main() {
       },
     );
     expect(find.text('支付成功'), findsOneWidget);
-    expect(find.text('¥20.00'), findsOneWidget);
+    expect(find.text('¥4.00'), findsOneWidget);
     expect(find.text('-¥5.00'), findsOneWidget);
     expect(find.text('会员有效期至'), findsOneWidget);
     expect(find.text('确认订单'), findsNothing);
@@ -108,7 +108,7 @@ void main() {
       settled: {
         'id': 42,
         'plan_code': 'MONTH',
-        'amount_cents': 2500,
+        'amount_cents': 900,
         'channel': 'ALIPAY',
         'status': 'PENDING',
       },

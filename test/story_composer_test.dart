@@ -76,7 +76,7 @@ void main() {
         tester.getRect(find.byTooltip('粗体')).bottom,
         lessThanOrEqualTo(480),
       );
-      await tester.tap(find.byTooltip('提交审核'));
+      await tester.tap(find.widgetWithText(TextButton, '发布'));
       await tester.pumpAndSettle();
       expect(api.article!['title'], '我的面试复盘');
       final blocks = (api.article!['content'] as Map)['blocks'] as List;
@@ -90,7 +90,7 @@ void main() {
       tester.view.physicalSize = const Size(780, 360);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byTooltip('关闭'));
+      await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
       expect(find.text('放弃这篇文章？'), findsOneWidget);
       await tester.tap(find.text('继续编辑'));

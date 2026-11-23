@@ -25,20 +25,24 @@ Future<T?> showPanelSheet<T>(
 class PanelSheet extends StatelessWidget {
   const PanelSheet({
     super.key,
-    required this.title,
+    this.title,
+    this.header,
     required this.child,
     this.closeKey,
     this.horizontalPadding = 16,
-  });
+    this.backgroundColor,
+  }) : assert((title == null) != (header == null));
 
-  final String title;
+  final String? title;
+  final Widget? header;
   final Widget child;
   final Key? closeKey;
   final double horizontalPadding;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) => Material(
-    color: context.colors.inset,
+    color: backgroundColor ?? context.colors.inset,
     borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
     clipBehavior: Clip.antiAlias,
     child: SafeArea(
@@ -56,13 +60,15 @@ class PanelSheet extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const SizedBox(width: 48),
+                  if (header == null) const SizedBox(width: 48),
                   Expanded(
-                    child: Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      style: ResumeEditorTypography.title,
-                    ),
+                    child:
+                        header ??
+                        Text(
+                          title!,
+                          textAlign: TextAlign.center,
+                          style: ResumeEditorTypography.title,
+                        ),
                   ),
                   IconButton(
                     key: closeKey,
@@ -76,6 +82,8 @@ class PanelSheet extends StatelessWidget {
                   ),
                 ],
               ),
+              if (header != null)
+                Divider(height: 1, color: context.colors.border),
               const SizedBox(height: 12),
               Expanded(child: child),
             ],
@@ -88,14 +96,20 @@ class PanelSheet extends StatelessWidget {
 
 /// White rounded card of rows separated by inset dividers.
 class PanelGroup extends StatelessWidget {
-  const PanelGroup({super.key, required this.children});
+  const PanelGroup({super.key, required this.children, this.outlined = false});
 
   final List<Widget> children;
+  final bool outlined;
 
   @override
   Widget build(BuildContext context) => Material(
     color: context.colors.surface,
-    borderRadius: BorderRadius.circular(12),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: outlined
+          ? BorderSide(color: context.colors.border)
+          : BorderSide.none,
+    ),
     clipBehavior: Clip.antiAlias,
     child: Column(
       mainAxisSize: MainAxisSize.min,
@@ -104,7 +118,7 @@ class PanelGroup extends StatelessWidget {
           if (i > 0)
             Divider(
               height: 1,
-              indent: 54,
+              indent: outlined ? 16 : 54,
               endIndent: 16,
               color: context.colors.border,
             ),
@@ -122,16 +136,20 @@ class PanelAction extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.destructive = false,
   });
 
   final String label;
+  final bool destructive;
   final AppIconData icon;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) => TextButton(
     style: TextButton.styleFrom(
-      foregroundColor: context.colors.ink,
+      foregroundColor: destructive
+          ? Theme.of(context).colorScheme.error
+          : context.colors.ink,
       minimumSize: const Size.fromHeight(56),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       shape: const RoundedRectangleBorder(),
@@ -140,7 +158,11 @@ class PanelAction extends StatelessWidget {
     onPressed: onPressed,
     child: Row(
       children: [
-        AppIcon(icon, size: 22),
+        AppIcon(
+          icon,
+          size: 22,
+          color: destructive ? Theme.of(context).colorScheme.error : null,
+        ),
         const SizedBox(width: 16),
         Expanded(child: Text(label)),
       ],

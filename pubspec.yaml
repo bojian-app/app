@@ -90,9 +90,10 @@ flutter:
   assets:
     - assets/invitation/reward-envelope-blank.png
     - assets/invitation/icons/
+    - assets/customer_service/
     - assets/branding/app_icon.png
     - assets/membership/platinum_emblem_blue.png
-    - assets/membership/card_chip.png
+    - assets/membership/chip_otter.png
     - assets/membership/invite_badge.png
     - assets/membership/badge-year-blue.png
     - assets/membership/badge-month-blue.png

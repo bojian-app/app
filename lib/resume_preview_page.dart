@@ -28,7 +28,6 @@ class _ResumePreviewState extends State<ResumePreview> {
   int get resumeId => widget.resumeId;
 
   bool openingActions = false;
-  bool copying = false;
   bool monochrome = false;
   Future<void> showActions() async {
     if (openingActions) return;
@@ -118,9 +117,8 @@ class _ResumePreviewState extends State<ResumePreview> {
   }
 
   Future<void> createCopy(ResumeDraft resume) async {
-    if (copying || !store.isAuthenticated) return;
+    if (store.copyingResume || !store.isAuthenticated) return;
     final epoch = store.epoch;
-    setState(() => copying = true);
     toast(context, '正在创建副本…');
     try {
       final copied = await store.copyResume(resume.id);
@@ -139,8 +137,6 @@ class _ResumePreviewState extends State<ResumePreview> {
       if (mounted && store.epoch == epoch) {
         await showRequestFailure(context, error);
       }
-    } finally {
-      if (mounted) setState(() => copying = false);
     }
   }
 
@@ -226,7 +222,7 @@ class _ResumePreviewState extends State<ResumePreview> {
                 openPage(context, ResumeEditor(store: store, draft: resume)),
             onTemplate: () => chooseTemplate(resume),
             onSwitchResume: switchResume,
-            onCopy: copying ? null : () => createCopy(resume),
+            onCopy: store.copyingResume ? null : () => createCopy(resume),
           ),
         ),
       );
@@ -242,7 +238,7 @@ class _ResumePreviewState extends State<ResumePreview> {
         ),
         actions: [
           ResumePreviewActions(
-            onMore: resume == null || copying ? null : showActions,
+            onMore: resume == null || store.copyingResume ? null : showActions,
             onClose: () => Navigator.maybePop(context),
           ),
         ],

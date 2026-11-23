@@ -160,7 +160,7 @@ void main() {
     }
   });
   testWidgets(
-    'Picker lists standard and purchased templates without unowned designs',
+    'Picker lists unowned designs and asks to buy paid ones before use',
     (tester) async {
       api.documents['GetMeTemplates'] = {
         'items': [
@@ -169,7 +169,12 @@ void main() {
       };
       api.documents['GetTemplates'] = {
         'items': [
-          {'id': 9, 'name': '未购买设计'},
+          {
+            'id': 9,
+            'name': '未购买设计',
+            'pricing_type': 'PAID',
+            'price_cents': 1200,
+          },
         ],
       };
       await tester.runAsync(() async {
@@ -193,14 +198,14 @@ void main() {
             (widget.properties.label ?? '').startsWith(name),
       );
       expect(tile('已购买设计'), findsOneWidget);
-      expect(tile('未购买设计'), findsNothing);
+      expect(tile('未购买设计'), findsOneWidget);
       expect(find.text('模板市场'), findsNothing);
       expect(find.text('商务蓝'), findsNothing);
       expect(find.text('简约'), findsNothing);
       await tester.tap(tile('标准模板'));
       await tester.pumpAndSettle();
       expect(api.calls, contains('GetMeTemplates'));
-      expect(api.calls, isNot(contains('GetTemplates')));
+      expect(api.calls, contains('GetTemplates'));
       expect(api.calls, isNot(contains('PatchResumesId')));
       expect(find.text('使用中'), findsOneWidget);
       expect(find.text('使用选中模板'), findsOneWidget);
@@ -218,6 +223,66 @@ void main() {
           .widgetList<Semantics>(find.byType(Semantics))
           .where((widget) => widget.properties.label == '已购买设计');
       expect(selection.single.properties.selected, isTrue);
+      expect(find.text('使用选中模板'), findsOneWidget);
+      // An unowned paid design swaps the action for a purchase button.
+      await tester.tap(tile('未购买设计'));
+      await tester.pumpAndSettle();
+      expect(find.text('使用选中模板'), findsNothing);
+      expect(find.text('¥12.00 购买'), findsOneWidget);
+      await tester.tap(find.text('¥12.00 购买'));
+      await tester.pumpAndSettle();
+      expect(find.text('购买模板'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.calls, isNot(contains('PostTemplateOrders')));
+      expect(api.calls, isNot(contains('PatchResumesId')));
+      expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('Members still see the price and a purchase button', (
+    tester,
+  ) async {
+    api.documents['GetMeTemplates'] = {
+      'items': [
+        {
+          'id': 8,
+          'name': '会员可用设计',
+          'source': 'MEMBER',
+          'pricing_type': 'PAID',
+          'price_cents': 800,
+        },
+      ],
+    };
+    api.documents['GetTemplates'] = {
+      'items': [
+        {'id': 8, 'name': '会员可用设计', 'pricing_type': 'PAID', 'price_cents': 800},
+      ],
+    };
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ResumeTemplatePicker(
+              store: store,
+              resume: store.resumes.first,
+            ),
+          ),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('¥8.00'), findsOneWidget);
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            (widget.properties.label ?? '').startsWith('会员可用设计'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('¥8.00 购买'), findsOneWidget);
+    expect(find.text('使用选中模板'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

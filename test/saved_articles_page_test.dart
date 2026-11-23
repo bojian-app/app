@@ -2,6 +2,7 @@ import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/discovery.dart';
+import 'package:bojian_mobile/saved_articles_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -79,6 +80,33 @@ Future<void> launch(
 }
 
 void main() {
+  testWidgets(
+    'Profile favorites render the actual author, content and post actions',
+    (tester) async {
+      final api = SavedGateway();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: Scaffold(body: SavedArticlesPage(store: store, embedded: true)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('文章作者'), findsOneWidget);
+      expect(find.text('真实文章正文'), findsOneWidget);
+      expect(
+        tester.widget<StoryCard>(find.byType(StoryCard)).compactTypography,
+        isTrue,
+      );
+      await tester.tap(find.byKey(const ValueKey('story-bookmark-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('还没有收藏的文章'), findsOneWidget);
+      await tester.tap(find.text('撤销'));
+      await tester.pumpAndSettle();
+      expect(find.text('真实文章正文'), findsOneWidget);
+    },
+  );
   testWidgets(
     'Collection uses server summaries and fetches body only when opened',
     (tester) async {

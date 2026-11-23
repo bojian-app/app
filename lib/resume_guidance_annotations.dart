@@ -1,5 +1,6 @@
 import 'app_page_bar.dart';
 import 'content_report.dart';
+import 'withdraw_comment_button.dart';
 import 'content_moderation.dart';
 import 'user_display_name.dart';
 
@@ -287,11 +288,12 @@ class GuidanceAnnotations extends StatefulWidget {
     this.legacyItems = const [],
     this.currentSnapshot,
     this.mineOnly = false,
+    this.commentsOnly = false,
   });
   final AppStore store;
   final int id;
   final bool notification, owner;
-  final bool mineOnly;
+  final bool mineOnly, commentsOnly;
   final VoidCallback onChanged;
   final String? reviewerKey;
   final Set<String>? recordKeys;
@@ -322,6 +324,7 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
           ]
           .where(
             (v) =>
+                (!widget.commentsOnly || '${v['replacement'] ?? ''}'.isEmpty) &&
                 (!widget.mineOnly ||
                     integer(v['reviewer_id']) == widget.store.userID) &&
                 (widget.reviewerKey == null ||
@@ -620,6 +623,20 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
               const SizedBox(height: 12),
               Text(advice, style: const TextStyle(fontSize: 13, height: 1.6)),
             ],
+            if (!isReplacement &&
+                integer(item['id']) > 0 &&
+                integer(item['reviewer_id']) == widget.store.userID)
+              WithdrawCommentButton.guidance(
+                store: widget.store,
+                id: widget.id,
+                notification: widget.notification,
+                item: item,
+                onWithdrawn: () async {
+                  if (!mounted) return;
+                  await load();
+                  widget.onChanged();
+                },
+              ),
             if (changed) ...[
               const SizedBox(height: 10),
               Text(
@@ -726,7 +743,15 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: context.colors.canvas,
-    appBar: AppPageBar(title: Text(widget.mineOnly ? '我的优化建议' : '指点记录')),
+    appBar: AppPageBar(
+      title: Text(
+        widget.commentsOnly
+            ? '全部评论'
+            : widget.mineOnly
+            ? '我的优化建议'
+            : '指点记录',
+      ),
+    ),
     body: SafeArea(
       top: false,
       child: error != null
@@ -751,8 +776,8 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
                           SizedBox(
                             height: constraints.maxHeight,
                             child: Center(
-                              child: const EmptyState(
-                                '还没有指点记录',
+                              child: EmptyState(
+                                widget.commentsOnly ? '暂无评论' : '还没有指点记录',
                                 '',
                                 compact: true,
                               ),

@@ -989,7 +989,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
       alignment: Alignment.centerRight,
       child: FilledButton(
         style: FilledButton.styleFrom(
-          backgroundColor: brandBlue,
+          backgroundColor: context.colors.palette.seed,
           foregroundColor: Colors.white,
           minimumSize: const Size(72, 34),
           padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -1007,8 +1007,8 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     onPressed: submission.submitting || !canGenerate ? null : submit,
     style: FilledButton.styleFrom(
       foregroundColor: Colors.white,
-      backgroundColor: brandBlue,
-      disabledBackgroundColor: brandBlue.withValues(
+      backgroundColor: context.colors.palette.seed,
+      disabledBackgroundColor: context.colors.palette.seed.withValues(
         alpha: context.isDark ? .3 : .28,
       ),
       disabledForegroundColor: Colors.white.withValues(alpha: .95),
@@ -1170,7 +1170,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
     onPressed: onPressed,
     style: FilledButton.styleFrom(
       foregroundColor: Colors.white,
-      backgroundColor: brandBlue,
+      backgroundColor: context.colors.palette.seed,
       minimumSize: const Size.fromHeight(48),
       textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

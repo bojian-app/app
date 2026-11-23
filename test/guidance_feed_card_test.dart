@@ -59,21 +59,19 @@ void main() {
           final participants = find.byKey(
             const ValueKey('guidance-participants-9'),
           );
-          final location = find.text('IP属地：浙江');
+          expect(find.text('IP属地：浙江'), findsOneWidget);
           expect(
-            tester.getBottomLeft(participants).dy,
-            lessThan(tester.getTopLeft(question).dy),
+            tester.getTopLeft(participants).dy,
+            greaterThan(tester.getBottomLeft(resume).dy),
           );
-          if (scale == 1) {
-            expect(
-              tester.getTopLeft(participants).dy,
-              tester.getTopLeft(location).dy,
-            );
-            expect(
-              tester.getTopLeft(participants).dx,
-              greaterThan(tester.getTopRight(location).dx),
-            );
-          }
+          expect(
+            tester.getTopLeft(participants).dx,
+            tester.getTopLeft(resume).dx,
+          );
+          expect(
+            tester.getTopLeft(find.text('博简')).dy,
+            greaterThan(tester.getBottomLeft(participants).dy),
+          );
           expect(find.text('已有123人参与'), findsOneWidget);
           story.guidanceParticipantCount = 124;
           store.changed();

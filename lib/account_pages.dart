@@ -20,6 +20,7 @@ import 'developer_verification_page.dart';
 import 'form_page_layout.dart';
 import 'design.dart';
 import 'membership_page.dart';
+import 'order_history_page.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
 import 'resume_pages.dart';
@@ -146,7 +147,13 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
   }
 }
 
-enum _ProfileMenuPage { drafts, settings, membership, developerVerification }
+enum _ProfileMenuPage {
+  drafts,
+  settings,
+  membership,
+  orderHistory,
+  developerVerification,
+}
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.store});
@@ -188,7 +195,8 @@ class _ProfilePageState extends State<ProfilePage> {
   final headerOverlap = SliverOverlapAbsorberHandle();
   AppStore get store => widget.store;
   bool openingDetails = false;
-  bool compactHeader = false, measuringName = false;
+  final compactHeader = ValueNotifier<bool>(false);
+  bool measuringName = false;
   double? nameContentTop;
   double headerHeight = 400;
   int? profilePointer;
@@ -206,8 +214,10 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void profileScrolled() {
+    // Scrolling only flips a notifier; measuring and page-wide rebuilds are
+    // kept off the scroll path so a fast fling cannot hitch on them.
     updateCompactHeader();
-    scheduleNameMeasurement();
+    if (nameContentTop == null) scheduleNameMeasurement();
   }
 
   void updateCompactHeader() {
@@ -218,7 +228,7 @@ class _ProfilePageState extends State<ProfilePage> {
         scroll.hasClients &&
         top != null &&
         scroll.offset >= top - .5;
-    if (show != compactHeader) setState(() => compactHeader = show);
+    compactHeader.value = show;
   }
 
   void scheduleNameMeasurement() {
@@ -240,10 +250,17 @@ class _ProfilePageState extends State<ProfilePage> {
           nameBox.hasSize &&
           viewport is RenderBox &&
           viewport.hasSize) {
-        nameContentTop =
+        final measured =
             nameBox.localToGlobal(Offset.zero, ancestor: viewport).dy +
             scroll.offset -
             MediaQuery.paddingOf(context).top;
+        final previous = nameContentTop;
+        nameContentTop = measured;
+        if (previous == null || (previous - measured).abs() > .5) {
+          // The sliver delegate reads this as its collapse extent, so a changed
+          // measurement must reach it without waiting for another rebuild.
+          setState(() {});
+        }
       }
       updateCompactHeader();
     });
@@ -252,6 +269,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void dispose() {
     scroll.dispose();
+    compactHeader.dispose();
     headerOverlap.dispose();
     super.dispose();
   }
@@ -462,15 +480,22 @@ class _ProfilePageState extends State<ProfilePage> {
       final collapsedHeight =
           ProfileHeader.toolbarHeight(context) +
           MediaQuery.paddingOf(context).top;
-      return AnnotatedRegion<SystemUiOverlayStyle>(
-        key: const ValueKey('profile-system-ui'),
-        value: compactHeader || !store.isAuthenticated
-            ? appSystemUiStyle(context)
-            : appSystemUiStyle(context).copyWith(
-                statusBarIconBrightness: Brightness.light,
-                statusBarBrightness: Brightness.dark,
-                systemStatusBarContrastEnforced: false,
-              ),
+      scheduleNameMeasurement();
+      final systemUiBase = appSystemUiStyle(context);
+      return ValueListenableBuilder<bool>(
+        valueListenable: compactHeader,
+        builder: (context, compact, child) =>
+            AnnotatedRegion<SystemUiOverlayStyle>(
+              key: const ValueKey('profile-system-ui'),
+              value: compact || !store.isAuthenticated
+                  ? systemUiBase
+                  : systemUiBase.copyWith(
+                      statusBarIconBrightness: Brightness.light,
+                      statusBarBrightness: Brightness.dark,
+                      systemStatusBarContrastEnforced: false,
+                    ),
+              child: child!,
+            ),
         child: ColoredBox(
           color: context.colors.surface,
           child: !store.isAuthenticated
@@ -649,6 +674,7 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
         ),
         _ProfileMenuPage.settings => SettingsPage(store: store),
         _ProfileMenuPage.membership => MembershipPage(store: store),
+        _ProfileMenuPage.orderHistory => OrderHistoryPage(store: store),
         _ProfileMenuPage.developerVerification => DeveloperVerificationPage(
           store: store,
         ),
@@ -748,6 +774,15 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
                                     _ProfileMenuPage.membership,
                                   ),
                                 ),
+                              _menu(
+                                context,
+                                '订单记录',
+                                AppIcons.article,
+                                () => openDestination(
+                                  menuContext,
+                                  _ProfileMenuPage.orderHistory,
+                                ),
+                              ),
                               _menu(
                                 context,
                                 '草稿箱',
@@ -1080,7 +1115,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
                                       border: Border.all(
                                         width: 2,
                                         color: currentSystemAvatar == i
-                                            ? blue
+                                            ? context.colors.accent
                                             : Colors.transparent,
                                       ),
                                     ),
@@ -1275,7 +1310,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: blue,
+                        color: context.colors.palette.seed,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 3),
                       ),

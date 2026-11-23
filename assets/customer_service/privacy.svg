@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="body" x1="0%" y1="0%" x2="73%" y2="98%">
+      <stop stop-color="#D1CBFF"/>
+      <stop offset=".47" stop-color="#9179FF"/>
+      <stop offset="1" stop-color="#6A43F6"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="94%" y1="3%" x2="10%" y2="97%">
+      <stop stop-color="#D1CBFF" stop-opacity=".68"/>
+      <stop offset=".56" stop-color="#9179FF" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#9179FF" stop-opacity=".82"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="5%" y1="0%" x2="80%" y2="100%">
+      <stop stop-color="white" stop-opacity=".92"/>
+      <stop offset=".49" stop-color="#D1CBFF" stop-opacity=".60"/>
+      <stop offset="1" stop-color="#9179FF" stop-opacity=".62"/>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(-9 16 16)">
+    <path d="M2.6 14.7C6.8 8.1 10.6 5.5 16 5.5s9.9 3.6 13.5 9.2a2 2 0 0 1 0 2C25.6 22.5 21 25.4 16 25.4c-5.6 0-9.8-3.5-13.4-8.6a2 2 0 0 1 0-2.1z" fill="url(#body)"/>
+    <circle cx="16" cy="15.5" r="5.5" fill="white"/><circle cx="16" cy="15.5" r="2.9" fill="url(#body)"/>
+    <rect x="17.3" y="2.9" width="5" height="27.6" rx="2.5" transform="rotate(40 19.8 16.7)" fill="url(#glass)" stroke="url(#rim)" stroke-width=".9"/>
+  </g>
+</svg>

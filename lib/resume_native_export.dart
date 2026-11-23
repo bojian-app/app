@@ -173,6 +173,8 @@ class ResumeExportLayout {
     this.requiresWordFlow = false,
     this.nativeFlowGeometry = false,
     this.wordRows = false,
+    this.wordPageNumbers = true,
+    this.wordContinuationBackground,
     this.wordStructure,
     this.wordMargins = const {"top": 46, "right": 46, "bottom": 50, "left": 46},
   });
@@ -184,6 +186,8 @@ class ResumeExportLayout {
   final bool nativeFlowGeometry;
   // Paragraphs sharing a line in the preview become one borderless table row.
   final bool wordRows;
+  final bool wordPageNumbers;
+  final Uint8List? wordContinuationBackground;
   final Map<String, dynamic>? wordStructure;
   final Map<String, double> wordMargins;
 }
@@ -290,6 +294,29 @@ Set<int> _exportCharacters(ResumeExportLayout layout) => layout.pages
     .toSet();
 
 PdfColor _color(int argb) => PdfColor.fromInt(argb & 0xFFFFFF);
+
+final _blankRun = RegExp(r'[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+');
+
+/// Splits a piece into drawable text and runs of space-like characters.
+Iterable<({int rank, String text, bool blank})> _splitBlanks(
+  ({int rank, String text}) piece,
+) sync* {
+  var from = 0;
+  for (final match in _blankRun.allMatches(piece.text)) {
+    if (match.start > from) {
+      yield (
+        rank: piece.rank,
+        text: piece.text.substring(from, match.start),
+        blank: false,
+      );
+    }
+    yield (rank: 0, text: match.group(0)!, blank: true);
+    from = match.end;
+  }
+  if (from < piece.text.length) {
+    yield (rank: piece.rank, text: piece.text.substring(from), blank: false);
+  }
+}
 
 // Some CJK cmap entries alias one glyph (for example · and •). The PDF
 // subset writer must not assign two Unicode CIDs to the same glyph in a font.
@@ -430,8 +457,18 @@ Future<Uint8List> _pdf(
         }
         var x = span.x;
         final baseline = layout.height - line.baseline;
-        for (final piece in typeface.pieces(text)) {
+        for (final piece in typeface.pieces(text).expand(_splitBlanks)) {
           final font = typeface.font(piece.rank);
+          if (piece.blank) {
+            // Characters that share the plain space's glyph draw nothing; the
+            // subset writer would paint a wrong glyph for them.
+            x +=
+                (typeface.font(0).stringMetrics(piece.text).advanceWidth *
+                        span.size +
+                    spacing * piece.text.runes.length) *
+                scale;
+            continue;
+          }
           if (span.italic) {
             canvas.saveContext();
             canvas.setTransform(
@@ -448,7 +485,7 @@ Future<Uint8List> _pdf(
             span.italic ? 0 : x,
             span.italic ? 0 : baseline,
             scale: scale,
-            charSpace: spacing == 0 ? null : spacing,
+            charSpace: spacing,
             mode: strokeBold
                 ? PdfTextRenderingMode.fillAndStroke
                 : PdfTextRenderingMode.fill,
@@ -737,6 +774,39 @@ Uint8List _word(
       '<Relationship Id="header" Type="${rel}header" Target="header.xml"/>',
     );
   }
+  final repeatBackground = flowing && layout.wordContinuationBackground != null;
+  if (repeatBackground) {
+    for (final (name, bytes) in [
+      ('firstPage', layout.pages.first.background!.bytes),
+      ('continuation', layout.wordContinuationBackground!),
+    ]) {
+      add('word/media/$name.png', bytes);
+      final current = id++;
+      final picture =
+          '<pic:pic><pic:nvPicPr><pic:cNvPr id="$current" name="页面背景"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="background"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(layout.width)}" cy="${emu(layout.height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>';
+      final drawing = anchor(
+        current,
+        picture,
+        '${ns}drawingml/2006/picture',
+        0,
+        0,
+        layout.width,
+        layout.height,
+        background: true,
+      );
+      text(
+        'word/$name.xml',
+        '<?xml version="1.0"?><w:hdr xmlns:w="${ns}wordprocessingml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships" xmlns:wp="${ns}drawingml/2006/wordprocessingDrawing" xmlns:a="${ns}drawingml/2006/main" xmlns:pic="${ns}drawingml/2006/picture"><w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/></w:pPr><w:r>$drawing</w:r></w:p></w:hdr>',
+      );
+      text(
+        'word/_rels/$name.xml.rels',
+        '<?xml version="1.0"?><Relationships xmlns="${ns}package/2006/relationships"><Relationship Id="background" Type="${rel}image" Target="media/$name.png"/></Relationships>',
+      );
+      relations.write(
+        '<Relationship Id="$name" Type="${rel}header" Target="$name.xml"/>',
+      );
+    }
+  }
   // One text box per source paragraph: Word wraps it, and an edit stays
   // inside its paragraph instead of breaking every visual line apart.
   String paragraphBox(List<ResumeExportLine> paragraph) {
@@ -816,7 +886,7 @@ Uint8List _word(
       );
     }
     for (final picture in [
-      if (sheet.background != null) sheet.background!,
+      if (sheet.background != null && !repeatBackground) sheet.background!,
       ...sheet.pictures,
     ]) {
       final imageId = 'image${id++}';
@@ -969,6 +1039,8 @@ Uint8List _word(
               },
             ).build(),
     );
+  }
+  if (flowing && layout.wordPageNumbers) {
     relations.write(
       '<Relationship Id="footer" Type="${rel}footer" Target="footer.xml"/>',
     );
@@ -978,14 +1050,14 @@ Uint8List _word(
     );
   }
   body.write(
-    '<w:sectPr>${structured != null ? '<w:headerReference w:type="default" r:id="header"/>' : ''}${flowing ? '<w:footerReference w:type="default" r:id="footer"/>' : ''}<w:pgSz w:w="${_twip(layout.width)}" w:h="${_twip(layout.height)}"/><w:pgMar w:top="${flowing ? _twip(layout.wordMargins["top"]!) : 0}" w:right="${flowing ? _twip(layout.wordMargins["right"]!) : 0}" w:bottom="${flowing ? _twip(layout.wordMargins["bottom"]!) : 0}" w:left="${flowing ? _twip(layout.wordMargins["left"]!) : 0}" w:header="0" w:footer="${flowing ? 480 : 0}" w:gutter="0"/></w:sectPr></w:body></w:document>',
+    '<w:sectPr>${repeatBackground ? '<w:headerReference w:type="first" r:id="firstPage"/><w:headerReference w:type="default" r:id="continuation"/>' : ''}${structured != null ? '<w:headerReference w:type="default" r:id="header"/>' : ''}${flowing && layout.wordPageNumbers ? '<w:footerReference w:type="default" r:id="footer"/>' : ''}<w:pgSz w:w="${_twip(layout.width)}" w:h="${_twip(layout.height)}"/><w:pgMar w:top="${flowing ? _twip(layout.wordMargins["top"]!) : 0}" w:right="${flowing ? _twip(layout.wordMargins["right"]!) : 0}" w:bottom="${flowing ? _twip(layout.wordMargins["bottom"]!) : 0}" w:left="${flowing ? _twip(layout.wordMargins["left"]!) : 0}" w:header="0" w:footer="${flowing ? 480 : 0}" w:gutter="0"/>${repeatBackground ? '<w:titlePg/>' : ''}</w:sectPr></w:body></w:document>',
   );
   relations.write('</Relationships>');
   text('word/document.xml', body.toString());
   text('word/_rels/document.xml.rels', relations.toString());
   text(
     '[Content_Types].xml',
-    '<?xml version="1.0"?><Types xmlns="${ns}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>${structured != null ? '<Override PartName="/word/header.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${flowing ? '<Override PartName="/word/footer.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : ''}</Types>',
+    '<?xml version="1.0"?><Types xmlns="${ns}package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>${repeatBackground ? '<Override PartName="/word/firstPage.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/continuation.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}${structured != null ? '<Override PartName="/word/header.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${flowing && layout.wordPageNumbers ? '<Override PartName="/word/footer.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : ''}</Types>',
   );
   text(
     '_rels/.rels',

@@ -281,7 +281,9 @@ class _IdentityScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: context.colors.inset,
+    backgroundColor: context.isDark
+        ? context.colors.inset
+        : context.colors.canvas,
     appBar: AppPageBar(title: Text(title)),
     body: SafeArea(
       top: false,

@@ -71,6 +71,14 @@ const httpRoutes = <String, (String, String)>{
     'POST',
     '/notifications/{id}/guidance/resume',
   ),
+  'DeleteArticlesIdGuidanceSuggestionsSuggestionId': (
+    'DELETE',
+    '/articles/{id}/guidance/suggestions/{suggestion_id}',
+  ),
+  'DeleteArticlesIdGuidanceAnnotationsAnnotationId': (
+    'DELETE',
+    '/articles/{id}/guidance/annotations/{annotation_id}',
+  ),
   'PutArticlesIdGuidanceAnnotationsAnnotationIdLike': (
     'PUT',
     '/articles/{id}/guidance/annotations/{annotation_id}/like',
@@ -78,6 +86,10 @@ const httpRoutes = <String, (String, String)>{
   'DeleteArticlesIdGuidanceAnnotationsAnnotationIdLike': (
     'DELETE',
     '/articles/{id}/guidance/annotations/{annotation_id}/like',
+  ),
+  'DeleteNotificationsIdGuidanceAnnotationsAnnotationId': (
+    'DELETE',
+    '/notifications/{id}/guidance/annotations/{annotation_id}',
   ),
   'PutNotificationsIdGuidanceAnnotationsAnnotationIdLike': (
     'PUT',
@@ -204,10 +216,13 @@ const httpRoutes = <String, (String, String)>{
   'GetMembershipApple': ('GET', '/membership/apple'),
   'PostMembershipAppleTransactions': ('POST', '/membership/apple/transactions'),
   'GetMembershipPlans': ('GET', '/membership/plans'),
+  'GetMembershipOrderHistory': ('GET', '/membership/order-history'),
   'PostMembershipOrders': ('POST', '/membership/orders'),
   'GetMembershipOrdersId': ('GET', '/membership/orders/{id}'),
   'PostMembershipAiAddonOrders': ('POST', '/membership/ai-addon-orders'),
   'GetMembershipAiAddonOrdersId': ('GET', '/membership/ai-addon-orders/{id}'),
+  'PostTemplateOrders': ('POST', '/template-orders'),
+  'GetTemplateOrdersId': ('GET', '/template-orders/{id}'),
   'GetInvitations': ('GET', '/invitations'),
   'PostInvitationsBind': ('POST', '/invitations/bind'),
   'GetMembershipWallet': ('GET', '/membership/wallet'),
@@ -225,6 +240,10 @@ const httpRoutes = <String, (String, String)>{
   'PostReports': ('POST', '/reports'),
   'GetReportsId': ('GET', '/reports/{id}'),
   'PostAppeals': ('POST', '/appeals'),
+  'PostSupportSessions': ('POST', '/support/sessions'),
+  'GetSupportSessionsId': ('GET', '/support/sessions/{id}'),
+  'PostSupportSessionsIdMessages': ('POST', '/support/sessions/{id}/messages'),
+  'PostSupportSessionsIdEnd': ('POST', '/support/sessions/{id}/end'),
   'PostFeedback': ('POST', '/feedback'),
   'PutArticlesIdCommentsCommentIDDislike': (
     'PUT',

@@ -1,6 +1,7 @@
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/app_theme.dart';
 import 'package:bojian_mobile/resume_document.dart';
+import 'package:bojian_mobile/resume_native_export.dart';
 import 'package:bojian_mobile/resume_export.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/resume_template_picker.dart';
@@ -45,10 +46,10 @@ void main() {
     final initialState = tester.state<ResumeDocumentViewState>(
       find.byType(ResumeDocumentView),
     );
-    expect(initialState.document!.fontFamily, isNull);
+    expect(initialState.document!.fontFamily, resumeDocumentFontFamily);
     expect(
       initialState.document!.painters.first.text!.style!.fontFamily,
-      isNull,
+      resumeDocumentFontFamily,
     );
     store.resumes[0] = ResumeDraft(
       id: 1,

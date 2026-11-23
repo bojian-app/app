@@ -7,6 +7,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fake_gateway.dart';
 
 void main() {
+  testWidgets('Profile grid renders each resume on its own A4 page', (
+    tester,
+  ) async {
+    final store = await testStore(authenticated: true);
+    addTearDown(store.dispose);
+    store.resumes
+      ..clear()
+      ..addAll([
+        for (int id = 1; id <= 5; id++)
+          ResumeDraft(id: id, title: '简历$id', name: '姓名$id', position: '岗位$id'),
+      ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ResumeLibrary(store: store, embedded: true)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final pages = find.byType(ResumeSheetImage);
+    expect(pages, findsNWidgets(5));
+    for (var i = 0; i < 5; i++) {
+      final page = tester.widget<ResumeSheetImage>(pages.at(i));
+      expect(page.resume.name, '姓名${i + 1}');
+      expect(page.resume.position, '岗位${i + 1}');
+    }
+    final first = tester.getTopLeft(pages.first);
+    expect(tester.getTopLeft(pages.at(3)).dy, first.dy);
+    expect(tester.getTopLeft(pages.at(4)).dy, greaterThan(first.dy));
+  });
+
   testWidgets(
     'Every card area opens preview and actions are available in its bottom toolbar',
     (tester) async {
@@ -60,6 +89,14 @@ void main() {
         tester.widget<ResumePreview>(find.byType(ResumePreview)).resumeId,
         43,
       );
+      // 跳转到副本页后立即再点，应被共享锁拦截，不会生成副本的副本。
+      await tester.tap(
+        find.byKey(const ValueKey('resume-toolbar-copy')),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      expect(api.calls.where((c) => c == 'PostResumesIdCopies').length, 1);
+      await tester.pump(const Duration(seconds: 2));
       expect(store.resumes.map((r) => r.id), containsAll([42, 43]));
       expect(tester.takeException(), isNull);
     },

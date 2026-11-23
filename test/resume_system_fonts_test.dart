@@ -33,7 +33,7 @@ void main() {
   );
 
   testWidgets(
-    'cached preview and thumbnail rebuild with device fonts without changing resume data',
+    'cached preview and thumbnail retain document fonts when device fonts change',
     (tester) async {
       final draft = decodeResume({
         'content': {
@@ -79,7 +79,7 @@ void main() {
       await tester.pump();
       final refreshed = key.currentState!.document!;
       expect(identical(original, refreshed), isFalse);
-      expect(refreshed.fontFamily, isNull);
+      expect(refreshed.fontFamily, resumeDocumentFontFamily);
       expect(
         refreshed.painters.map((p) => p.text!.toPlainText()),
         originalText,
@@ -93,6 +93,13 @@ void main() {
               .document,
         ),
         isFalse,
+      );
+      expect(
+        tester
+            .widget<ResumeSheetImage>(find.byType(ResumeSheetImage))
+            .document
+            .fontFamily,
+        resumeDocumentFontFamily,
       );
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);

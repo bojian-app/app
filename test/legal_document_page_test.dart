@@ -56,68 +56,79 @@ void main() {
         .setMockMethodCallHandler(launcherChannel, null);
   });
 
-  test('Bundled documents retain sections, supplied identity and remaining placeholders', () {
-    final terms = legalDocumentFor(LegalDocumentKind.userAgreement);
-    final privacy = legalDocumentFor(LegalDocumentKind.privacyPolicy);
-    expect(terms.sections.map((section) => section.title), [
-      '第一条 定义',
-      '第二条 服务内容与功能边界',
-      '第三条 协议的订立与同意机制',
-      '第四条 账号、登录与会话管理',
-      '第五条 用户内容',
-      '第六条 用户行为规范',
-      '第七条 简历求指点与修改意见的特别约定',
-      '第八条 积分与模板服务',
-      '第九条 知识产权',
-      '第十条 免责声明与责任限制',
-      '第十一条 通知与送达',
-      '第十二条 法律适用与争议解决',
-      '第十三条 附则',
-    ]);
-    expect(privacy.sections.map((section) => section.title), [
-      '一、我们如何收集和使用您的个人信息',
-      '二、设备权限与本地功能说明',
-      '三、对外提供（委托处理与共享）',
-      '四、存储地点、期限与安全措施',
-      '五、您的权利',
-      '六、账号注销',
-      '七、未成年人保护',
-      '八、政策更新',
-      '九、联系我们',
-    ]);
-    for (final document in [terms, privacy]) {
-      expect(document.metadata, contains('更新日期：2026年10月【　】日'));
-      expect(document.metadata, contains('生效日期：2026年10月【　】日'));
-      expect(document.plainText, contains('【待补充：撤回渠道】'));
-      expect(
-        document.sections.map((section) => section.id).toSet(),
-        hasLength(document.sections.length),
-      );
-      expect(
-        document.introduction.every((paragraph) => paragraph.emphasized),
-        isTrue,
-      );
-    }
-    expect(terms.plainText, contains('【运营主体全称】'));
-    expect(terms.plainText, contains('【客服邮箱/电话】'));
-    expect(terms.plainText, contains('【待与业务确认余额处理规则】'));
-    expect(terms.plainText, contains('【运营主体住所地】'));
-    expect(terms.plainText, contains('template-purchase-v1'));
-    expect(terms.plainText, contains('DOCX格式导出文件的正文为页面图像'));
-    expect(terms.plainText, contains('字段过滤不等于匿名化处理'));
-    expect(privacy.metadata, contains('版本：V2.0（替代2026年9月3日版本）'));
-    expect(privacy.plainText, contains('完整源文件（包括其中的文字、照片及其他全部内容）'));
-    expect(privacy.plainText, contains('该方式不属于端到端加密'));
-    expect(privacy.plainText, contains('【最终清除及备份清理期限待补充】'));
-    expect(privacy.plainText, contains('【待补充：最低使用年龄、年龄核验及监护人流程】'));
-    expect(privacy.plainText, contains('珠海科岚盛网络科技有限公司'));
-    expect(privacy.plainText, contains('个人信息保护负责人：冯子健'));
-    expect(privacy.plainText, contains('fengzijian@kelantech.cn'));
-    expect(
-      privacy.sections.first.blocks.whereType<LegalSubheading>(),
-      hasLength(15),
-    );
-  });
+  test(
+    'Bundled documents cover store-review sections and keep placeholders',
+    () {
+      final terms = legalDocumentFor(LegalDocumentKind.userAgreement);
+      final privacy = legalDocumentFor(LegalDocumentKind.privacyPolicy);
+      expect(terms.sections.map((section) => section.title), [
+        '第一条 定义与适用范围',
+        '第二条 协议的订立与变更',
+        '第三条 账号注册、登录与安全',
+        '第四条 服务内容',
+        '第五条 AI 功能特别约定',
+        '第六条 会员服务与付费条款',
+        '第七条 用户内容与知识产权',
+        '第八条 用户行为规范与内容审核',
+        '第九条 简历求指点特别约定',
+        '第十条 账号注销',
+        '第十一条 未成年人使用',
+        '第十二条 免责与责任限制',
+        '第十三条 法律适用与争议解决',
+        '第十四条 通知与联系方式',
+      ]);
+      expect(privacy.sections.map((section) => section.title), [
+        '一、我们如何收集和使用您的个人信息',
+        '二、设备权限调用说明',
+        '三、第三方SDK与对外提供',
+        '四、个人信息的存储与保护',
+        '五、您的权利',
+        '六、注销账号',
+        '七、未成年人个人信息保护',
+        '八、本地存储',
+        '九、本政策的更新',
+        '十、联系我们',
+      ]);
+      for (final document in [terms, privacy]) {
+        expect(document.metadata, contains('更新日期：2026年11月17日'));
+        expect(document.metadata, contains('生效日期：2026年11月17日'));
+        expect(document.plainText, contains('珠海科岚盛网络科技有限公司'));
+        expect(document.plainText, contains('91440403MAD4CAX58L'));
+        expect(document.plainText, contains('珠海市斗门区湖心路口翠湖路308号1栋社区用房'));
+        expect(document.plainText, contains('重新登录该账号'));
+        expect(
+          document.sections.map((section) => section.id).toSet(),
+          hasLength(document.sections.length),
+        );
+        expect(
+          document.introduction.every((paragraph) => paragraph.emphasized),
+          isTrue,
+        );
+      }
+      // 会员规则与会员页一致。
+      expect(terms.plainText, contains('9元'));
+      expect(terms.plainText, contains('99元'));
+      expect(terms.plainText, contains('AI简历生成3次、AI简历优化3次、单段生成10次'));
+      expect(terms.plainText, contains('每次0.99元，单段生成每次0.1元'));
+      expect(terms.plainText, contains('Android 端不提供自动续费'));
+      expect(terms.plainText, contains('三天会员体验包'));
+      expect(terms.plainText, contains('积分不出售'));
+      // 隐私政策与实际数据处理一致。
+      expect(privacy.plainText, contains('Android ID'));
+      expect(privacy.plainText, contains('IP属地'));
+      expect(privacy.plainText, isNot(contains('OpenRouter')));
+      expect(privacy.plainText, contains('自动内容审核'));
+      expect(privacy.plainText, contains('备份数据保存30日，超过30日后清除'));
+      expect(privacy.plainText, isNot(contains('【待填写')));
+      expect(privacy.plainText, contains('腾讯云文本内容安全'));
+      expect(privacy.plainText, contains('火山引擎短信服务'));
+      expect(privacy.plainText, contains('该方式不属于端到端加密'));
+      expect(privacy.plainText, contains('notifier@kelantech.cn'));
+      expect(privacy.plainText, contains('粤ICP备2026155383号'));
+      expect(privacy.plainText, contains('北京智谱华章科技股份有限公司'));
+      expect(privacy.plainText, contains('支付宝支付科技有限公司'));
+    },
+  );
 
   test(
     'Privacy permissions and third-party disclosures retain all table cells',
@@ -127,36 +138,21 @@ void main() {
           .whereType<LegalTable>()
           .toList();
       expect(tables, hasLength(2));
-      expect(tables.first.headers, ['系统功能', '用途']);
-      expect(tables.first.rows, hasLength(8));
+      expect(tables.first.headers, ['权限', '使用场景', '拒绝后的影响']);
       expect(tables.first.rows.map((row) => row.first), [
-        '网络（INTERNET）',
-        '系统文件选择器',
-        '扫码相机',
-        '系统相机与照片选择器',
-        '系统分享面板',
-        '剪贴板写入',
-        '微信与抖音可见性查询（Android）',
-        '通知与权限设置跳转',
+        '相机',
+        '相册（照片）',
+        '网络',
+        '安装未知应用（仅Android）',
       ]);
-      expect(tables.first.plainText, contains('不自动读取剪贴板'));
-      expect(tables.first.plainText, contains('不获取完整已安装应用列表'));
-      expect(tables.first.plainText, contains('同意后用于身份证识别'));
-      expect(tables.first.plainText, contains('相册仅访问您选中的照片'));
-      expect(tables.last.headers, ['第三方', '数据与用途', '备注']);
-      expect(tables.last.rows, hasLength(7));
-      expect(tables.last.rows.map((row) => row.first), [
-        '穿山甲 GroMore SDK（北京巨量引擎网络技术有限公司）',
-        '百度智能云（百度）',
-        '七牛对象存储',
-        '短信服务提供方【腾讯云/配置网关，待确认】',
-        '微信开放平台 SDK（腾讯，Fluwx 接入）',
-        '抖音开放平台 SDK',
-        '外部AI文件解析及模型服务【主体待补充】',
-      ]);
-      expect(tables.last.plainText, contains('存储地域待补充'));
-      expect(tables.last.plainText, contains('是否用于模型训练：待补充'));
-      for (final table in tables) {
+      expect(tables.last.headers, ['名称及提供方', '使用目的与场景', '收集或处理的个人信息', '隐私政策']);
+      expect(tables.last.rows, hasLength(6));
+      for (final table in [
+        ...tables,
+        ...userAgreementDocument.sections
+            .expand((section) => section.blocks)
+            .whereType<LegalTable>(),
+      ]) {
         expect(
           table.rows.every((row) => row.length == table.headers.length),
           isTrue,

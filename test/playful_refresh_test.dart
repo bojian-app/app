@@ -45,6 +45,125 @@ void main() {
     );
   }
 
+  testWidgets('a drag that reaches the top mid-gesture does not refresh', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlayfulRefresh(
+            onRefresh: () async => calls++,
+            child: ListView(
+              children: [
+                for (var i = 0; i < 40; i++)
+                  SizedBox(height: 60, child: Text('行$i')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    final list = find.byType(ListView);
+    await tester.drag(list, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    // One continuous touch: scroll back to the top, then keep pulling down.
+    final gesture = await tester.startGesture(tester.getCenter(list));
+    for (var i = 0; i < 14; i++) {
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    // Lift, then pull again from the top: this one refreshes.
+    await pull(tester);
+    expect(calls, 1);
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a drag that collapses an outer header first does not refresh', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NestedScrollView(
+            headerSliverBuilder: (context, _) => [
+              const SliverToBoxAdapter(child: SizedBox(height: 240)),
+            ],
+            body: PlayfulRefresh(
+              onRefresh: () async => calls++,
+              child: ListView(
+                children: [
+                  for (var i = 0; i < 40; i++)
+                    SizedBox(height: 60, child: Text('行$i')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final list = find.byType(ListView);
+    await tester.drag(list, const Offset(0, -240));
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(tester.getCenter(list));
+    for (var i = 0; i < 16; i++) {
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    await pull(tester);
+    expect(calls, 1);
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('reversing a pull into an outer header leaves no stuck gap', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NestedScrollView(
+            headerSliverBuilder: (context, _) => [
+              const SliverToBoxAdapter(child: SizedBox(height: 240)),
+            ],
+            body: PlayfulRefresh(
+              onRefresh: () async {},
+              child: ListView(
+                children: [
+                  for (var i = 0; i < 40; i++)
+                    SizedBox(height: 60, child: Text('行$i')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final list = find.byType(ListView);
+    final rest = tester.getTopLeft(find.text('行0')).dy;
+    final gesture = await tester.startGesture(tester.getCenter(list));
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(const Offset(0, 30));
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    for (var i = 0; i < 12; i++) {
+      await gesture.moveBy(const Offset(0, -30));
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.drag(list, const Offset(0, 400));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('行0')).dy, closeTo(rest, .5));
+    await tester.pump(const Duration(seconds: 2));
+  });
+
   testWidgets('short lists refresh once and finish with confirmation', (
     tester,
   ) async {

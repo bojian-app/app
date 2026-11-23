@@ -28,7 +28,7 @@ Future<void> _pumpMembership(
 }
 
 void main() {
-  testWidgets('member sees uses left and when the earliest pack clears', (
+  testWidgets('member sees remaining quotas summed across packs', (
     tester,
   ) async {
     final soon = DateTime(2030, 1, 5, 9, 30);
@@ -57,11 +57,10 @@ void main() {
         },
       ],
     });
-    expect(
-      find.textContaining('AI 剩余：简历生成 186 次 · 简历优化 185 次 · 单段 1287 次'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('最早一份 01-05 09:30 到期清零'), findsOneWidget);
+    expect(find.bySemanticsLabel('简历生成剩余 186 次'), findsOneWidget);
+    expect(find.bySemanticsLabel('简历优化剩余 185 次'), findsOneWidget);
+    expect(find.bySemanticsLabel('单段生成剩余 1287 次'), findsOneWidget);
+    expect(find.textContaining('最早一份 01-05 09:30 到期清零'), findsNothing);
     expect(find.textContaining('AI 简历生成 180 次'), findsNothing);
     expect(tester.takeException(), isNull);
     // Disposing the page and the shared status cancels both expiry timers.
@@ -86,11 +85,10 @@ void main() {
         },
       ],
     });
-    expect(
-      find.textContaining('AI 剩余：简历生成 1 次 · 简历优化 1 次 · 单段 10 次'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('邀请奖励 03-02 18:05 到期清零'), findsOneWidget);
+    expect(find.bySemanticsLabel('简历生成剩余 1 次'), findsOneWidget);
+    expect(find.bySemanticsLabel('简历优化剩余 1 次'), findsOneWidget);
+    expect(find.bySemanticsLabel('单段生成剩余 10 次'), findsOneWidget);
+    expect(find.textContaining('邀请奖励 03-02 18:05 到期清零'), findsNothing);
     expect(find.textContaining('会员体验中'), findsWidgets);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -118,14 +116,22 @@ void main() {
         'ai_text_remaining': 25,
       },
     });
-    expect(
-      find.textContaining('加购：简历生成 3 次 · 简历优化 0 次 · 单段 25 次，不过期'),
-      findsOneWidget,
-    );
-    expect(find.text('加购 AI 次数'), findsOneWidget);
-    expect(find.text('¥0.99/次 · 剩 3 次'), findsOneWidget);
-    expect(find.text('¥0.10/次 · 剩 25 次'), findsOneWidget);
-    await tester.tap(find.text('加购').first);
+    expect(find.bySemanticsLabel('简历生成剩余 18 次'), findsOneWidget);
+    expect(find.bySemanticsLabel('简历优化剩余 15 次'), findsOneWidget);
+    expect(find.bySemanticsLabel('单段生成剩余 125 次'), findsOneWidget);
+    expect(find.text('加购 AI 次数'), findsNothing);
+    expect(find.text('购买次数'), findsNothing);
+    expect(find.text('AI 次数加购'), findsNothing);
+    expect(find.text('加购次数'), findsOneWidget);
+    expect(find.text('18'), findsOneWidget);
+    expect(find.text('125'), findsOneWidget);
+    await tester.tap(find.text('加购次数'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择加购类型'), findsOneWidget);
+    expect(find.text('AI 简历生成'), findsWidgets);
+    expect(find.text('AI 简历优化'), findsWidgets);
+    expect(find.text('AI 单段生成'), findsWidgets);
+    await tester.tap(find.widgetWithText(ListTile, 'AI 简历生成'));
     await tester.pumpAndSettle();
     expect(find.text('¥4.95'), findsWidgets);
     await tester.tap(find.bySemanticsLabel('增加'));
@@ -148,8 +154,12 @@ void main() {
         'ai_text_remaining': 0,
       },
     });
-    expect(find.textContaining('会员到期已冻结，开通后恢复'), findsOneWidget);
+    expect(find.text('已冻结'), findsOneWidget);
+    expect(find.bySemanticsLabel('简历生成剩余 2 次'), findsOneWidget);
+    expect(find.bySemanticsLabel('简历优化剩余 1 次'), findsOneWidget);
+    expect(find.bySemanticsLabel('单段生成剩余 0 次'), findsOneWidget);
     expect(find.text('加购 AI 次数'), findsNothing);
+    expect(find.text('加购次数'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -190,7 +200,7 @@ Future<void> _pumpWithPlans(
   Map<String, dynamic> membership,
 ) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = const Size(800, 3200);
+  tester.view.physicalSize = const Size(390, 1200);
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final api = FakeGateway();

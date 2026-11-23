@@ -4,6 +4,7 @@ import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/article_reaction_button.dart';
 import 'package:bojian_mobile/design.dart';
+import 'package:bojian_mobile/discovery.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -42,9 +43,58 @@ Story article() => Story(
   excerpt: '',
   paragraphs: [],
   likes: 3,
+  favorites: 2,
 );
 
 void main() {
+  testWidgets(
+    'Feed card padding opens details and reaction taps stay in the feed',
+    (tester) async {
+      final api = DelayedReactionGateway();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      final story = article();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: Scaffold(
+            body: ListView(
+              children: [
+                FeedRow(
+                  child: StoryCard(flat: true, story: story, store: store),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final like = find.byKey(const ValueKey('story-like-42'));
+      await tester.tap(like);
+      await tester.pump();
+      await tester.tap(like);
+      await tester.pump();
+      expect(find.byType(StoryDetail), findsNothing);
+      expect(api.calls.where((m) => m == 'PutArticlesIdLike'), hasLength(1));
+      api.response.complete(ApiDocument({'is_liked': true}));
+      await tester.pumpAndSettle();
+
+      final card = tester.getRect(find.byType(StoryCard));
+      await tester.tapAt(card.topRight + const Offset(-3, 3));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(StoryDetail), findsOneWidget);
+      expect(api.calls, contains('GetArticlesId'));
+      expect(api.calls, isNot(contains('GetArticlesIdComments')));
+      await tester.pump(const Duration(milliseconds: 170));
+      expect(
+        api.calls.where((m) => m == 'GetArticlesIdComments'),
+        hasLength(1),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(StoryDetail), findsOneWidget);
+    },
+  );
+
   test(
     'Like is immediate, duplicate requests are ignored, server count wins',
     () async {
@@ -77,11 +127,15 @@ void main() {
     final pending = store.bookmark(detail);
     expect(detail.saved, true);
     expect(feed.saved, true);
+    expect(detail.favorites, 3);
+    expect(feed.favorites, 3);
     final failure = expectLater(pending, throwsA(isA<ApiFailure>()));
     api.response.completeError(const ApiFailure('网络错误'));
     await failure;
     expect(detail.saved, false);
     expect(feed.saved, false);
+    expect(detail.favorites, 2);
+    expect(feed.favorites, 2);
     expect(feed.likes, 3);
     expect(store.pending, isEmpty);
   });

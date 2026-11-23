@@ -26,6 +26,7 @@ extension AppStoreArticles on AppStore {
           entry.likes = story.likes;
         } else {
           entry.saved = story.saved;
+          entry.favorites = story.favorites;
         }
       }
     }
@@ -71,8 +72,9 @@ extension AppStoreArticles on AppStore {
       perform('bookmark-${story.id}', () async {
         final version = epoch;
         final previous = story.saved;
+        final previousCount = story.favorites;
         final desired = !previous;
-        story.saved = desired;
+        story.setBookmark(desired);
         _syncReaction(story, like: false);
         try {
           final v = await request(
@@ -81,12 +83,15 @@ extension AppStoreArticles on AppStore {
             body: {},
           );
           if (!alive || version != epoch) return;
-          story.saved =
-              (v.data['is_favorited'] ?? v.data['active'] ?? desired) == true;
+          story.setBookmark(
+            (v.data['is_favorited'] ?? v.data['active'] ?? desired) == true,
+          );
+          story.readBookmarkMetrics(v.data);
           _syncReaction(story, like: false);
         } catch (_) {
           if (alive && version == epoch) {
             story.saved = previous;
+            story.favorites = previousCount;
             _syncReaction(story, like: false);
           }
           rethrow;
@@ -101,6 +106,8 @@ extension AppStoreArticles on AppStore {
         if (response.data.containsKey('comment_count')) {
           story.commentCount = integer(response.data['comment_count']);
         }
+        if (!pending.contains('bookmark-$id'))
+          story.readBookmarkMetrics(response.data);
         if (!pending.contains('like-$id')) {
           if (response.data.containsKey('like_count')) {
             story.likes = integer(response.data['like_count']);

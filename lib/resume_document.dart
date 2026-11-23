@@ -2635,7 +2635,6 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       originalMark = mark;
       originalPreview = ResumeDocument(
         widget.resume,
-        fontFamily: null,
         photoURL: photoURL,
         theme: widget.theme,
         reviewNotes: widget.reviewNotes,
@@ -3138,6 +3137,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       final margin = exportDocument.theme.margin;
       return ResumeExportLayout(
         pages,
+        wordPageNumbers: exportDocument.theme.pageNumbers,
         requiresWordFlow: exportDocument.theme.isStandard,
         // Themes flow in Word like the default template; PDF keeps the
         // pages exactly as previewed.
@@ -3148,6 +3148,11 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
                 requiresWordFlow: true,
                 nativeFlowGeometry: true,
                 wordRows: true,
+                wordPageNumbers: exportDocument.theme.pageNumbers,
+                wordContinuationBackground: await _resumeRaster(
+                  resumePaperSize,
+                  (canvas) => paintResumePaper(canvas, exportDocument, 1),
+                ),
                 wordMargins: {
                   'top': margin.top,
                   'right': margin.right,
@@ -3228,7 +3233,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
   @override
   Widget build(BuildContext context) {
     final resume = widget.resume;
-    const String? font = null;
+    const font = resumeDocumentFontFamily;
     final key = jsonEncode([
       resume.source,
       resume.template,
@@ -3350,7 +3355,7 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
       }
     }
     return ColoredBox(
-      color: context.isDark ? context.colors.canvas : const Color(0xFFE8EBEF),
+      color: context.colors.canvas,
       child: Listener(
         key: const ValueKey('resume-gesture-viewport'),
         behavior: HitTestBehavior.opaque,

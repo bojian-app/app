@@ -62,7 +62,6 @@ class _StandardResumeThumbnailState extends State<StandardResumeThumbnail> {
   late final ResumeSystemFontObserver systemFonts;
   late var document = ResumeDocument(
     widget.resume,
-    fontFamily: null,
     photoURL: widget.resume.photoURL,
     theme: widget.theme,
   );
@@ -82,7 +81,6 @@ class _StandardResumeThumbnailState extends State<StandardResumeThumbnail> {
     document.dispose();
     document = ResumeDocument(
       widget.resume,
-      fontFamily: null,
       photoURL: widget.resume.photoURL,
       theme: widget.theme,
     );
@@ -199,7 +197,7 @@ class ResumeCardThumbnail extends StatelessWidget {
   final ResumeDraft resume;
   @override
   Widget build(BuildContext context) => Semantics(
-    label: '${resume.templateTitle}预览',
+    label: '${resume.title}预览',
     image: true,
     child: ExcludeSemantics(
       child: ClipRRect(
@@ -219,12 +217,7 @@ class ResumeCardThumbnail extends StatelessWidget {
                       thumbnail: true,
                     ),
                   )
-                : StandardResumeThumbnail(
-                    resume: templateThumbnailResume,
-                    photo: const AssetImage(
-                      'assets/templates/preview_portrait.png',
-                    ),
-                  ),
+                : StandardResumeThumbnail(resume: resume),
           ),
         ),
       ),
@@ -232,7 +225,7 @@ class ResumeCardThumbnail extends StatelessWidget {
   );
 }
 
-// The card's title and progress are real; its paper is always a template example.
+// Sample content for previews in the template catalogue.
 final templateThumbnailResume = decodeResume({
   'id': 0,
   'title': '模板示例',
@@ -318,7 +311,6 @@ class _ResumeThemeSamplePagesState extends State<ResumeThemeSamplePages> {
   late final ResumeSystemFontObserver systemFonts;
   late var document = ResumeDocument(
     templateThumbnailResume,
-    fontFamily: null,
     photoURL: templateThumbnailResume.photoURL,
     theme: widget.theme,
   );
@@ -340,7 +332,6 @@ class _ResumeThemeSamplePagesState extends State<ResumeThemeSamplePages> {
     document.dispose();
     document = ResumeDocument(
       templateThumbnailResume,
-      fontFamily: null,
       photoURL: templateThumbnailResume.photoURL,
       theme: widget.theme,
     );

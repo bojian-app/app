@@ -8,14 +8,15 @@ import 'app_store.dart';
 import 'app_page_bar.dart';
 import 'design.dart';
 import 'discovery.dart';
-import 'resume_pages.dart';
 import 'account_pages.dart';
 import 'membership_page.dart';
+import 'customer_service_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store});
   final AppStore store;
-  static const membershipTab = 2;
+  static const membershipTab = 1;
+  static const serviceTab = 2;
   static const profileTab = 3;
   @override
   State<AppShell> createState() => AppShellState();
@@ -24,6 +25,7 @@ class AppShell extends StatefulWidget {
 class AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin {
   int selected = 0;
+  int serviceReturnTab = 0;
   final visited = <int>{0};
   int? previous;
   double direction = 1;
@@ -62,6 +64,7 @@ class AppShellState extends State<AppShell>
     setState(() {
       previous = reducedMotion ? null : selected;
       direction = index > selected ? 1 : -1;
+      if (index == AppShell.serviceTab) serviceReturnTab = selected;
       selected = index;
       visited.add(index);
     });
@@ -78,7 +81,6 @@ class AppShellState extends State<AppShell>
 
   Widget page(int index) => switch (index) {
     0 => DiscoveryPage(store: widget.store),
-    1 => TemplateMarket(store: widget.store),
     AppShell.membershipTab =>
       widget.store.isAuthenticated
           ? MembershipPage(
@@ -90,7 +92,29 @@ class AppShellState extends State<AppShell>
               value: appSystemUiStyle(context),
               child: Scaffold(
                 appBar: const AppPageBar(
-                  title: Text('会员'),
+                  title: Text('会员中心'),
+                  automaticallyImplyLeading: false,
+                ),
+                body: DataStatus(
+                  store: widget.store,
+                  section: 'profile',
+                  empty: false,
+                ),
+              ),
+            ),
+    AppShell.serviceTab =>
+      widget.store.isAuthenticated
+          ? CustomerServicePage(
+              key: ValueKey(widget.store.epoch),
+              onExit: () => select(serviceReturnTab),
+              store: widget.store,
+              embedded: true,
+            )
+          : AnnotatedRegion<SystemUiOverlayStyle>(
+              value: appSystemUiStyle(context),
+              child: Scaffold(
+                appBar: const AppPageBar(
+                  title: Text('在线客服'),
                   automaticallyImplyLeading: false,
                 ),
                 body: DataStatus(
@@ -137,7 +161,9 @@ class AppShellState extends State<AppShell>
           ),
         ),
       ),
-      bottomNavigationBar: MediaQuery.viewInsetsOf(context).bottom > 0
+      bottomNavigationBar:
+          (selected == AppShell.serviceTab && widget.store.isAuthenticated) ||
+              MediaQuery.viewInsetsOf(context).bottom > 0
           ? null
           : AppBottomNavigation(selectedIndex: selected, onSelected: select),
     ),
@@ -221,7 +247,7 @@ class _RetainedTabState extends State<_RetainedTab> {
                   child: RepaintBoundary(
                     child: ColoredBox(
                       color: switch (widget.index) {
-                        0 || 1 => context.colors.surface,
+                        0 => context.colors.surface,
                         AppShell.membershipTab =>
                           widget.store.isAuthenticated
                               ? MembershipPage.backgroundColor(context)
