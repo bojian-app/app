@@ -40,6 +40,10 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
   List<PolishChange> changes = [];
   List<PolishIssue> issues = [];
   final selected = <String, bool>{};
+
+  /// The user's text for each placeholder, by change path. Kept on this page
+  /// only, so a restored placeholder change starts unadopted.
+  final fills = <String, List<String>>{};
   final issueKeys = <int, GlobalKey>{};
 
   /// Which part of the result is open; the diagnosis card is the overview.
@@ -127,6 +131,7 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
     diagnosis = null;
     summary = '';
     selected.clear();
+    fills.clear();
     issueKeys.clear();
     view = PolishView.overview;
     fold.value = 0;
@@ -163,7 +168,17 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
   }
 
   /// Records the choice on [index] and turns to the next suggestion.
-  void decide(int index, String path, bool adopt) {
+  Future<void> decide(int index, PolishChange change, bool adopt) async {
+    final path = change.path;
+    if (adopt && change.placeholders.isNotEmpty) {
+      final values = await showPolishFillDialog(
+        context,
+        change,
+        initial: fills[path],
+      );
+      if (!valid || values == null) return;
+      fills[path] = values;
+    }
     choose([path], adopt);
     Future<void>.delayed(const Duration(milliseconds: 180), () {
       if (!mounted || view != PolishView.changes || page != index) return;
@@ -276,7 +291,9 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
           for (final change in changes) {
             selected.putIfAbsent(
               change.path,
-              () => decisions is Map && decisions[change.path] is bool
+              () => change.placeholders.isNotEmpty
+                  ? false
+                  : decisions is Map && decisions[change.path] is bool
                   ? decisions[change.path] as bool
                   : true,
             );
@@ -385,7 +402,14 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
     try {
       await request(
         'PostPolishJobsIdApply',
-        body: {'decisions': Map<String, bool>.of(selected)},
+        body: {
+          'decisions': Map<String, bool>.of(selected),
+          'filled': {
+            for (final change in changes)
+              if (selected[change.path] == true && fills[change.path] != null)
+                change.path: change.fill(fills[change.path]!),
+          },
+        },
       );
       if (!valid) return;
       setState(() {
@@ -703,10 +727,13 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 child: PolishChangeCard(
                   key: ValueKey('resume-ai-change-${change.path}'),
-                  change: change,
+                  change: fills[change.path] == null
+                      ? change
+                      : change.filled(change.fill(fills[change.path]!)),
                   location: location,
                   adopted: selected[change.path] ?? false,
-                  onChanged: busy ? null : (v) => decide(i, change.path, v),
+                  placeholders: change.placeholders.length,
+                  onChanged: busy ? null : (v) => decide(i, change, v),
                   relatedIssues: related.length,
                   onShowIssues: related.isEmpty
                       ? null

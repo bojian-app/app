@@ -150,6 +150,7 @@ class _PolishDiagnosisCardState extends State<PolishDiagnosisCard> {
     final diagnosis = widget.diagnosis;
     final overall = diagnosis?.overall ?? '';
     final dimensions = diagnosis?.dimensions ?? const <PolishDimension>[];
+    final score = diagnosis?.score;
     // With a structured diagnosis the prose summary is supporting detail.
     final foldSummary = dimensions.isNotEmpty || overall.isNotEmpty;
     final summaryStyle = TextStyle(
@@ -173,6 +174,30 @@ class _PolishDiagnosisCardState extends State<PolishDiagnosisCard> {
                   ),
                 ),
               ),
+              if (score != null)
+                Text.rich(
+                  key: const ValueKey('resume-ai-score'),
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$score',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: score >= 8
+                              ? context.polishLevel(PolishLevel.good)
+                              : score >= 6
+                              ? context.polishLevel(PolishLevel.fair)
+                              : context.polishWarning,
+                        ),
+                      ),
+                      TextSpan(
+                        text: ' / 10',
+                        style: TextStyle(fontSize: 13, color: colors.muted),
+                      ),
+                    ],
+                  ),
+                ),
               TextButton.icon(
                 key: const ValueKey('resume-ai-reanalyze'),
                 onPressed: widget.onReanalyze,
@@ -200,6 +225,16 @@ class _PolishDiagnosisCardState extends State<PolishDiagnosisCard> {
             const SizedBox(height: 16),
             for (final d in dimensions) _DimensionRow(d),
           ],
+          _DiagnosisList(
+            title: '亮点',
+            items: diagnosis?.highlights ?? const [],
+            color: context.polishLevel(PolishLevel.good),
+          ),
+          _DiagnosisList(
+            title: '面试可能追问',
+            items: diagnosis?.risks ?? const [],
+            color: context.polishWarning,
+          ),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -226,6 +261,70 @@ class _PolishDiagnosisCardState extends State<PolishDiagnosisCard> {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A short titled list inside the diagnosis card; hidden when empty.
+class _DiagnosisList extends StatelessWidget {
+  const _DiagnosisList({
+    required this.title,
+    required this.items,
+    required this.color,
+  });
+  final String title;
+  final List<String> items;
+  final Color color;
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    final colors = context.colors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: colors.ink,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 7, right: 8),
+                    child: Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      item,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.55,
+                        color: colors.ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -375,6 +474,7 @@ class PolishChangeCard extends StatefulWidget {
     required this.location,
     required this.adopted,
     required this.onChanged,
+    this.placeholders = 0,
     this.relatedIssues = 0,
     this.onShowIssues,
   });
@@ -382,6 +482,9 @@ class PolishChangeCard extends StatefulWidget {
   final PolishLocation location;
   final bool adopted;
   final ValueChanged<bool>? onChanged;
+
+  /// How many "【待补充】" facts the user must fill before adopting.
+  final int placeholders;
 
   /// Open questions about the same experience, shown so nobody adopts a
   /// rewrite without seeing the contradiction next to it.
@@ -421,7 +524,13 @@ class _PolishChangeCardState extends State<PolishChangeCard> {
                 ),
               ),
               const SizedBox(width: 8),
-              if (!marked)
+              if (widget.placeholders > 0)
+                PolishPill(
+                  widget.adopted ? '已补充' : '需补充 ${widget.placeholders} 处',
+                  color: context.polishWarning,
+                  soft: colors.warningSoft,
+                )
+              else if (!marked)
                 PolishPill('整段重写', color: colors.muted, soft: colors.inset),
             ],
           ),
@@ -554,7 +663,11 @@ class _PolishChangeCardState extends State<PolishChangeCard> {
               Expanded(
                 child: _ChoiceButton(
                   key: ValueKey('resume-ai-adopt-$path'),
-                  label: '采纳',
+                  label: widget.placeholders == 0
+                      ? '采纳'
+                      : widget.adopted
+                      ? '修改补充'
+                      : '补充并采纳',
                   primary: true,
                   selected: widget.adopted,
                   onTap: widget.onChanged == null
@@ -566,6 +679,89 @@ class _PolishChangeCardState extends State<PolishChangeCard> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Asks for the user's real facts in place of each placeholder; returns null
+/// when cancelled.
+Future<List<String>?> showPolishFillDialog(
+  BuildContext context,
+  PolishChange change, {
+  List<String>? initial,
+}) => showDialog<List<String>>(
+  context: context,
+  builder: (_) => _PolishFillDialog(change: change, initial: initial),
+);
+
+class _PolishFillDialog extends StatefulWidget {
+  const _PolishFillDialog({required this.change, this.initial});
+  final PolishChange change;
+  final List<String>? initial;
+  @override
+  State<_PolishFillDialog> createState() => _PolishFillDialogState();
+}
+
+class _PolishFillDialogState extends State<_PolishFillDialog> {
+  late final controllers = [
+    for (var i = 0; i < widget.change.placeholders.length; i++)
+      TextEditingController(text: widget.initial?.elementAtOrNull(i) ?? '')
+        ..addListener(() => setState(() {})),
+  ];
+
+  @override
+  void dispose() {
+    for (final c in controllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final hints = widget.change.placeholders;
+    final ready = controllers.every((c) => c.text.trim().isNotEmpty);
+    return AlertDialog(
+      title: const Text('补充真实信息'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '填写后替换建议中的待补充内容。没有对应信息时请忽略这条建议，不要编造。',
+              style: TextStyle(fontSize: 13, height: 1.6, color: colors.muted),
+            ),
+            for (var i = 0; i < hints.length; i++) ...[
+              const SizedBox(height: 12),
+              TextField(
+                key: ValueKey('resume-ai-fill-$i'),
+                controller: controllers[i],
+                autofocus: i == 0,
+                minLines: 1,
+                maxLines: 4,
+                decoration: InputDecoration(labelText: hints[i]),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          key: const ValueKey('resume-ai-fill-confirm'),
+          onPressed: ready
+              ? () => Navigator.pop(context, [
+                  for (final c in controllers) c.text.trim(),
+                ])
+              : null,
+          child: const Text('采纳'),
+        ),
+      ],
     );
   }
 }

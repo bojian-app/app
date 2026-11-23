@@ -35,8 +35,11 @@ Map<String, dynamic> result() => {
   'comparisons': {
     'summary': '优化表达',
     'diagnosis': {
+      'score': 7,
       'overall': '项目职责清楚，但成果缺少依据',
+      'highlights': ['支付项目写清了回调容错'],
       'priorities': ['删去各项目重复的通用流程职责'],
+      'risks': ['两段任职之间相隔约 3 个月'],
       'dimensions': [
         {'key': 'relevance', 'level': 'good', 'comment': '前端经历与岗位一致'},
         {'key': 'evidence', 'level': 'weak', 'comment': '平台项目未说明作用'},
@@ -114,6 +117,10 @@ void main() {
       expect(find.text('诊断结论'), findsOneWidget);
       expect(find.text('项目职责清楚，但成果缺少依据'), findsOneWidget);
       expect(find.text('优先处理'), findsNothing);
+      expect(find.byKey(const ValueKey('resume-ai-score')), findsOneWidget);
+      expect(find.text('支付项目写清了回调容错'), findsOneWidget);
+      expect(find.text('面试可能追问'), findsOneWidget);
+      expect(find.text('两段任职之间相隔约 3 个月'), findsOneWidget);
       expect(find.text('岗位匹配度'), findsOneWidget);
       expect(find.text('待加强'), findsOneWidget);
       // Only the diagnosis shows until an entry is opened.
@@ -394,5 +401,47 @@ void main() {
     await tapKey(tester, 'resume-ai-adopt-projects.0.description');
     expect(find.text('修改建议 2/4'), findsOneWidget);
     expect(find.textContaining('原因1', findRichText: true), findsOneWidget);
+  });
+  testWidgets('Placeholder rewrite is adopted only with the user\'s facts', (
+    tester,
+  ) async {
+    final data = result();
+    (data['comparisons'] as Map)['changes'] = [
+      {
+        'path': 'projects.0.description',
+        'before': '负责开发网站',
+        'after': '负责【待补充：模块名称】的开发，上线后【待补充：效果】',
+        'reason': '职责空泛；补充对象与结果',
+      },
+    ];
+    final api = FakeGateway()
+      ..documents['GetResumesId'] = {'id': 42, 'revision': 4, 'content': {}}
+      ..documents['GetResumesIdPolishJobs'] = {'id': 12}
+      ..documents['GetPolishJobsId'] = data;
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await open(tester, store);
+    await tapKey(tester, 'resume-ai-stat-changes');
+    expect(find.text('需补充 2 处'), findsOneWidget);
+    await tapKey(tester, 'resume-ai-adopt-projects.0.description');
+    final confirm = find.byKey(const ValueKey('resume-ai-fill-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const ValueKey('resume-ai-fill-0')),
+      '会员中心',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('resume-ai-fill-1')),
+      '注册转化提升',
+    );
+    await tester.pump();
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(find.text('采纳 1 处，忽略 0 处'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('resume-ai-apply')));
+    await tester.pumpAndSettle();
+    expect(api.lastMutationBody!['filled'], {
+      'projects.0.description': '负责会员中心的开发，上线后注册转化提升',
+    });
   });
 }
