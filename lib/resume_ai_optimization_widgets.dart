@@ -12,16 +12,6 @@ const _radius = 16.0;
 extension PolishColors on BuildContext {
   Color get polishWarning =>
       isDark ? const Color(0xFFF0B46B) : const Color(0xFFC46A12);
-  Color polishLevel(PolishLevel level) => switch (level) {
-    PolishLevel.good => colors.success,
-    PolishLevel.fair => colors.accent,
-    PolishLevel.weak => polishWarning,
-  };
-  Color polishLevelSoft(PolishLevel level) => switch (level) {
-    PolishLevel.good => colors.successSoft,
-    PolishLevel.fair => colors.accentSoft,
-    PolishLevel.weak => colors.warningSoft,
-  };
 }
 
 class PolishCard extends StatelessWidget {
@@ -149,15 +139,7 @@ class _PolishDiagnosisCardState extends State<PolishDiagnosisCard> {
     final colors = context.colors;
     final diagnosis = widget.diagnosis;
     final overall = diagnosis?.overall ?? '';
-    final dimensions = diagnosis?.dimensions ?? const <PolishDimension>[];
     final score = diagnosis?.score;
-    // With a structured diagnosis the prose summary is supporting detail.
-    final foldSummary = dimensions.isNotEmpty || overall.isNotEmpty;
-    final summaryStyle = TextStyle(
-      fontSize: 14,
-      height: 1.65,
-      color: colors.ink,
-    );
     return PolishCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -174,32 +156,12 @@ class _PolishDiagnosisCardState extends State<PolishDiagnosisCard> {
                   ),
                 ),
               ),
-              if (score != null)
-                Text.rich(
-                  key: const ValueKey('resume-ai-score'),
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '$score',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: score >= 8
-                              ? context.polishLevel(PolishLevel.good)
-                              : score >= 6
-                              ? context.polishLevel(PolishLevel.fair)
-                              : context.polishWarning,
-                        ),
-                      ),
-                      TextSpan(
-                        text: ' / 10',
-                        style: TextStyle(fontSize: 13, color: colors.muted),
-                      ),
-                    ],
-                  ),
-                ),
               TextButton.icon(
                 key: const ValueKey('resume-ai-reanalyze'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
                 onPressed: widget.onReanalyze,
                 icon: const AppIcon(AppIcons.refresh, size: 16),
                 label: const Text('重新分析'),
@@ -207,29 +169,37 @@ class _PolishDiagnosisCardState extends State<PolishDiagnosisCard> {
             ],
           ),
           const SizedBox(height: 10),
-          if (overall.isNotEmpty) ...[
+          if (score != null || overall.isNotEmpty)
+            Row(
+              children: [
+                if (score != null) ...[
+                  _ScoreBadge(score),
+                  const SizedBox(width: 14),
+                ],
+                Expanded(
+                  child: Text(
+                    overall.isNotEmpty ? overall : widget.summary,
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.55,
+                      fontWeight: FontWeight.w600,
+                      color: colors.ink,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else if (widget.summary.isNotEmpty)
             Text(
-              overall,
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.55,
-                fontWeight: FontWeight.w600,
-                color: colors.ink,
-              ),
+              widget.summary,
+              style: TextStyle(fontSize: 14, height: 1.65, color: colors.ink),
             ),
-            const SizedBox(height: 6),
-          ],
-          if (widget.summary.isNotEmpty && !foldSummary)
-            Text(widget.summary, style: summaryStyle),
+          const SizedBox(height: 14),
           _DiagnosisList(
             title: '主要问题',
             items: diagnosis?.problems ?? const [],
             color: context.polishWarning,
           ),
-          if (dimensions.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            for (final d in dimensions) _DimensionRow(d),
-          ],
           const SizedBox(height: 10),
           Row(
             children: [
@@ -326,79 +296,40 @@ class _DiagnosisList extends StatelessWidget {
   }
 }
 
-/// One rating as a three-step meter: weak fills one step, good fills all.
-class _DimensionRow extends StatelessWidget {
-  const _DimensionRow(this.dimension);
-  final PolishDimension dimension;
+/// The 1-10 score in a tinted square: 8+ ready to send, 6-7 needs key
+/// sections fixed, 5 or less needs the main experience rewritten.
+class _ScoreBadge extends StatelessWidget {
+  const _ScoreBadge(this.score);
+  final int score;
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final color = context.polishLevel(dimension.level);
-    final filled = switch (dimension.level) {
-      PolishLevel.good => 3,
-      PolishLevel.fair => 2,
-      PolishLevel.weak => 1,
-    };
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+    final (color, soft) = score >= 8
+        ? (colors.success, colors.successSoft)
+        : score >= 6
+        ? (colors.accent, colors.accentSoft)
+        : (context.polishWarning, colors.warningSoft);
+    return Container(
+      key: const ValueKey('resume-ai-score'),
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: soft,
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              SizedBox(
-                width: 84,
-                child: Text(
-                  dimension.title,
-                  style: TextStyle(fontSize: 14, color: colors.ink),
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    for (var i = 0; i < 3; i++) ...[
-                      if (i > 0) const SizedBox(width: 4),
-                      Expanded(
-                        child: Container(
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: i < filled ? color : colors.inset,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 52,
-                child: Text(
-                  dimension.levelLabel,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (dimension.level != PolishLevel.good) ...[
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.only(left: 84),
-              child: Text(
-                dimension.comment,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.55,
-                  color: colors.muted,
-                ),
-              ),
+          Text(
+            '$score',
+            style: TextStyle(
+              fontSize: 26,
+              height: 1.1,
+              fontWeight: FontWeight.w700,
+              color: color,
             ),
-          ],
+          ),
+          Text('/ 10', style: TextStyle(fontSize: 11, color: colors.muted)),
         ],
       ),
     );
@@ -469,7 +400,9 @@ class PolishChangeCard extends StatefulWidget {
     required this.location,
     required this.adopted,
     required this.onChanged,
-    this.placeholders = 0,
+    this.hints = const [],
+    this.values = const [],
+    this.onFill,
     this.relatedIssues = 0,
     this.onShowIssues,
   });
@@ -478,8 +411,10 @@ class PolishChangeCard extends StatefulWidget {
   final bool adopted;
   final ValueChanged<bool>? onChanged;
 
-  /// How many "【待补充】" facts the user must fill before adopting.
-  final int placeholders;
+  /// The "【待补充】" facts the user must fill before adopting, and what they
+  /// typed so far for each.
+  final List<String> hints, values;
+  final void Function(int index, String value)? onFill;
 
   /// Open questions about the same experience, shown so nobody adopts a
   /// rewrite without seeing the contradiction next to it.
@@ -491,6 +426,33 @@ class PolishChangeCard extends StatefulWidget {
 
 class _PolishChangeCardState extends State<PolishChangeCard> {
   bool showOriginal = false;
+  late final controllers = [
+    for (var i = 0; i < widget.hints.length; i++)
+      TextEditingController(text: widget.values.elementAtOrNull(i) ?? ''),
+  ];
+  late final focusNodes = [for (final _ in widget.hints) FocusNode()];
+
+  @override
+  void dispose() {
+    for (final c in controllers) {
+      c.dispose();
+    }
+    for (final f in focusNodes) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
+  int get missing => controllers.where((c) => c.text.trim().isEmpty).length;
+
+  void adopt() {
+    final empty = controllers.indexWhere((c) => c.text.trim().isEmpty);
+    if (empty >= 0) {
+      focusNodes[empty].requestFocus();
+      return;
+    }
+    widget.onChanged?.call(true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -519,12 +481,18 @@ class _PolishChangeCardState extends State<PolishChangeCard> {
                 ),
               ),
               const SizedBox(width: 8),
-              if (widget.placeholders > 0)
-                PolishPill(
-                  widget.adopted ? '已补充' : '需补充 ${widget.placeholders} 处',
-                  color: context.polishWarning,
-                  soft: colors.warningSoft,
-                )
+              if (widget.hints.isNotEmpty)
+                missing == 0
+                    ? PolishPill(
+                        '已补充',
+                        color: colors.success,
+                        soft: colors.successSoft,
+                      )
+                    : PolishPill(
+                        '需补充 $missing 处',
+                        color: context.polishWarning,
+                        soft: colors.warningSoft,
+                      )
               else if (!marked)
                 PolishPill('整段重写', color: colors.muted, soft: colors.inset),
             ],
@@ -641,6 +609,59 @@ class _PolishChangeCardState extends State<PolishChangeCard> {
             ),
             const SizedBox(height: 8),
           ],
+          if (widget.hints.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+              decoration: BoxDecoration(
+                color: colors.warningSoft,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Label('补充真实信息', color: context.polishWarning),
+                  const SizedBox(height: 4),
+                  Text(
+                    '填写后替换上方的待补充内容；没有对应信息就忽略这条，不要编造。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.55,
+                      color: colors.muted,
+                    ),
+                  ),
+                  for (var i = 0; i < widget.hints.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 8),
+                      child: TextField(
+                        key: ValueKey('resume-ai-fill-$path-$i'),
+                        controller: controllers[i],
+                        focusNode: focusNodes[i],
+                        enabled: widget.onFill != null,
+                        minLines: 1,
+                        maxLines: 4,
+                        style: TextStyle(fontSize: 14, color: colors.ink),
+                        onChanged: (v) {
+                          setState(() {});
+                          widget.onFill?.call(i, v);
+                        },
+                        decoration: InputDecoration(
+                          labelText: widget.hints[i],
+                          isDense: true,
+                          filled: true,
+                          fillColor: colors.surface,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           const SizedBox(height: 8),
           Row(
             children: [
@@ -658,105 +679,16 @@ class _PolishChangeCardState extends State<PolishChangeCard> {
               Expanded(
                 child: _ChoiceButton(
                   key: ValueKey('resume-ai-adopt-$path'),
-                  label: widget.placeholders == 0
-                      ? '采纳'
-                      : widget.adopted
-                      ? '修改补充'
-                      : '补充并采纳',
+                  label: '采纳',
                   primary: true,
                   selected: widget.adopted,
-                  onTap: widget.onChanged == null
-                      ? null
-                      : () => widget.onChanged!(true),
+                  onTap: widget.onChanged == null ? null : adopt,
                 ),
               ),
             ],
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Asks for the user's real facts in place of each placeholder; returns null
-/// when cancelled.
-Future<List<String>?> showPolishFillDialog(
-  BuildContext context,
-  PolishChange change, {
-  List<String>? initial,
-}) => showDialog<List<String>>(
-  context: context,
-  builder: (_) => _PolishFillDialog(change: change, initial: initial),
-);
-
-class _PolishFillDialog extends StatefulWidget {
-  const _PolishFillDialog({required this.change, this.initial});
-  final PolishChange change;
-  final List<String>? initial;
-  @override
-  State<_PolishFillDialog> createState() => _PolishFillDialogState();
-}
-
-class _PolishFillDialogState extends State<_PolishFillDialog> {
-  late final controllers = [
-    for (var i = 0; i < widget.change.placeholders.length; i++)
-      TextEditingController(text: widget.initial?.elementAtOrNull(i) ?? '')
-        ..addListener(() => setState(() {})),
-  ];
-
-  @override
-  void dispose() {
-    for (final c in controllers) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final hints = widget.change.placeholders;
-    final ready = controllers.every((c) => c.text.trim().isNotEmpty);
-    return AlertDialog(
-      title: const Text('补充真实信息'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '填写后替换建议中的待补充内容。没有对应信息时请忽略这条建议，不要编造。',
-              style: TextStyle(fontSize: 13, height: 1.6, color: colors.muted),
-            ),
-            for (var i = 0; i < hints.length; i++) ...[
-              const SizedBox(height: 12),
-              TextField(
-                key: ValueKey('resume-ai-fill-$i'),
-                controller: controllers[i],
-                autofocus: i == 0,
-                minLines: 1,
-                maxLines: 4,
-                decoration: InputDecoration(labelText: hints[i]),
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          key: const ValueKey('resume-ai-fill-confirm'),
-          onPressed: ready
-              ? () => Navigator.pop(context, [
-                  for (final c in controllers) c.text.trim(),
-                ])
-              : null,
-          child: const Text('采纳'),
-        ),
-      ],
     );
   }
 }

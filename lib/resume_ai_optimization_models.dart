@@ -24,10 +24,15 @@ class PolishChange {
     for (final m in _placeholder.allMatches(after)) m.group(1)!.trim(),
   ];
 
-  /// [after] with each placeholder replaced by the matching entry of [values].
+  /// [after] with each placeholder replaced by the matching entry of
+  /// [values]; placeholders without a value stay, so a partial fill previews.
   String fill(List<String> values) {
     var i = 0;
-    return after.replaceAllMapped(_placeholder, (_) => values[i++].trim());
+    return after.replaceAllMapped(_placeholder, (m) {
+      final value = i < values.length ? values[i].trim() : '';
+      i++;
+      return value.isEmpty ? m[0]! : value;
+    });
   }
 
   /// The same suggestion showing the user's filled text, for display.
@@ -68,36 +73,9 @@ class PolishIssue {
   };
 }
 
-enum PolishLevel { good, fair, weak }
-
-class PolishDimension {
-  const PolishDimension(this.key, this.level, this.comment);
-  final String key;
-  final PolishLevel level;
-  final String comment;
-  static const titles = {
-    'relevance': '岗位匹配度',
-    'specificity': '内容具体度',
-    'ownership': '职责清晰度',
-    'evidence': '成果与依据',
-  };
-  String get title => titles[key] ?? key;
-  String get levelLabel => switch (level) {
-    PolishLevel.good => '良好',
-    PolishLevel.fair => '一般',
-    PolishLevel.weak => '待加强',
-  };
-}
-
 class PolishDiagnosis {
-  const PolishDiagnosis(
-    this.overall,
-    this.dimensions, {
-    this.problems = const [],
-    this.score,
-  });
+  const PolishDiagnosis(this.overall, {this.problems = const [], this.score});
   final String overall;
-  final List<PolishDimension> dimensions;
 
   /// The main weaknesses of the whole resume, most damaging first.
   final List<String> problems;
@@ -112,39 +90,14 @@ class PolishDiagnosis {
 
   static PolishDiagnosis? from(Object? value) {
     if (value is! Map) return null;
-    final rows = <PolishDimension>[];
-    final raw = value['dimensions'];
-    if (raw is List) {
-      for (final key in PolishDimension.titles.keys) {
-        final row = raw.whereType<Map>().where((r) => r['key'] == key);
-        if (row.isEmpty) continue;
-        final level = PolishLevel.values
-            .where((l) => l.name == row.first['level'])
-            .firstOrNull;
-        final comment = '${row.first['comment'] ?? ''}'.trim();
-        if (level != null && comment.isNotEmpty) {
-          rows.add(PolishDimension(key, level, comment));
-        }
-      }
-    }
     final overall = '${value['overall'] ?? ''}'.trim();
     final problems = _list(value['problems']);
     final rawScore = value['score'];
     final score = rawScore is num && rawScore >= 1 && rawScore <= 10
         ? rawScore.round()
         : null;
-    if (overall.isEmpty &&
-        rows.isEmpty &&
-        problems.isEmpty &&
-        score == null) {
-      return null;
-    }
-    return PolishDiagnosis(
-      overall,
-      rows,
-      problems: problems,
-      score: score,
-    );
+    if (overall.isEmpty && problems.isEmpty && score == null) return null;
+    return PolishDiagnosis(overall, problems: problems, score: score);
   }
 }
 

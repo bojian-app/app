@@ -38,10 +38,6 @@ Map<String, dynamic> result() => {
       'score': 7,
       'overall': '项目职责清楚，但成果缺少依据',
       'problems': ['各项目重复通用流程职责', '两段任职之间相隔约 3 个月'],
-      'dimensions': [
-        {'key': 'relevance', 'level': 'good', 'comment': '前端经历与岗位一致'},
-        {'key': 'evidence', 'level': 'weak', 'comment': '平台项目未说明作用'},
-      ],
     },
     'changes': [
       {
@@ -118,8 +114,7 @@ void main() {
       expect(find.text('主要问题'), findsOneWidget);
       expect(find.text('各项目重复通用流程职责'), findsOneWidget);
       expect(find.text('两段任职之间相隔约 3 个月'), findsOneWidget);
-      expect(find.text('岗位匹配度'), findsOneWidget);
-      expect(find.text('待加强'), findsOneWidget);
+      expect(find.text('岗位匹配度'), findsNothing);
       // Only the diagnosis shows until an entry is opened.
       expect(find.text('平台 · 项目介绍'), findsNothing);
       expect(find.byKey(const ValueKey('resume-ai-apply')), findsNothing);
@@ -420,19 +415,23 @@ void main() {
     await open(tester, store);
     await tapKey(tester, 'resume-ai-stat-changes');
     expect(find.text('需补充 2 处'), findsOneWidget);
+    expect(find.text('补充真实信息'), findsOneWidget);
+    // Adopting with facts missing only moves focus to the first empty field.
     await tapKey(tester, 'resume-ai-adopt-projects.0.description');
-    final confirm = find.byKey(const ValueKey('resume-ai-fill-confirm'));
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    expect(find.text('需补充 2 处'), findsOneWidget);
     await tester.enterText(
-      find.byKey(const ValueKey('resume-ai-fill-0')),
+      find.byKey(const ValueKey('resume-ai-fill-projects.0.description-0')),
       '会员中心',
     );
+    await tester.pump();
+    expect(find.text('需补充 1 处'), findsOneWidget);
     await tester.enterText(
-      find.byKey(const ValueKey('resume-ai-fill-1')),
+      find.byKey(const ValueKey('resume-ai-fill-projects.0.description-1')),
       '注册转化提升',
     );
     await tester.pump();
-    await tester.tap(confirm);
+    expect(find.text('已补充'), findsOneWidget);
+    await tapKey(tester, 'resume-ai-adopt-projects.0.description');
     await tester.pumpAndSettle();
     expect(find.text('采纳 1 处，忽略 0 处'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('resume-ai-apply')));

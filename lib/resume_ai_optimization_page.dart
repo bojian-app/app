@@ -167,18 +167,10 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
     fold.reverse();
   }
 
-  /// Records the choice on [index] and turns to the next suggestion.
-  Future<void> decide(int index, PolishChange change, bool adopt) async {
+  /// Records the choice on [index] and turns to the next suggestion. The card
+  /// only offers adopting a placeholder rewrite once every fact is filled.
+  void decide(int index, PolishChange change, bool adopt) {
     final path = change.path;
-    if (adopt && change.placeholders.isNotEmpty) {
-      final values = await showPolishFillDialog(
-        context,
-        change,
-        initial: fills[path],
-      );
-      if (!valid || values == null) return;
-      fills[path] = values;
-    }
     choose([path], adopt);
     Future<void>.delayed(const Duration(milliseconds: 180), () {
       if (!mounted || view != PolishView.changes || page != index) return;
@@ -189,6 +181,17 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
         curve: Curves.easeOutCubic,
       );
     });
+  }
+
+  /// Keeps what the user typed for a placeholder; clearing one withdraws the
+  /// adoption, since the server rejects a rewrite with a fact missing.
+  void fill(PolishChange change, int index, String value) {
+    final path = change.path;
+    setState(() {
+      (fills[path] ??= List.filled(change.placeholders.length, ''))[index] =
+          value;
+    });
+    if (value.trim().isEmpty && selected[path] == true) choose([path], false);
   }
 
   Future<void> restore() async {
@@ -732,7 +735,9 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
                       : change.filled(change.fill(fills[change.path]!)),
                   location: location,
                   adopted: selected[change.path] ?? false,
-                  placeholders: change.placeholders.length,
+                  hints: change.placeholders,
+                  values: fills[change.path] ?? const [],
+                  onFill: busy ? null : (index, v) => fill(change, index, v),
                   onChanged: busy ? null : (v) => decide(i, change, v),
                   relatedIssues: related.length,
                   onShowIssues: related.isEmpty
