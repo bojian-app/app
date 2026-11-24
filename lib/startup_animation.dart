@@ -8,7 +8,7 @@ import 'design.dart';
 /// How long the cold-start welcome plays; startup waits at least this long.
 const startupAnimationDuration = Duration(milliseconds: 1600);
 
-/// Entirely local, and played only once per cold start: the mascot otter
+/// Entirely local, and played only once per cold start: the app icon's otter
 /// leaps out of the water, lands with a splash, blinks and writes the line on
 /// its resume.
 class StartupAnimation extends StatefulWidget {
@@ -42,7 +42,7 @@ class _StartupAnimationState extends State<StartupAnimation>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final next = const ResizeImage(
-      AssetImage('assets/branding/otter.png'),
+      AssetImage('assets/branding/app_icon.png'),
       width: 512,
     ).resolve(createLocalImageConfiguration(context));
     if (next.key != stream?.key) {
@@ -160,7 +160,7 @@ class _WaterOtterPainter extends CustomPainter {
   final double otterSize;
   final bool dark;
 
-  // Colours and positions sampled from assets/branding/otter.png, in its
+  // Colours and positions sampled from assets/branding/app_icon.png, in its
   // 1024-pixel space, so the blink and line overlays sit exactly on the icon.
   static const _eye = Offset(520.5, 234.2);
   static const _bodyNearEye = Color(0xFF2871F4);
