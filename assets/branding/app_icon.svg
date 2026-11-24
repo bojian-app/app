@@ -4,33 +4,26 @@
       <stop offset="0" stop-color="#22C47A"/>
       <stop offset="1" stop-color="#0C9A57"/>
     </linearGradient>
-    <path id="leaf" d="M0 0 C 40 -46 120 -58 190 -40 C 130 6 60 22 0 0Z"/>
   </defs>
   <rect id="background" width="1024" height="1024" fill="url(#bg)"/>
-  <g fill="none" stroke="#fff" stroke-width="52" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M110 412 H 300 L 118 640 H 310"/>
-    <path d="M418 388 L 360 506"/>
-    <path d="M398 470 V 646"/>
-    <path d="M466 474 H 640"/>
-    <path d="M552 398 V 480 Q 548 588 470 642"/>
-    <path d="M574 520 V 610 Q 574 640 606 640 H 640 V 604"/>
-  </g>
-  <circle cx="612" cy="410" r="24" fill="#fff"/>
-  <g transform="translate(588 266) scale(.46)">
-    <g fill="#D9FF6B">
-      <use href="#leaf" transform="translate(262 352) rotate(-40) scale(1.4)"/>
-      <use href="#leaf" transform="translate(296 350) rotate(2) scale(1.05)"/>
-      <use href="#leaf" transform="translate(536 352) rotate(-40) scale(1.4)"/>
-      <use href="#leaf" transform="translate(570 350) rotate(2) scale(1.05)"/>
+  <g transform="translate(512 512) scale(.8) translate(-522 -508)" fill="none" stroke="#fff" stroke-width="50" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M112 400 H 300 L 118 628 H 310"/>
+    <path d="M414 372 L 360 486"/>
+    <path d="M394 452 V 640"/>
+    <path d="M462 462 H 640"/>
+    <path d="M550 384 V 470 Q 546 580 468 636"/>
+    <path d="M574 512 V 604 Q 574 634 606 634 H 640 V 596"/>
+    <circle cx="612" cy="398" r="26" fill="#fff" stroke="none"/>
+    <path d="M734 362 L 700 410"/>
+    <path d="M716 388 H 792"/>
+    <path d="M862 362 L 828 410"/>
+    <path d="M844 388 H 932"/>
+    <circle cx="712" cy="464" r="26" fill="#fff" stroke="none"/>
+    <path d="M712 510 V 640"/>
+    <path d="M762 462 H 930 V 616 Q 930 640 906 640 H 894"/>
+    <g stroke-width="32">
+      <path d="M780 524 H 872 V 616 H 780 Z"/>
+      <path d="M780 570 H 872"/>
     </g>
-    <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="113">
-      <path d="M276 536 V 818"/>
-      <path d="M392 436 H 758 V 786 Q 758 834 710 834 H 690"/>
-    </g>
-    <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="84">
-      <path d="M432 556 H 630 V 776 H 432 Z"/>
-      <path d="M432 666 H 630"/>
-    </g>
-    <circle cx="276" cy="436" r="60" fill="#fff"/>
   </g>
 </svg>
