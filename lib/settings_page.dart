@@ -29,8 +29,10 @@ import 'profile_avatar.dart';
 import 'sign_out_dialog.dart';
 
 const _rowPadding = 16.0;
-const _avatarSize = 42.0;
+const _avatarSize = 36.0;
 const _labelOffset = _avatarSize + 12;
+// Compact text buttons keep a 32pt-high tap area instead of Material's 48.
+const _compactButtonSize = Size(40, 32);
 const _settingsChannel = MethodChannel('cn.kelance.bojian/settings');
 
 class SettingsPage extends StatefulWidget {
@@ -237,7 +239,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 _rowPadding,
                 0,
                 _rowPadding,
-                28,
+                20,
               ),
               child: Row(
                 children: [
@@ -254,11 +256,11 @@ class _SettingsPageState extends State<SettingsPage> {
                         Text(
                           userDisplayName(store.name),
                           style: const TextStyle(
-                            fontSize: 17,
+                            fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           '用户 ID：${store.publicID.isEmpty ? store.userID : store.publicID}',
                           style: TextStyle(
@@ -272,8 +274,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   TextButton(
                     style: TextButton.styleFrom(
                       alignment: Alignment.centerRight,
-                      minimumSize: const Size(48, 48),
+                      minimumSize: _compactButtonSize,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       padding: EdgeInsets.zero,
+                      textStyle: const TextStyle(fontSize: 13),
                     ),
                     onPressed: () async {
                       await Clipboard.setData(
@@ -303,10 +307,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   key: const ValueKey('settings-ai-consent'),
                   icon: AppIcons.aiOptimize,
                   title: 'AI 功能授权',
-                  trailing: Switch.adaptive(
-                    padding: EdgeInsets.zero,
+                  trailing: _SettingsSwitch(
                     value: aiConsentUser == store.userID && aiConsent == true,
-                    activeTrackColor: context.colors.palette.seed,
                     onChanged: aiConsent == null ? null : _aiConsent,
                   ),
                 ),
@@ -315,13 +317,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: '公开个人介绍',
                   trailing: savingPrivacy
                       ? const SizedBox.square(
-                          dimension: 20,
+                          dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Switch.adaptive(
-                          padding: EdgeInsets.zero,
+                      : _SettingsSwitch(
                           value: store.publicProfile,
-                          activeTrackColor: context.colors.palette.seed,
                           onChanged: savingPrivacy ? null : _privacy,
                         ),
                 ),
@@ -425,13 +425,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 foregroundColor: Theme.of(context).colorScheme.error,
                 backgroundColor: context.colors.surface,
                 side: BorderSide(color: context.colors.border),
-                minimumSize: const Size.fromHeight(48),
+                minimumSize: const Size.fromHeight(40),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 textStyle: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ).withoutHover(),
               child: Text(signingOut ? '正在退出…' : '退出登录'),
@@ -495,12 +496,12 @@ class _SettingsGroup extends StatelessWidget {
   final double dividerInset;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 24),
+    padding: const EdgeInsets.only(bottom: 18),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: _rowPadding, bottom: 10),
+          padding: const EdgeInsets.only(left: _rowPadding, bottom: 8),
           child: Text(
             title,
             style: TextStyle(
@@ -512,7 +513,7 @@ class _SettingsGroup extends StatelessWidget {
         ),
         Material(
           color: context.colors.surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(14),
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
@@ -531,6 +532,29 @@ class _SettingsGroup extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+/// Platform switch drawn at three quarters of its native size so a row
+/// with a switch is no taller than one with a chevron.
+class _SettingsSwitch extends StatelessWidget {
+  const _SettingsSwitch({required this.value, required this.onChanged});
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 24,
+    child: FittedBox(
+      alignment: Alignment.centerRight,
+      child: Switch.adaptive(
+        padding: EdgeInsets.zero,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        value: value,
+        activeTrackColor: context.colors.palette.seed,
+        onChanged: onChanged,
+      ),
     ),
   );
 }
@@ -558,7 +582,7 @@ class _SettingsRow extends StatelessWidget {
     child: Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: _rowPadding,
-        vertical: 17,
+        vertical: 12,
       ),
       child: Row(
         children: [
@@ -567,7 +591,7 @@ class _SettingsRow extends StatelessWidget {
               width: _labelOffset,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: AppIcon(icon!, size: 20, color: context.colors.ink),
+                child: AppIcon(icon!, size: 18, color: context.colors.ink),
               ),
             ),
           ],
@@ -579,12 +603,12 @@ class _SettingsRow extends StatelessWidget {
                   title,
                   style: TextStyle(
                     color: titleColor ?? context.colors.ink,
-                    fontSize: 14,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 if (subtitle != null) ...[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 3),
                   Text(
                     subtitle!,
                     style: TextStyle(
@@ -608,7 +632,7 @@ class _SettingsRow extends StatelessWidget {
             trailing!
           else if (onTap != null) ...[
             const SizedBox(width: 8),
-            AppIcon(AppIcons.forward, size: 16, color: context.colors.muted),
+            AppIcon(AppIcons.forward, size: 14, color: context.colors.muted),
           ],
         ],
       ),
@@ -900,7 +924,8 @@ class _SecurityPageState extends State<AccountSecurityPage> {
               TextButton(
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
-                  minimumSize: const Size(48, 48),
+                  minimumSize: _compactButtonSize,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   alignment: Alignment.centerRight,
                 ),
                 onPressed: busy ? null : () => revokeSession(session),
