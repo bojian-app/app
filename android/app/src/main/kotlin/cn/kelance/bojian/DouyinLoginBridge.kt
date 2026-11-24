@@ -115,7 +115,7 @@ class DouyinLoginBridge(private val activity: Activity, messenger: BinaryMesseng
         override fun getInstallId() = ""
         override fun getChannel() = ""
         override fun getAppId() = activity.packageName
-        override fun getAppName() = "博简"
+        override fun getAppName() = "拾页"
         override fun getUpdateVersionCode() = getVersionCode()
         @Suppress("DEPRECATION")
         override fun getVersionCode() = activity.packageManager.getPackageInfo(activity.packageName, 0).versionCode.toString()

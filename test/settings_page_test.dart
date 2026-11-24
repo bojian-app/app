@@ -467,8 +467,8 @@ void main() {
       await tapText(tester, '图片缓存');
       await tapText(tester, '清理');
       expect(store.isAuthenticated, true);
-      await tapText(tester, '关于博简');
-      expect(find.text('博简'), findsOneWidget);
+      await tapText(tester, '关于拾页');
+      expect(find.text('拾页'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

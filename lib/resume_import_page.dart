@@ -248,7 +248,7 @@ class _ImportResumeState extends State<ImportResume> {
               const SizedBox(height: 14),
               Text(
                 Platform.isAndroid
-                    ? '在微信打开简历文件 → 点击右上角“…” → 用其他应用打开 → 选择“博简”。返回后会自动上传并解析，无需再次选择文件。'
+                    ? '在微信打开简历文件 → 点击右上角“…” → 用其他应用打开 → 选择“拾页”。返回后会自动上传并解析，无需再次选择文件。'
                     : '先将微信中的简历保存到“文件”，再选择已保存的文件上传。',
                 style: TextStyle(
                   fontSize: 14,

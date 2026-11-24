@@ -98,7 +98,7 @@ void main() {
       expect(find.byType(InvitationDialog), findsOneWidget);
       expect(find.text('我的二维码'), findsOneWidget);
       expect(find.text('BJ-6018'), findsOneWidget);
-      expect(find.bySemanticsLabel('博简邀请下载二维码'), findsOneWidget);
+      expect(find.bySemanticsLabel('拾页邀请下载二维码'), findsOneWidget);
       expect(tester.takeException(), isNull);
       if (size.width == 390) {
         await tester.runAsync(() async {

@@ -557,7 +557,7 @@ class _WalletTicketState extends State<_WalletTicket> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    '博简会员',
+                                    '拾页会员',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: c.muted,

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>博简</string>
+	<string>拾页</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>博简</string>
+	<string>拾页</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -38,7 +38,7 @@
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>用于您主动扫描博简官网登录二维码、拍摄认证所需的证件照片，以及经您同意后进行本人活体人脸核验。</string>
+	<string>用于您主动扫描拾页官网登录二维码、拍摄认证所需的证件照片，以及经您同意后进行本人活体人脸核验。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于您主动选择二维码图片、头像、简历照片及认证所需的证件照片；证件照片仅在您同意后提交身份证识别。</string>
 	<key>LSApplicationQueriesSchemes</key>

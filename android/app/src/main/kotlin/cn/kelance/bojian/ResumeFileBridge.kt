@@ -55,9 +55,9 @@ class ResumeFileBridge(private val activity: Activity, messenger: BinaryMessenge
                             try {
                                 val resolver = activity.contentResolver
                                 val values = ContentValues().apply {
-                                    put(MediaStore.Images.Media.DISPLAY_NAME, "博简邀请-${System.currentTimeMillis()}.png")
+                                    put(MediaStore.Images.Media.DISPLAY_NAME, "拾页邀请-${System.currentTimeMillis()}.png")
                                     put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/博简")
+                                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/拾页")
                                     put(MediaStore.Images.Media.IS_PENDING, 1)
                                 }
                                 uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
@@ -80,7 +80,7 @@ class ResumeFileBridge(private val activity: Activity, messenger: BinaryMessenge
                             activity.startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                                 addCategory(Intent.CATEGORY_OPENABLE)
                                 type = "image/png"
-                                putExtra(Intent.EXTRA_TITLE, "博简邀请二维码.png")
+                                putExtra(Intent.EXTRA_TITLE, "拾页邀请二维码.png")
                             }, saveRequestCode)
                         } catch (_: Exception) {
                             file.delete(); saveResult = null; saveSource = null

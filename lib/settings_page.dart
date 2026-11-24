@@ -408,7 +408,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   final updates = AppUpdates.instance;
                   return _SettingsRow(
                     icon: AppIcons.about,
-                    title: '关于博简',
+                    title: '关于拾页',
                     value: updates.hasUpdate ? null : 'v$version',
                     trailing: updates.hasUpdate ? const _NewVersionTag() : null,
                     onTap: () => openPage(context, AboutPage(store: store)),
@@ -807,7 +807,7 @@ class _SecurityPageState extends State<AccountSecurityPage> {
     final confirmed = await showAppConfirmation(
       context,
       title: '退出该设备？',
-      content: Text(current ? '当前设备将退出登录。' : '该设备需要重新登录后才能继续使用博简。'),
+      content: Text(current ? '当前设备将退出登录。' : '该设备需要重新登录后才能继续使用拾页。'),
       confirmLabel: '退出登录',
       destructive: true,
     );
@@ -1029,7 +1029,7 @@ class _SecurityPageState extends State<AccountSecurityPage> {
   );
 }
 
-/// 设置里“关于博简”的新版本提示：红点加文字。
+/// 设置里“关于拾页”的新版本提示：红点加文字。
 class _NewVersionTag extends StatelessWidget {
   const _NewVersionTag();
 

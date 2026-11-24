@@ -94,7 +94,7 @@ void main() {
         contains('版本：V${legalAgreementVersions['privacy']}'),
       );
       for (final document in [terms, privacy]) {
-        final date = document == terms ? '2026年11月17日' : '2026年11月24日';
+        const date = '2026年11月24日';
         expect(document.metadata, contains('更新日期：$date'));
         expect(document.metadata, contains('生效日期：$date'));
         expect(document.plainText, contains('珠海科岚盛网络科技有限公司'));
