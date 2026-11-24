@@ -1,27 +1,29 @@
 // Run from the project root: swift scripts/generate_app_icons.swift
-// Generates Android and iOS icons from the shared mobile app artwork.
+// Generates Android and iOS icons from the launcher artwork rendered from
+// assets/branding/app_icon.svg.
 import AppKit
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let source = NSImage(contentsOf: root.appendingPathComponent("assets/branding/app_icon.png"))!
-// Keep the original artwork intact; apply the same inset to every app icon.
-let artworkScale: CGFloat = 0.855
 
-func png(_ size: Int, opaque: Bool = false, scale: CGFloat = 1) -> Data {
+func image(_ path: String) -> CGImage {
+    NSImage(contentsOf: root.appendingPathComponent(path))!
+        .cgImage(forProposedRect: nil, context: nil, hints: nil)!
+}
+
+// Full-bleed square: the platforms apply their own corner masks.
+let square = image("assets/branding/launcher_icon.png")
+// The lettering alone, for the adaptive icon's foreground layer.
+let foreground = image("assets/branding/launcher_foreground.png")
+
+func png(_ source: CGImage, _ size: Int, opaque: Bool, scale: CGFloat = 1) -> Data {
     let alpha: CGImageAlphaInfo = opaque ? .noneSkipLast : .premultipliedLast
     let context = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8,
         bytesPerRow: size * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
         bitmapInfo: alpha.rawValue)!
     context.interpolationQuality = .high
     let side = CGFloat(size)
-    if opaque {
-        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
-        context.fill(CGRect(x: 0, y: 0, width: side, height: side))
-    }
-    let renderedScale = scale * artworkScale
-    let inset = side * (1 - renderedScale) / 2
-    let original = source.cgImage(forProposedRect: nil, context: nil, hints: nil)!
-    context.draw(original, in: CGRect(x: inset, y: inset, width: side * renderedScale, height: side * renderedScale))
+    let inset = side * (1 - scale) / 2
+    context.draw(source, in: CGRect(x: inset, y: inset, width: side * scale, height: side * scale))
     let bitmap = NSBitmapImageRep(cgImage: context.makeImage()!)
     return bitmap.representation(using: .png, properties: [:])!
 }
@@ -34,12 +36,12 @@ func write(_ data: Data, _ path: String) throws {
 }
 
 for (density, size) in [("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)] {
-    try write(png(size, opaque: true), "android/app/src/main/res/mipmap-\(density)/ic_launcher.png")
+    try write(png(square, size, opaque: true), "android/app/src/main/res/mipmap-\(density)/ic_launcher.png")
 }
-// Keep the artwork inside the adaptive icon's central safe region.
-try write(png(432, scale: 0.7), "android/app/src/main/res/drawable-xxxhdpi/ic_launcher_foreground.png")
-try write(Data(contentsOf: root.appendingPathComponent("assets/branding/app_icon.png")),
-    "android/app/src/main/res/drawable-nodpi/startup_mascot.png")
+// The artwork's 1024 px correspond to the 72 dp an adaptive icon shows of its
+// 108 dp layer, so the lettering keeps the proportions of the square icon.
+try write(png(foreground, 432, opaque: false, scale: 72.0 / 108.0),
+    "android/app/src/main/res/drawable-xxxhdpi/ic_launcher_foreground.png")
 
 do {
     let directory = "ios/Runner/Assets.xcassets/AppIcon.appiconset"
@@ -48,9 +50,9 @@ do {
     for entry in catalog["images"] as! [[String: String]] {
         let points = Double(entry["size"]!.components(separatedBy: "x")[0])!
         let scale = Double(entry["scale"]!.dropLast())!
-        try write(png(Int(points * scale), opaque: true), "\(directory)/\(entry["filename"]!)")
+        try write(png(square, Int(points * scale), opaque: true), "\(directory)/\(entry["filename"]!)")
     }
 }
 
-try write(png(1024, opaque: true), "build/previews/app_icon_store_1024.png")
-print("Generated application icons from assets/branding/app_icon.png")
+try write(png(square, 1024, opaque: true), "build/previews/app_icon_store_1024.png")
+print("Generated application icons from assets/branding/launcher_icon.png")

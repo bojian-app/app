@@ -508,7 +508,7 @@ flutter build ios --release --no-codesign --dart-define=BOJIAN_ENV=production
 
 ## 资源与工具
 
-- `swift scripts/generate_app_icons.swift`：在 macOS 上从 `assets/branding/app_icon.png` 生成 Android/iOS 图标及商店图标预览。鸿蒙资源由其宿主工程维护。
+- `swift scripts/generate_app_icons.swift`：在 macOS 上从 `assets/branding/launcher_icon.png`（满版方图）和 `launcher_foreground.png`（自适应图标前景）生成 Android/iOS 图标及商店图标预览。三张图标 PNG 均由 `assets/branding/app_icon.svg` 以 1024 像素渲染：`launcher_icon.png` 为原图，`app_icon.png` 为 App 内和官网使用的圆角版（圆角 22.37%，角外透明），`launcher_foreground.png` 隐藏 `#background` 后透明导出。Android 自适应图标背景为 `drawable/ic_launcher_background.xml` 渐变，颜色与 SVG 一致。启动动画的水獭为 `assets/branding/otter.png`。鸿蒙资源由其宿主工程维护。
 - `sh scripts/generate_rpc.sh`：使用 `protoc` 和 `protoc_plugin`，从认证协议更新 `lib/api/generated/auth.pb.dart`。业务接口使用 HTTP JSON。
 - `tool/api_probe.dart`：服务连通性诊断工具。
 - `tool/verify_resume_native_export.py`：检查测试生成的 PDF/Word 原生文字及可编辑性。

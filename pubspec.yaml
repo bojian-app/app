@@ -92,6 +92,7 @@ flutter:
     - assets/invitation/icons/
     - assets/customer_service/
     - assets/branding/app_icon.png
+    - assets/branding/otter.png
     - assets/membership/platinum_emblem_blue.png
     - assets/membership/chip_otter.png
     - assets/membership/invite_badge.png
