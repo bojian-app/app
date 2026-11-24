@@ -104,7 +104,7 @@ const membershipFaqs = [
     '到期会自动扣费吗？',
     '默认是一次性购买，不会自动扣费，到期后恢复为免费用户，已编辑的简历和导出的文件都会保留。iPhone 下单时勾选“自动续费”才会由 App Store 到期自动续订，可在 App Store 订阅管理中取消。',
   ),
-  ('会员能在其他手机上用吗？', '可以。会员绑定最优简账号，登录同一账号的手机都能使用会员权益。'),
+  ('会员能在其他手机上用吗？', '可以。会员绑定Z优简账号，登录同一账号的手机都能使用会员权益。'),
   (
     '邀请好友能得到什么？',
     '好友用你的邀请码注册并绑定手机号后，你获得三天会员体验包：到账起 3 天内享受会员权益（免广告、付费模板免费用），另含 AI 简历生成 1 次、AI 简历优化 1 次、单段生成 10 次，到期清零。',
@@ -647,7 +647,7 @@ class _MetalMembershipCard extends StatelessWidget {
       final radius = width * .045;
       final inset = 20 * k;
       final ends = endsAt;
-      final name = store.name.isEmpty ? '最优简用户' : store.name;
+      final name = store.name.isEmpty ? 'Z优简用户' : store.name;
       Widget? badge;
       if (membershipBadgeAsset != null) {
         badge = Image.asset(

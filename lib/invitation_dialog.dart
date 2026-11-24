@@ -199,7 +199,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
             scene: action == 'timeline'
                 ? WeChatScene.timeline
                 : WeChatScene.session,
-            title: '邀请你加入最优简',
+            title: '邀请你加入Z优简',
           ),
         );
         if (!launched) throw StateError('无法打开微信，请重试');
@@ -209,11 +209,11 @@ class _InvitationDialogState extends State<InvitationDialog> {
         await SharePlus.instance.share(
           ShareParams(
             files: [
-              XFile.fromData(png, mimeType: 'image/png', name: '最优简邀请二维码.png'),
+              XFile.fromData(png, mimeType: 'image/png', name: 'Z优简邀请二维码.png'),
             ],
-            fileNameOverrides: ['最优简邀请二维码.png'],
-            title: '邀请你加入最优简',
-            text: '注册最优简后，在“邀请好友”里填写我的邀请码：$code\n$invitationLink',
+            fileNameOverrides: ['Z优简邀请二维码.png'],
+            title: '邀请你加入Z优简',
+            text: '注册Z优简后，在“邀请好友”里填写我的邀请码：$code\n$invitationLink',
             sharePositionOrigin: box == null
                 ? null
                 : Rect.fromPoints(
@@ -341,7 +341,7 @@ class _InvitationDialogState extends State<InvitationDialog> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Semantics(
-          label: '最优简邀请下载二维码',
+          label: 'Z优简邀请下载二维码',
           image: true,
           child: CustomPaint(painter: InvitationQrPainter(invitationLink)),
         ),

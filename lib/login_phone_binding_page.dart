@@ -119,7 +119,7 @@ class _LoginPhoneBindingPageState extends State<LoginPhoneBindingPage>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${widget.provider}授权成功。为保障账号安全，请验证手机号后完成登录；该手机号已注册最优简时，将直接登录原账号。',
+                    '${widget.provider}授权成功。为保障账号安全，请验证手机号后完成登录；该手机号已注册Z优简时，将直接登录原账号。',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.5,

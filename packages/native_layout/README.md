@@ -1,4 +1,4 @@
-# 最优简原生模板协议 v1
+# Z优简原生模板协议 v1
 
 `native_layout.dart` 同时用于正式 App 和 `tools/native_renderer` 的发布前渲染检查。修改排版规则时同时重建两个目标，并更新 `native-layout-v1-20261031` 的渲染器版本和对应模板检查结果。
 

@@ -216,7 +216,7 @@ class _SharedResumeAttachment extends StatelessWidget {
             const SizedBox(width: 4),
             Flexible(
               child: Text(
-                '最优简',
+                'Z优简',
                 style: TextStyle(fontSize: 10, color: context.colors.muted),
               ),
             ),

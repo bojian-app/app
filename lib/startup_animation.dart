@@ -80,7 +80,7 @@ class _StartupAnimationState extends State<StartupAnimation>
               child: SizedBox(
                 width: constraints.maxWidth,
                 child: Semantics(
-                  label: '最优简，正在准备应用',
+                  label: 'Z优简，正在准备应用',
                   child: ExcludeSemantics(
                     child: AnimatedBuilder(
                       animation: controller,
@@ -110,7 +110,7 @@ class _StartupAnimationState extends State<StartupAnimation>
                               child: Transform.translate(
                                 offset: Offset(0, (1 - title) * 10),
                                 child: Text(
-                                  '最优简',
+                                  'Z优简',
                                   style: TextStyle(
                                     fontSize: 30,
                                     fontWeight: FontWeight.w800,

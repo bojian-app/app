@@ -35,7 +35,7 @@ class _AgreementDialogState extends State<AgreementDialog> {
       content: Text.rich(
         TextSpan(
           children: [
-            const TextSpan(text: '欢迎使用最优简。请阅读'),
+            const TextSpan(text: '欢迎使用Z优简。请阅读'),
             TextSpan(text: '《用户协议》', style: linkStyle, recognizer: terms),
             const TextSpan(text: '和'),
             TextSpan(text: '《隐私政策》', style: linkStyle, recognizer: privacy),

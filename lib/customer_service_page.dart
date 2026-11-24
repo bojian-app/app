@@ -33,8 +33,8 @@ String _orderIcon(String title, {Object? category}) => switch (category) {
   'TEMPLATE' => 'template',
   _ => switch (title.trim()) {
     // 改名前的订单仍以“博简”开头。
-    '最优简会员月卡' || '博简会员月卡' || '会员月卡' || '月卡' => 'month_card',
-    '最优简会员年卡' || '博简会员年卡' || '会员年卡' || '年卡' => 'year_card',
+    'Z优简会员月卡' || '博简会员月卡' || '会员月卡' || '月卡' => 'month_card',
+    'Z优简会员年卡' || '博简会员年卡' || '会员年卡' || '年卡' => 'year_card',
     _ => 'wallet',
   },
 };
@@ -821,7 +821,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '最优简客服中心',
+                    'Z优简客服中心',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

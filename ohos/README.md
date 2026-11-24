@@ -1,6 +1,6 @@
-# 最优简 HarmonyOS 接入工程（尚未可运行）
+# Z优简 HarmonyOS 接入工程（尚未可运行）
 
-包名：`cn.kelance.bojian`。应用显示名称：最优简。该目录是已生成的 Flutter 鸿蒙宿主工程，加载仓库根目录的 Flutter 业务代码；不是独立的演示应用，也尚未产出可安装或可申报的鸿蒙版本。
+包名：`cn.kelance.bojian`。应用显示名称：Z优简。该目录是已生成的 Flutter 鸿蒙宿主工程，加载仓库根目录的 Flutter 业务代码；不是独立的演示应用，也尚未产出可安装或可申报的鸿蒙版本。
 
 ## 工程来源
 
@@ -25,7 +25,7 @@
 
 ## 华为账号准备
 
-在华为 AppGallery Connect 创建鸿蒙应用：名称“最优简”、包名 `cn.kelance.bojian`。在 DevEco Studio 登录同一账号，为本工程配置真实签名和调试设备。自动签名可能修改 `build-profile.json5`：不要提交含密码、私钥路径等本机签名配置。
+在华为 AppGallery Connect 创建鸿蒙应用：名称“Z优简”、包名 `cn.kelance.bojian`。在 DevEco Studio 登录同一账号，为本工程配置真实签名和调试设备。自动签名可能修改 `build-profile.json5`：不要提交含密码、私钥路径等本机签名配置。
 
 微信开放平台的 Identifier 必须来自真实签名 Profile 的 `app-identifier` / 应用签名信息，不能用包名、Android MD5 或随机值代替。不要将私钥、证书密码发到聊天或提交到仓库。
 

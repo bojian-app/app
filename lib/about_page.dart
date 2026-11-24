@@ -73,7 +73,7 @@ class _AboutPageState extends State<AboutPage> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: colors.surface,
       appBar: AppPageBar(
-        title: const Text('关于最优简'),
+        title: const Text('关于Z优简'),
         backgroundColor: colors.surface,
       ),
       body: ListenableBuilder(
@@ -166,7 +166,7 @@ class _Identity extends StatelessWidget {
       ),
       const SizedBox(height: 16),
       Text(
-        '最优简',
+        'Z优简',
         style: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w600,

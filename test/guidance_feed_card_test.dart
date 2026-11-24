@@ -69,7 +69,7 @@ void main() {
             tester.getTopLeft(resume).dx,
           );
           expect(
-            tester.getTopLeft(find.text('最优简')).dy,
+            tester.getTopLeft(find.text('Z优简')).dy,
             greaterThan(tester.getBottomLeft(participants).dy),
           );
           expect(find.text('已有123人参与'), findsOneWidget);

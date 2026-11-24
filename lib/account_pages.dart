@@ -92,7 +92,7 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
           textInputAction: TextInputAction.search,
           onSubmitted: (_) => search(),
           decoration: InputDecoration(
-            hintText: '搜索昵称或最优简 ID',
+            hintText: '搜索昵称或Z优简 ID',
             suffixIcon: IconButton(
               onPressed: loading ? null : search,
               tooltip: '搜索用户',
@@ -105,7 +105,7 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
         if (error != null)
           Text(error!, style: TextStyle(color: context.colors.muted)),
         if (searched && results.isEmpty && error == null)
-          const EmptyState('没有找到匹配的用户。', '试试其他昵称或最优简 ID', compact: true),
+          const EmptyState('没有找到匹配的用户。', '试试其他昵称或Z优简 ID', compact: true),
         for (final user in results)
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -767,7 +767,7 @@ Future<void> showAccountMenu(BuildContext context, AppStore store) async {
                               if (membershipPageAvailable)
                                 _menu(
                                   context,
-                                  '最优简会员',
+                                  'Z优简会员',
                                   AppIcons.membership,
                                   () => openDestination(
                                     menuContext,
@@ -1590,7 +1590,7 @@ class _VerificationPageState extends State<VerificationPage> {
             ),
             const SizedBox(height: 18),
             Text(
-              '提交证件资料请使用最优简桌面端，认证结果会同步到这里。',
+              '提交证件资料请使用Z优简桌面端，认证结果会同步到这里。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
