@@ -325,7 +325,7 @@ class _AppQRScannerState extends State<AppQRScanner>
             children: [
               Text(
                 error.errorCode == MobileScannerErrorCode.permissionDenied
-                    ? '未获得相机权限，请在系统设置中允许拾页使用相机后重试'
+                    ? '未获得相机权限，请在系统设置中允许最优简使用相机后重试'
                     : '相机暂不可用，请检查相机后重试',
                 style: const TextStyle(color: Colors.white, height: 1.5),
                 textAlign: TextAlign.center,

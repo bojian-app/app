@@ -66,7 +66,7 @@ Future<Uint8List> createInvitationQrPng({
     painter.paint(canvas, Offset((size.width - painter.width) / 2, y));
   }
 
-  write('邀请你加入拾页', 55, 56, const Color(0xFF182A96));
+  write('邀请你加入最优简', 55, 56, const Color(0xFF182A96));
   write('扫码下载，注册后填写邀请码', 145, 33, const Color(0xFF535B8C));
   canvas.save();
   canvas.translate(100, 220);

@@ -7,7 +7,7 @@ import 'app_icons.dart';
 const brandBlue = Color(0xFF2867EE);
 
 enum AppAccent {
-  blue('拾页蓝', brandBlue),
+  blue('最优简蓝', brandBlue),
   warm('珊瑚暖色', Color(0xFFC64350));
 
   const AppAccent(this.label, this.seed);

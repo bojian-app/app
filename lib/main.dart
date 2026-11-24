@@ -270,7 +270,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       child: home,
       builder: (context, appearance, home) => MaterialApp(
         themeAnimationStyle: AnimationStyle.noAnimation,
-        title: '拾页',
+        title: '最优简',
         locale: const Locale('zh', 'CN'),
         supportedLocales: const [Locale('zh', 'CN')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,

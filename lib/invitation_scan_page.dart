@@ -47,7 +47,7 @@ class _InvitationScanPageState extends State<InvitationScanPage> {
     }
     // The scanner stops after one result; remount it for another try.
     setState(() => _scannerKey = UniqueKey());
-    toast(context, '请扫描好友分享的拾页邀请二维码');
+    toast(context, '请扫描好友分享的最优简邀请二维码');
   }
 
   @override

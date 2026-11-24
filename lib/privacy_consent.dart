@@ -42,7 +42,7 @@ class PrivacyConsent {
         builder: (dialogContext) => AppConfirmationDialog(
           title: '温馨提示',
           content: const Text(
-            '拾页需要您同意《用户协议》和《隐私政策》才能为您提供简历编辑、登录等服务。我们会严格保护您的个人信息，您可以再次查看后决定。',
+            '最优简需要您同意《用户协议》和《隐私政策》才能为您提供简历编辑、登录等服务。我们会严格保护您的个人信息，您可以再次查看后决定。',
           ),
           cancelLabel: _canExit ? '不同意并退出' : null,
           cancelKey: const ValueKey('privacy-consent-exit'),
@@ -105,7 +105,7 @@ class _PrivacyConsentDialogState extends State<PrivacyConsentDialog> {
       content: Text.rich(
         TextSpan(
           children: [
-            const TextSpan(text: '欢迎使用拾页！请您阅读并同意'),
+            const TextSpan(text: '欢迎使用最优简！请您阅读并同意'),
             TextSpan(text: '《用户协议》', style: linkStyle, recognizer: terms),
             const TextSpan(text: '和'),
             TextSpan(text: '《隐私政策》', style: linkStyle, recognizer: privacy),

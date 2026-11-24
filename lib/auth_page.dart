@@ -187,7 +187,7 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
           dialogKey: const ValueKey('auth-registration-dialog'),
           barrierDismissible: false,
           title: '该账号尚未注册',
-          content: const Text('是否创建拾页账号并完成登录？'),
+          content: const Text('是否创建最优简账号并完成登录？'),
           cancelLabel: '暂不注册',
           cancelKey: const ValueKey('auth-registration-cancel'),
           confirmLabel: '确认注册并登录',
@@ -245,7 +245,7 @@ class _AuthPageState extends State<AuthPage> with SmsCodeFlow<AuthPage> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(
-        '欢迎使用拾页',
+        '欢迎使用最优简',
         style: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w600,

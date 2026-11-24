@@ -445,7 +445,7 @@ class AppleMembershipPurchases extends ChangeNotifier {
         _uncertainPurchases.clear();
         _set(
           ApplePurchaseState.idle,
-          matching > 0 ? null : '未找到属于当前拾页账号的购买，请确认 Apple 账户与拾页账号',
+          matching > 0 ? null : '未找到属于当前最优简账号的购买，请确认 Apple 账户与最优简账号',
         );
       }
     } catch (error) {

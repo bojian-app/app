@@ -214,7 +214,7 @@ class AppUpdateInstaller extends ChangeNotifier {
         if (!granted) {
           _set(
             AppUpdateStage.needsPermission,
-            text: '请在设置中允许拾页安装应用，返回后会自动开始更新',
+            text: '请在设置中允许最优简安装应用，返回后会自动开始更新',
           );
           return;
         }
@@ -308,7 +308,7 @@ class AppUpdateInstaller extends ChangeNotifier {
     });
     switch (outcome) {
       case 'permission':
-        _set(AppUpdateStage.needsPermission, text: '请在设置中允许拾页安装应用，返回后会自动开始更新');
+        _set(AppUpdateStage.needsPermission, text: '请在设置中允许最优简安装应用，返回后会自动开始更新');
       case 'checksum':
         _set(AppUpdateStage.failed, text: '安装包校验未通过，请重试');
       default:

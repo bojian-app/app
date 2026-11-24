@@ -55,7 +55,7 @@ void main() {
     await tester.pumpAndSettle();
     scan('https://example.com');
     await tester.pump();
-    expect(find.text('请扫描好友分享的拾页邀请二维码'), findsOneWidget);
+    expect(find.text('请扫描好友分享的最优简邀请二维码'), findsOneWidget);
     expect(find.byKey(const ValueKey('invitation-scan-page')), findsOneWidget);
     scan('https://bojian.kelance.cn?invite_code=a2b3c4d5');
     await tester.pumpAndSettle();

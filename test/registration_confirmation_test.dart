@@ -129,7 +129,7 @@ void main() {
             ..failConfirmation = choice == 'failure';
           await _openLogin(tester, gateway, channel: channel);
           expect(find.text('该账号尚未注册'), findsOneWidget);
-          expect(find.text('是否创建拾页账号并完成登录？'), findsOneWidget);
+          expect(find.text('是否创建最优简账号并完成登录？'), findsOneWidget);
           expect(gateway.calls, contains('Authorize$channel'));
           expect(gateway.calls, isNot(contains('ConfirmRegistration')));
           expect(find.byType(AppShell), findsNothing);
