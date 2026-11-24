@@ -483,7 +483,6 @@ void main() {
     final api = FakeGateway();
     final store = await testStore(authenticated: true, api: api);
     addTearDown(store.dispose);
-    final before = List<String>.of(api.calls);
     await tester.pumpWidget(
       MaterialApp(
         theme: appTheme,
@@ -491,6 +490,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Settings itself loads the AI consent state; opening a document must not.
+    final before = List<String>.of(api.calls);
 
     for (final entry in [
       ('settings-user-agreement', LegalDocumentKind.userAgreement),

@@ -1,3 +1,4 @@
+import 'ai_consent.dart';
 import 'resume_module_order.dart';
 import 'resume_module_drag.dart';
 import 'resume_photo_image.dart';

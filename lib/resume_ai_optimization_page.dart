@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'ai_consent.dart';
 import 'api/bojian_api.dart';
 import 'app_icons.dart';
 import 'app_page_bar.dart';
@@ -223,6 +224,7 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
 
   Future<void> start() async {
     if (!valid || busy) return;
+    if (!await AiConsent.ensure(context, widget.store) || !valid) return;
     setState(() {
       busy = true;
       loading = false;

@@ -95,6 +95,7 @@ extension _ResumeEditorWork on _ResumeEditorState {
       toast(context, '请先填写职位');
       return;
     }
+    if (!await AiConsent.ensure(context, widget.store) || !mounted) return;
     dismissKeyboard();
     final session = _sectionSession;
     final epoch = widget.store.epoch;

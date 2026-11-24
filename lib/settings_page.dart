@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'about_page.dart';
+import 'ai_consent.dart';
 import 'feedback_page.dart';
 import 'app_appearance.dart';
 import 'panel_sheet.dart';
@@ -41,6 +42,8 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool savingPrivacy = false;
+  bool? aiConsent;
+  int aiConsentUser = 0;
   bool signingOut = false;
   Timer? cacheRefresh;
   int imageCacheBytes = PaintingBinding.instance.imageCache.currentSizeBytes;
@@ -73,6 +76,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (Platform.isAndroid || Platform.isIOS) _loadVersion();
     AppUpdates.instance.refresh(widget.store);
     refreshImageDisk();
+    _loadAiConsent();
     // Images finish decoding after this page builds; ImageCache is not a Listenable.
     cacheRefresh = Timer.periodic(
       const Duration(seconds: 1),
@@ -149,6 +153,36 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _legal(LegalDocumentKind kind) async {
     await openPage<void>(context, LegalDocumentPage(kind: kind));
+  }
+
+  Future<void> _loadAiConsent() async {
+    final user = widget.store.userID;
+    final granted = await AiConsent.refresh(widget.store);
+    if (mounted && user == widget.store.userID) {
+      setState(() {
+        aiConsent = granted;
+        aiConsentUser = user;
+      });
+    }
+  }
+
+  Future<void> _aiConsent(bool value) async {
+    if (value) {
+      await AiConsent.ensure(context, widget.store);
+    } else {
+      final withdraw = await showAppConfirmation(
+        context,
+        title: '撤回 AI 功能授权？',
+        content: const Text(
+          '撤回后，我们不再向 DeepSeek 提供您的内容，AI 简历生成、优化、单段生成和简历导入将无法使用，下次使用时会再次征求您的同意。撤回不影响撤回前已进行的处理。',
+        ),
+        confirmLabel: '撤回',
+        destructive: true,
+      );
+      if (!mounted || withdraw != true) return;
+      await runRequest(context, () => AiConsent.withdraw(widget.store));
+    }
+    await _loadAiConsent();
   }
 
   Future<void> _privacy(bool value) async {
@@ -264,6 +298,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: '账号安全',
                   onTap: () =>
                       openPage(context, AccountSecurityPage(store: store)),
+                ),
+                _SettingsRow(
+                  key: const ValueKey('settings-ai-consent'),
+                  icon: AppIcons.aiOptimize,
+                  title: 'AI 功能授权',
+                  trailing: Switch.adaptive(
+                    padding: EdgeInsets.zero,
+                    value: aiConsentUser == store.userID && aiConsent == true,
+                    activeTrackColor: context.colors.palette.seed,
+                    onChanged: aiConsent == null ? null : _aiConsent,
+                  ),
                 ),
                 _SettingsRow(
                   icon: AppIcons.publicProfile,

@@ -181,6 +181,7 @@ class _ImportResumeState extends State<ImportResume> {
   Future<void> upload() async {
     final file = selected;
     if (file == null || busy || picking) return;
+    if (!await AiConsent.ensure(context, widget.store) || !mounted) return;
     final token = ++operation;
     setState(() {
       busy = true;

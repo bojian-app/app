@@ -5,6 +5,7 @@ import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/app_icons.dart';
 import 'package:bojian_mobile/profile_avatar.dart';
 import 'package:bojian_mobile/device_metadata.dart';
+import 'package:bojian_mobile/ai_consent.dart';
 import 'package:bojian_mobile/settings_page.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -89,7 +90,12 @@ void main() {
     expect(tester.getTopLeft(find.text('主题色')).dx, label);
     expect(divider.left, label);
     expect(tester.getTopRight(find.text('复制')).dx, divider.right);
-    expect(tester.getTopRight(find.byType(Switch)).dx, divider.right);
+    for (final toggle in find.byType(Switch).evaluate()) {
+      expect(
+        tester.getTopRight(find.byWidget(toggle.widget)).dx,
+        divider.right,
+      );
+    }
     await tapText(tester, '账号安全');
     for (final text in ['登录设备', '账号管理', '手机号', '账号申诉', '账号注销']) {
       expect(tester.getTopLeft(find.text(text)).dx, avatar.left);
@@ -281,15 +287,39 @@ void main() {
         home: SettingsPage(store: store),
       ),
     );
-    await tester.tap(find.byType(Switch));
+    final profileSwitch = find.byType(Switch).last;
+    await tester.tap(profileSwitch);
     await tester.pumpAndSettle();
     expect(store.publicProfile, false);
     expect(api.lastBody, {'profile_visibility': 'PRIVATE'});
     api.failing = 'PatchMe';
-    await tester.tap(find.byType(Switch));
+    await tester.tap(profileSwitch);
     await tester.pumpAndSettle();
     expect(store.publicProfile, false);
-    expect(tester.widget<Switch>(find.byType(Switch)).value, false);
+    expect(tester.widget<Switch>(profileSwitch).value, false);
+  });
+
+  testWidgets('AI consent can be withdrawn from settings', (tester) async {
+    final store = await testStore(authenticated: true);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: SettingsPage(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final aiSwitch = find.descendant(
+      of: find.byKey(const ValueKey('settings-ai-consent')),
+      matching: find.byType(Switch),
+    );
+    expect(tester.widget<Switch>(aiSwitch).value, isTrue);
+    await tester.tap(aiSwitch);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('撤回'));
+    await tester.pumpAndSettle();
+    expect(await AiConsent.granted(store), isFalse);
+    expect(tester.widget<Switch>(aiSwitch).value, isFalse);
   });
 
   testWidgets('反馈图片可在提交前添加与移除，最多保留三张', (tester) async {

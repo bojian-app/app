@@ -1,3 +1,4 @@
+import 'package:bojian_mobile/ai_consent.dart';
 import 'package:bojian_mobile/guidance_help.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
@@ -141,6 +142,13 @@ class FakeGateway implements ApiGateway {
     if (body != null) lastMutationBody = body;
     lastHeaders = headers;
     if (failing == method) throw const ApiFailure('服务器暂不可用');
+    if (method == 'PutMeAiConsent' || method == 'DeleteMeAiConsent') {
+      documents['GetMeAiConsent'] = {
+        'granted': method == 'PutMeAiConsent',
+        'version': aiConsentVersion,
+      };
+      return ApiDocument(documents['GetMeAiConsent']!);
+    }
     if (method == 'PatchMe') {
       documents['GetMe'] = {...documents['GetMe']!, ...body!};
     }
@@ -306,12 +314,14 @@ Future<AppStore> testStore({
   bool authenticated = false,
   bool seeded = false,
   bool guidanceHelpSeen = true,
+  bool aiConsentGranted = true,
   FakeGateway? api,
   WeChatAuthorizer? weChatAuthorizer,
   DouyinAuthorizer? douyinAuthorizer,
 }) async {
+  api ??= FakeGateway(seeded: seeded);
   final store = AppStore(
-    api: api ?? FakeGateway(seeded: seeded),
+    api: api,
     storage: MemoryStorage(),
     weChatAuthorizer: weChatAuthorizer,
     douyinAuthorizer: douyinAuthorizer,
@@ -320,6 +330,13 @@ Future<AppStore> testStore({
   if (authenticated) {
     await store.signIn('13812345678', '654321');
     await store.loadAll();
+  }
+  if (aiConsentGranted) {
+    api.documents['GetMeAiConsent'] ??= {
+      'granted': true,
+      'version': aiConsentVersion,
+    };
+    await AiConsent.remember(store);
   }
   if (guidanceHelpSeen) {
     for (final tour in guidanceTourIds) {

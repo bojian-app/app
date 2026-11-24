@@ -203,6 +203,7 @@ extension _ResumeEditorProjects on _ResumeEditorState {
     if (saving || _generatingProject.containsKey(entry)) return;
     final input = _projectGenerationInput(entry, field);
     if (input.values.any((value) => value.isEmpty)) return;
+    if (!await AiConsent.ensure(context, widget.store) || !mounted) return;
     dismissKeyboard();
     final session = _sectionSession;
     final epoch = widget.store.epoch;

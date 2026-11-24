@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 
+import 'ai_consent.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
@@ -113,6 +114,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   Future<void> submit() async {
     if (submission.submitting || !canGenerate) return;
     FocusManager.instance.primaryFocus?.unfocus();
+    if (!await AiConsent.ensure(context, widget.store) || !mounted) return;
     setState(() => error = null);
     try {
       final id = await submission.submit(generationDescription);
@@ -1180,6 +1182,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
 
   Future<void> pickReference() async {
     if (referenceBusy || referencePicking || submission.submitting) return;
+    if (!await AiConsent.ensure(context, widget.store) || !mounted) return;
     final operation = ++referenceOperation;
     final epoch = widget.store.epoch;
     setState(() {

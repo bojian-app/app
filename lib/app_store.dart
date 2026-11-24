@@ -1,4 +1,5 @@
 import 'content_moderation.dart';
+import 'ai_consent.dart';
 import 'app_appearance.dart';
 import 'user_display_name.dart';
 
@@ -498,6 +499,12 @@ class AppStore extends ChangeNotifier {
       if (!alive || version != epoch) throw const ApiFailure('账号已切换，请重试');
       return result;
     } on ApiFailure catch (e) {
+      if (e.code == aiConsentRequiredCode && version == epoch) {
+        // Withdrawn on another device: drop the cache so the dialog shows again.
+        await storage
+            .write(aiConsentStorageKey(userID), null)
+            .catchError((_) {});
+      }
       if (!e.unauthenticated || !authenticated || version != epoch) rethrow;
       try {
         await (refreshing ??= _refresh(
