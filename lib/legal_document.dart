@@ -2,7 +2,8 @@
 /// grant consent, or leave the app.
 enum LegalDocumentKind { userAgreement, privacyPolicy }
 
-const legalAgreementVersions = {'terms': '2.0', 'privacy': '2.0'};
+const _privacyVersion = '3.1';
+const legalAgreementVersions = {'terms': '2.0', 'privacy': _privacyVersion};
 
 sealed class LegalBlock {
   const LegalBlock();
@@ -376,7 +377,7 @@ const userAgreementDocument = LegalDocument(
 const privacyPolicyDocument = LegalDocument(
   kind: LegalDocumentKind.privacyPolicy,
   title: '博简隐私政策',
-  metadata: ['版本：V3.0', '更新日期：$_updatedDate', '生效日期：$_effectiveDate'],
+  metadata: ['版本：V$_privacyVersion', '更新日期：2026年11月24日', '生效日期：2026年11月24日'],
   introduction: [
     LegalParagraph(
       '$_operator（以下简称“我们”）是博简App的个人信息处理者。我们依据《中华人民共和国个人信息保护法》等法律法规制定本政策，说明我们如何收集、使用、存储、共享和保护您的个人信息，以及您如何行使权利。请您仔细阅读，特别是加粗内容。在您同意本政策前，我们不会发起微信或抖音授权、短信验证码请求，也不会初始化广告等第三方SDK。如有疑问，请通过本政策第十条的方式联系我们。',
@@ -426,12 +427,12 @@ const privacyPolicyDocument = LegalDocument(
         ),
         LegalSubheading('6. AI 简历生成、优化与单段生成'),
         LegalParagraph(
-          '当您主动使用AI功能时，我们会将以下内容发送给第三方大模型服务提供方处理，用于生成结果后返回给您：AI简历生成——您填写的生成要求和描述；AI简历优化——简历中的工作、项目、教育、技能和证书等经历文本以及求职岗位（不包含单独填写的姓名、联系方式、出生日期和照片）；单段生成——您正在编辑的段落内容及相关上下文。生成结果需经您确认后才会保存。',
+          '当您主动使用以下AI功能时，我们会将相应内容发送给 DeepSeek 开放平台处理，并向您展示结果：AI简历生成——您填写的生成要求和描述；AI简历优化——简历中的工作、项目、教育、技能和证书等经历文本以及求职岗位（不包含单独填写的姓名、联系方式、出生日期和照片）；单段生成——您正在编辑的段落内容及相关上下文。生成结果需经您确认后才会保存。',
           emphasized: true,
         ),
         LegalSubheading('7. 简历文件导入'),
         LegalParagraph(
-          '当您主动选择PDF、DOC、DOCX文件导入简历时，文件会上传至我们的云存储，服务端优先在本地提取文字；扫描件等无法直接提取文字的，会将文件页面图像发送给第三方大模型服务提供方识别。提取的文字会发送给第三方大模型服务提供方整理为简历字段。导入结果经您检查确认后才会创建简历。导入文件中可能包含您的姓名、联系方式、照片等个人信息，请勿在文件中包含身份证号等无关的敏感信息。',
+          '当您主动选择PDF、DOC、DOCX文件导入简历时，文件会上传至我们的云存储，服务端优先在本地提取文字；扫描件等无法直接提取文字的，我们会将需要识别的页面图像发送给 DeepSeek 开放平台。提取的文字也会发送给该平台，用于整理简历字段。导入结果经您检查确认后才会创建简历。导入文件中可能包含您的姓名、联系方式、照片等个人信息，请勿在文件中包含身份证号等无关的敏感信息。',
           emphasized: true,
         ),
         LegalSubheading('8. 社区互动与内容审核'),
@@ -548,7 +549,7 @@ const privacyPolicyDocument = LegalDocument(
         LegalParagraph('（1）七牛云（上海七牛信息技术有限公司）：存储您上传的头像、简历照片、导入文件和导出文件。'),
         LegalParagraph('（2）火山引擎短信服务（北京火山引擎科技有限公司）：向您的手机号发送登录及绑定验证码，处理手机号和验证码。'),
         LegalParagraph(
-          '（3）智谱开放平台大模型服务（北京智谱华章科技股份有限公司）：为AI简历生成、优化、单段生成和简历导入处理第一部分第6、7项所述内容。根据其服务协议和隐私政策，数据存储在中国境内，仅在提供服务和满足合规要求所需的最小必要范围内存储；其隐私政策说明可能使用匿名化数据进行模型训练。隐私政策：https://docs.bigmodel.cn/cn/terms/privacy-policy',
+          '（3）DeepSeek 开放平台（杭州深度求索人工智能基础技术研究有限公司）受我们委托，为简历生成、诊断优化、单段生成和文件导入提供大模型服务。我们发送的内容见第一部分第6、7项。根据该平台的隐私政策，除另有书面约定外，平台可能在加密和去标识化后使用输入与输出进行模型训练、评估和改进。详见《DeepSeek开放平台隐私政策》https://cdn.deepseek.com/policies/zh-CN/deepseek-open-platform-privacy-policy.html',
           emphasized: true,
         ),
         LegalParagraph('（4）百度智能云（北京百度网讯科技有限公司）：实名认证时识别身份证照片，处理身份证照片、姓名、身份证号。'),

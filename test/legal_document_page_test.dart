@@ -89,9 +89,14 @@ void main() {
         '九、本政策的更新',
         '十、联系我们',
       ]);
+      expect(
+        privacy.metadata,
+        contains('版本：V${legalAgreementVersions['privacy']}'),
+      );
       for (final document in [terms, privacy]) {
-        expect(document.metadata, contains('更新日期：2026年11月17日'));
-        expect(document.metadata, contains('生效日期：2026年11月17日'));
+        final date = document == terms ? '2026年11月17日' : '2026年11月24日';
+        expect(document.metadata, contains('更新日期：$date'));
+        expect(document.metadata, contains('生效日期：$date'));
         expect(document.plainText, contains('珠海科岚盛网络科技有限公司'));
         expect(document.plainText, contains('91440403MAD4CAX58L'));
         expect(document.plainText, contains('珠海市斗门区湖心路口翠湖路308号1栋社区用房'));
@@ -125,7 +130,12 @@ void main() {
       expect(privacy.plainText, contains('该方式不属于端到端加密'));
       expect(privacy.plainText, contains('notifier@kelantech.cn'));
       expect(privacy.plainText, contains('粤ICP备2026155383号'));
-      expect(privacy.plainText, contains('北京智谱华章科技股份有限公司'));
+      expect(privacy.plainText, contains('杭州深度求索人工智能基础技术研究有限公司'));
+      expect(
+        privacy.plainText,
+        contains('deepseek-open-platform-privacy-policy.html'),
+      );
+      expect(privacy.plainText, isNot(contains('智谱')));
       expect(privacy.plainText, contains('支付宝支付科技有限公司'));
     },
   );
