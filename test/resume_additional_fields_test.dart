@@ -2,7 +2,6 @@ import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_additional_fields.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:bojian_mobile/resume_document.dart';
-import 'package:bojian_mobile/resume_market_document.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -78,9 +77,6 @@ void main() {
         .join('\n');
     expect(printed, contains('岁'));
     expect(printed, contains('女'));
-    final fields = marketResumeFields(draft);
-    expect(fields['birth_date'], contains('岁'));
-    expect(fields['gender'], '女');
   });
 
   testWidgets(

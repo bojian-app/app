@@ -6,16 +6,25 @@ import 'package:flutter/material.dart';
 import 'app_page_bar.dart';
 import 'app_store.dart';
 import 'confirmation_dialog.dart';
+import 'app_icons.dart';
 import 'design.dart';
 
+/// Opens the form for a new poll or question. [initial] is the public block
+/// of one that was taken down: the form starts from it, and finishing makes a
+/// new poll (a saved one never changes, so its votes do not carry over).
 Future<Map<String, dynamic>?> openArticlePollComposer(
   BuildContext context,
-  AppStore store,
-) => openPage<Map<String, dynamic>>(context, _PollComposer(store: store));
+  AppStore store, {
+  Map<String, dynamic>? initial,
+}) => openPage<Map<String, dynamic>>(
+  context,
+  _PollComposer(store: store, initial: initial),
+);
 
 class _PollComposer extends StatefulWidget {
-  const _PollComposer({required this.store});
+  const _PollComposer({required this.store, this.initial});
   final AppStore store;
+  final Map<String, dynamic>? initial;
   @override
   State<_PollComposer> createState() => _PollComposerState();
 }
@@ -29,11 +38,46 @@ class _PollComposerState extends State<_PollComposer> {
   late final account = widget.store.epoch;
   bool question = false, multiple = false, quiz = false, dirty = false;
   bool saving = false, leaving = false;
-  int limit = 2;
   String deadline = '一周';
   DateTime? picked;
   String? lastData, requestKey;
   DateTime? requestDeadline;
+
+  /// Answer keys are never sent back to the client, so a poll taken down
+  /// has to have its answer set again.
+  bool get keyLost => widget.initial?['has_correct_answer'] == true;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    if (initial == null) return;
+    question = initial['mode'] == 'question';
+    (question ? questionTitle : pollTitle).text = '${initial['title'] ?? ''}';
+    final values = [
+      for (final value in initial['options'] as List? ?? const [])
+        if (value is String) value,
+    ];
+    if (values.length >= 2) {
+      for (final c in options) {
+        c.dispose();
+      }
+      options
+        ..clear()
+        ..addAll([
+          for (final value in values) TextEditingController(text: value),
+        ]);
+    }
+    multiple = initial['multiple'] == true;
+    quiz = !question && keyLost;
+    final end = DateTime.tryParse('${initial['ends_at'] ?? ''}')?.toLocal();
+    if (initial['ends_at'] == null) {
+      deadline = '从不';
+    } else if (end != null && end.isAfter(DateTime.now())) {
+      deadline = '自定义';
+      picked = end;
+    }
+  }
 
   @override
   void dispose() {
@@ -67,29 +111,6 @@ class _PollComposerState extends State<_PollComposer> {
     if (!mounted) return;
     setState(() => leaving = true);
     Navigator.of(context).pop();
-  }
-
-  Future<void> pickMultiple() async {
-    final result = await showDialog<int>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('多选类型'),
-        children: [
-          for (var n = 2; n <= options.length; n++)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, n),
-              child: Text('最多选$n项'),
-            ),
-        ],
-      ),
-    );
-    if (result != null && mounted) {
-      change(() {
-        multiple = true;
-        limit = result;
-        if (correct.length > limit) correct.clear();
-      });
-    }
   }
 
   Future<void> customDate() async {
@@ -153,7 +174,8 @@ class _PollComposerState extends State<_PollComposer> {
       if (!question) ...{
         'options': values,
         'multiple': multiple,
-        if (multiple) 'max_selections': limit,
+        // Any number of options may be picked, so the cap is every option.
+        if (multiple) 'max_selections': values.length,
         if (quiz)
           'correct_options': [
             for (var i = 0; i < options.length; i++)
@@ -215,7 +237,6 @@ class _PollComposerState extends State<_PollComposer> {
     change(() {
       options.remove(option);
       correct.remove(option);
-      limit = min(limit, options.length);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => option.dispose());
   }
@@ -231,19 +252,21 @@ class _PollComposerState extends State<_PollComposer> {
       child: Scaffold(
         appBar: AppPageBar(
           // The theme's text buttons have no side padding, so inset them to the gutter.
-          leadingWidth: appPageHorizontalPadding + 64,
+          leadingWidth: appPageHorizontalPadding + 96,
           leading: Align(
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.only(left: appPageHorizontalPadding),
               child: TextButton(
                 onPressed: saving ? null : close,
-                child: const Text('取消'),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 4,
+                  children: [AppIcon(AppIcons.back, size: 20), Text('返回')],
+                ),
               ),
             ),
           ),
-          titleSpacing: 0,
-          title: Text('发起$type'),
           actionsPadding: const EdgeInsetsDirectional.only(
             end: appPageHorizontalPadding,
           ),
@@ -266,6 +289,17 @@ class _PollComposerState extends State<_PollComposer> {
               ),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
+                if (keyLost)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      '为保护答案，重新发布前需再设置一次正确答案',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.colors.muted,
+                      ),
+                    ),
+                  ),
                 Wrap(
                   spacing: 8,
                   children: [
@@ -308,12 +342,6 @@ class _PollComposerState extends State<_PollComposer> {
                               value: correct.contains(options[i]),
                               semanticLabel: '选项${i + 1}正确',
                               onChanged: (v) {
-                                if (v == true &&
-                                    multiple &&
-                                    correct.length >= limit) {
-                                  toast(context, '最多选$limit项');
-                                  return;
-                                }
                                 change(() {
                                   if (!multiple) correct.clear();
                                   if (v == true) {
@@ -367,11 +395,7 @@ class _PollComposerState extends State<_PollComposer> {
                           if (correct.length > 1) correct.clear();
                         }),
                       ),
-                      chip(
-                        multiple ? '最多选$limit项' : '多选',
-                        multiple,
-                        pickMultiple,
-                      ),
+                      chip('多选', multiple, () => change(() => multiple = true)),
                     ],
                   ),
                 ],
@@ -548,11 +572,15 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
     required bool allowed,
     required bool showMark,
     required bool chosen,
+    bool wrong = false,
     required bool multiple,
     required int? count,
     required double percent,
   }) {
     final colors = context.colors;
+    // Picked choices are always green and ones the answer key rules out red,
+    // whatever accent colour the app is themed with.
+    final tint = wrong ? Theme.of(context).colorScheme.error : colors.success;
     return InkWell(
       borderRadius: BorderRadius.circular(10),
       onTap: allowed ? () => toggle(index) : null,
@@ -575,7 +603,7 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
                                 ? Icons.radio_button_checked
                                 : Icons.radio_button_unchecked),
                       size: 20,
-                      color: chosen ? colors.accent : colors.muted,
+                      color: chosen ? tint : colors.muted,
                     ),
                   ),
                 Expanded(
@@ -584,7 +612,7 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: chosen ? colors.accent : colors.ink,
+                      color: chosen ? tint : colors.ink,
                     ),
                   ),
                 ),
@@ -602,9 +630,7 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
                 minHeight: 6,
                 borderRadius: BorderRadius.circular(3),
                 backgroundColor: colors.muted.withValues(alpha: .15),
-                color: chosen
-                    ? colors.accent
-                    : colors.muted.withValues(alpha: .5),
+                color: chosen ? tint : colors.muted.withValues(alpha: .5),
               ),
             ],
           ],
@@ -621,10 +647,14 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
     required VoidCallback? onTap,
     required bool showMark,
     required bool chosen,
+    bool wrong = false,
     required bool multiple,
     required double? percent,
   }) {
     final colors = context.colors;
+    // Picked choices are always green and ones the answer key rules out red,
+    // whatever accent colour the app is themed with.
+    final tint = wrong ? Theme.of(context).colorScheme.error : colors.success;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
@@ -641,7 +671,7 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
                     alignment: Alignment.centerLeft,
                     widthFactor: (percent / 100).clamp(0.0, 1.0),
                     child: ColoredBox(
-                      color: colors.accent.withValues(alpha: chosen ? .22 : .1),
+                      color: tint.withValues(alpha: chosen ? .22 : .1),
                     ),
                   ),
                 ),
@@ -663,7 +693,7 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
                                       ? Icons.check_circle
                                       : Icons.radio_button_unchecked),
                             size: 16,
-                            color: chosen ? colors.accent : colors.muted,
+                            color: chosen ? tint : colors.muted,
                           ),
                         ),
                       Expanded(
@@ -673,7 +703,7 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 14,
-                            color: chosen ? colors.accent : colors.ink,
+                            color: chosen ? tint : colors.ink,
                           ),
                         ),
                       ),
@@ -710,6 +740,13 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
         ? (state?['selections'] as List? ?? []).whereType<int>().toSet()
         : selected;
     final counts = (state?['counts'] as List? ?? []).map(integer).toList();
+    final key = {
+      for (final i in state?['correct_options'] as List? ?? [])
+        if (i is num) i.toInt(),
+    };
+    // Only picks that the revealed answer key rules out are wrong.
+    bool isWrong(int i) =>
+        responded && key.isNotEmpty && choices.contains(i) && !key.contains(i);
     final total = multiple
         ? integer(state?['participants'])
         : counts.fold<int>(0, (sum, count) => sum + count);
@@ -799,6 +836,7 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
                         },
                   showMark: allowed || responded,
                   chosen: choices.contains(i),
+                  wrong: isWrong(i),
                   multiple: multiple,
                   percent: i < counts.length && total > 0
                       ? counts[i] * 100 / total
@@ -876,6 +914,7 @@ class _ArticlePollCardState extends State<ArticlePollCard> {
                 allowed: allowed,
                 showMark: allowed || responded,
                 chosen: choices.contains(i),
+                wrong: isWrong(i),
                 multiple: multiple,
                 count: i < counts.length ? counts[i] : null,
                 percent: i < counts.length && total > 0

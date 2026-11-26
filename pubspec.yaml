@@ -28,8 +28,6 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
-  bojian_native_layout:
-    path: packages/native_layout
   flutter_svg: ^2.3.0
   vector_graphics: ^1.2.3
   flutter:

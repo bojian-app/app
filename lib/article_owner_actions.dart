@@ -10,9 +10,18 @@ class ArticleOwnerActions extends StatefulWidget {
     super.key,
     required this.store,
     required this.articleID,
+    this.popOnSuccess = true,
+    this.compact = false,
   });
   final AppStore store;
   final int articleID;
+
+  /// Leaves the page that shows the content once it is taken down. A card in
+  /// a list stays where it is: the list drops the card itself.
+  final bool popOnSuccess;
+
+  /// A small button for the corner of a card instead of an app bar action.
+  final bool compact;
   @override
   State<ArticleOwnerActions> createState() => _ArticleOwnerActionsState();
 }
@@ -31,7 +40,7 @@ class _ArticleOwnerActionsState extends State<ArticleOwnerActions> {
     setState(() => busy = false);
     if (saved && widget.store.epoch == epoch) {
       toast(context, status == 'WITHDRAWN' ? '求助已下架' : '已下架并退回草稿箱，可修改后重新发布');
-      Navigator.maybePop(context);
+      if (widget.popOnSuccess) Navigator.maybePop(context);
     }
   }
 
@@ -66,6 +75,11 @@ class _ArticleOwnerActionsState extends State<ArticleOwnerActions> {
     key: ValueKey('article-owner-actions-${widget.articleID}'),
     tooltip: '更多操作',
     onPressed: busy ? null : showActions,
+    padding: widget.compact ? EdgeInsets.zero : null,
+    constraints: widget.compact
+        ? const BoxConstraints.tightFor(width: 32, height: 30)
+        : null,
+    visualDensity: widget.compact ? VisualDensity.compact : null,
     icon: busy
         ? const SizedBox.square(
             dimension: 18,

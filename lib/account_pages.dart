@@ -24,7 +24,7 @@ import 'order_history_page.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
 import 'resume_pages.dart';
-import 'resume_market_document.dart' show MarketThumbnailLoads;
+import 'resume_market_document.dart' show MarketThemeCache;
 import 'resume_thumbnail.dart' show ThumbnailSheetCache;
 import 'story_composer.dart';
 import 'profile_avatar.dart';
@@ -163,6 +163,53 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback? onExit;
   @override
   State<ProfilePage> createState() => _ProfilePageState();
+
+  /// The account whose resume covers are already typeset, so only a visit
+  /// that beats the warm-up has to wait for them.
+  static int? _warmedEpoch, _warmingEpoch;
+  static Future<void>? _warming;
+
+  static bool isWarm(AppStore store) => _warmedEpoch == store.epoch;
+
+  /// Typesets the first resume covers (and fetches the theme packages of the
+  /// template ones) in the background, one step per turn of the event loop,
+  /// so opening this page later finds everything ready. Safe to call often.
+  static Future<void> prewarm(AppStore store) {
+    final epoch = store.epoch;
+    if (_warmedEpoch == epoch) return Future.value();
+    if (_warmingEpoch == epoch) return _warming!;
+    _warmingEpoch = epoch;
+    return _warming = _warm(store, epoch).whenComplete(() {
+      if (_warmingEpoch == epoch) _warmingEpoch = null;
+    });
+  }
+
+  static Future<void> _warm(AppStore store, int epoch) async {
+    bool valid() => store.epoch == epoch;
+    final waited = Stopwatch()..start();
+    while (valid() &&
+        store.isAuthenticated &&
+        store.loading.contains('resumes') &&
+        waited.elapsed < const Duration(seconds: 5)) {
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+    }
+    if (!valid() || !store.isAuthenticated) return;
+    final first = store.resumes.take(9).toList();
+    await Future.wait([
+      for (final resume in first)
+        if (resume.usesMarketTemplate)
+          MarketThemeCache.fetch(
+            store,
+            resume,
+          ).timeout(const Duration(seconds: 6), onTimeout: () => null),
+    ]);
+    await ThumbnailSheetCache.warm(
+      first,
+      valid: valid,
+      themeOf: (resume) => MarketThemeCache.get(store, resume.marketTemplateID),
+    );
+    if (valid()) _warmedEpoch = epoch;
+  }
 }
 
 Future<void> _editProfile(
@@ -190,10 +237,7 @@ Future<void> _editProfile(
 
 class _ProfilePageState extends State<ProfilePage>
     with LoadingHoldState<ProfilePage> {
-  /// The account whose resume covers are already typeset, so only the first
-  /// visit of a session waits for them.
-  static int? _warmedEpoch;
-  late bool warmed = _warmedEpoch == store.epoch;
+  late bool warmed = ProfilePage.isWarm(store);
   final scroll = ScrollController();
   final nameMarker = GlobalKey();
   final headerMarker = GlobalKey();
@@ -216,34 +260,12 @@ class _ProfilePageState extends State<ProfilePage>
     if (!warmed) unawaited(warmUp());
   }
 
-  /// Typesets the first covers before the page is shown, so switching to the
-  /// resume tab afterwards does not stall on laying them out.
+  /// Waits for the shared warm-up, so switching to the resume tab afterwards
+  /// does not stall on laying the covers out.
   Future<void> warmUp() async {
     final epoch = store.epoch;
-    bool valid() => mounted && store.epoch == epoch;
-    final waited = Stopwatch()..start();
-    while (valid() &&
-        store.isAuthenticated &&
-        store.loading.contains('resumes') &&
-        waited.elapsed < const Duration(seconds: 5)) {
-      await Future<void>.delayed(const Duration(milliseconds: 60));
-    }
-    if (valid() && store.isAuthenticated) {
-      await ThumbnailSheetCache.warm(
-        store.resumes.take(9).toList(),
-        valid: valid,
-      );
-      // Template resumes draw their covers from a separate, slower load that
-      // starts once the page below the loading view has been built.
-      await WidgetsBinding.instance.endOfFrame;
-      while (valid() &&
-          MarketThumbnailLoads.pending > 0 &&
-          waited.elapsed < const Duration(seconds: 8)) {
-        await Future<void>.delayed(const Duration(milliseconds: 60));
-      }
-    }
-    if (!valid()) return;
-    _warmedEpoch = epoch;
+    await ProfilePage.prewarm(store);
+    if (!mounted || store.epoch != epoch) return;
     setState(() => warmed = true);
   }
 

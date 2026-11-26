@@ -472,6 +472,17 @@ class StoryCard extends StatelessWidget {
                       flat: flat,
                     ),
                   ),
+                  // A poll or question has no page of its own to take it
+                  // down from, so its author gets the action on the card.
+                  if (story.feedPoll != null &&
+                      story.authorID == store.userID &&
+                      store.isAuthenticated)
+                    ArticleOwnerActions(
+                      store: store,
+                      articleID: story.id,
+                      popOnSuccess: false,
+                      compact: true,
+                    ),
                 ],
               ),
               SizedBox(height: flat ? 5 : 12),

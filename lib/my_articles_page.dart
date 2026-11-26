@@ -1,4 +1,7 @@
 import 'article_owner_actions.dart';
+import 'article_poll.dart' show openArticlePollComposer;
+import 'article_privacy.dart';
+import 'content_moderation.dart';
 import 'app_page_bar.dart';
 import 'panel_sheet.dart';
 import 'playful_refresh.dart';
@@ -215,10 +218,15 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
       final detail = {...row, ...response.data};
       final story = decodeStory(response.data);
       if (detail['status'] == 'DRAFT') {
-        await openPage(
-          context,
-          StoryComposer(store: widget.store, draft: detail),
-        );
+        // A poll or question is edited in its own form, not in the editor.
+        if (story.feedPoll case final poll?) {
+          await _editPoll(detail, poll);
+        } else {
+          await openPage(
+            context,
+            StoryComposer(store: widget.store, draft: detail),
+          );
+        }
         if (mounted && widget.store.epoch == session) await _load();
       } else {
         await openPage(
@@ -230,6 +238,47 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
       if (mounted) toast(context, '$e');
     } finally {
       if (mounted) setState(() => opening = null);
+    }
+  }
+
+  /// Reopens a taken-down poll or question in its form. Finishing it
+  /// publishes the post again with the new poll in place of the old one.
+  Future<void> _editPoll(
+    Map<String, dynamic> draft,
+    Map<String, dynamic> poll,
+  ) async {
+    final session = widget.store.epoch;
+    final block = await openArticlePollComposer(
+      context,
+      widget.store,
+      initial: poll,
+    );
+    if (block == null || !mounted || widget.store.epoch != session) return;
+    try {
+      final content = Map<String, dynamic>.from(draft['content'] as Map? ?? {});
+      content['blocks'] = [
+        for (final old in content['blocks'] as List? ?? const [])
+          if (old is Map && old['kind'] != 'poll') old,
+        block,
+      ];
+      final privacy = ArticlePrivacy.fromDraft(draft);
+      final id = integer(draft['id']);
+      await widget.store.saveArticleDraft(
+        id: id,
+        title: '${draft['title'] ?? ''}',
+        content: content,
+        resumeID: draft['resume_id'] as int?,
+        visibility: privacy.visibility,
+        followedRepliesOnly: privacy.followedRepliesOnly,
+        expectedEpoch: session,
+      );
+      final status = await widget.store.submitArticleDraft(
+        id,
+        expectedEpoch: session,
+      );
+      if (mounted) toast(context, articleSubmissionMessage(status));
+    } catch (error) {
+      if (mounted) await showRequestFailure(context, error);
     }
   }
 

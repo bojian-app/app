@@ -65,9 +65,42 @@ class ThumbnailSheet {
     return recorder.endRecording();
   }
 
+  /// Small covers are drawn from a snapshot rather than by replaying every
+  /// glyph, which moves the first-draw cost of a page of text off the frame
+  /// that first shows it.
+  static const snapshotWidth = 400;
+  ui.Image? _paperImage, _inkImage;
+
+  ui.Image? snapshot(ResumeSheetLayer layer) =>
+      layer == ResumeSheetLayer.ink ? _inkImage : _paperImage;
+
+  void rasterize() {
+    _paperImage ??= _snapshot(picture(ResumeSheetLayer.paper));
+    _inkImage ??= _snapshot(picture(ResumeSheetLayer.ink));
+  }
+
+  ui.Image _snapshot(ui.Picture source) {
+    const scale = snapshotWidth / 595.28;
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder)
+      ..scale(scale)
+      ..drawPicture(source);
+    final wrapper = recorder.endRecording();
+    try {
+      return wrapper.toImageSync(
+        snapshotWidth,
+        (resumePaperSize.height * scale).ceil(),
+      );
+    } finally {
+      wrapper.dispose();
+    }
+  }
+
   void _dispose() {
     _paper?.dispose();
     _ink?.dispose();
+    _paperImage?.dispose();
+    _inkImage?.dispose();
     document.dispose();
   }
 }
@@ -95,16 +128,20 @@ class ThumbnailSheetCache {
   static Future<void> warm(
     Iterable<ResumeDraft> resumes, {
     bool Function()? valid,
+    ResumeTheme? Function(ResumeDraft resume)? themeOf,
   }) async {
     for (final resume in resumes) {
-      if (resume.usesMarketTemplate) continue;
+      final theme = resume.usesMarketTemplate ? themeOf?.call(resume) : null;
+      if (resume.usesMarketTemplate && theme == null) continue;
       if (valid != null && !valid()) return;
-      final key = keyFor(resume, null);
-      final sheet = acquire(key, () => typeset(resume, null));
+      final key = keyFor(resume, theme);
+      final sheet = acquire(key, () => typeset(resume, theme));
       await Future<void>.delayed(Duration.zero);
       sheet.picture(ResumeSheetLayer.paper);
       await Future<void>.delayed(Duration.zero);
       sheet.picture(ResumeSheetLayer.ink);
+      await Future<void>.delayed(Duration.zero);
+      sheet.rasterize();
       release(key);
       await Future<void>.delayed(Duration.zero);
     }
@@ -306,9 +343,26 @@ class _ThumbnailPainter extends CustomPainter {
   final ThumbnailSheet? sheet;
   @override
   void paint(Canvas canvas, Size size) {
+    final recorded = sheet;
+    final snapshot = index == 0 && size.width <= 160
+        ? recorded?.snapshot(layer)
+        : null;
+    if (snapshot != null) {
+      canvas.drawImageRect(
+        snapshot,
+        Rect.fromLTWH(
+          0,
+          0,
+          snapshot.width.toDouble(),
+          snapshot.height.toDouble(),
+        ),
+        Offset.zero & size,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+      return;
+    }
     canvas.save();
     canvas.scale(size.width / resumePaperSize.width);
-    final recorded = sheet;
     if (recorded != null && index == 0) {
       canvas.drawPicture(recorded.picture(layer));
     } else {

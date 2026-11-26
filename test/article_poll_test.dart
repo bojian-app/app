@@ -1,3 +1,4 @@
+import 'package:bojian_mobile/app_icons.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/article_poll.dart';
 import 'package:bojian_mobile/discovery.dart';
@@ -198,6 +199,111 @@ void main() {
     expect(find.byKey(const ValueKey('story-bookmark-5')), findsOneWidget);
   });
 
+  testWidgets('The author takes a poll post down from its card', (
+    tester,
+  ) async {
+    final api = FakeGateway();
+    api.documents['GetArticlesIdPollsPollID'] = {
+      'responded': false,
+      'closed': false,
+      'participants': 0,
+    };
+    api.documents['PostArticlesIdUnpublish'] = {'id': 5, 'status': 'DRAFT'};
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    Story story(int authorID) => Story(
+      id: 5,
+      authorID: authorID,
+      title: '',
+      author: '作者',
+      role: '',
+      category: '',
+      excerpt: '[投票] 选一个',
+      paragraphs: const [],
+      content: const {
+        'blocks': [
+          {
+            'kind': 'poll',
+            'mode': 'poll',
+            'poll_id': 7,
+            'title': '选一个',
+            'options': ['甲', '乙'],
+          },
+        ],
+      },
+    );
+    Widget feed(Story value) => MaterialApp(
+      theme: appTheme,
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: StoryCard(story: value, store: store, flat: true),
+        ),
+      ),
+    );
+    const menu = ValueKey('article-owner-actions-5');
+    await tester.pumpWidget(feed(story(store.userID + 99)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(menu), findsNothing);
+
+    await tester.pumpWidget(feed(story(store.userID)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(menu));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('article-action-unpublish')));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('PostArticlesIdUnpublish'));
+    // The card stays on its list; the list drops it when the post is a draft.
+    expect(find.byType(StoryCard), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('A poll taken down reopens in the form, answer key aside', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = await testStore(authenticated: true);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => openArticlePollComposer(
+                context,
+                store,
+                initial: const {
+                  'kind': 'poll',
+                  'mode': 'poll',
+                  'poll_id': 7,
+                  'title': '选一个',
+                  'options': ['甲', '乙', '丙'],
+                  'has_correct_answer': true,
+                },
+              ),
+              child: const Text('编辑'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+    expect(find.text('选一个'), findsOneWidget);
+    for (final option in ['甲', '乙', '丙']) {
+      expect(find.text(option), findsOneWidget);
+    }
+    // The key is not sent to the client, so it has to be set again.
+    expect(find.textContaining('再设置一次正确答案'), findsOneWidget);
+    expect(find.text('设置正确答案'), findsOneWidget);
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('请选择正确答案'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('The poll composer keeps the page gutters on both sides', (
     tester,
   ) async {
@@ -221,7 +327,20 @@ void main() {
     );
     await tester.tap(find.text('插入投票'));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('取消')).dx, appPageHorizontalPadding);
+    // The bar carries a back button and no title or cancel text.
+    expect(find.text('取消'), findsNothing);
+    expect(find.text('发起投票'), findsNothing);
+    expect(
+      tester
+          .getTopLeft(
+            find.descendant(
+              of: find.widgetWithText(TextButton, '返回'),
+              matching: find.byType(AppIcon),
+            ),
+          )
+          .dx,
+      appPageHorizontalPadding,
+    );
     expect(
       tester.getTopRight(find.text('完成')).dx,
       360 - appPageHorizontalPadding,

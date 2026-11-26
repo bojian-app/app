@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'route_transition_snapshot.dart';
 
 import 'package:flutter/material.dart';
@@ -44,6 +46,15 @@ class AppShellState extends State<AppShell>
       value: 1,
     )..addStatusListener(transitionFinished);
     progress = transition.drive(CurveTween(curve: appPageTransitionCurve));
+    // Lay the profile's resume covers out while the home page is idle, so the
+    // first visit to the profile tab does not hitch.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 800), () {
+        if (mounted && widget.store.isAuthenticated) {
+          unawaited(ProfilePage.prewarm(widget.store));
+        }
+      });
+    });
   }
 
   @override

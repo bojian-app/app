@@ -121,6 +121,12 @@ class _DiscoveryMenuButton extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 124, maxWidth: 200),
       color: context.colors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      // The route uses one duration both ways, so a short one makes the menu
+      // vanish the moment an entry is chosen instead of lingering for 300 ms.
+      popUpAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 100),
+        curve: Curves.easeOutCubic,
+      ),
       onOpened: dismissKeyboard,
       onSelected: (action) => action(),
       itemBuilder: (_) => items,

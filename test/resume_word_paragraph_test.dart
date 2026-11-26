@@ -5,11 +5,12 @@ import 'package:archive/archive.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_document.dart';
-import 'package:bojian_mobile/resume_market_document.dart';
 import 'package:bojian_mobile/resume_native_export.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xml/xml.dart';
+
+import 'support/export_layout_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -6,7 +6,6 @@ import 'package:archive/archive.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_document.dart';
 import 'package:bojian_mobile/resume_native_export.dart';
-import 'package:bojian_mobile/resume_market_document.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -481,60 +480,6 @@ void main() {
       );
     },
   );
-  test(
-    'Marketplace DOM layout exports native text and inline images',
-    () async {
-      final source = Platform.environment['BOJIAN_MARKET_EXPORT_QA'];
-      if (source == null) return;
-      final layout = marketExportLayout(
-        jsonDecode(await File(source).readAsString()) as List,
-      );
-      expect(layout.pages.length, greaterThan(1));
-      final text = layout.pages
-          .expand((p) => p.lines)
-          .expand((l) => l.spans)
-          .map((s) => s.text)
-          .join('');
-      final expectedName =
-          Platform.environment['BOJIAN_MARKET_QA_NAME'] ?? '林知远';
-      final recordPrefix =
-          Platform.environment['BOJIAN_MARKET_QA_PREFIX'] ?? '交付记录';
-      final recordCount = int.parse(
-        Platform.environment['BOJIAN_MARKET_QA_COUNT'] ?? '52',
-      );
-      expect(text, contains(expectedName));
-      for (var i = 0; i < recordCount; i++) {
-        expect(
-          RegExp('$recordPrefix${i.toString().padLeft(2, '0')}')
-              .allMatches(text)
-              .length,
-          1,
-        );
-      }
-      if ((jsonDecode(await File(source).readAsString()) as List).any(
-        (page) => page['background'] is String,
-      )) {
-        expect(layout.pages.every((page) => page.background != null), isTrue);
-      }
-      final output = Directory(
-        Platform.environment['BOJIAN_EXPORT_QA_DIR'] ??
-            '/tmp/bojian-native-export-qa',
-      );
-      await output.create(recursive: true);
-      for (final format in ['PDF', 'DOCX']) {
-        final bytes = await encodeNativeResume(
-          layout,
-          format,
-          regular,
-          bold,
-          medium: medium,
-        );
-        await File('${output.path}/market.${format.toLowerCase()}')
-            .writeAsBytes(bytes);
-      }
-    },
-  );
-
   test('PDF resets character spacing so letter-spaced headings do not widen body text', () async {
     ResumeExportLine line(double top, ResumeExportSpan span) =>
         ResumeExportLine(
