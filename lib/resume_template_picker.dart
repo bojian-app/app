@@ -307,16 +307,10 @@ class _ResumeTemplatePickerState extends State<ResumeTemplatePicker> {
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                            child:
-                                loading || market.loading || market.loadingMore
-                                ? const Center(
-                                    child: Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  )
+                            child: loading || market.loading
+                                ? const DotMatrixLoader(compact: true)
+                                : market.loadingMore
+                                ? const DotMatrixLoader(compact: true)
                                 : loadError != null || market.error != null
                                 ? Column(
                                     children: [

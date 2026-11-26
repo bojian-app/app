@@ -27,16 +27,6 @@ const _wordTypefaceAscent = 1.06;
 const resumeFontRegularAsset = 'assets/fonts/resume-sans-regular.ttf';
 const resumeFontMediumAsset = 'assets/fonts/resume-sans-medium.ttf';
 const resumeFontBoldAsset = 'assets/fonts/resume-sans-bold.ttf';
-const resumeDocumentFontAssets = {
-  'regular.ttf': resumeFontRegularAsset,
-  'medium.ttf': resumeFontMediumAsset,
-  'bold.ttf': resumeFontBoldAsset,
-};
-const resumeDocumentFontStyles = """
-@font-face{font-family:ResumeDocument;src:url('regular.ttf') format('truetype');font-weight:400;font-style:normal}
-@font-face{font-family:ResumeDocument;src:url('medium.ttf') format('truetype');font-weight:500 600;font-style:normal}
-@font-face{font-family:ResumeDocument;src:url('bold.ttf') format('truetype');font-weight:700 900;font-style:normal}
-""";
 
 // PDF imports can contain Unicode radicals in place of ordinary Han letters.
 // Normalize only these visual equivalents, without changing user punctuation.

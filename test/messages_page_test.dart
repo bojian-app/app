@@ -1,4 +1,5 @@
 import 'package:bojian_mobile/api/bojian_api.dart';
+import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/messages_page.dart';
 import 'package:flutter/material.dart';
@@ -48,7 +49,40 @@ class PagedGateway extends FakeGateway {
   }
 }
 
+class _CountedNotification extends InboxItem {
+  _CountedNotification(int id)
+    : super('通知 $id', '通知正文', '2026-10-08T05:50:00Z', 0, id: id, read: true);
+
+  int timeReads = 0;
+
+  @override
+  String get time {
+    timeReads++;
+    return super.time;
+  }
+}
+
 void main() {
+  testWidgets('长通知列表只格式化视口附近的通知，滚动后加载其余行', (tester) async {
+    final store = await testStore(authenticated: true);
+    addTearDown(store.dispose);
+    final entries = List.generate(500, _CountedNotification.new);
+    store.inbox.addAll(entries);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: MessagesPage(store: store)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final built = entries.where((item) => item.timeReads > 0).length;
+    expect(built, inExclusiveRange(0, 40));
+    expect(entries.last.timeReads, 0);
+    final list = Scrollable.of(tester.element(find.text('通知 0'))).position;
+    list.jumpTo(list.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(find.text('通知 499'), findsOneWidget);
+  });
+
   testWidgets('Messages list only system notifications, including landscape', (
     tester,
   ) async {

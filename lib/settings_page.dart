@@ -966,10 +966,7 @@ class _SecurityPageState extends State<AccountSecurityPage> {
         '登录设备',
         children: [
           if (loading)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            )
+            const DotMatrixLoader(compact: true)
           else if (error != null)
             Padding(
               padding: const EdgeInsets.symmetric(

@@ -80,19 +80,14 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('Clear all asks first and empties the inbox', (tester) async {
+  testWidgets('The page header has no clear-all or mark-all-read buttons', (
+    tester,
+  ) async {
     final api = FakeGateway();
-    final store = await _pump(tester, api);
-    await tester.tap(find.byKey(const ValueKey('notifications-clear-all')));
-    await tester.pumpAndSettle();
-    expect(find.text('清空全部通知？'), findsOneWidget);
-    expect(api.calls, isNot(contains('PostNotificationsClear')));
-    await tester.tap(find.byKey(const ValueKey('notifications-clear-confirm')));
-    await tester.pumpAndSettle();
-    expect(api.calls, contains('PostNotificationsClear'));
-    expect(store.inbox, isEmpty);
-    expect(store.notificationUnreadCount, 0);
-    expect(find.text('第一条通知'), findsNothing);
-    await tester.pump(const Duration(seconds: 3));
+    await _pump(tester, api);
+    expect(find.byKey(const ValueKey('notifications-clear-all')), findsNothing);
+    expect(find.byTooltip('清空通知'), findsNothing);
+    expect(find.byTooltip('系统通知全部已读'), findsNothing);
+    expect(find.text('第二条通知'), findsOneWidget);
   });
 }

@@ -9,6 +9,7 @@ import 'app_store.dart';
 import 'network_image_cache.dart';
 import 'resume_importer.dart';
 import 'resume_photo.dart';
+import 'photo_format.dart';
 
 const systemAvatarNames = ['小熊', '小猫', '兔子', '狐狸', '熊猫', '考拉', '企鹅', '小狗'];
 String profileAvatarSeed(AppStore store) =>
@@ -47,6 +48,9 @@ class ProfileAvatar extends StatelessWidget {
   final int? variant;
   final XFile? file;
   final double size;
+
+  /// Avatars are fully round unless a caller asks for another radius (the
+  /// full-screen avatar editor previews the whole square photo with 0).
   final double? borderRadius;
   final VoidCallback? onTap;
   final String semanticsLabel;
@@ -57,7 +61,7 @@ class ProfileAvatar extends StatelessWidget {
       size: Size.square(size),
     );
     final avatar = ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius ?? size * .34),
+      borderRadius: BorderRadius.circular(borderRadius ?? size / 2),
       child: SizedBox.square(
         dimension: size,
         child: file != null
@@ -287,7 +291,7 @@ Future<void> uploadProfileAvatar(
   final response = await store.request(
     'PostMeAvatarUploads',
     body: {
-      'filename': file.name,
+      'filename': photoUploadName(file.name, mime),
       'content_type': mime,
       'size_bytes': await file.length(),
     },

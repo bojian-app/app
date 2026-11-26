@@ -66,11 +66,20 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
       if (mounted && request == generation) {
         final page = items(result.data);
         final loaded = <int, Story>{};
-        if (widget.embedded) {
+        final details = widget.embedded
+            ? page
+            : page
+                  .where(
+                    (row) =>
+                        '${row['title'] ?? ''}'.trim().isEmpty &&
+                        !row.containsKey('content'),
+                  )
+                  .toList();
+        if (details.isNotEmpty || widget.embedded) {
           final session = widget.store.epoch;
-          for (var start = 0; start < page.length; start += 4) {
+          for (var start = 0; start < details.length; start += 4) {
             final stories = await Future.wait(
-              page.skip(start).take(4).map((row) async {
+              details.skip(start).take(4).map((row) async {
                 final id = integer(row['id']);
                 try {
                   final result = await widget.store.request(
@@ -78,6 +87,8 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                     path: {'id': '$id'},
                     expectedEpoch: session,
                   );
+                  if (result.data['content'] != null)
+                    row['content'] = result.data['content'];
                   return decodeStory({
                     ...row,
                     'is_favorited': true,
@@ -219,7 +230,7 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
     final visible = rows
         .where(
           (row) =>
-              '${row['title']}'.toLowerCase().contains(query.toLowerCase()),
+              articleListLabel(row).toLowerCase().contains(query.toLowerCase()),
         )
         .toList();
     final body = GestureDetector(
@@ -281,12 +292,7 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                           : visible.length + (widget.embedded ? 1 : 2),
                       itemBuilder: (context, index) {
                         if (loading) {
-                          return const Padding(
-                            padding: EdgeInsets.all(48),
-                            child: Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          );
+                          return const ListSkeleton(count: 4);
                         }
                         if (error != null) {
                           return Padding(
@@ -455,7 +461,7 @@ class _SavedCard extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        '${row['title'] ?? ''}',
+                        articleListLabel(row),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(

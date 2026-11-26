@@ -150,4 +150,97 @@ void main() {
     expect(article.liked, isTrue);
     expect(article.likes, 8);
   });
+
+  testWidgets('Headings give the page a table of contents that jumps to them', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Map<String, dynamic> block(String kind, String text) => {
+      'kind': kind,
+      'spans': [
+        {'text': text},
+      ],
+    };
+    final article = Story(
+      id: 1,
+      title: '长文',
+      author: '作者',
+      role: '',
+      category: '动态',
+      excerpt: '',
+      paragraphs: const [],
+      content: {
+        'blocks': [
+          block('heading2', '第一章'),
+          for (var i = 0; i < 24; i++) block('paragraph', '第一章的内容，第 $i 段。' * 3),
+          block('heading3', '第二章'),
+          for (var i = 0; i < 24; i++) block('paragraph', '第二章的内容，第 $i 段。' * 3),
+          block('heading2', '第三章'),
+          block('paragraph', '结尾'),
+        ],
+      },
+    );
+    final store = await testStore(authenticated: true);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: StoryDetail(story: article, store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final button = find.byKey(const ValueKey('article-contents-button'));
+    expect(button, findsOneWidget);
+    // The right-most action icon sits on the page gutter, not at the edge.
+    expect(tester.getRect(button).right, lessThanOrEqualTo(360 - 10 + .5));
+    final scrollable = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(scrollable.position.pixels, 0);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text('目录'), findsOneWidget);
+    for (final title in ['第一章', '第二章', '第三章']) {
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('article-contents')),
+          matching: find.text(title),
+        ),
+        findsOneWidget,
+      );
+    }
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('article-contents')),
+        matching: find.text('第二章'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('article-contents')), findsNothing);
+    expect(scrollable.position.pixels, greaterThan(100));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('An article without headings has no contents button', (
+    tester,
+  ) async {
+    final store = await testStore(authenticated: true);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: StoryDetail(story: story(), store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('article-contents-button')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

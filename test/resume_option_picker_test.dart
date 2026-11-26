@@ -47,6 +47,43 @@ class OptionGateway extends FakeGateway {
 
 void main() {
   testWidgets(
+    'Large catalogues build visible groups and reach the final option',
+    (tester) async {
+      final api = FakeGateway();
+      api.documents['GetCities'] = {
+        'items': [
+          for (var i = 1; i <= 500; i++) {'name': '城市 $i'},
+        ],
+      };
+      final store = await testStore(api: api);
+      addTearDown(store.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: Scaffold(
+            body: ResumeOptionPicker(kind: ResumeOptionKind.city, store: store),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final choices = find.byWidgetPredicate(
+        (w) => w is Text && (w.data?.startsWith('城市 ') ?? false),
+      );
+      expect(choices.evaluate().length, inInclusiveRange(1, 150));
+      await tester.scrollUntilVisible(
+        find.text('城市 500'),
+        500,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('city-results')),
+          matching: find.byType(Scrollable),
+        ),
+        maxScrolls: 100,
+      );
+      expect(find.text('城市 500').hitTestable(), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'Work position supports remote choice, custom input, cancel and clear',
     (tester) async {
       final api = OptionGateway();

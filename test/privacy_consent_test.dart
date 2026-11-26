@@ -59,7 +59,9 @@ void main() {
     // 阅读协议不等于同意。
     await tester.tapOnText(
       find.textRange.ofSubstring(
-        '《隐私政策》',
+        // The midpoint of the six-character link falls between two glyphs.
+        // Target the middle of the first word so the recognizer receives it.
+        '《隐私',
         descendentOf: find.byType(PrivacyConsentDialog),
       ),
     );

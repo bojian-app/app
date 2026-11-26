@@ -6,7 +6,52 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
 
+class _CountedRootComment extends ArticleComment {
+  _CountedRootComment(int id)
+    : super(id: id, authorID: 17, author: '读者', content: '评论正文 $id');
+
+  int authorLookups = 0;
+
+  @override
+  int get authorID {
+    authorLookups++;
+    return super.authorID;
+  }
+}
+
 void main() {
+  testWidgets('文章刷新已加载的长评论列表时只创建视口附近的评论行', (tester) async {
+    final api = FakeGateway();
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    final story = decodeStory({'id': 88, 'title': '文章'});
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StoryDetail(story: story, store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final comments = List.generate(400, (i) => _CountedRootComment(i + 1));
+    story.comments = comments;
+    store.changed();
+    await tester.pumpAndSettle();
+    final built = comments.where((c) => c.authorLookups > 0).length;
+    expect(built, inExclusiveRange(0, 40));
+    expect(comments.last.authorLookups, 0);
+    await tester.scrollUntilVisible(
+      find.text('评论正文 16'),
+      500,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.text('评论正文 16'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   test(
     'Realtime count refresh preserves loaded feed pages and reaction state',
     () async {

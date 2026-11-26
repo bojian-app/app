@@ -17,6 +17,7 @@ SubmissionStatus submissionStatus(
     throw ApiFailure(
       '${data['review_reason'] ?? '内容未通过人工审核，请修改后重新提交'}',
       code: 'CONTENT_REJECTED',
+      details: {'moderation': data['moderation']},
     );
   }
   final moderation = data['moderation'];

@@ -10,7 +10,6 @@ import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
 import 'app_store.dart';
-import 'confirmation_dialog.dart';
 import 'design.dart';
 import 'swipe_actions.dart';
 import 'my_articles_page.dart';
@@ -36,7 +35,6 @@ class MessagesPage extends StatefulWidget {
 }
 
 class _MessagesPageState extends State<MessagesPage> {
-  bool marking = false, clearing = false;
   @override
   void initState() {
     super.initState();
@@ -65,68 +63,77 @@ class _MessagesPageState extends State<MessagesPage> {
         color: context.isDark ? context.colors.border : const Color(0xFFF0F2F5),
       );
       const gutter = EdgeInsets.symmetric(horizontal: appPageHorizontalPadding);
+      final inbox = store.inbox.toList(growable: false);
+      late final indices = {
+        for (var i = 0; i < inbox.length; i++) ValueKey(inbox[i].id): i + 1,
+      };
+      final header = Column(
+        children: [
+          if (!widget.standalone)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                appPageHorizontalPadding,
+                18,
+                appPageHorizontalPadding,
+                8,
+              ),
+              child: SizedBox(
+                height: 48,
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '消息',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (store.loading.contains(section) && empty)
+            const ListSkeleton(count: 5),
+          if (store.errors[section] != null)
+            _status(
+              AppIcons.error,
+              store.errors[section]!,
+              action: '重新加载',
+              onTap: () => store.load(section),
+            ),
+          if (empty &&
+              !store.loading.contains(section) &&
+              store.errors[section] == null)
+            Padding(padding: gutter, child: const EmptyState('暂无系统通知', '')),
+        ],
+      );
       final content = AutoPaginate.section(
         store: store,
         section: section,
         child: PlayfulRefresh(
           hasError: () => store.errors[section] != null,
           onRefresh: () => store.load(section),
-          child: ListView(
+          child: ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 24),
-            children: [
-              if (!widget.standalone)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    appPageHorizontalPadding,
-                    18,
-                    appPageHorizontalPadding,
-                    8,
-                  ),
-                  child: SizedBox(
-                    height: 48,
-                    child: Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            '消息',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -.5,
-                            ),
-                          ),
-                        ),
-                        _clearAllButton(store),
-                        _markAllReadButton(store),
-                      ],
-                    ),
-                  ),
-                ),
-              if (store.loading.contains(section) && empty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 80),
-                  child: Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              if (store.errors[section] != null)
-                _status(
-                  AppIcons.error,
-                  store.errors[section]!,
-                  action: '重新加载',
-                  onTap: () => store.load(section),
-                ),
-              if (empty &&
-                  !store.loading.contains(section) &&
-                  store.errors[section] == null)
-                Padding(padding: gutter, child: const EmptyState('暂无系统通知', '')),
-              for (var i = 0; i < store.inbox.length; i++) ...[
-                if (i > 0) divider,
-                _dismissible(store, store.inbox[i]),
-              ],
-              PageLoadingFooter(visible: store.loadingMore.contains(section)),
-            ],
+            itemCount: inbox.length + 2,
+            findChildIndexCallback: (key) => indices[key],
+            itemBuilder: (context, index) {
+              if (index == 0) return header;
+              if (index == inbox.length + 1) {
+                return PageLoadingFooter(
+                  visible: store.loadingMore.contains(section),
+                );
+              }
+              final item = inbox[index - 1];
+              return Column(
+                key: ValueKey(item.id),
+                children: [if (index > 1) divider, _dismissible(store, item)],
+              );
+            },
           ),
         ),
       );
@@ -136,38 +143,11 @@ class _MessagesPageState extends State<MessagesPage> {
               appBar: AppPageBar(
                 backgroundColor: context.colors.surface,
                 title: const Text('消息'),
-                actions: [_clearAllButton(store), _markAllReadButton(store)],
               ),
               body: content,
             )
           : content;
     },
-  );
-
-  Widget _clearAllButton(AppStore store) => IconButton(
-    key: const ValueKey('notifications-clear-all'),
-    tooltip: '清空通知',
-    icon: AppIcon(AppIcons.delete, size: 22, color: context.colors.muted),
-    onPressed: !store.isAuthenticated || clearing || store.inbox.isEmpty
-        ? null
-        : () async {
-            final confirmed = await showAppConfirmation(
-              context,
-              title: '清空全部通知？',
-              content: const Text('清空后通知将从列表中移除，无法恢复。'),
-              confirmLabel: '清空',
-              destructive: true,
-              confirmKey: const ValueKey('notifications-clear-confirm'),
-            );
-            if (confirmed != true || !mounted) return;
-            setState(() => clearing = true);
-            await runRequest(
-              context,
-              store.clearAllNotifications,
-              success: '通知已清空',
-            );
-            if (mounted) setState(() => clearing = false);
-          },
   );
 
   /// Swipe left for per-notification actions: mark read and delete.
@@ -193,23 +173,6 @@ class _MessagesPageState extends State<MessagesPage> {
       ),
     ],
     child: _notification(item),
-  );
-
-  Widget _markAllReadButton(AppStore store) => IconButton(
-    tooltip: '系统通知全部已读',
-    icon: AppIcon(AppIcons.readAll, size: 23, color: context.colors.muted),
-    onPressed:
-        !store.isAuthenticated || marking || store.notificationUnreadCount == 0
-        ? null
-        : () async {
-            setState(() => marking = true);
-            await runRequest(
-              context,
-              store.markAllRead,
-              success: '系统通知已全部标为已读',
-            );
-            if (mounted) setState(() => marking = false);
-          },
   );
 
   Widget _status(

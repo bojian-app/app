@@ -46,10 +46,11 @@ void main() {
     final initialState = tester.state<ResumeDocumentViewState>(
       find.byType(ResumeDocumentView),
     );
-    expect(initialState.document!.fontFamily, resumeDocumentFontFamily);
+    // On screen the resume is set in the system font.
+    expect(initialState.document!.fontFamily, isNull);
     expect(
       initialState.document!.painters.first.text!.style!.fontFamily,
-      resumeDocumentFontFamily,
+      isNull,
     );
     store.resumes[0] = ResumeDraft(
       id: 1,

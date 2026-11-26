@@ -209,6 +209,28 @@ void main() {
     );
   }
 
+  testWidgets('个人页折叠时复用已排版的简介，改写简介后重新排版', (tester) async {
+    final store = await mount(tester, gateway(bio: description * 10));
+    final summary = find.byKey(const ValueKey('profile-about-text'));
+    final built = <Text>{tester.widget<Text>(summary)};
+    final position = tester
+        .state<NestedScrollViewState>(
+          find.byKey(const ValueKey('profile-scroll')),
+        )
+        .outerController
+        .position;
+    for (var i = 1; i <= 12; i++) {
+      position.jumpTo(i * 4.0);
+      await tester.pump();
+      built.add(tester.widget<Text>(summary));
+    }
+    expect(built.length, 1);
+    store.bio = '新的简介';
+    store.changed();
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(summary).semanticsLabel, contains('新的简介'));
+  });
+
   testWidgets(
     'A very long biography leaves its inline About me action visible and opens the full text',
     (tester) async {

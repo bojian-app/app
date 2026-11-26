@@ -1,4 +1,3 @@
-import 'app_bottom_navigation.dart';
 import 'route_transition_snapshot.dart';
 
 import 'package:flutter/material.dart';
@@ -24,24 +23,27 @@ class AppShell extends StatefulWidget {
 
 class AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin {
-  int selected = 0;
-  int serviceReturnTab = 0;
+  final _history = <int>[0];
+  int get selected => _history.last;
   final visited = <int>{0};
+  int displayed = 0;
   int? previous;
-  double direction = 1;
+  bool selectedFromHistory = false;
   bool reducedMotion = false;
   late final AnimationController transition;
-  late final CurvedAnimation progress;
+  late final Animation<double> progress;
+  Animation<Offset> entering = const AlwaysStoppedAnimation(Offset.zero);
+  Animation<Offset> leaving = const AlwaysStoppedAnimation(Offset.zero);
 
   @override
   void initState() {
     super.initState();
     transition = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: appPageTransitionDuration,
       value: 1,
     )..addStatusListener(transitionFinished);
-    progress = CurvedAnimation(parent: transition, curve: Curves.easeOutCubic);
+    progress = transition.drive(CurveTween(curve: appPageTransitionCurve));
   }
 
   @override
@@ -53,79 +55,93 @@ class AppShellState extends State<AppShell>
 
   void transitionFinished(AnimationStatus status) {
     if (status == AnimationStatus.completed && previous != null && mounted) {
-      setState(() => previous = null);
+      // Finish the current slide before showing a newer selection.
+      final showNext = !reducedMotion && displayed != selected;
+      setState(() => displaySelection(animate: showNext));
+      if (showNext) transition.forward(from: 0);
+    }
+  }
+
+  void displaySelection({required bool animate}) {
+    previous = animate ? displayed : null;
+    displayed = selected;
+    if (animate) {
+      final side = Offset(selectedFromHistory ? -1 : 1, 0);
+      entering = Tween(begin: side, end: Offset.zero).animate(progress);
+      leaving = Tween(begin: Offset.zero, end: -side).animate(progress);
     }
   }
 
   void select(int index) {
     dismissKeyboard();
     if (selected == index) return;
-    if (reducedMotion) transition.value = 1;
+    final startSlide = !reducedMotion && !transition.isAnimating;
     setState(() {
-      previous = reducedMotion ? null : selected;
-      direction = index > selected ? 1 : -1;
-      if (index == AppShell.serviceTab) serviceReturnTab = selected;
-      selected = index;
+      final existing = _history.indexOf(index);
+      selectedFromHistory = existing != -1;
+      if (selectedFromHistory) {
+        _history.removeRange(existing + 1, _history.length);
+      } else {
+        _history.add(index);
+      }
       visited.add(index);
+      if (startSlide || reducedMotion) {
+        displaySelection(animate: startSlide);
+      }
     });
-    if (!reducedMotion) transition.forward(from: 0);
+    if (startSlide) transition.forward(from: 0);
+  }
+
+  void goBack() {
+    if (_history.length > 1) select(_history[_history.length - 2]);
   }
 
   @override
   void dispose() {
     transition.removeStatusListener(transitionFinished);
-    progress.dispose();
     transition.dispose();
     super.dispose();
   }
 
   Widget page(int index) => switch (index) {
-    0 => DiscoveryPage(store: widget.store),
+    0 => DiscoveryPage(
+      store: widget.store,
+      onOpenMembership: () => select(AppShell.membershipTab),
+      onOpenService: () => select(AppShell.serviceTab),
+      onOpenProfile: () => select(AppShell.profileTab),
+    ),
     AppShell.membershipTab =>
       widget.store.isAuthenticated
           ? MembershipPage(
               key: ValueKey('membership-${widget.store.userID}'),
               store: widget.store,
               embedded: true,
+              onExit: goBack,
             )
-          : AnnotatedRegion<SystemUiOverlayStyle>(
-              value: appSystemUiStyle(context),
-              child: Scaffold(
-                appBar: const AppPageBar(
-                  title: Text('会员中心'),
-                  automaticallyImplyLeading: false,
-                ),
-                body: DataStatus(
-                  store: widget.store,
-                  section: 'profile',
-                  empty: false,
-                ),
-              ),
-            ),
+          : guestPage('会员中心'),
     AppShell.serviceTab =>
       widget.store.isAuthenticated
           ? CustomerServicePage(
               key: ValueKey(widget.store.epoch),
-              onExit: () => select(serviceReturnTab),
+              onExit: goBack,
               store: widget.store,
               embedded: true,
             )
-          : AnnotatedRegion<SystemUiOverlayStyle>(
-              value: appSystemUiStyle(context),
-              child: Scaffold(
-                appBar: const AppPageBar(
-                  title: Text('在线客服'),
-                  automaticallyImplyLeading: false,
-                ),
-                body: DataStatus(
-                  store: widget.store,
-                  section: 'profile',
-                  empty: false,
-                ),
-              ),
-            ),
-    _ => ProfilePage(store: widget.store),
+          : guestPage('在线客服'),
+    _ => ProfilePage(store: widget.store, onExit: goBack),
   };
+
+  Widget guestPage(String title) => AnnotatedRegion<SystemUiOverlayStyle>(
+    value: appSystemUiStyle(context),
+    child: Scaffold(
+      appBar: AppPageBar(
+        leading: BackButton(onPressed: goBack),
+        title: Text(title),
+      ),
+      body: DataStatus(store: widget.store, section: 'profile', empty: false),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => RouteTransitionSnapshot(
     child: Scaffold(
@@ -135,37 +151,35 @@ class AppShellState extends State<AppShell>
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680),
-            child: Stack(
-              clipBehavior: Clip.hardEdge,
-              fit: StackFit.expand,
-              children: [
-                // Keep every page in the same keyed tree, painting the new page last.
-                for (final index in [
-                  ...visited.where((index) => index != selected),
-                  selected,
-                ])
-                  _RetainedTab(
-                    key: ValueKey(index),
-                    store: widget.store,
-                    index: index,
-                    active: selected == index,
-                    visible: selected == index || previous == index,
-                    motion: selected == index
-                        ? progress
-                        : const AlwaysStoppedAnimation(1.0),
-                    direction: direction,
-                    builder: () => page(index),
-                  ),
-              ],
+            child: ClipRect(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Keep every page in the same keyed tree, painting the new page last.
+                  for (final index in [
+                    ...visited.where((index) => index != displayed),
+                    displayed,
+                  ])
+                    _RetainedTab(
+                      key: ValueKey(index),
+                      store: widget.store,
+                      index: index,
+                      active: displayed == index,
+                      visible: displayed == index || previous == index,
+                      position: displayed == index
+                          ? entering
+                          : previous == index
+                          ? leaving
+                          : const AlwaysStoppedAnimation(Offset.zero),
+                      builder: () => page(index),
+                      onBack: goBack,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-      bottomNavigationBar:
-          (selected == AppShell.serviceTab && widget.store.isAuthenticated) ||
-              MediaQuery.viewInsetsOf(context).bottom > 0
-          ? null
-          : AppBottomNavigation(selectedIndex: selected, onSelected: select),
     ),
   );
 }
@@ -178,16 +192,16 @@ class _RetainedTab extends StatefulWidget {
     required this.index,
     required this.active,
     required this.visible,
-    required this.motion,
-    required this.direction,
+    required this.position,
     required this.builder,
+    required this.onBack,
   });
   final AppStore store;
   final int index;
   final bool active, visible;
-  final Animation<double> motion;
-  final double direction;
+  final Animation<Offset> position;
   final Widget Function() builder;
+  final VoidCallback onBack;
   @override
   State<_RetainedTab> createState() => _RetainedTabState();
 }
@@ -225,40 +239,36 @@ class _RetainedTabState extends State<_RetainedTab> {
     }
     return Offstage(
       offstage: !widget.visible,
-      child: FadeTransition(
-        key: ValueKey('tab-fade-${widget.index}'),
-        opacity: widget.motion,
-        alwaysIncludeSemantics: true,
-        child: AnimatedBuilder(
-          animation: widget.motion,
-          builder: (context, child) => Transform.translate(
-            key: ValueKey('tab-offset-${widget.index}'),
-            offset: Offset(widget.direction * 6 * (1 - widget.motion.value), 0),
-            child: child,
-          ),
-          child: IgnorePointer(
-            ignoring: !widget.active,
-            child: ExcludeSemantics(
+      child: SlideTransition(
+        position: widget.position,
+        child: IgnorePointer(
+          ignoring: !widget.active,
+          child: ExcludeSemantics(
+            excluding: !widget.active,
+            child: ExcludeFocus(
               excluding: !widget.active,
-              child: ExcludeFocus(
-                excluding: !widget.active,
-                child: TickerMode(
-                  enabled: widget.active,
-                  child: RepaintBoundary(
-                    child: ColoredBox(
-                      color: switch (widget.index) {
-                        0 => context.colors.surface,
-                        AppShell.membershipTab =>
-                          widget.store.isAuthenticated
-                              ? MembershipPage.backgroundColor(context)
-                              : context.colors.surface,
-                        _ => context.colors.canvas,
-                      },
-                      child: SafeArea(
-                        top: widget.index < AppShell.membershipTab,
-                        bottom: false,
-                        child: ColoredBox(
-                          color: context.colors.canvas,
+              child: TickerMode(
+                enabled: widget.active,
+                child: RepaintBoundary(
+                  child: ColoredBox(
+                    color: switch (widget.index) {
+                      0 => context.colors.surface,
+                      AppShell.membershipTab =>
+                        widget.store.isAuthenticated
+                            ? MembershipPage.backgroundColor(context)
+                            : context.colors.surface,
+                      _ => context.colors.canvas,
+                    },
+                    child: SafeArea(
+                      top: widget.index < AppShell.membershipTab,
+                      bottom: widget.index != AppShell.serviceTab,
+                      child: ColoredBox(
+                        color: context.colors.canvas,
+                        child: PopScope(
+                          canPop: !handlesBack,
+                          onPopInvokedWithResult: (didPop, _) {
+                            if (!didPop && handlesBack) widget.onBack();
+                          },
                           child: content!,
                         ),
                       ),
@@ -272,6 +282,12 @@ class _RetainedTabState extends State<_RetainedTab> {
       ),
     );
   }
+
+  // The signed-in service page handles returning from a chat before exiting.
+  bool get handlesBack =>
+      widget.active &&
+      widget.index != 0 &&
+      (widget.index != AppShell.serviceTab || !widget.store.isAuthenticated);
 
   @override
   void dispose() {

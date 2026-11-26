@@ -10,7 +10,7 @@
 
 `1.0.0-local+2026110502` 已安装到 PJD110，状态为“已安装，待人工测试”。手机访问本地就绪接口成功，23 项环境隔离及 HTTP 定向检查通过。产物与记录保留在 `artifacts/android/local-2026110502/`；本轮转换验证的临时样例已清理，历史待验收包与发布资料保留。
 
-手机测试包默认使用本地后端，不需要先上线。在项目目录运行：
+手机验收默认安装连接生产 API 的 release 包，构建方式见下方「Android 构建」。用户明确要求本地联调时，在项目目录运行：
 
 ```sh
 sh scripts/install_android_local.sh
@@ -21,7 +21,7 @@ sh scripts/install_android_local.sh
 
 保持电脑、本地服务和 USB 连接。拔插手机后无需重装，执行 `adb reverse tcp:8080 tcp:8080` 恢复连接；多设备时加 `-s <设备ID>`。仅更新后端可运行 `python3 ../app-server/scripts/local_backend.py start`，停止用 `stop`，查看状态用 `status`，查看日志用 `logs`。
 
-默认 `BOJIAN_ENV=local` 仅允许 `http://127.0.0.1:<端口>/api/v1`，不会在本地后端不可用时回退线上。正式发布须显式使用 `BOJIAN_ENV=production`；`scripts/build_android_release.sh` 已固定传入该环境，正式 API 继续强制 HTTPS。不要用正式发布脚本给测试手机装包。
+默认 `BOJIAN_ENV=local` 仅允许 `http://127.0.0.1:<端口>/api/v1`，不会在本地后端不可用时回退线上。正式发布须显式使用 `BOJIAN_ENV=production`；`scripts/build_android_release.sh` 已固定传入该环境，正式 API 继续强制 HTTPS。
 
 后端第三方凭证仍从 `app-server/.env` 读取，AI、人脸识别及非默认测试号码的短信仍会调用对应供应商；本地数据库与 Redis 的地址由脚本固定，上传文件使用 `local-phone-test` 前缀。激励广告未配置时不能领取广告奖励。
 

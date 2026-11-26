@@ -160,7 +160,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (file == null || navigator == null) return;
       files.incoming.value = null;
       navigator.push(
-        MaterialPageRoute<void>(
+        AppPageRoute<void>(
           builder: (_) => ImportResume(
             store: store,
             initialFile: file,
@@ -168,7 +168,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               shellKey.currentState?.select(AppShell.profileTab);
               navigator.popUntil((route) => route.isFirst);
               navigator.push(
-                MaterialPageRoute<void>(
+                AppPageRoute<void>(
                   builder: (_) => Scaffold(
                     appBar: AppPageBar(title: const Text('我的简历')),
                     body: SafeArea(
@@ -228,42 +228,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final home = Builder(
-      builder: (context) {
-        return AnimatedSwitcher(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 380),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) => FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, .025),
-                end: Offset.zero,
-              ).animate(animation),
-              child: child,
-            ),
-          ),
-          layoutBuilder: (current, previous) => Stack(
-            fit: StackFit.expand,
-            children: [
-              for (final child in previous)
-                ExcludeSemantics(child: IgnorePointer(child: child)),
-              ?current,
-            ],
-          ),
-          child: preparingStartup
-              ? StartupAnimation(
-                  key: const ValueKey('startup-session-gate'),
-                  animate: widget.startupAnimationEnabled,
-                )
-              : entryAllowed
-              ? AppShell(key: shellKey, store: store)
-              : AuthPage(key: const ValueKey('signed-out-home'), store: store),
-        );
-      },
+    final home = AppPageSwitcher(
+      depth: preparingStartup
+          ? 0
+          : entryAllowed
+          ? 2
+          : 1,
+      child: preparingStartup
+          ? StartupAnimation(
+              key: const ValueKey('startup-session-gate'),
+              animate: widget.startupAnimationEnabled,
+            )
+          : entryAllowed
+          ? AppShell(key: shellKey, store: store)
+          : AuthPage(key: const ValueKey('signed-out-home'), store: store),
     );
     return ValueListenableBuilder<AppearanceChoice>(
       valueListenable: store.appearance,

@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_icons.dart';
+import 'app_page_transitions.dart';
 
 const brandBlue = Color(0xFF2867EE);
 
 enum AppAccent {
   blue('Z优简蓝', brandBlue),
-  warm('珊瑚暖色', Color(0xFFC64350));
+  warm('珊瑚暖色', Color(0xFFC64350)),
+  green('青竹绿', Color(0xFF1D8A5A));
 
   const AppAccent(this.label, this.seed);
   final String label;
@@ -159,11 +161,20 @@ final appTheme = _buildTheme(Brightness.light, AppAccent.blue);
 final appDarkTheme = _buildTheme(Brightness.dark, AppAccent.blue);
 final _warmTheme = _buildTheme(Brightness.light, AppAccent.warm);
 final _warmDarkTheme = _buildTheme(Brightness.dark, AppAccent.warm);
+final _greenTheme = _buildTheme(Brightness.light, AppAccent.green);
+final _greenDarkTheme = _buildTheme(Brightness.dark, AppAccent.green);
 
 extension AccentThemes on AppAccent {
-  ThemeData get lightTheme => this == AppAccent.blue ? appTheme : _warmTheme;
-  ThemeData get darkTheme =>
-      this == AppAccent.blue ? appDarkTheme : _warmDarkTheme;
+  ThemeData get lightTheme => switch (this) {
+    AppAccent.blue => appTheme,
+    AppAccent.warm => _warmTheme,
+    AppAccent.green => _greenTheme,
+  };
+  ThemeData get darkTheme => switch (this) {
+    AppAccent.blue => appDarkTheme,
+    AppAccent.warm => _warmDarkTheme,
+    AppAccent.green => _greenDarkTheme,
+  };
 }
 
 ThemeData _buildTheme(Brightness brightness, AppAccent palette) {
@@ -173,8 +184,17 @@ ThemeData _buildTheme(Brightness brightness, AppAccent palette) {
       ? defaults
       : defaults.copyWith(
           palette: palette,
-          accent: dark ? const Color(0xFFFFA2A6) : palette.seed,
-          accentSoft: dark ? const Color(0xFF472932) : const Color(0xFFFFEFF0),
+          accent: switch ((palette, dark)) {
+            (AppAccent.green, true) => const Color(0xFF7FD8AE),
+            (_, true) => const Color(0xFFFFA2A6),
+            _ => palette.seed,
+          },
+          accentSoft: switch ((palette, dark)) {
+            (AppAccent.green, true) => const Color(0xFF1F3A2E),
+            (AppAccent.green, false) => const Color(0xFFE8F6EF),
+            (_, true) => const Color(0xFF472932),
+            _ => const Color(0xFFFFEFF0),
+          },
         );
   final base = ThemeData(brightness: brightness, useMaterial3: true);
   final scheme =
@@ -185,9 +205,11 @@ ThemeData _buildTheme(Brightness brightness, AppAccent palette) {
       ).copyWith(
         primary: colors.accent,
         onPrimary: dark
-            ? (palette == AppAccent.warm
-                  ? const Color(0xFF361722)
-                  : const Color(0xFF102244))
+            ? switch (palette) {
+                AppAccent.warm => const Color(0xFF361722),
+                AppAccent.green => const Color(0xFF0A2F1E),
+                AppAccent.blue => const Color(0xFF102244),
+              }
             : Colors.white,
         onSurface: colors.ink,
         onSurfaceVariant: colors.muted,
@@ -195,6 +217,12 @@ ThemeData _buildTheme(Brightness brightness, AppAccent palette) {
       );
   return base.copyWith(
     extensions: [colors],
+    pageTransitionsTheme: PageTransitionsTheme(
+      builders: {
+        for (final platform in TargetPlatform.values)
+          platform: const AppPageTransitionsBuilder(),
+      },
+    ),
     hoverColor: Colors.transparent,
     tabBarTheme: TabBarThemeData(overlayColor: _noHoverOverlay),
     sliderTheme: SliderThemeData(

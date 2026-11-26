@@ -34,6 +34,51 @@ class DelayedFeed extends FakeGateway {
 
 void main() {
   testWidgets(
+    'Pulling the feed reveals the refresh animation below the fixed header',
+    (tester) async {
+      final api = DelayedFeed();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: Scaffold(body: DiscoveryPage(store: store)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final header = find.byKey(const ValueKey('discovery-search-row'));
+      final divider = find.byKey(const ValueKey('discovery-feed-divider'));
+      final card = find.byKey(const ValueKey('discovery-story-1'));
+      final headerRect = tester.getRect(header);
+      final dividerRect = tester.getRect(divider);
+      final originalCardTop = tester.getTopLeft(card).dy;
+      expect(originalCardTop, closeTo(dividerRect.bottom, .01));
+
+      api.calls.clear();
+      api.pending = Completer<void>();
+      final pull = await tester.startGesture(tester.getCenter(card));
+      for (var i = 0; i < 6; i++) {
+        await pull.moveBy(const Offset(0, 60));
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await pull.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      final indicator = tester.getRect(find.bySemanticsLabel('正在刷新'));
+      expect(tester.getRect(header), headerRect);
+      expect(tester.getRect(divider), dividerRect);
+      expect(indicator.top, greaterThanOrEqualTo(dividerRect.bottom));
+      expect(indicator.bottom, lessThanOrEqualTo(tester.getTopLeft(card).dy));
+
+      api.pending!.complete();
+      await tester.pump();
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      expect(api.calls.where((method) => method == 'GetFeed'), hasLength(1));
+      expect(tester.getTopLeft(card).dy, closeTo(originalCardTop, .01));
+    },
+  );
+
+  testWidgets(
     'Discovery refresh no longer depends on resume loading or its errors',
     (tester) async {
       final api = DelayedFeed();

@@ -3,7 +3,96 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'design.dart';
-import 'network_image_cache.dart';
+import 'app_store.dart';
+import 'article_link.dart';
+import 'article_photo.dart';
+import 'article_poll.dart';
+import 'article_topic.dart';
+
+String articleTopicLink(String name) =>
+    Uri(scheme: 'bojian-topic', pathSegments: [name]).toString();
+
+String? articleTopicName(Object? link) {
+  if (link is! String || !link.startsWith('bojian-topic:')) return null;
+  final uri = Uri.tryParse(link);
+  if (uri == null ||
+      uri.pathSegments.length != 1 ||
+      uri.pathSegments.first.isEmpty) {
+    return null;
+  }
+  return uri.pathSegments.first;
+}
+
+final _fontLacksBold = <String?, bool>{};
+
+/// Some phones apply a user-chosen system font with a single weight, where
+/// `FontWeight.w700` draws exactly like regular text and Flutter does not
+/// synthesize bold. Returns shadows that thicken glyphs in that case, or null
+/// when the font has a real bold.
+List<Shadow>? articleBoldShadows(
+  BuildContext context,
+  Color color, {
+  double? size,
+}) {
+  final base = DefaultTextStyle.of(context).style;
+  final lacksBold = _fontLacksBold.putIfAbsent(base.fontFamily, () {
+    double width(FontWeight weight) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: 'WMwmBold 中文加粗',
+          style: base.copyWith(fontSize: 40, fontWeight: weight),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final result = painter.width;
+      painter.dispose();
+      return result;
+    }
+
+    return (width(FontWeight.w700) - width(FontWeight.w400)).abs() < .5;
+  });
+  if (!lacksBold) return null;
+  // Large text needs a proportionally larger offset.
+  final offset = size == null ? .4 : size * .026;
+  return [
+    Shadow(color: color, offset: Offset(offset, 0)),
+    Shadow(color: color, offset: Offset(-offset, 0)),
+  ];
+}
+
+/// Heading level (1-6) of a block kind such as `heading2` or `h3`; `heading`
+/// alone is the legacy first level.
+int? articleHeadingLevel(String kind) {
+  final lower = kind.toLowerCase();
+  if (lower == 'heading') return 1;
+  final match = RegExp(r'^(?:heading|h)([1-6])$').firstMatch(lower);
+  return match == null ? null : int.parse(match.group(1)!);
+}
+
+/// One heading of an article, for the table of contents.
+class ArticleHeading {
+  const ArticleHeading(this.blockIndex, this.level, this.text);
+  final int blockIndex, level;
+  final String text;
+}
+
+/// The non-empty headings of [content], in reading order.
+List<ArticleHeading> articleHeadings(Map<String, dynamic> content) {
+  final result = <ArticleHeading>[];
+  final blocks = content['blocks'] as List? ?? [];
+  for (var i = 0; i < blocks.length; i++) {
+    final block = blocks[i];
+    if (block is! Map) continue;
+    final level = articleHeadingLevel('${block['kind']}');
+    if (level == null) continue;
+    final text = [
+      for (final span in block['spans'] as List? ?? [])
+        if (span is Map) '${span['text'] ?? ''}',
+    ].join().trim();
+    if (text.isNotEmpty) result.add(ArticleHeading(i, level, text));
+  }
+  return result;
+}
 
 /// Converts editor operations to the block/span format shared with the Mac app.
 Map<String, dynamic> articleContentFromDelta(List<dynamic> operations) {
@@ -14,8 +103,8 @@ Map<String, dynamic> articleContentFromDelta(List<dynamic> operations) {
     final header = attributes['header'];
     final list = attributes['list'];
     blocks.add({
-      'kind': header == 1
-          ? 'heading1'
+      'kind': header is int && header >= 1 && header <= 6
+          ? 'heading$header'
           : header != null
           ? 'heading2'
           : list == 'bullet'
@@ -49,6 +138,11 @@ Map<String, dynamic> articleContentFromDelta(List<dynamic> operations) {
         embeddedLine = false;
         spans.add({
           'text': parts[i],
+          if (articleTopicName(attributes['link']) case final String name)
+            'topic': name,
+          if (attributes['link'] is String &&
+              articleWebLink(attributes['link']) != null)
+            'link': attributes['link'],
           for (final key in ['bold', 'italic', 'underline'])
             if (attributes[key] == true) key: true,
           if (attributes['strike'] == true) 'strikethrough': true,
@@ -80,6 +174,8 @@ List<Map<String, dynamic>> articleDeltaFromContent(
   const blockKeys = {'kind', 'spans', 'align', 'indent'};
   const spanKeys = {
     'text',
+    'link',
+    'topic',
     'bold',
     'italic',
     'underline',
@@ -94,6 +190,10 @@ List<Map<String, dynamic>> articleDeltaFromContent(
     'paragraph',
     'heading1',
     'heading2',
+    'heading3',
+    'heading4',
+    'heading5',
+    'heading6',
     'bullet',
     'numbered',
     'quote',
@@ -120,6 +220,10 @@ List<Map<String, dynamic>> articleDeltaFromContent(
         'color': ?(span['foregroundColor'] ?? span['foreground_color']),
         'background': ?(span['backgroundColor'] ?? span['background_color']),
         'size': ?span['size'],
+        if (span['topic'] is String)
+          'link': articleTopicLink(span['topic'])
+        else if (span['link'] is String && articleWebLink(span['link']) != null)
+          'link': span['link'],
       };
       operations.add({
         'insert': text,
@@ -127,8 +231,7 @@ List<Map<String, dynamic>> articleDeltaFromContent(
       });
     }
     final attributes = {
-      if (block['kind'] == 'heading1') 'header': 1,
-      if (block['kind'] == 'heading2') 'header': 2,
+      'header': ?articleHeadingLevel('${block['kind']}'),
       if (block['kind'] == 'bullet') 'list': 'bullet',
       if (block['kind'] == 'numbered') 'list': 'ordered',
       if (block['kind'] == 'quote') 'blockquote': true,
@@ -148,7 +251,20 @@ List<Map<String, dynamic>> articleDeltaFromContent(
 }
 
 class ArticleRichBody extends StatelessWidget {
-  const ArticleRichBody({super.key, required this.content});
+  const ArticleRichBody({
+    super.key,
+    required this.content,
+    this.store,
+    this.articleID,
+    this.editing = false,
+    this.headingKeys,
+  });
+  final AppStore? store;
+  final int? articleID;
+  final bool editing;
+
+  /// Keys for heading blocks by block index, so a page can scroll to them.
+  final Map<int, GlobalKey>? headingKeys;
   final Map<String, dynamic> content;
   static const lineHeight = 1.6;
   Color? color(dynamic value) {
@@ -175,7 +291,42 @@ class ArticleRichBody extends StatelessWidget {
     TextSpan(
       children: [
         for (final span in spans)
-          if (span is Map)
+          if (span is Map && span['topic'] is String && store != null)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: InkWell(
+                onTap: () => openArticleTopic(context, store!, span['topic']),
+                child: Text(
+                  '${span['text'] ?? ''}',
+                  style: TextStyle(
+                    color: context.colors.accent,
+                    fontSize: size,
+                    height: lineHeight,
+                  ),
+                ),
+              ),
+            )
+          else if (span is Map &&
+              span['link'] is String &&
+              articleWebLink(span['link']) != null)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: InkWell(
+                onTap: () =>
+                    openArticleLink(context, articleWebLink(span['link'])!),
+                child: Text(
+                  '${span['text'] ?? ''}',
+                  style: TextStyle(
+                    color: context.colors.accent,
+                    fontSize: size,
+                    height: lineHeight,
+                  ),
+                ),
+              ),
+            )
+          else if (span is Map)
             TextSpan(
               text: '${span['text'] ?? ''}',
               style: TextStyle(
@@ -195,6 +346,17 @@ class ArticleRichBody extends StatelessWidget {
                   if (span['underline'] == true) TextDecoration.underline,
                   if (span['strikethrough'] == true) TextDecoration.lineThrough,
                 ]),
+                shadows: span['bold'] == true || bold
+                    ? articleBoldShadows(
+                        context,
+                        color(
+                              span['foreground_color'] ??
+                                  span['foregroundColor'],
+                            ) ??
+                            context.colors.ink,
+                        size: span['size'] == null ? size : null,
+                      )
+                    : null,
                 color: color(
                   span['foreground_color'] ?? span['foregroundColor'],
                 ),
@@ -213,25 +375,32 @@ class ArticleRichBody extends StatelessWidget {
     ),
   );
 
-  Widget image(BuildContext context, Map block) {
-    final data = block['image'] is Map ? block['image'] as Map : const {};
+  Widget media(BuildContext context, Map block, String kind) {
+    final data = block[kind] is Map ? block[kind] as Map : const {};
+    final id = integer(data['file_id']);
+    final declaration = content['declaration'];
+    final mark = declaration is Map && declaration['watermark'] == true
+        ? '${declaration['watermark_label'] ?? 'Z优简'}'
+        : null;
     final url = Uri.tryParse('${data['url'] ?? ''}');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (url != null && ['https', 'http'].contains(url.scheme))
-          Image(
-            image: ResizeImage(
-              CachedNetworkImage(url.toString()),
-              width: 1440,
-              policy: ResizeImagePolicy.fit,
-            ),
-            fit: BoxFit.contain,
-            semanticLabel: '${data['alt'] ?? ''}',
-            errorBuilder: (_, _, _) => Text(
-              '${data['alt'] ?? '图片暂时无法显示'}',
-              style: TextStyle(color: context.colors.muted),
-            ),
+        if (id > 0 && store != null)
+          ArticlePhoto(
+            store: store!,
+            fileID: id,
+            articleID: articleID,
+            video: kind == 'video',
+            watermark: mark,
+          )
+        else if (kind == 'image' &&
+            url != null &&
+            ['https', 'http'].contains(url.scheme))
+          ArticleNetworkPhoto(
+            url: url.toString(),
+            watermark: mark,
+            alt: data['alt']?.toString(),
           ),
         if ('${data['caption'] ?? ''}'.isNotEmpty)
           Padding(
@@ -289,13 +458,14 @@ class ArticleRichBody extends StatelessWidget {
   Widget build(BuildContext context) {
     var number = 0;
     final children = <Widget>[];
-    for (final block in content['blocks'] as List? ?? []) {
+    final blocks = content['blocks'] as List? ?? [];
+    for (var index = 0; index < blocks.length; index++) {
+      final block = blocks[index];
       if (block is! Map) continue;
       final kind = '${block['kind']}'.toLowerCase();
       final numbered = kind == 'numbered';
       number = numbered ? number + 1 : 0;
-      final heading1 = ['heading', 'heading1', 'h1'].contains(kind);
-      final heading2 = ['heading2', 'h2'].contains(kind);
+      final heading = articleHeadingLevel(kind);
       final quote = ['quote', 'blockquote'].contains(kind);
       final spans = block['spans'] as List? ?? [];
       final blank = spans.every(
@@ -308,8 +478,18 @@ class ArticleRichBody extends StatelessWidget {
         _ => TextAlign.start,
       };
       Widget child;
-      if (kind == 'image') {
-        child = image(context, block);
+      if (kind == 'image' || kind == 'video') {
+        child = media(context, block, kind);
+      } else if (kind == 'poll') {
+        child = ArticlePollCard(
+          block: Map<String, dynamic>.from(block),
+          store: store,
+          articleID: editing ? null : articleID,
+        );
+      } else if (kind == 'link') {
+        final uri = articleWebLink('${block['url'] ?? ''}');
+        if (uri == null) continue;
+        child = ArticleLinkCard(url: uri);
       } else if (kind == 'table') {
         child = table(context, block);
       } else if (blank) {
@@ -322,12 +502,16 @@ class ArticleRichBody extends StatelessWidget {
         child = text(
           context,
           spans,
-          size: heading1
-              ? 22
-              : heading2
-              ? 19
-              : 15,
-          bold: heading1 || heading2,
+          size: switch (heading) {
+            1 => 22,
+            2 => 19,
+            3 => 17.5,
+            4 => 16,
+            5 => 15,
+            6 => 13.5,
+            _ => 15,
+          },
+          bold: heading != null,
           italic: quote,
           align: align,
         );
@@ -365,10 +549,12 @@ class ArticleRichBody extends StatelessWidget {
           );
         }
       }
+      final headingKey = heading == null ? null : headingKeys?[index];
       children.add(
         Padding(
+          key: headingKey,
           padding: EdgeInsets.only(
-            top: heading1 || heading2 ? 8 : 0,
+            top: heading != null ? 8 : 0,
             left: ((block['indent'] as num?)?.toDouble() ?? 0).clamp(0, 8) * 16,
           ),
           child: child,

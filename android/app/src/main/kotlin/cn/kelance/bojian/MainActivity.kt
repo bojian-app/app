@@ -8,12 +8,16 @@ import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
+import java.security.MessageDigest
+import kotlin.concurrent.thread
 
 class MainActivity : FlutterActivity() {
     private var baiduFace: BaiduFaceBridge? = null
     private var resumeFiles: ResumeFileBridge? = null
     private var douyinLogin: DouyinLoginBridge? = null
     private var alipay: AlipayBridge? = null
+    private var verifyingUpdate = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -83,29 +87,54 @@ class MainActivity : FlutterActivity() {
      * 返回 "permission"；摘要不符返回 "checksum"；成功调起返回 "started"。
      */
     private fun installApk(path: String, sha256: String, result: MethodChannel.Result) {
-        val file = java.io.File(path)
-        val updateDir = java.io.File(cacheDir, "update").canonicalFile
-        if (!file.isFile || file.canonicalFile.parentFile != updateDir) {
-            result.error("INVALID_PACKAGE", "安装包不存在", null)
+        if (verifyingUpdate) {
+            result.error("BUSY", "正在校验安装包", null)
             return
         }
-        if (sha256.isNotEmpty()) {
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
-            file.inputStream().use { input ->
-                val buffer = ByteArray(64 * 1024)
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    digest.update(buffer, 0, read)
+        verifyingUpdate = true
+        thread(name = "apk-verification") {
+            val file = File(path)
+            try {
+                val updateDir = File(cacheDir, "update").canonicalFile
+                val validPath = file.isFile && file.canonicalFile.parentFile == updateDir
+                val matches = validPath && (sha256.isEmpty() || checksumMatches(file, sha256))
+                if (validPath && !matches) file.delete()
+                runOnUiThread {
+                    verifyingUpdate = false
+                    when {
+                        !validPath -> result.error("INVALID_PACKAGE", "安装包不存在", null)
+                        !matches -> result.success("checksum")
+                        isDestroyed || isFinishing -> result.error("SETTINGS_UNAVAILABLE", "页面已关闭", null)
+                        else -> try {
+                            launchInstaller(file, result)
+                        } catch (error: Exception) {
+                            result.error("SETTINGS_UNAVAILABLE", "无法打开系统安装器", null)
+                        }
+                    }
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    verifyingUpdate = false
+                    result.error("INVALID_PACKAGE", "无法读取安装包", null)
                 }
             }
-            val actual = digest.digest().joinToString("") { "%02x".format(it) }
-            if (!actual.equals(sha256, ignoreCase = true)) {
-                file.delete()
-                result.success("checksum")
-                return
+        }
+    }
+
+    private fun checksumMatches(file: File, expected: String): Boolean {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
             }
         }
+        return digest.digest().joinToString("") { "%02x".format(it) }.equals(expected, ignoreCase = true)
+    }
+
+    private fun launchInstaller(file: File, result: MethodChannel.Result) {
         if (!packageManager.canRequestPackageInstalls()) {
             startActivity(
                 Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")),

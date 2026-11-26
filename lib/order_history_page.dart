@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart';
 
 import 'api/bojian_api.dart';
@@ -113,10 +114,7 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
                 if (loading && orders.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 80),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
+                  const ListSkeleton(count: 5)
                 else if (orders.isEmpty && error == null)
                   Padding(
                     padding: const EdgeInsets.only(top: 80),

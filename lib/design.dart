@@ -1,13 +1,15 @@
 import 'app_icons.dart';
+import 'moderation_rejection_dialog.dart';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'app_store.dart';
 import 'api/bojian_api.dart';
 import 'app_theme.dart';
+import 'app_page_transitions.dart';
 
 export 'app_theme.dart';
+export 'app_page_transitions.dart';
 export 'empty_state.dart';
 export 'skeleton.dart';
 
@@ -118,31 +120,20 @@ Future<bool> runRequest(
   }
 }
 
-Future<void> showRequestFailure(BuildContext context, Object error) async {
+Future<ModerationExcerpt?> showRequestFailure(
+  BuildContext context,
+  Object error, {
+  bool Function(ModerationExcerpt)? canLocate,
+}) async {
   if (error is ApiFailure && error.code == 'CONTENT_REJECTED') {
-    final reasons = error.violationMessages;
-    await showDialog<void>(
+    return showDialog<ModerationExcerpt>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('内容未通过审核'),
-        content: SingleChildScrollView(
-          child: Text(
-            reasons.isEmpty
-                ? error.message
-                : '请修改以下违规内容后重新提交：\n\n${reasons.map((v) => '• $v').join('\n\n')}',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('返回修改'),
-          ),
-        ],
-      ),
+      builder: (_) =>
+          ModerationRejectionDialog(failure: error, canLocate: canLocate),
     );
-  } else {
-    toast(context, '$error');
   }
+  toast(context, '$error');
+  return null;
 }
 
 class DataStatus extends StatelessWidget {
@@ -313,8 +304,7 @@ class PageLoadingFooter extends StatelessWidget {
 
 Future<T?> openPage<T>(BuildContext context, Widget page) {
   dismissKeyboard();
-  return Navigator.of(context)
-      .push<T>(CupertinoPageRoute(builder: (_) => page));
+  return Navigator.of(context).push<T>(AppPageRoute<T>(builder: (_) => page));
 }
 
 class DismissKeyboardButton extends StatelessWidget {
@@ -360,7 +350,7 @@ class Avatar extends StatelessWidget {
     height: size,
     decoration: BoxDecoration(
       color: (color ?? context.colors.accent).withValues(alpha: .09),
-      borderRadius: BorderRadius.circular(size * .36),
+      shape: BoxShape.circle,
     ),
     alignment: Alignment.center,
     child: Text(

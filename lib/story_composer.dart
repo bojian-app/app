@@ -1,4 +1,5 @@
 import 'app_page_bar.dart';
+import 'user_display_name.dart';
 import 'content_moderation.dart';
 
 import 'dart:convert';
@@ -11,25 +12,85 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 
 import 'app_icons.dart';
 import 'app_store.dart';
+import 'api/bojian_api.dart';
 import 'article_rich_content.dart';
+import 'article_link.dart';
+import 'article_photo.dart';
+import 'article_poll.dart';
+import 'article_privacy.dart';
+import 'article_topic.dart';
+
+import 'package:flutter_quill/quill_delta.dart' show Delta;
+
 import 'article_declaration.dart';
 import 'confirmation_dialog.dart';
 import 'design.dart';
 
-class _ArticleBlockEmbed extends quill.EmbedBuilder {
-  const _ArticleBlockEmbed();
+part 'story_composer_toolbar.dart';
 
+class _ArticleBlockEmbed extends quill.EmbedBuilder {
+  const _ArticleBlockEmbed(this.state);
+  final _StoryComposerState state;
   @override
   String get key => 'bojian-block';
-
   @override
-  Widget build(BuildContext context, quill.EmbedContext embedContext) =>
-      ArticleRichBody(
-        content: {
-          'blocks': [jsonDecode(embedContext.node.value.data as String)],
-        },
-      );
+  Widget build(BuildContext context, quill.EmbedContext embedContext) {
+    final block = Map<String, dynamic>.from(
+      jsonDecode(embedContext.node.value.data as String),
+    );
+    final kind = block['kind'];
+    final media = kind == 'image' || kind == 'video';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ArticleRichBody(
+          store: state.widget.store,
+          articleID: state.draftID > 0 ? state.draftID : null,
+          editing: true,
+          content: {
+            'blocks': [block],
+            if (state.declaration.watermark)
+              'declaration': {
+                'watermark': true,
+                'watermark_label': state.watermarkLabel,
+              },
+          },
+        ),
+        if (media || kind == 'link' || kind == 'poll')
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (media)
+                TextButton(
+                  onPressed: state.busy
+                      ? null
+                      : () => state.editCaption(embedContext, block),
+                  child: const Text('编辑说明'),
+                ),
+              if (kind == 'link')
+                IconButton(
+                  tooltip: '编辑链接',
+                  icon: const AppIcon(AppIcons.link, size: 18),
+                  onPressed: state.busy
+                      ? null
+                      : () => state.editLink(embedContext, block),
+                ),
+              IconButton(
+                tooltip: '移除卡片',
+                icon: const AppIcon(AppIcons.delete, size: 18),
+                onPressed: state.busy
+                    ? null
+                    : () => state.removeBlock(embedContext),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
 }
+
+enum _ToolPanel { none, format, insert, settings }
 
 class StoryComposer extends StatefulWidget {
   const StoryComposer({super.key, required this.store, this.draft});
@@ -45,11 +106,20 @@ enum _ExitAction { save, discard }
 
 class _StoryComposerState extends State<StoryComposer> {
   final title = TextEditingController();
+  final titleFocus = FocusNode();
   late final quill.QuillController editor;
   final bodyFocus = FocusNode();
   final bodyScroll = ScrollController();
+  final pageScroll = ScrollController();
+  final editorKey = GlobalKey<quill.EditorState>();
   _ComposerAction? pendingAction;
-  bool get busy => pendingAction != null;
+  bool choosing = false;
+  bool get busy => pendingAction != null || choosing;
+  _ToolPanel panel = _ToolPanel.none;
+  bool headingPicker = false;
+  late final ArticlePrivacy initialPrivacy;
+  late ArticlePrivacy privacy;
+  String get watermarkLabel => 'Z优简 · ${userDisplayName(widget.store.name)}';
   bool allowExit = false;
   late final String initialTitle, initialDelta;
   late final ArticleDeclaration initialDeclaration;
@@ -62,12 +132,14 @@ class _StoryComposerState extends State<StoryComposer> {
   int get draftID => createdDraftID ?? integer(widget.draft?['id']);
   bool get dirty =>
       declaration != initialDeclaration ||
+      privacy != initialPrivacy ||
       title.text != initialTitle ||
       jsonEncode(editor.document.toDelta().toJson()) != initialDelta;
   @override
   void initState() {
     super.initState();
     session = widget.store.epoch;
+    privacy = initialPrivacy = ArticlePrivacy.fromDraft(widget.draft);
     declaration = initialDeclaration = readArticleDeclaration(originalContent);
     title.text = initialTitle = '${widget.draft?['title'] ?? ''}';
     editor = widget.draft == null
@@ -96,6 +168,8 @@ class _StoryComposerState extends State<StoryComposer> {
     title.removeListener(changed);
     editor.removeListener(changed);
     title.dispose();
+    titleFocus.dispose();
+    pageScroll.dispose();
     editor.dispose();
     bodyFocus.dispose();
     bodyScroll.dispose();
@@ -110,14 +184,13 @@ class _StoryComposerState extends State<StoryComposer> {
         context,
         barrierDismissible: true,
         builder: (dialog) => CupertinoAlertDialog(
-          title: Text(existing ? '保存这次修改？' : '放弃这篇文章？'),
+          title: Text(existing ? '保存这次修改？' : '要保存草稿吗？'),
           actions: [
-            if (existing)
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                onPressed: () => Navigator.pop(dialog, _ExitAction.save),
-                child: const Text('保存草稿'),
-              ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.pop(dialog, _ExitAction.save),
+              child: const Text('保存草稿'),
+            ),
             CupertinoDialogAction(
               onPressed: () => Navigator.pop(dialog),
               child: const Text('继续编辑'),
@@ -140,17 +213,181 @@ class _StoryComposerState extends State<StoryComposer> {
     Navigator.pop(context);
   }
 
+  bool get hasPublishableContent => guidance
+      ? title.text.trim().isNotEmpty
+      : editor.document.toDelta().toList().any(
+          (op) =>
+              op.data is Map ||
+              (op.data is String && (op.data as String).trim().isNotEmpty),
+        );
+  bool get hasDraftContent =>
+      title.text.trim().isNotEmpty || hasPublishableContent;
+
+  void changePanel(_ToolPanel next) {
+    if (busy) return;
+    setState(() {
+      panel = panel == next ? _ToolPanel.none : next;
+      headingPicker = false;
+    });
+    if (next == _ToolPanel.format) {
+      bodyFocus.requestFocus();
+    } else {
+      dismissKeyboard();
+    }
+  }
+
+  Future<void> choosePrivacy() async {
+    final result = await editArticlePrivacy(context, privacy);
+    if (mounted && result != null) setState(() => privacy = result);
+  }
+
+  /// Puts [blocks] on their own lines at [selection], replacing what it spans.
+  void placeBlocks(TextSelection selection, List<Map<String, dynamic>> blocks) {
+    final (start, end) = selectedRange(selection);
+    final plain = editor.document
+        .toDelta()
+        .map((op) => op.data is String ? op.data as String : '\uFFFC')
+        .join();
+    final delta = Delta()
+      ..retain(start)
+      ..delete(end - start);
+    var cursor = start;
+    if (start > 0 && plain[start - 1] != '\n') {
+      delta.insert('\n');
+      cursor++;
+    }
+    for (final block in blocks) {
+      delta.insert({'bojian-block': jsonEncode(block)});
+      delta.insert('\n');
+      cursor += 2;
+    }
+    applyDelta(delta, cursor);
+  }
+
+  Future<void> insertTool(String tool) async {
+    if (busy) return;
+    final selection = editor.selection;
+    dismissKeyboard();
+    setState(() {
+      choosing = true;
+      panel = _ToolPanel.none;
+    });
+    try {
+      if (tool == '话题') {
+        final name = await pickArticleTopic(context, widget.store);
+        if (!mounted || name == null || widget.store.epoch != session) return;
+        final topic = '#$name#';
+        final (start, end) = selectedRange(selection);
+        final delta = Delta()
+          ..retain(start)
+          ..delete(end - start)
+          ..insert(topic, {'link': articleTopicLink(name)})
+          ..insert(' ');
+        applyDelta(delta, start + topic.length + 1);
+      } else if (tool == '投票') {
+        final poll = await openArticlePollComposer(context, widget.store);
+        if (!mounted || poll == null || widget.store.epoch != session) return;
+        // Finishing a poll or question publishes the post at once; it is not
+        // placed in the editor first.
+        setState(() => choosing = false);
+        await publish(poll: poll);
+        return;
+      } else {
+        final List<Map<String, dynamic>> blocks;
+        if (tool == '图片或视频') {
+          blocks = await pickArticlePhotos(context, widget.store);
+        } else {
+          final url = await editArticleLink(context);
+          blocks = [
+            if (url != null) {'kind': 'link', 'url': url.toString()},
+          ];
+        }
+        if (!mounted || blocks.isEmpty || widget.store.epoch != session) return;
+        placeBlocks(selection, blocks);
+      }
+      bodyFocus.requestFocus();
+    } catch (error) {
+      if (mounted) await showRequestFailure(context, error);
+    } finally {
+      if (mounted) setState(() => choosing = false);
+    }
+  }
+
+  (int, int) selectedRange(TextSelection selection) {
+    final last = editor.document.length - 1;
+    if (!selection.isValid) return (last, last);
+    return (selection.start.clamp(0, last), selection.end.clamp(0, last));
+  }
+
+  void applyDelta(Delta delta, int cursor) {
+    final after = TextSelection.collapsed(offset: cursor);
+    editor.compose(delta, after, quill.ChangeSource.local);
+    editor.updateSelection(after, quill.ChangeSource.local);
+  }
+
+  void removeBlock(quill.EmbedContext embed) {
+    final offset = embed.node.documentOffset;
+    final canRemoveLine =
+        offset + 2 < editor.document.length &&
+        editor.document.getPlainText(offset + 1, 1) == '\n';
+    final delta = Delta()
+      ..retain(offset)
+      ..delete(canRemoveLine ? 2 : 1);
+    applyDelta(delta, offset);
+  }
+
+  Future<void> editCaption(
+    quill.EmbedContext embed,
+    Map<String, dynamic> block,
+  ) async {
+    final kind = block['kind'] as String;
+    final media = Map<String, dynamic>.from(block[kind] as Map? ?? {});
+    final caption = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CaptionEditor(initial: '${media['caption'] ?? ''}'),
+    );
+    if (!mounted || caption == null || embed.node.parent == null) return;
+    media['caption'] = caption;
+    replaceBlock(embed, {...block, kind: media});
+  }
+
+  Future<void> editLink(
+    quill.EmbedContext embed,
+    Map<String, dynamic> block,
+  ) async {
+    final url = await editArticleLink(
+      context,
+      initial: '${block['url'] ?? ''}',
+    );
+    if (!mounted || url == null || embed.node.parent == null) return;
+    replaceBlock(embed, {...block, 'url': url.toString()});
+  }
+
+  void replaceBlock(quill.EmbedContext embed, Map<String, dynamic> block) {
+    final offset = embed.node.documentOffset;
+    applyDelta(
+      Delta()
+        ..retain(offset)
+        ..delete(1)
+        ..insert({'bojian-block': jsonEncode(block)}),
+      offset + 1,
+    );
+  }
+
   Future<void> chooseDeclaration() async {
     dismissKeyboard();
     final selected = await editArticleDeclaration(context, declaration);
     if (mounted && selected != null) setState(() => declaration = selected);
   }
 
-  Future<void> publish({bool submit = true}) async {
+  /// [poll] is a poll or question just made in the form: it joins the post
+  /// being published, and returns to the editor only if publishing fails.
+  Future<void> publish({bool submit = true, Map<String, dynamic>? poll}) async {
     if (busy) return;
     final text = editor.document.toPlainText().trim();
-    if (title.text.trim().isEmpty || (!guidance && text.isEmpty)) {
-      toast(context, '请填写标题和正文');
+    if (poll == null && !(submit ? hasPublishableContent : hasDraftContent)) {
+      toast(context, submit ? '请写下正文或插入内容' : '请先填写标题或正文');
       return;
     }
     dismissKeyboard();
@@ -161,14 +398,19 @@ class _StoryComposerState extends State<StoryComposer> {
         ? originalContent
         : {...originalContent, ...articleContentFromDelta(operations)};
     if (declaration != initialDeclaration) {
-      if (declaration.label.isEmpty) {
+      if (declaration.label.isEmpty && !declaration.watermark) {
         content.remove('declaration');
       } else {
         content['declaration'] = {
           'original': declaration.original,
+          if (declaration.watermark) 'watermark': true,
+          if (declaration.watermark) 'watermark_label': watermarkLabel,
           'type': declaration.notice.name,
         };
       }
+    }
+    if (poll != null) {
+      content['blocks'] = [...(content['blocks'] as List? ?? const []), poll];
     }
     editor.readOnly = true;
     setState(
@@ -177,14 +419,14 @@ class _StoryComposerState extends State<StoryComposer> {
           : _ComposerAction.save,
     );
     var status = SubmissionStatus.pending;
-    final saved = await runRequest(context, () async {
+    try {
       if (draftID == 0) {
-        status = await widget.store.publish(
-          title.text.trim(),
-          text,
-          '动态',
+        createdDraftID = await widget.store.createArticleDraft(
+          title: title.text.trim(),
           content: content,
-          onDraftSaved: (id) => createdDraftID = id,
+          visibility: privacy.visibility,
+          followedRepliesOnly: privacy.followedRepliesOnly,
+          expectedEpoch: session,
         );
       } else {
         await widget.store.saveArticleDraft(
@@ -192,25 +434,106 @@ class _StoryComposerState extends State<StoryComposer> {
           title: title.text.trim(),
           content: content,
           resumeID: widget.draft?['resume_id'] as int?,
+          visibility: privacy.visibility,
+          followedRepliesOnly: privacy.followedRepliesOnly,
           expectedEpoch: session,
         );
-        if (submit) {
-          status = await widget.store.submitArticleDraft(
-            draftID,
-            expectedEpoch: session,
+      }
+      if (submit) {
+        status = await widget.store.submitArticleDraft(
+          draftID,
+          expectedEpoch: session,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      // Quill offsets count UTF-16 text and one character per embedded block.
+      final plainBody = operations.map((op) {
+        final insert = op['insert'];
+        return insert is String ? insert : '\uFFFC';
+      }).join();
+      final locations = <ModerationExcerpt, TextSelection>{};
+      if (error is ApiFailure && error.code == 'CONTENT_REJECTED') {
+        for (final violation in error.violations) {
+          for (final excerpt in violation.excerpts) {
+            final selection = _findExcerpt(excerpt, plainBody);
+            if (selection != null) locations[excerpt] = selection;
+          }
+        }
+      }
+      final chosen = await showRequestFailure(
+        context,
+        error,
+        canLocate: locations.containsKey,
+      );
+      if (!mounted) return;
+      editor.readOnly = false;
+      setState(() => pendingAction = null);
+      // Keep the poll: it is saved already, so the writer can try again.
+      if (poll != null) placeBlocks(editor.selection, [poll]);
+      if (chosen != null && locations[chosen] != null) {
+        _revealExcerpt(chosen.field == 'title', locations[chosen]!);
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => allowExit = true);
+    Navigator.pop(context);
+    toast(context, submit ? articleSubmissionMessage(status) : '草稿已保存');
+  }
+
+  TextSelection? _findExcerpt(ModerationExcerpt excerpt, String plainBody) {
+    if (excerpt.field != 'title' && excerpt.field != 'body') return null;
+    final inTitle = excerpt.field == 'title';
+    var source = inTitle ? title.text : plainBody;
+    var offset = 0;
+    final block = excerpt.blockIndex;
+    if (!inTitle && guidance && block != null && block != 0) return null;
+    if (!inTitle && block != null) {
+      final lines = source.split('\n');
+      if (block < 0 || block >= lines.length) return null;
+      for (var i = 0; i < block; i++) {
+        offset += lines[i].length + 1;
+      }
+      source = lines[block];
+    }
+    final start = excerpt.indexIn(
+      source,
+      trimmed: inTitle || (guidance && block == null),
+    );
+    if (start == null) return null;
+    return TextSelection(
+      baseOffset: offset + start,
+      extentOffset: offset + start + excerpt.text.length,
+    );
+  }
+
+  void _revealExcerpt(bool inTitle, TextSelection selection) {
+    if (pageScroll.hasClients) {
+      if (inTitle) {
+        pageScroll.jumpTo(0);
+      } else if (editorKey.currentState == null) {
+        pageScroll.jumpTo(pageScroll.position.maxScrollExtent);
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (inTitle) {
+        titleFocus.requestFocus();
+        title.selection = selection;
+        final field = titleFocus.context;
+        if (field != null) Scrollable.ensureVisible(field);
+      } else {
+        bodyFocus.requestFocus();
+        editor.updateSelection(selection, quill.ChangeSource.local);
+        final render = editorKey.currentState?.renderEditor;
+        if (render != null && render.attached && render.hasSize) {
+          render.showOnScreen(
+            rect: render.getLocalRectForCaret(selection.base),
           );
         }
       }
     });
-    if (!mounted) return;
-    if (saved) {
-      setState(() => allowExit = true);
-      Navigator.pop(context);
-      toast(context, submit ? articleSubmissionMessage(status) : '草稿已保存');
-    } else {
-      editor.readOnly = false;
-      setState(() => pendingAction = null);
-    }
   }
 
   Widget format(String label, AppIconData icon, quill.Attribute attribute) {
@@ -241,16 +564,100 @@ class _StoryComposerState extends State<StoryComposer> {
     );
   }
 
+  static const headingLevels = [
+    quill.Attribute.h2,
+    quill.Attribute.h3,
+    quill.Attribute.h4,
+    quill.Attribute.h5,
+    quill.Attribute.h6,
+  ];
+
+  Object? get currentHeading =>
+      editor.getSelectionStyle().attributes[quill.Attribute.header.key]?.value;
+
+  /// The heading button opens a row of levels instead of applying one.
+  Widget headingButton() {
+    final active = currentHeading != null;
+    return IconButton(
+      tooltip: '标题',
+      isSelected: active || headingPicker,
+      style: IconButton.styleFrom(
+        backgroundColor: active || headingPicker
+            ? context.colors.accent.withValues(alpha: .08)
+            : Colors.transparent,
+      ).withoutHover(),
+      onPressed: busy
+          ? null
+          : () {
+              setState(() => headingPicker = !headingPicker);
+              bodyFocus.requestFocus();
+            },
+      icon: AppIcon(
+        AppIcons.heading,
+        size: 20,
+        color: active || headingPicker
+            ? context.colors.accent
+            : context.colors.ink,
+      ),
+    );
+  }
+
+  Widget headingChoices() => Row(
+    key: const ValueKey('composer-heading-levels'),
+    children: [
+      for (final attribute in headingLevels)
+        Expanded(
+          child: Builder(
+            builder: (context) {
+              final active = currentHeading == attribute.value;
+              return TextButton(
+                key: ValueKey('composer-heading-${attribute.value}'),
+                onPressed: busy
+                    ? null
+                    : () {
+                        editor.formatSelection(
+                          active
+                              ? quill.Attribute.clone(attribute, null)
+                              : attribute,
+                        );
+                        setState(() => headingPicker = false);
+                        bodyFocus.requestFocus();
+                      },
+                style: TextButton.styleFrom(
+                  foregroundColor: active
+                      ? context.colors.accent
+                      : context.colors.ink,
+                  backgroundColor: active
+                      ? context.colors.accent.withValues(alpha: .08)
+                      : Colors.transparent,
+                  minimumSize: const Size(0, 40),
+                ).withoutHover(),
+                child: Text(
+                  'H${attribute.value}',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+    ],
+  );
+
   quill.DefaultTextBlockStyle style(
     double size, {
     bool bold = false,
     Color? color,
   }) => quill.DefaultTextBlockStyle(
     TextStyle(
-      fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
       fontSize: size,
       height: ArticleRichBody.lineHeight,
       fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+      shadows: bold
+          ? articleBoldShadows(context, color ?? context.colors.ink, size: size)
+          : null,
       color: color ?? context.colors.ink,
     ),
     const quill.HorizontalSpacing(0, 0),
@@ -269,9 +676,14 @@ class _StoryComposerState extends State<StoryComposer> {
       quill.FlutterQuillLocalizations.delegate,
     ],
     child: PopScope(
-      canPop: allowExit || (!dirty && !busy),
+      canPop: allowExit || (!dirty && !busy && panel == _ToolPanel.none),
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) exit();
+        if (didPop) return;
+        if (!busy && panel != _ToolPanel.none) {
+          setState(() => panel = _ToolPanel.none);
+          return;
+        }
+        exit();
       },
       child: Scaffold(
         backgroundColor: context.colors.surface,
@@ -289,11 +701,7 @@ class _StoryComposerState extends State<StoryComposer> {
                 child: Tooltip(
                   message: '提交审核',
                   child: TextButton(
-                    onPressed:
-                        busy ||
-                            title.text.trim().isEmpty ||
-                            (!guidance &&
-                                editor.document.toPlainText().trim().isEmpty)
+                    onPressed: busy || !hasPublishableContent
                         ? null
                         : () => publish(),
                     style: TextButton.styleFrom(
@@ -328,6 +736,7 @@ class _StoryComposerState extends State<StoryComposer> {
             constraints: const BoxConstraints(maxWidth: 760),
             child: ListView(
               key: const ValueKey('composer-page'),
+              controller: pageScroll,
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.fromLTRB(
                 appPageHorizontalPadding,
@@ -358,6 +767,7 @@ class _StoryComposerState extends State<StoryComposer> {
                 TextField(
                   key: const ValueKey('composer-title'),
                   controller: title,
+                  focusNode: titleFocus,
                   enabled: !busy,
                   maxLength: widget.draft == null ? 60 : 200,
                   minLines: 1,
@@ -394,30 +804,60 @@ class _StoryComposerState extends State<StoryComposer> {
                 const SizedBox(height: 10),
                 const Divider(height: 1),
                 const SizedBox(height: 16),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 280),
-                  child: quill.QuillEditor.basic(
-                    key: const ValueKey('composer-body'),
-                    controller: editor,
-                    focusNode: bodyFocus,
-                    scrollController: bodyScroll,
-                    config: quill.QuillEditorConfig(
-                      scrollable: false,
-                      placeholder: guidance ? '想请教的问题…' : '写下你的经历与想法…',
-                      embedBuilders: const [_ArticleBlockEmbed()],
-                      customStyles: quill.DefaultStyles(
-                        paragraph: style(16),
-                        h1: style(23, bold: true),
-                        h2: style(19, bold: true),
-                        placeHolder: style(16, color: context.colors.muted),
+                Listener(
+                  onPointerDown: (_) {
+                    if (panel == _ToolPanel.insert ||
+                        panel == _ToolPanel.settings) {
+                      setState(() => panel = _ToolPanel.none);
+                    }
+                  },
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 280),
+                    child: quill.QuillEditor.basic(
+                      key: const ValueKey('composer-body'),
+                      controller: editor,
+                      focusNode: bodyFocus,
+                      scrollController: bodyScroll,
+                      config: quill.QuillEditorConfig(
+                        editorKey: editorKey,
+                        onLaunchUrl: (link) {
+                          final topic = articleTopicName(link);
+                          if (topic != null) {
+                            openArticleTopic(context, widget.store, topic);
+                          } else {
+                            final url = articleWebLink(link);
+                            if (url != null) openArticleLink(context, url);
+                          }
+                        },
+                        scrollable: false,
+                        minHeight: 280,
+                        placeholder: guidance ? '想请教的问题…' : '写下你的经历与想法…',
+                        embedBuilders: [_ArticleBlockEmbed(this)],
+                        customStyles: quill.DefaultStyles(
+                          bold: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            shadows: articleBoldShadows(
+                              context,
+                              context.colors.ink,
+                            ),
+                          ),
+                          paragraph: style(16),
+                          h1: style(22, bold: true),
+                          h2: style(19, bold: true),
+                          h3: style(18, bold: true),
+                          h4: style(17, bold: true),
+                          h5: style(16, bold: true),
+                          h6: style(15, bold: true),
+                          placeHolder: style(16, color: context.colors.muted),
+                        ),
+                        // Selection handles and the copy menu live in the root
+                        // overlay, outside the editor's tap region. Unfocusing
+                        // on them would collapse a selection while it is being
+                        // dragged, so only a caret is dismissed by outside taps.
+                        onTapOutside: (_, focus) {
+                          if (editor.selection.isCollapsed) focus.unfocus();
+                        },
                       ),
-                      // Selection handles and the copy menu live in the root
-                      // overlay, outside the editor's tap region. Unfocusing
-                      // on them would collapse a selection while it is being
-                      // dragged, so only a caret is dismissed by outside taps.
-                      onTapOutside: (_, focus) {
-                        if (editor.selection.isCollapsed) focus.unfocus();
-                      },
                     ),
                   ),
                 ),
@@ -431,136 +871,7 @@ class _StoryComposerState extends State<StoryComposer> {
                 padding: EdgeInsets.only(
                   bottom: MediaQuery.viewInsetsOf(context).bottom,
                 ),
-                child: TextFieldTapRegion(
-                  child: SafeArea(
-                    top: false,
-                    child: Ink(
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        border: Border(
-                          top: BorderSide(color: context.colors.border),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SingleChildScrollView(
-                                  key: const ValueKey('composer-format-bar'),
-                                  scrollDirection: Axis.horizontal,
-                                  // The app dismisses the keyboard on drag; this
-                                  // bar sits on the keyboard and must keep it.
-                                  keyboardDismissBehavior:
-                                      ScrollViewKeyboardDismissBehavior.manual,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      format(
-                                        '粗体',
-                                        AppIcons.bold,
-                                        quill.Attribute.bold,
-                                      ),
-                                      format(
-                                        '斜体',
-                                        AppIcons.italic,
-                                        quill.Attribute.italic,
-                                      ),
-                                      format(
-                                        '下划线',
-                                        AppIcons.underline,
-                                        quill.Attribute.underline,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      format(
-                                        '小标题',
-                                        AppIcons.heading,
-                                        quill.Attribute.h2,
-                                      ),
-                                      format(
-                                        '无序列表',
-                                        AppIcons.bullets,
-                                        quill.Attribute.ul,
-                                      ),
-                                      format(
-                                        '有序列表',
-                                        AppIcons.numbering,
-                                        quill.Attribute.ol,
-                                      ),
-                                      format(
-                                        '引用',
-                                        AppIcons.quote,
-                                        quill.Attribute.blockQuote,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      IconButton(
-                                        tooltip: '撤销',
-                                        onPressed: busy || !editor.hasUndo
-                                            ? null
-                                            : editor.undo,
-                                        icon: const AppIcon(
-                                          AppIcons.undo,
-                                          size: 20,
-                                        ),
-                                      ),
-                                      IconButton(
-                                        tooltip: '重做',
-                                        onPressed: busy || !editor.hasRedo
-                                            ? null
-                                            : editor.redo,
-                                        icon: const AppIcon(
-                                          AppIcons.redo,
-                                          size: 20,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              if (MediaQuery.viewInsetsOf(context).bottom > 0)
-                                IconButton(
-                                  tooltip: '内容声明',
-                                  onPressed: busy ? null : chooseDeclaration,
-                                  icon: const AppIcon(AppIcons.about, size: 20),
-                                ),
-                              IconButton(
-                                tooltip: '收起键盘',
-                                onPressed: dismissKeyboard,
-                                icon: AppIcon(
-                                  AppIcons.hideKeyboard,
-                                  size: 20,
-                                  color: context.colors.muted,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                          ),
-                          if (MediaQuery.viewInsetsOf(context).bottom == 0)
-                            ListTile(
-                              enabled: !busy,
-                              onTap: chooseDeclaration,
-                              leading: const AppIcon(AppIcons.about, size: 19),
-                              title: const Text(
-                                '内容声明',
-                                style: TextStyle(fontSize: 14),
-                              ),
-                              trailing: const AppIcon(
-                                AppIcons.forward,
-                                size: 16,
-                              ),
-                              subtitle: declaration.label.isEmpty
-                                  ? null
-                                  : Text(declaration.label),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                child: _ComposerToolbar(state: this),
               ),
       ),
     ),

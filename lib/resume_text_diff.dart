@@ -29,8 +29,18 @@ class TextDiff {
   static const _gap = 3;
 
   static TextDiff? compare(String before, String after) {
+    if (before == after) {
+      return TextDiff._([
+        if (before.isNotEmpty) TextDiffSegment(TextDiffKind.equal, before),
+      ], 1);
+    }
+    if (before.isEmpty) {
+      return TextDiff._([TextDiffSegment(TextDiffKind.insert, after)], 0);
+    }
+    if (after.isEmpty) {
+      return TextDiff._([TextDiffSegment(TextDiffKind.delete, before)], 0);
+    }
     final a = _tokens(before), b = _tokens(after);
-    if (a.isEmpty && b.isEmpty) return const TextDiff._([], 1);
     var start = 0;
     while (start < a.length && start < b.length && a[start] == b[start]) {
       start++;
@@ -44,7 +54,7 @@ class TextDiff {
     if (n * m > _maxCells) return null;
     // Longest common subsequence over the differing middle.
     final width = m + 1;
-    final table = Uint32List((n + 1) * width);
+    final table = Uint32List(n == 0 || m == 0 ? 0 : (n + 1) * width);
     for (var i = n - 1; i >= 0; i--) {
       for (var j = m - 1; j >= 0; j--) {
         table[i * width + j] = a[start + i] == b[start + j]
@@ -53,13 +63,16 @@ class TextDiff {
       }
     }
     final out = <TextDiffSegment>[];
+    final run = StringBuffer();
+    var runKind = TextDiffKind.equal;
     void add(TextDiffKind kind, String text) {
       if (text.isEmpty) return;
-      if (out.isNotEmpty && out.last.kind == kind) {
-        out[out.length - 1] = TextDiffSegment(kind, out.last.text + text);
-      } else {
-        out.add(TextDiffSegment(kind, text));
+      if (kind != runKind && run.isNotEmpty) {
+        out.add(TextDiffSegment(runKind, run.toString()));
+        run.clear();
       }
+      runKind = kind;
+      run.write(text);
     }
 
     add(TextDiffKind.equal, a.sublist(0, start).join());
@@ -77,13 +90,10 @@ class TextDiff {
         j++;
       }
     }
-    for (; i < n; i++) {
-      add(TextDiffKind.delete, a[start + i]);
-    }
-    for (; j < m; j++) {
-      add(TextDiffKind.insert, b[start + j]);
-    }
+    add(TextDiffKind.delete, a.getRange(start + i, endA).join());
+    add(TextDiffKind.insert, b.getRange(start + j, endB).join());
     add(TextDiffKind.equal, a.sublist(endA).join());
+    if (run.isNotEmpty) out.add(TextDiffSegment(runKind, run.toString()));
     final kept = start + (a.length - endA) + (n == 0 || m == 0 ? 0 : table[0]);
     final total = a.length > b.length ? a.length : b.length;
     return TextDiff._(_absorbNoise(out), total == 0 ? 1 : kept / total);

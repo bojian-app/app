@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -257,15 +258,7 @@ class _ResumeOptionPickerState extends State<ResumeOptionPicker> {
         const SizedBox(height: 12),
       ],
       if (loading)
-        const Padding(
-          padding: EdgeInsets.all(28),
-          child: Center(
-            child: SizedBox.square(
-              dimension: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
-        )
+        const DotMatrixLoader(compact: true)
       else if (error != null)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -293,9 +286,43 @@ class _ResumeOptionPickerState extends State<ResumeOptionPicker> {
           ),
         ),
         const SizedBox(height: 12),
-        Wrap(spacing: 8, runSpacing: 10, children: names.map(_choice).toList()),
       ],
     ];
+  }
+
+  Widget _scrollableResults({required bool compact}) {
+    const groupSize = 18;
+    return CustomScrollView(
+      key: ValueKey('${widget.kind.keyPrefix}-results'),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      slivers: [
+        if (compact) SliverToBoxAdapter(child: _header()),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          sliver: SliverList.list(children: _results()),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          sliver: SliverList.builder(
+            itemCount: (names.length + groupSize - 1) ~/ groupSize,
+            itemBuilder: (context, index) {
+              final start = index * groupSize;
+              final end = math.min(start + groupSize, names.length);
+              return Padding(
+                padding: EdgeInsets.only(top: index == 0 ? 0 : 10),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 10,
+                  children: [
+                    for (var i = start; i < end; i++) _choice(names[i]),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -316,33 +343,11 @@ class _ResumeOptionPickerState extends State<ResumeOptionPicker> {
           child: SizedBox(
             height: height,
             child: compact
-                ? ListView(
-                    key: ValueKey('${widget.kind.keyPrefix}-results'),
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    children: [
-                      _header(),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: _results(),
-                        ),
-                      ),
-                    ],
-                  )
+                ? _scrollableResults(compact: true)
                 : Column(
                     children: [
                       _header(),
-                      Expanded(
-                        child: ListView(
-                          key: ValueKey('${widget.kind.keyPrefix}-results'),
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          children: _results(),
-                        ),
-                      ),
+                      Expanded(child: _scrollableResults(compact: false)),
                     ],
                   ),
           ),

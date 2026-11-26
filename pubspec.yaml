@@ -31,6 +31,7 @@ dependencies:
   bojian_native_layout:
     path: packages/native_layout
   flutter_svg: ^2.3.0
+  vector_graphics: ^1.2.3
   flutter:
     sdk: flutter
 
@@ -53,16 +54,16 @@ dependencies:
   archive: ^4.3.0
   xml: ^7.0.1
   vector_math: ^2.4.0
-  webview_flutter: ^4.14.1
-  webview_flutter_android: ^4.14.1
   flutter_quill: ^11.6.0
   fluwx_no_pay: ^6.0.6
+  video_player: ^2.11.1
   image_picker: ^1.2.4
   image_picker_android: ^0.8.13+25
   image_picker_platform_interface: ^2.11.0
   mobile_scanner: ^7.4.2
 
 dev_dependencies:
+  vector_graphics_compiler: ^1.3.0
   integration_test:
     sdk: flutter
   flutter_test:
@@ -90,7 +91,16 @@ flutter:
   assets:
     - assets/invitation/reward-envelope-blank.png
     - assets/invitation/icons/
-    - assets/customer_service/
+    - assets/customer_service/assistant.webp
+    - path: assets/customer_service/icons/
+      transformers:
+        - package: vector_graphics_compiler
+          # Match flutter_svg geometry, including the anti-aliased security icon.
+          args:
+            - --no-tessellate
+            - --no-optimize-masks
+            - --no-optimize-clips
+            - --no-optimize-overdraw
     - assets/branding/app_icon.png
     - assets/membership/platinum_emblem_blue.png
     - assets/membership/chip_otter.png

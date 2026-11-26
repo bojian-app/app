@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 void main() {
   for (final brightness in Brightness.values) {
@@ -27,8 +28,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('nav-3')));
-        await tester.pumpAndSettle();
+        await openMyPage(tester);
         final settings = find.byKey(const ValueKey('profile-settings'));
         expect(settings, findsOneWidget);
         final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);

@@ -110,12 +110,17 @@ void main() {
           findsNothing,
         );
         expect(
-          tester.getTopLeft(find.byType(TabBar)).dy,
-          lessThan(tester.getTopLeft(find.byType(StoryCard)).dy),
+          find.byKey(const ValueKey('discovery-membership')),
+          findsNothing,
+        );
+        final header = find.byKey(const ValueKey('discovery-search-row'));
+        expect(
+          tester.getBottomLeft(header).dy,
+          lessThanOrEqualTo(tester.getTopLeft(find.byType(StoryCard)).dy),
         );
         if (config.size.height < 500) {
           await tester.drag(
-            find.byType(NestedScrollView),
+            find.byKey(const PageStorageKey('discovery-feed-推荐')),
             const Offset(0, -200),
           );
           await tester.pumpAndSettle();
@@ -126,14 +131,20 @@ void main() {
         await capture(tester, 'discovery-reference-${config.name}');
 
         if (config.scale == 1) {
-          await tester.tap(find.text('简历分享'));
+          await tester.enterText(
+            find.byKey(const ValueKey('discovery-search')),
+            '不存在的关键词',
+          );
+          await tester.testTextInput.receiveAction(TextInputAction.search);
           await tester.pumpAndSettle();
-          expect(find.text('还没有发布的内容'), findsOneWidget);
+          expect(find.text('没有找到相关内容'), findsOneWidget);
           expect(find.text(story.title), findsNothing);
           await capture(tester, 'discovery-reference-empty-${config.name}');
         }
-        await tester.tap(find.byKey(const ValueKey('nav-3')));
+        final discoveryScroll = discoveryFeedPosition(tester);
+        discoveryScroll.jumpTo(0);
         await tester.pumpAndSettle();
+        await openMyPage(tester);
         expect(
           tester
               .widget<Text>(find.byKey(const ValueKey('profile-identity-name')))

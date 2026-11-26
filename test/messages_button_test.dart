@@ -35,6 +35,9 @@ void main() {
             ),
             findsOneWidget,
           );
+          // An oval, even for a single digit.
+          final size = tester.getSize(badge);
+          expect(size.width, greaterThan(size.height));
         }
       }
       store.notificationUnreadCount = 3;

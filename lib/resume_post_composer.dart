@@ -30,6 +30,7 @@ class ResumePostComposer extends StatefulWidget {
 
 class _ResumePostComposerState extends State<ResumePostComposer> {
   final content = TextEditingController();
+  final contentFocus = FocusNode();
   late final int accountEpoch;
   bool publishing = false, allowExit = false;
   String? error, lastText, requestKey;
@@ -47,6 +48,7 @@ class _ResumePostComposerState extends State<ResumePostComposer> {
   void dispose() {
     content.removeListener(changed);
     content.dispose();
+    contentFocus.dispose();
     super.dispose();
   }
 
@@ -120,11 +122,44 @@ class _ResumePostComposerState extends State<ResumePostComposer> {
       );
     } catch (failure) {
       if (!mounted) return;
+      if (failure is ApiFailure &&
+          failure.code == 'CONTENT_REJECTED' &&
+          failure.violations.any((v) => v.excerpts.isNotEmpty)) {
+        final chosen = await showRequestFailure(
+          context,
+          failure,
+          canLocate: (excerpt) => _questionSelection(excerpt) != null,
+        );
+        if (!mounted) return;
+        setState(() => publishing = false);
+        if (chosen != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final selection = _questionSelection(chosen);
+            if (selection == null) return;
+            contentFocus.requestFocus();
+            content.selection = selection;
+          });
+        }
+        return;
+      }
       setState(() {
         publishing = false;
         error = '$failure';
       });
     }
+  }
+
+  TextSelection? _questionSelection(ModerationExcerpt excerpt) {
+    if (excerpt.field != 'body' && excerpt.field != 'question') return null;
+    // The first generated block repeats the question. Later blocks come from the résumé.
+    if (excerpt.blockIndex != null && excerpt.blockIndex != 0) return null;
+    final start = excerpt.indexIn(content.text, trimmed: true);
+    if (start == null) return null;
+    return TextSelection(
+      baseOffset: start,
+      extentOffset: start + excerpt.text.length,
+    );
   }
 
   @override
@@ -160,6 +195,7 @@ class _ResumePostComposerState extends State<ResumePostComposer> {
           TextField(
             key: const ValueKey('resume-post-content'),
             controller: content,
+            focusNode: contentFocus,
             enabled: !publishing,
             minLines: 6,
             maxLines: 12,

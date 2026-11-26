@@ -1,5 +1,4 @@
 import 'package:bojian_mobile/account_pages.dart';
-import 'package:bojian_mobile/app_bottom_navigation.dart';
 import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/design.dart';
@@ -10,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 Future<AppStore> _showShell(
   WidgetTester tester, {
@@ -54,54 +54,60 @@ Future<AppStore> _showShell(
   return store;
 }
 
-int _pageIndex(Type pageType) => {
-  DiscoveryPage: 0,
-  MembershipPage: AppShell.membershipTab,
-  CustomerServicePage: AppShell.serviceTab,
-  ProfilePage: AppShell.profileTab,
-}[pageType]!;
-
-FadeTransition _pageFade(WidgetTester tester, Type pageType) =>
-    tester.widget<FadeTransition>(
-      find.byKey(ValueKey('tab-fade-${_pageIndex(pageType)}')),
-    );
-
-Offset _pageOffset(WidgetTester tester, Type pageType) {
-  final transform = tester
-      .widget<Transform>(
-        find.byKey(ValueKey('tab-offset-${_pageIndex(pageType)}')),
-      )
-      .transform;
-  return Offset(transform.storage[12], transform.storage[13]);
-}
+double _pageLeft(WidgetTester tester, Type pageType) =>
+    tester.getTopLeft(find.byType(pageType)).dx;
 
 void main() {
-  testWidgets('Membership is a retained tab with no back button', (
+  testWidgets(
+    'Membership opens from discovery and retains state when revisited',
+    (tester) async {
+      final store = await _showShell(tester);
+      await tapDiscoveryMenuItem(tester, 'discovery-membership');
+      await tester.pumpAndSettle();
+      final membership = tester.widget<MembershipPage>(
+        find.byType(MembershipPage),
+      );
+      final state = tester.state(find.byType(MembershipPage));
+      expect(membership.embedded, isTrue);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(DiscoveryPage), findsOneWidget);
+      await tapDiscoveryMenuItem(tester, 'discovery-membership');
+      await tester.pumpAndSettle();
+      expect(tester.state(find.byType(MembershipPage)), same(state));
+      expect(membership.store, same(store));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Service and profile return to discovery without a bottom bar', (
     tester,
   ) async {
-    final store = await _showShell(tester);
-    await tester.tap(find.byKey(const ValueKey('nav-1')));
-    await tester.pumpAndSettle();
-    final membership = tester.widget<MembershipPage>(
-      find.byType(MembershipPage),
-    );
-    final state = tester.state(find.byType(MembershipPage));
-    expect(membership.embedded, isTrue);
-    expect(find.byType(BackButton), findsNothing);
-    expect(find.byType(AppBottomNavigation), findsOneWidget);
+    await _showShell(tester);
+    final home = tester.state(find.byType(DiscoveryPage));
     expect(
-      ModalRoute.of(tester.element(find.byType(MembershipPage)))!.canPop,
-      isFalse,
+      tester.widget<Scaffold>(find.byType(Scaffold).first).bottomNavigationBar,
+      isNull,
     );
-
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
+    await tapDiscoveryMenuItem(tester, 'discovery-service');
+    await tester.pumpAndSettle();
+    expect(find.byType(CustomerServicePage), findsOneWidget);
+    tester
+        .state<AppShellState>(find.byType(AppShell))
+        .select(AppShell.profileTab);
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(CustomerServicePage), findsOneWidget);
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pumpAndSettle();
+    expect(tester.state(find.byType(DiscoveryPage)), same(home));
+    await tapDiscoveryMenuItem(tester, 'discovery-my-page');
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('nav-1')));
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(tester.state(find.byType(MembershipPage)), same(state));
-    expect(membership.store, same(store));
-    expect(tester.takeException(), isNull);
+    expect(tester.state(find.byType(DiscoveryPage)), same(home));
   });
 
   testWidgets('Membership keeps guest users behind the login entry', (
@@ -117,11 +123,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('nav-1')));
+    await tapDiscoveryMenuItem(tester, 'discovery-membership');
     await tester.pumpAndSettle();
     expect(find.byType(MembershipPage), findsNothing);
     expect(find.text('登录 / 注册'), findsOneWidget);
     expect(api.calls, isNot(contains('GetMembership')));
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(DiscoveryPage), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -139,14 +148,9 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(search).controller!.text, '保留的搜索');
-      expect(
-        tester
-            .widget<AppBottomNavigation>(find.byType(AppBottomNavigation))
-            .selectedIndex,
-        0,
-      );
+      expect(find.byType(DiscoveryPage), findsOneWidget);
       tester.view.physicalSize = const Size(360, 640);
-      await tester.tap(find.byKey(const ValueKey('nav-3')));
+      await tapDiscoveryMenuItem(tester, 'discovery-my-page');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('profile-settings')));
       await tester.pumpAndSettle();
@@ -173,9 +177,7 @@ void main() {
       expect(scrolling.pixels, closeTo(target, .001));
       expect(entry.hitTestable(), findsOneWidget);
       expect(
-        tester
-            .widget<AppBottomNavigation>(find.byType(AppBottomNavigation))
-            .selectedIndex,
+        tester.state<AppShellState>(find.byType(AppShell)).selected,
         AppShell.profileTab,
       );
       expect(tester.takeException(), isNull);
@@ -183,31 +185,31 @@ void main() {
   );
 
   testWidgets(
-    'Switching fades and gently moves the incoming page while isolating the outgoing page',
+    'Opening slides the new page in from the right and back restores the previous page from the left',
     (tester) async {
       await _showShell(tester);
       expect(
         find.byKey(const ValueKey('discovery-messages')).hitTestable(),
         findsOneWidget,
       );
-      expect(find.semantics.byLabel(RegExp(r'^推荐')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      expect(find.byTooltip('我的').hitTestable(), findsOneWidget);
+      await tapDiscoveryMenuItem(tester, 'discovery-membership');
       await tester.pump();
 
-      final startOpacity = _pageFade(tester, MembershipPage).opacity.value;
-      final startPosition = tester.getTopLeft(find.byType(MembershipPage));
-      expect(startOpacity, lessThan(1));
-      expect(_pageOffset(tester, MembershipPage), isNot(Offset.zero));
-      expect(find.byType(DiscoveryPage), findsOneWidget);
+      final width = tester.getSize(find.byType(DiscoveryPage)).width;
+      expect(_pageLeft(tester, MembershipPage), width);
+      expect(_pageLeft(tester, DiscoveryPage), 0);
       await tester.pump(const Duration(milliseconds: 80));
-      final middleOpacity = _pageFade(tester, MembershipPage).opacity.value;
-      expect(middleOpacity, greaterThan(startOpacity));
-      expect(middleOpacity, lessThan(1));
+      final entering = _pageLeft(tester, MembershipPage);
+      final leaving = _pageLeft(tester, DiscoveryPage);
+      expect(entering, allOf(greaterThan(0), lessThan(width)));
+      expect(leaving, lessThan(0));
+      expect(entering - leaving, closeTo(width, 0.001));
       expect(
         find.byKey(const ValueKey('discovery-messages')).hitTestable(),
         findsNothing,
       );
-      expect(find.semantics.byLabel(RegExp(r'^推荐')), findsNothing);
+      expect(find.byTooltip('我的').hitTestable(), findsNothing);
       expect(
         TickerMode.valuesOf(tester.element(find.byType(DiscoveryPage))).enabled,
         isFalse,
@@ -220,42 +222,78 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(_pageFade(tester, MembershipPage).opacity.value, 1);
-      expect(_pageOffset(tester, MembershipPage), Offset.zero);
-      final endPosition = tester.getTopLeft(find.byType(MembershipPage));
-      expect((startPosition - endPosition).distance, greaterThan(0));
-      expect((startPosition - endPosition).distance, lessThanOrEqualTo(8));
+      expect(_pageLeft(tester, MembershipPage), 0);
       expect(find.byType(DiscoveryPage), findsNothing);
       expect(find.byType(DiscoveryPage, skipOffstage: false), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(_pageLeft(tester, DiscoveryPage), -width);
+      await tester.pump(const Duration(milliseconds: 80));
+      final returning = _pageLeft(tester, DiscoveryPage);
+      final exiting = _pageLeft(tester, MembershipPage);
+      expect(returning, allOf(greaterThan(-width), lessThan(0)));
+      expect(exiting, greaterThan(0));
+      expect(exiting - returning, closeTo(width, 0.001));
+      await tester.pumpAndSettle();
+      expect(_pageLeft(tester, DiscoveryPage), 0);
+      expect(find.byType(MembershipPage), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Queued back follows history when tab numbers run in reverse', (
+    tester,
+  ) async {
+    await _showShell(tester);
+    final shell = tester.state<AppShellState>(find.byType(AppShell));
+    shell.select(AppShell.profileTab);
+    await tester.pumpAndSettle();
+    final width = tester.getSize(find.byType(ProfilePage)).width;
+
+    shell.select(AppShell.serviceTab);
+    await tester.pump();
+    expect(_pageLeft(tester, CustomerServicePage), width);
+    await tester.pump(const Duration(milliseconds: 80));
+    final beforeBack = _pageLeft(tester, CustomerServicePage);
+    shell.goBack();
+    await tester.pump();
+    expect(_pageLeft(tester, CustomerServicePage), beforeBack);
+    await tester.pump(appPageTransitionDuration);
+    await tester.pump(const Duration(milliseconds: 80));
+    final returning = _pageLeft(tester, ProfilePage);
+    final exiting = _pageLeft(tester, CustomerServicePage);
+    expect(returning, allOf(greaterThan(-width), lessThan(0)));
+    expect(exiting - returning, closeTo(width, 0.001));
+    await tester.pumpAndSettle();
+    expect(_pageLeft(tester, ProfilePage), 0);
+  });
 
   testWidgets(
     'Rapid switches settle on the last page with one interactive tab',
     (tester) async {
       await _showShell(tester);
-      for (final index in [1, 2, 0, 3]) {
-        if (index == 0) {
-          expect(find.byType(AppBottomNavigation), findsNothing);
-          await tester.tap(find.byTooltip('返回'));
-          await tester.pumpAndSettle();
-        }
-        await tester.tap(find.byKey(ValueKey('nav-$index')));
+      final shell = tester.state<AppShellState>(find.byType(AppShell));
+      shell.select(AppShell.membershipTab);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      final beforeNextSelection = _pageLeft(tester, MembershipPage);
+      shell.select(AppShell.serviceTab);
+      await tester.pump();
+      expect(_pageLeft(tester, MembershipPage), beforeNextSelection);
+      for (final index in [0, AppShell.profileTab]) {
+        shell.select(index);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 30));
       }
       await tester.pumpAndSettle();
 
       expect(
-        tester
-            .widget<AppBottomNavigation>(find.byType(AppBottomNavigation))
-            .selectedIndex,
+        tester.state<AppShellState>(find.byType(AppShell)).selected,
         AppShell.profileTab,
       );
       expect(find.byType(ProfilePage), findsOneWidget);
-      expect(_pageFade(tester, ProfilePage).opacity.value, 1);
-      expect(_pageOffset(tester, ProfilePage), Offset.zero);
+      expect(_pageLeft(tester, ProfilePage), 0);
       for (final pageType in [
         DiscoveryPage,
         MembershipPage,
@@ -266,7 +304,7 @@ void main() {
         expect(retained, findsOneWidget);
         expect(TickerMode.valuesOf(tester.element(retained)).enabled, isFalse);
       }
-      expect(find.semantics.byLabel(RegExp(r'^推荐')), findsNothing);
+      expect(find.byTooltip('我的').hitTestable(), findsNothing);
       expect(
         TickerMode.valuesOf(tester.element(find.byType(ProfilePage))).enabled,
         isTrue,
@@ -279,31 +317,29 @@ void main() {
     'Repeated selection and store updates do not restart a transition',
     (tester) async {
       final store = await _showShell(tester);
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tapDiscoveryMenuItem(tester, 'discovery-membership');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
       final page = tester.element(find.byType(MembershipPage));
-      final opacity = _pageFade(tester, MembershipPage).opacity.value;
-      expect(opacity, allOf(greaterThan(0), lessThan(1)));
+      final left = _pageLeft(tester, MembershipPage);
+      final width = tester.getSize(find.byType(MembershipPage)).width;
+      expect(left, allOf(greaterThan(0), lessThan(width)));
 
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      tester
+          .state<AppShellState>(find.byType(AppShell))
+          .select(AppShell.membershipTab);
       await tester.pump();
-      expect(
-        _pageFade(tester, MembershipPage).opacity.value,
-        greaterThanOrEqualTo(opacity),
-      );
+      expect(_pageLeft(tester, MembershipPage), lessThanOrEqualTo(left));
       await store.load('profile');
       await tester.pump();
-      expect(
-        _pageFade(tester, MembershipPage).opacity.value,
-        greaterThanOrEqualTo(opacity),
-      );
+      expect(_pageLeft(tester, MembershipPage), lessThanOrEqualTo(left));
       expect(tester.element(find.byType(MembershipPage)), same(page));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      tester
+          .state<AppShellState>(find.byType(AppShell))
+          .select(AppShell.membershipTab);
       await tester.pump();
-      expect(_pageFade(tester, MembershipPage).opacity.value, 1);
-      expect(_pageOffset(tester, MembershipPage), Offset.zero);
+      expect(_pageLeft(tester, MembershipPage), 0);
       expect(tester.element(find.byType(MembershipPage)), same(page));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -315,37 +351,36 @@ void main() {
     (tester) async {
       final store = await _showShell(tester);
       final page = tester.state(find.byType(DiscoveryPage));
-      final nested = tester.state<NestedScrollViewState>(
-        find.byType(NestedScrollView),
-      );
+      tester.view.physicalSize = const Size(360, 220);
+      await tester.pumpAndSettle();
       final search = find.byKey(const ValueKey('discovery-search'));
       final controller = tester.widget<TextField>(search).controller!;
-      await tester.enterText(search, '发现搜索草稿');
+      final scroll = discoveryFeedPosition(tester);
+      await tester.enterText(search, '一页简历');
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pumpAndSettle();
-      expect(nested.outerController.position.maxScrollExtent, greaterThan(60));
-      nested.outerController.jumpTo(60);
+      expect(scroll.maxScrollExtent, greaterThan(60));
+      scroll.jumpTo(60);
       await tester.pumpAndSettle();
-      final offset = nested.outerController.position.pixels;
+      final offset = scroll.pixels;
 
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      tester
+          .state<AppShellState>(find.byType(AppShell))
+          .select(AppShell.membershipTab);
       await tester.pumpAndSettle();
       await store.load('profile');
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-0')));
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
       expect(tester.state(find.byType(DiscoveryPage)), same(page));
-      expect(
-        tester.state<NestedScrollViewState>(find.byType(NestedScrollView)),
-        same(nested),
-      );
-      expect(controller.text, '发现搜索草稿');
-      expect(nested.outerController.position.pixels, closeTo(offset, 0.001));
-      nested.outerController.jumpTo(0);
+      expect(discoveryFeedPosition(tester), same(scroll));
+      expect(controller.text, '一页简历');
+      expect(scroll.pixels, closeTo(offset, 0.001));
+      scroll.jumpTo(0);
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(search).controller, same(controller));
-      expect(controller.text, '发现搜索草稿');
+      expect(controller.text, '一页简历');
       expect(tester.takeException(), isNull);
     },
   );
@@ -354,16 +389,14 @@ void main() {
     tester,
   ) async {
     await _showShell(tester, reduceMotion: true);
-    await tester.tap(find.byKey(const ValueKey('nav-1')));
+    await tapDiscoveryMenuItem(tester, 'discovery-membership');
     await tester.pump();
 
-    expect(_pageFade(tester, MembershipPage).opacity.value, 1);
-    expect(_pageOffset(tester, MembershipPage), Offset.zero);
+    expect(_pageLeft(tester, MembershipPage), 0);
     expect(find.byType(DiscoveryPage), findsNothing);
     expect(find.byType(MembershipPage), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 80));
-    expect(_pageFade(tester, MembershipPage).opacity.value, 1);
-    expect(_pageOffset(tester, MembershipPage), Offset.zero);
+    expect(_pageLeft(tester, MembershipPage), 0);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
@@ -374,18 +407,20 @@ void main() {
       final motionPreference = ValueNotifier(false);
       addTearDown(motionPreference.dispose);
       await _showShell(tester, motionPreference: motionPreference);
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tapDiscoveryMenuItem(tester, 'discovery-membership');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
       expect(
-        _pageFade(tester, MembershipPage).opacity.value,
-        allOf(greaterThan(0), lessThan(1)),
+        _pageLeft(tester, MembershipPage),
+        allOf(
+          greaterThan(0),
+          lessThan(tester.getSize(find.byType(MembershipPage)).width),
+        ),
       );
 
       motionPreference.value = true;
       await tester.pump();
-      expect(_pageFade(tester, MembershipPage).opacity.value, 1);
-      expect(_pageOffset(tester, MembershipPage), Offset.zero);
+      expect(_pageLeft(tester, MembershipPage), 0);
       expect(find.byType(DiscoveryPage), findsNothing);
       expect(find.byType(MembershipPage), findsOneWidget);
       await tester.pumpAndSettle();
@@ -394,7 +429,7 @@ void main() {
   );
 
   testWidgets(
-    'Keyboard hides the navigation and restores the selected page and its draft',
+    'Opening and closing the keyboard preserves the discovery search draft',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(320, 720);
@@ -417,15 +452,16 @@ void main() {
       final pageState = tester.state(find.byType(DiscoveryPage));
       final search = find.byKey(const ValueKey('discovery-search'));
       final controller = tester.widget<TextField>(search).controller!;
-      final bar = tester.getRect(find.byType(AppBottomNavigation));
+      expect(
+        tester
+            .widget<Scaffold>(find.byType(Scaffold).first)
+            .bottomNavigationBar,
+        isNull,
+      );
       await tester.enterText(search, '发现搜索草稿');
       tester.view.viewInsets = const FakeViewPadding(bottom: 244);
       await tester.pumpAndSettle();
 
-      for (final index in [0, 1, 2, 3, 4]) {
-        expect(find.byKey(ValueKey('nav-$index')).hitTestable(), findsNothing);
-      }
-      expect(find.byType(AppBottomNavigation), findsNothing);
       expect(tester.state(find.byType(DiscoveryPage)), same(pageState));
       expect(tester.widget<TextField>(search).controller, same(controller));
       expect(controller.text, '发现搜索草稿');
@@ -435,18 +471,13 @@ void main() {
       tester.view.viewInsets = FakeViewPadding.zero;
       await tester.pumpAndSettle();
 
-      final navigation = tester.widget<AppBottomNavigation>(
-        find.byType(AppBottomNavigation),
-      );
-      expect(navigation.selectedIndex, 0);
-      expect(tester.getRect(find.byType(AppBottomNavigation)), bar);
       expect(tester.state(find.byType(DiscoveryPage)), same(pageState));
       expect(tester.widget<TextField>(search).controller, same(controller));
       expect(controller.text, '发现搜索草稿');
 
-      await tester.tap(find.byKey(const ValueKey('nav-1')));
+      await tapDiscoveryMenuItem(tester, 'discovery-membership');
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-0')));
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(tester.state(find.byType(DiscoveryPage)), same(pageState));
       expect(tester.widget<TextField>(search).controller, same(controller));

@@ -7,6 +7,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fake_gateway.dart';
 
 void main() {
+  testWidgets('大字体下会员权益按列对齐，常见问题滚入后可展开', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.reset);
+    final api = FakeGateway();
+    api.documents['GetMembership'] = {'active': false, 'ai_packs': []};
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(1.65)),
+          child: child!,
+        ),
+        home: MembershipPage(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(ExpansionTile), findsNothing);
+    final free = find.text('不提供');
+    final member = find.text('月卡 3 次\n年卡 36 次');
+    expect(tester.getTopLeft(free.first).dx, tester.getTopLeft(free.last).dx);
+    expect(
+      tester.getTopLeft(member.first).dx,
+      tester.getTopLeft(member.last).dx,
+    );
+    expect(
+      tester.getTopLeft(member.first).dx,
+      greaterThan(tester.getTopLeft(free.first).dx),
+    );
+    final (question, answer) = membershipFaqs.last;
+    await tester.scrollUntilVisible(find.text(question).hitTestable(), 230);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(question));
+    await tester.pumpAndSettle();
+    expect(find.text(answer), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('会员卡和套餐选中态在切换外观时立即换色', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 1000);
@@ -54,14 +95,17 @@ void main() {
               w.semanticLabel!.contains('会员'),
         );
         expect(badge, findsOneWidget);
-        final warm = accent == AppAccent.warm;
         expect(
           find.ancestor(of: badge, matching: find.byType(ColorFiltered)),
-          warm ? findsOneWidget : findsNothing,
+          accent == AppAccent.blue ? findsNothing : findsOneWidget,
         );
         for (final color in [...face.colors, selectedColor]) {
           expect(
-            warm ? color.r > color.b : color.b > color.r,
+            switch (accent) {
+              AppAccent.warm => color.r > color.b,
+              AppAccent.green => color.g > color.r && color.g > color.b,
+              AppAccent.blue => color.b > color.r,
+            },
             isTrue,
             reason: '$accent / $mode / $color',
           );

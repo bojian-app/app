@@ -2,6 +2,9 @@ import 'network_image_cache.dart';
 import 'resume_photo_image.dart';
 import 'template_preview_data.dart';
 
+import 'dart:collection';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
@@ -9,7 +12,6 @@ import 'app_store.dart';
 import 'design.dart';
 import 'resume_document.dart';
 import 'resume_market_document.dart';
-import 'resume_native_market.dart';
 import 'resume_theme.dart';
 import 'resume_system_fonts.dart';
 
@@ -43,6 +45,104 @@ class MarketResumeThumbnail extends StatelessWidget {
   }
 }
 
+/// A laid-out cover page and its recorded drawing. Tabs and lists tear their
+/// thumbnails down and rebuild them as the user moves around, and typesetting a
+/// page costs tens of milliseconds, so thumbnails of the same content share one.
+class ThumbnailSheet {
+  ThumbnailSheet(this.document);
+  final ResumeDocument document;
+  ui.Picture? _paper, _ink;
+  int _users = 0;
+
+  ui.Picture picture(ResumeSheetLayer layer) => switch (layer) {
+    ResumeSheetLayer.ink => _ink ??= _record(layer),
+    _ => _paper ??= _record(ResumeSheetLayer.paper),
+  };
+
+  ui.Picture _record(ResumeSheetLayer layer) {
+    final recorder = ui.PictureRecorder();
+    paintResumeSheet(Canvas(recorder), document, 0, layer: layer);
+    return recorder.endRecording();
+  }
+
+  void _dispose() {
+    _paper?.dispose();
+    _ink?.dispose();
+    document.dispose();
+  }
+}
+
+class ThumbnailSheetCache {
+  static const _idleLimit = 12;
+  static final _entries = LinkedHashMap<String, ThumbnailSheet>();
+
+  /// Bumped when device fonts change, so every cover is typeset again.
+  static int epoch = 0;
+
+  static String keyFor(ResumeDraft resume, ResumeTheme? theme) =>
+      '$epoch|${ResumeDocument.layoutKey(resume, photoURL: resume.photoURL, theme: theme)}';
+
+  static ResumeDocument typeset(ResumeDraft resume, ResumeTheme? theme) =>
+      ResumeDocument(
+        resume,
+        photoURL: resume.photoURL,
+        theme: theme,
+        standardCoverOnly: true,
+      );
+
+  /// Typesets and records the covers of [resumes] ahead of time, one per turn
+  /// of the event loop so a loading view keeps animating meanwhile.
+  static Future<void> warm(
+    Iterable<ResumeDraft> resumes, {
+    bool Function()? valid,
+  }) async {
+    for (final resume in resumes) {
+      if (resume.usesMarketTemplate) continue;
+      if (valid != null && !valid()) return;
+      final key = keyFor(resume, null);
+      final sheet = acquire(key, () => typeset(resume, null));
+      await Future<void>.delayed(Duration.zero);
+      sheet.picture(ResumeSheetLayer.paper);
+      await Future<void>.delayed(Duration.zero);
+      sheet.picture(ResumeSheetLayer.ink);
+      release(key);
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
+  static ThumbnailSheet acquire(String key, ResumeDocument Function() create) {
+    final sheet = _entries.remove(key) ?? ThumbnailSheet(create());
+    _entries[key] = sheet; // most recently used last
+    sheet._users++;
+    return sheet;
+  }
+
+  static void release(String key) {
+    final sheet = _entries[key];
+    if (sheet == null) return;
+    sheet._users--;
+    final idle = [
+      for (final entry in _entries.entries)
+        if (entry.value._users <= 0) entry.key,
+    ];
+    if (idle.length <= _idleLimit) return;
+    for (final old in idle.take(idle.length - _idleLimit)) {
+      _entries.remove(old)!._dispose();
+    }
+  }
+
+  static void invalidate() {
+    epoch++;
+    final idle = [
+      for (final entry in _entries.entries)
+        if (entry.value._users <= 0) entry.key,
+    ];
+    for (final key in idle) {
+      _entries.remove(key)!._dispose();
+    }
+  }
+}
+
 class StandardResumeThumbnail extends StatefulWidget {
   const StandardResumeThumbnail({
     super.key,
@@ -60,45 +160,66 @@ class StandardResumeThumbnail extends StatefulWidget {
 
 class _StandardResumeThumbnailState extends State<StandardResumeThumbnail> {
   late final ResumeSystemFontObserver systemFonts;
-  late var document = ResumeDocument(
+  late String layoutKey, sheetKey;
+  late int sheetEpoch;
+  late ThumbnailSheet sheet;
+
+  String get currentLayoutKey => ResumeDocument.layoutKey(
     widget.resume,
     photoURL: widget.resume.photoURL,
     theme: widget.theme,
   );
+
+  ResumeDocument createDocument() =>
+      ThumbnailSheetCache.typeset(widget.resume, widget.theme);
+
+  void acquire() {
+    layoutKey = currentLayoutKey;
+    sheetEpoch = ThumbnailSheetCache.epoch;
+    sheetKey = ThumbnailSheetCache.keyFor(widget.resume, widget.theme);
+    sheet = ThumbnailSheetCache.acquire(sheetKey, createDocument);
+  }
+
   @override
   void initState() {
     super.initState();
-    systemFonts = ResumeSystemFontObserver(() => setState(rebuildDocument));
+    acquire();
+    systemFonts = ResumeSystemFontObserver(fontsChanged);
+  }
+
+  void fontsChanged() {
+    // The first thumbnail to notice retires the shared covers for all.
+    if (sheetEpoch == ThumbnailSheetCache.epoch)
+      ThumbnailSheetCache.invalidate();
+    setState(rebuildDocument);
   }
 
   @override
   void didUpdateWidget(covariant StandardResumeThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (currentLayoutKey == layoutKey) return;
     rebuildDocument();
   }
 
   void rebuildDocument() {
-    document.dispose();
-    document = ResumeDocument(
-      widget.resume,
-      photoURL: widget.resume.photoURL,
-      theme: widget.theme,
-    );
+    ThumbnailSheetCache.release(sheetKey);
+    acquire();
   }
 
   @override
   void dispose() {
     systemFonts.dispose();
-    document.dispose();
+    ThumbnailSheetCache.release(sheetKey);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => ResumeSheetImage(
     resume: widget.resume,
-    document: document,
+    document: sheet.document,
     index: 0,
     photo: widget.photo,
+    sheet: sheet,
   );
 }
 
@@ -110,11 +231,15 @@ class ResumeSheetImage extends StatelessWidget {
     required this.document,
     required this.index,
     this.photo,
+    this.sheet,
   });
   final ResumeDraft resume;
   final ResumeDocument document;
   final int index;
   final ImageProvider? photo;
+
+  /// Replays a recorded drawing of the page instead of painting it each time.
+  final ThumbnailSheet? sheet;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -129,6 +254,7 @@ class ResumeSheetImage extends StatelessWidget {
                 document,
                 index,
                 ResumeSheetLayer.paper,
+                sheet,
               ),
             ),
           ),
@@ -158,7 +284,12 @@ class ResumeSheetImage extends StatelessWidget {
             ),
           Positioned.fill(
             child: CustomPaint(
-              painter: _ThumbnailPainter(document, index, ResumeSheetLayer.ink),
+              painter: _ThumbnailPainter(
+                document,
+                index,
+                ResumeSheetLayer.ink,
+                sheet,
+              ),
             ),
           ),
         ],
@@ -168,15 +299,21 @@ class ResumeSheetImage extends StatelessWidget {
 }
 
 class _ThumbnailPainter extends CustomPainter {
-  const _ThumbnailPainter(this.document, this.index, this.layer);
+  const _ThumbnailPainter(this.document, this.index, this.layer, this.sheet);
   final ResumeDocument document;
   final int index;
   final ResumeSheetLayer layer;
+  final ThumbnailSheet? sheet;
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.scale(size.width / resumePaperSize.width);
-    paintResumeSheet(canvas, document, index, layer: layer);
+    final recorded = sheet;
+    if (recorded != null && index == 0) {
+      canvas.drawPicture(recorded.picture(layer));
+    } else {
+      paintResumeSheet(canvas, document, index, layer: layer);
+    }
     canvas.restore();
   }
 
@@ -184,7 +321,8 @@ class _ThumbnailPainter extends CustomPainter {
   bool shouldRepaint(_ThumbnailPainter oldDelegate) =>
       oldDelegate.document != document ||
       oldDelegate.index != index ||
-      oldDelegate.layer != layer;
+      oldDelegate.layer != layer ||
+      oldDelegate.sheet != sheet;
 }
 
 class ResumeCardThumbnail extends StatelessWidget {
@@ -207,16 +345,27 @@ class ResumeCardThumbnail extends StatelessWidget {
           child: AspectRatio(
             aspectRatio: resumePaperSize.aspectRatio,
             child: resume.usesMarketTemplate
-                ? IgnorePointer(
-                    child: ResumeMarketDocumentView(
-                      key: ValueKey(
-                        '${store.epoch}:${resume.id}:${resume.marketTemplateID}',
-                      ),
-                      store: store,
+                ? switch (MarketThemeCache.get(
+                    store,
+                    resume.marketTemplateID,
+                  )) {
+                    // A theme package is typeset like every other cover, so a
+                    // known one needs no loading at all.
+                    final ResumeTheme theme => StandardResumeThumbnail(
                       resume: resume,
-                      thumbnail: true,
+                      theme: theme,
                     ),
-                  )
+                    _ => IgnorePointer(
+                      child: ResumeMarketDocumentView(
+                        key: ValueKey(
+                          '${store.epoch}:${resume.id}:${resume.marketTemplateID}',
+                        ),
+                        store: store,
+                        resume: resume,
+                        thumbnail: true,
+                      ),
+                    ),
+                  }
                 : StandardResumeThumbnail(resume: resume),
           ),
         ),
@@ -386,6 +535,33 @@ class _ResumeThemeSamplePagesState extends State<ResumeThemeSamplePages> {
         ),
     ],
   );
+}
+
+/// Tiles [text] diagonally across a page of [page] points.
+void paintPreviewWatermark(Canvas canvas, Size page, String text) {
+  final painter = TextPainter(
+    text: TextSpan(
+      text: text,
+      style: const TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w500,
+        color: Color(0x24334155),
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+    ellipsis: '…',
+  )..layout(maxWidth: 230);
+  for (double y = 90; y < page.height + 180; y += 180) {
+    for (double x = 130; x < page.width + 260; x += 260) {
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(-0.4487989505);
+      painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+      canvas.restore();
+    }
+  }
+  painter.dispose();
 }
 
 class _WatermarkPainter extends CustomPainter {

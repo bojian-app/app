@@ -44,15 +44,8 @@ class MarketTemplateArtwork extends StatelessWidget {
             image: ResizeImage(CachedNetworkImage(url), width: 720),
             gaplessPlayback: true,
             fit: fit,
-            loadingBuilder: (context, child, progress) => progress == null
-                ? child
-                : const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
+            loadingBuilder: (context, child, progress) =>
+                progress == null ? child : const SkeletonFill(),
             errorBuilder: (_, _, _) => fallback,
           );
   }

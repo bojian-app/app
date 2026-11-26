@@ -24,6 +24,8 @@ import 'order_history_page.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
 import 'resume_pages.dart';
+import 'resume_market_document.dart' show MarketThumbnailLoads;
+import 'resume_thumbnail.dart' show ThumbnailSheetCache;
 import 'story_composer.dart';
 import 'profile_avatar.dart';
 import 'profile_identity.dart';
@@ -101,7 +103,7 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
           ),
         ),
         const SizedBox(height: 20),
-        if (loading) const Center(child: CircularProgressIndicator()),
+        if (loading) const DotMatrixLoader(compact: true),
         if (error != null)
           Text(error!, style: TextStyle(color: context.colors.muted)),
         if (searched && results.isEmpty && error == null)
@@ -156,8 +158,9 @@ enum _ProfileMenuPage {
 }
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key, required this.store});
+  const ProfilePage({super.key, required this.store, this.onExit});
   final AppStore store;
+  final VoidCallback? onExit;
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
@@ -185,7 +188,12 @@ Future<void> _editProfile(
   await openPage(context, ProfileEditor(store: store, action: action));
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends State<ProfilePage>
+    with LoadingHoldState<ProfilePage> {
+  /// The account whose resume covers are already typeset, so only the first
+  /// visit of a session waits for them.
+  static int? _warmedEpoch;
+  late bool warmed = _warmedEpoch == store.epoch;
   final scroll = ScrollController();
   final nameMarker = GlobalKey();
   final headerMarker = GlobalKey();
@@ -205,6 +213,38 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     scroll.addListener(profileScrolled);
+    if (!warmed) unawaited(warmUp());
+  }
+
+  /// Typesets the first covers before the page is shown, so switching to the
+  /// resume tab afterwards does not stall on laying them out.
+  Future<void> warmUp() async {
+    final epoch = store.epoch;
+    bool valid() => mounted && store.epoch == epoch;
+    final waited = Stopwatch()..start();
+    while (valid() &&
+        store.isAuthenticated &&
+        store.loading.contains('resumes') &&
+        waited.elapsed < const Duration(seconds: 5)) {
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+    }
+    if (valid() && store.isAuthenticated) {
+      await ThumbnailSheetCache.warm(
+        store.resumes.take(9).toList(),
+        valid: valid,
+      );
+      // Template resumes draw their covers from a separate, slower load that
+      // starts once the page below the loading view has been built.
+      await WidgetsBinding.instance.endOfFrame;
+      while (valid() &&
+          MarketThumbnailLoads.pending > 0 &&
+          waited.elapsed < const Duration(seconds: 8)) {
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+      }
+    }
+    if (!valid()) return;
+    _warmedEpoch = epoch;
+    setState(() => warmed = true);
   }
 
   @override
@@ -482,12 +522,13 @@ class _ProfilePageState extends State<ProfilePage> {
           MediaQuery.paddingOf(context).top;
       scheduleNameMeasurement();
       final systemUiBase = appSystemUiStyle(context);
+      final showLoading = holdLoading(store.isAuthenticated && !warmed);
       return ValueListenableBuilder<bool>(
         valueListenable: compactHeader,
         builder: (context, compact, child) =>
             AnnotatedRegion<SystemUiOverlayStyle>(
               key: const ValueKey('profile-system-ui'),
-              value: compact || !store.isAuthenticated
+              value: compact || !store.isAuthenticated || showLoading
                   ? systemUiBase
                   : systemUiBase.copyWith(
                       statusBarIconBrightness: Brightness.light,
@@ -498,144 +539,204 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
         child: ColoredBox(
           color: context.colors.surface,
-          child: !store.isAuthenticated
-              ? SafeArea(
-                  bottom: false,
-                  child: DataStatus(
-                    store: store,
-                    section: 'profile',
-                    empty: false,
-                  ),
-                )
-              : DefaultTabController(
-                  length: 4,
-                  child: PlayfulRefreshScope(
-                    enabled: true,
-                    child: Listener(
-                      onPointerDown: (event) {
-                        if (profilePointer != null) return;
-                        profilePointer = event.pointer;
-                      },
-                      onPointerUp: (event) {
-                        if (profilePointer == event.pointer) {
-                          profilePointer = null;
-                        }
-                      },
-                      onPointerCancel: (event) {
-                        if (profilePointer == event.pointer) {
-                          profilePointer = null;
-                        }
-                      },
-                      child: NotificationListener<ScrollNotification>(
-                        onNotification: onScroll,
-                        child: ScrollConfiguration(
-                          behavior: ScrollConfiguration.of(context).copyWith(
-                            overscroll: false,
-                            physics: const ClampingScrollPhysics(),
-                          ),
-                          child: SizedBox.expand(
-                            key: viewportMarker,
-                            child: NestedScrollView(
-                              key: const ValueKey('profile-scroll'),
-                              controller: scroll,
-                              physics: const ClampingScrollPhysics(
-                                parent: AlwaysScrollableScrollPhysics(),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: !store.isAuthenticated
+                    ? Scaffold(
+                        backgroundColor: context.colors.surface,
+                        appBar: widget.onExit == null
+                            ? null
+                            : AppPageBar(
+                                leading: BackButton(onPressed: widget.onExit),
+                                title: const Text('我的'),
                               ),
-                              headerSliverBuilder: (context, innerScrolled) => [
-                                SliverOverlapAbsorber(
-                                  handle: headerOverlap,
-                                  sliver: SliverPersistentHeader(
-                                    pinned: true,
-                                    delegate: ProfileHeaderSliver(
-                                      expandedHeight: headerHeight,
-                                      collapsedHeight: collapsedHeight,
-                                      collapseExtent: nameContentTop ?? 174,
-                                      headerBuilder: (offset, progress) =>
-                                          ProfileHeader(
-                                            key: headerMarker,
-                                            store: store,
-                                            nameKey: nameMarker,
-                                            surfaceKey: headerSurfaceMarker,
-                                            scrollOffset: offset,
-                                            collapseProgress: progress,
-                                            onEdit: () =>
-                                                _editProfile(context, store),
-                                            onAvatar: editAvatar,
-                                            onSettings: openSettings,
-                                            onDetails: () =>
-                                                unawaited(showDetails()),
+                        body: SafeArea(
+                          child: DataStatus(
+                            store: store,
+                            section: 'profile',
+                            empty: false,
+                          ),
+                        ),
+                      )
+                    : DefaultTabController(
+                        length: 4,
+                        child: PlayfulRefreshScope(
+                          enabled: true,
+                          child: Listener(
+                            onPointerDown: (event) {
+                              if (profilePointer != null) return;
+                              profilePointer = event.pointer;
+                            },
+                            onPointerUp: (event) {
+                              if (profilePointer == event.pointer) {
+                                profilePointer = null;
+                              }
+                            },
+                            onPointerCancel: (event) {
+                              if (profilePointer == event.pointer) {
+                                profilePointer = null;
+                              }
+                            },
+                            child: NotificationListener<ScrollNotification>(
+                              onNotification: onScroll,
+                              child: ScrollConfiguration(
+                                behavior: ScrollConfiguration.of(context)
+                                    .copyWith(
+                                      overscroll: false,
+                                      physics: const ClampingScrollPhysics(),
+                                    ),
+                                child: SizedBox.expand(
+                                  key: viewportMarker,
+                                  child: NestedScrollView(
+                                    key: const ValueKey('profile-scroll'),
+                                    controller: scroll,
+                                    physics: const ClampingScrollPhysics(
+                                      parent: AlwaysScrollableScrollPhysics(),
+                                    ),
+                                    headerSliverBuilder:
+                                        (context, innerScrolled) => [
+                                          SliverOverlapAbsorber(
+                                            handle: headerOverlap,
+                                            sliver: SliverPersistentHeader(
+                                              pinned: true,
+                                              delegate: ProfileHeaderSliver(
+                                                expandedHeight: headerHeight,
+                                                collapsedHeight:
+                                                    collapsedHeight,
+                                                collapseExtent:
+                                                    nameContentTop ?? 174,
+                                                headerBuilder:
+                                                    (
+                                                      offset,
+                                                      progress,
+                                                    ) => ProfileHeader(
+                                                      key: headerMarker,
+                                                      store: store,
+                                                      nameKey: nameMarker,
+                                                      surfaceKey:
+                                                          headerSurfaceMarker,
+                                                      scrollOffset: offset,
+                                                      collapseProgress:
+                                                          progress,
+                                                      onEdit: () =>
+                                                          _editProfile(
+                                                            context,
+                                                            store,
+                                                          ),
+                                                      onAvatar: editAvatar,
+                                                      onMenu: widget.onExit,
+                                                      onSettings: openSettings,
+                                                      onDetails: () =>
+                                                          unawaited(
+                                                            showDetails(),
+                                                          ),
+                                                    ),
+                                              ),
+                                            ),
                                           ),
+                                          SliverOverlapAbsorber(
+                                            handle:
+                                                NestedScrollView.sliverOverlapAbsorberHandleFor(
+                                                  context,
+                                                ),
+                                            sliver: SliverAppBar(
+                                              primary: false,
+                                              pinned: true,
+                                              toolbarHeight: 0,
+                                              automaticallyImplyLeading: false,
+                                              backgroundColor:
+                                                  context.colors.surface,
+                                              elevation: 0,
+                                              scrolledUnderElevation: 0,
+                                              surfaceTintColor:
+                                                  Colors.transparent,
+                                              shadowColor: Colors.transparent,
+                                              bottom: contentTabs,
+                                            ),
+                                          ),
+                                        ],
+                                    body: Padding(
+                                      padding: EdgeInsets.only(
+                                        top:
+                                            collapsedHeight +
+                                            contentTabs.preferredSize.height,
+                                      ),
+                                      child: TabBarView(
+                                        key: const ValueKey('profile-pages'),
+                                        children: [
+                                          _ProfileContentTab(
+                                            index: 0,
+                                            child: ResumeLibrary(
+                                              store: store,
+                                              embedded: true,
+                                            ),
+                                          ),
+                                          _ProfileContentTab(
+                                            index: 1,
+                                            child: SavedArticlesPage(
+                                              store: store,
+                                              embedded: true,
+                                            ),
+                                          ),
+                                          _ProfileContentTab(
+                                            index: 2,
+                                            child: MyArticlesPage(
+                                              store: store,
+                                              embedded: true,
+                                              publishedOnly: true,
+                                            ),
+                                          ),
+                                          _ProfileContentTab(
+                                            index: 3,
+                                            child: MyArticlesPage(
+                                              store: store,
+                                              embedded: true,
+                                              draftsOnly: true,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                                SliverOverlapAbsorber(
-                                  handle:
-                                      NestedScrollView.sliverOverlapAbsorberHandleFor(
-                                        context,
-                                      ),
-                                  sliver: SliverAppBar(
-                                    primary: false,
-                                    pinned: true,
-                                    toolbarHeight: 0,
-                                    automaticallyImplyLeading: false,
-                                    backgroundColor: context.colors.surface,
-                                    elevation: 0,
-                                    scrolledUnderElevation: 0,
-                                    surfaceTintColor: Colors.transparent,
-                                    shadowColor: Colors.transparent,
-                                    bottom: contentTabs,
-                                  ),
-                                ),
-                              ],
-                              body: Padding(
-                                padding: EdgeInsets.only(
-                                  top:
-                                      collapsedHeight +
-                                      contentTabs.preferredSize.height,
-                                ),
-                                child: TabBarView(
-                                  key: const ValueKey('profile-pages'),
-                                  children: [
-                                    _ProfileContentTab(
-                                      index: 0,
-                                      child: ResumeLibrary(
-                                        store: store,
-                                        embedded: true,
-                                      ),
-                                    ),
-                                    _ProfileContentTab(
-                                      index: 1,
-                                      child: SavedArticlesPage(
-                                        store: store,
-                                        embedded: true,
-                                      ),
-                                    ),
-                                    _ProfileContentTab(
-                                      index: 2,
-                                      child: MyArticlesPage(
-                                        store: store,
-                                        embedded: true,
-                                        publishedOnly: true,
-                                      ),
-                                    ),
-                                    _ProfileContentTab(
-                                      index: 3,
-                                      child: MyArticlesPage(
-                                        store: store,
-                                        embedded: true,
-                                        draftsOnly: true,
-                                      ),
-                                    ),
-                                  ],
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ),
+              ),
+              // The page is built underneath so it is ready the moment this
+              // view lifts; touches stay out until then.
+              if (showLoading)
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: context.colors.surface,
+                    child: Stack(
+                      children: [
+                        const Positioned.fill(child: DotMatrixLoader()),
+                        if (widget.onExit != null)
+                          SafeArea(
+                            child: Align(
+                              alignment: Alignment.topLeft,
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  left: appPageHorizontalPadding - 12,
+                                ),
+                                child: IconButton(
+                                  tooltip: '返回',
+                                  onPressed: widget.onExit,
+                                  icon: const AppIcon(AppIcons.back, size: 22),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
+            ],
+          ),
         ),
       );
     },
@@ -1570,7 +1671,7 @@ class _VerificationPageState extends State<VerificationPage> {
           ),
           const SizedBox(height: 24),
           if (snapshot.connectionState == ConnectionState.waiting)
-            const Center(child: CircularProgressIndicator())
+            const DotMatrixLoader(compact: true)
           else if (snapshot.hasError) ...[
             Text('${snapshot.error}'),
             TextButton(

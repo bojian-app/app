@@ -8,6 +8,7 @@ abstract final class AppIcons {
   static const drag = HugeIcons.strokeRoundedDragDropVertical;
   static const switchResume = HugeIcons.strokeRoundedExchange01;
   static const more = HugeIcons.strokeRoundedMoreHorizontal;
+  static const outline = HugeIcons.strokeRoundedLeftToRightListBullet;
   static const power = HugeIcons.strokeRoundedPower;
   static const phone = HugeIcons.strokeRoundedSmartPhone01;
   static const computer = HugeIcons.strokeRoundedComputer;
@@ -29,6 +30,7 @@ abstract final class AppIcons {
   static const resume = HugeIcons.strokeRoundedFile02;
   static const messages = HugeIcons.strokeRoundedMessage01;
   static const inbox = HugeIcons.strokeRoundedMail01;
+  static const headset = HugeIcons.strokeRoundedHeadset;
   static const copy = HugeIcons.strokeRoundedCopy01;
   static const profile = HugeIcons.strokeRoundedUser;
   static const profileSelected = HugeIcons.strokeRoundedUser;
@@ -100,7 +102,8 @@ abstract final class AppIcons {
   static const skills = HugeIcons.strokeRoundedBulb;
   static const certificate = HugeIcons.strokeRoundedCertificate01;
   static const article = HugeIcons.strokeRoundedNote01;
-  static const createArticle = HugeIcons.strokeRoundedQuillWrite01;
+  static const createArticle = HugeIcons.strokeRoundedPencilEdit02;
+  static const addResume = HugeIcons.strokeRoundedPlusSignSquare;
   static const avatarUpload = HugeIcons.strokeRoundedImageUpload;
   static const avatarEdit = HugeIcons.strokeRoundedImageAdd02;
   static const wechat = HugeIcons.strokeRoundedWechat;
@@ -114,6 +117,8 @@ abstract final class AppIcons {
   static const date = HugeIcons.strokeRoundedCalendar03;
   static const attachment = HugeIcons.strokeRoundedAttachment01;
   static const profileEdit = HugeIcons.strokeRoundedUserEdit01;
+  static const userAccount = HugeIcons.strokeRoundedUserAccount;
+  static const honourStar = HugeIcons.strokeRoundedHonourStar;
   static const folder = HugeIcons.strokeRoundedFolder01;
   static const refresh = HugeIcons.strokeRoundedRefresh;
   static const hideKeyboard = HugeIcons.strokeRoundedKeyboard;

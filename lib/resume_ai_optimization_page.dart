@@ -27,7 +27,10 @@ class ResumeAIOptimizationPage extends StatefulWidget {
 }
 
 class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with
+        WidgetsBindingObserver,
+        SingleTickerProviderStateMixin,
+        LoadingHoldState<ResumeAIOptimizationPage> {
   late final int accountEpoch;
   Timer? timer;
   int? jobId;
@@ -507,40 +510,37 @@ class _ResumeAIOptimizationPageState extends State<ResumeAIOptimizationPage>
   Widget build(BuildContext context) {
     final colors = context.colors;
     final inReview = valid && !loading && reviewing;
+    final showLoading = holdLoading(valid && loading);
     return PopScope(
       canPop: !inReview || view == PolishView.overview,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) showOverview();
       },
       child: Scaffold(
+        extendBodyBehindAppBar: showLoading,
         appBar: AppPageBar(
+          backgroundColor: showLoading ? Colors.transparent : null,
           title: PolishRollingTitle(inReview ? reviewTitle : 'AI 简历优化'),
         ),
         backgroundColor: colors.surface,
         body: !valid
             ? const Center(child: Text('账号已切换，请返回后重新进入'))
-            : loading
-            ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 20),
-                    Text('正在读取优化记录…', style: TextStyle(color: colors.muted)),
-                  ],
-                ),
-              )
-            : inReview
-            ? reviewBody(context)
-            // A single column (not a lazy list) so jump links can always find
-            // their target; the page holds at most a few dozen cards.
-            : SingleChildScrollView(
-                key: const ValueKey('resume-ai-list'),
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: content(context),
-                ),
+            : LoadingGate(
+                loading: loading,
+                builder: (_) => loading
+                    ? const DotMatrixLoader()
+                    : inReview
+                    ? reviewBody(context)
+                    // A single column (not a lazy list) so jump links can always find
+                    // their target; the page holds at most a few dozen cards.
+                    : SingleChildScrollView(
+                        key: const ValueKey('resume-ai-list'),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: content(context),
+                        ),
+                      ),
               ),
       ),
     );

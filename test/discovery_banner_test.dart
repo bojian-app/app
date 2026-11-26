@@ -138,19 +138,19 @@ void main() {
       final id = created.single;
       expect(tester.getSize(getBanner()).height, 0);
       await notify(tester, id, 'loaded', {'height': 103.0});
-      expect(tester.getSize(getBanner()).height, 119);
+      expect(tester.getSize(getBanner()).height, 125);
       final view = tester.element(find.byType(AndroidView));
       for (var i = 0; i < 3; i++) {
         active.value = false;
         await tester.pumpAndSettle();
-        expect(tester.getSize(getBanner()).height, 119);
+        expect(tester.getSize(getBanner()).height, 125);
         expect(calls[id]!.last, 'hide');
         expect(disposed, isEmpty);
         store.changed();
         active.value = true;
         await tester.pumpAndSettle();
         expect(tester.element(find.byType(AndroidView)), same(view));
-        expect(tester.getSize(getBanner()).height, 119);
+        expect(tester.getSize(getBanner()).height, 125);
         expect(calls[id]!.last, 'show');
       }
       expect(created, [id]);
@@ -195,7 +195,7 @@ void main() {
       await tester.pumpAndSettle();
       await notify(tester, id, 'loaded', {'height': 92.0});
       expect(calls[id], ['load', 'hide']);
-      expect(tester.getSize(getBanner()).height, 108);
+      expect(tester.getSize(getBanner()).height, 114);
       active.value = true;
       await tester.pumpAndSettle();
       expect(created, [id]);
@@ -220,7 +220,7 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pumpAndSettle();
       expect(calls[id]!.last, 'hide');
-      expect(tester.getSize(getBanner()).height, 116);
+      expect(tester.getSize(getBanner()).height, 122);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
       expect(calls[id]!.last, 'show');
@@ -254,7 +254,7 @@ void main() {
       expect(find.byType(AndroidView, skipOffstage: false), findsNothing);
       expect(tester.getSize(getBanner()).height, 0);
       await notify(tester, id, 'loaded', {'height': 150.0});
-      expect(tester.getSize(getBanner()).height, 166);
+      expect(tester.getSize(getBanner()).height, 172);
       active.value = false;
       await tester.pumpAndSettle();
       expect(calls[id]!.last, 'hide');

@@ -22,6 +22,8 @@ class PublicProfileController extends ChangeNotifier {
   String? profileError, articleError;
   int generation = 0, viewerEpoch;
   bool disposed = false;
+  bool? following;
+  bool changingFollow = false;
 
   bool current(int request, int epoch) =>
       !disposed && request == generation && epoch == store.epoch;
@@ -55,6 +57,7 @@ class PublicProfileController extends ChangeNotifier {
         throw const ApiFailure('该用户主页暂不可见', code: 'USER_NOT_FOUND');
       }
       profile = ProfileIdentityData.fromJson(result.data);
+      following = result.data['is_following'] as bool?;
       notifyListeners();
     } catch (error) {
       if (!current(request, epoch)) return;
@@ -77,6 +80,28 @@ class PublicProfileController extends ChangeNotifier {
     } finally {
       if (current(request, epoch)) {
         loading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> toggleFollow() async {
+    if (disposed || changingFollow || following == null) return;
+    final account = store.epoch;
+    changingFollow = true;
+    notifyListeners();
+    try {
+      final result = await store.request(
+        following! ? 'DeleteUsersIdFollow' : 'PutUsersIdFollow',
+        path: {'id': '$userID'},
+        expectedEpoch: account,
+      );
+      if (!disposed && account == store.epoch) {
+        following = result.data['following'] as bool;
+      }
+    } finally {
+      if (!disposed) {
+        changingFollow = false;
         notifyListeners();
       }
     }

@@ -261,47 +261,52 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([additional, reference, submission]),
     builder: (context, _) {
-      if (result != null) return resultPage();
-      if (jobId != null) return generatingPage();
-      return Scaffold(
-        backgroundColor: background,
-        appBar: AppPageBar(title: const Text('AI生成简历')),
-        bottomNavigationBar: bottomBar(generateButton()),
-        body: SafeArea(
-          top: false,
-          bottom: false,
-          child: SingleChildScrollView(
-            controller: scroll,
-            padding: const EdgeInsets.fromLTRB(
-              appPageHorizontalPadding,
-              12,
-              appPageHorizontalPadding,
-              16,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                questionnaireProgress(),
-                const SizedBox(height: 14),
-                questionnaire(),
-                if (generationDescription.runes.length > 5000)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      '填写内容和参考资料共${generationDescription.runes.length}字，请编辑精简至5000字以内后生成。',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                if (error != null) errorMessage(),
-              ],
-            ),
-          ),
-        ),
-      );
+      if (result != null) return AppPageSwitcher(depth: 2, child: resultPage());
+      if (jobId != null) {
+        return AppPageSwitcher(depth: 1, child: generatingPage());
+      }
+      return AppPageSwitcher(depth: 0, child: questionnairePage());
     },
+  );
+
+  Widget questionnairePage() => Scaffold(
+    key: const ValueKey('resume-assistance-questionnaire'),
+    backgroundColor: background,
+    appBar: AppPageBar(title: const Text('AI生成简历')),
+    bottomNavigationBar: bottomBar(generateButton()),
+    body: SafeArea(
+      top: false,
+      bottom: false,
+      child: SingleChildScrollView(
+        controller: scroll,
+        padding: const EdgeInsets.fromLTRB(
+          appPageHorizontalPadding,
+          12,
+          appPageHorizontalPadding,
+          16,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            questionnaireProgress(),
+            const SizedBox(height: 14),
+            questionnaire(),
+            if (generationDescription.runes.length > 5000)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  '填写内容和参考资料共${generationDescription.runes.length}字，请编辑精简至5000字以内后生成。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            if (error != null) errorMessage(),
+          ],
+        ),
+      ),
+    ),
   );
 
   Widget questionnaireProgress() {
@@ -1066,6 +1071,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
         ? '这次用时较长，可以稍后继续查看结果'
         : null;
     return Scaffold(
+      key: const ValueKey('resume-assistance-generation'),
       backgroundColor: background,
       appBar: AppPageBar(title: const Text('AI生成简历')),
       bottomNavigationBar: bottomBar(
@@ -1396,6 +1402,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
   );
 
   Widget resultPage() => Scaffold(
+    key: const ValueKey('resume-assistance-result'),
     appBar: AppPageBar(title: const Text('生成的简历')),
     body: ResumeDocumentView(resume: result!, store: widget.store),
     bottomNavigationBar: SafeArea(
@@ -1415,7 +1422,7 @@ class _ResumeAssistancePageState extends State<ResumeAssistancePage> {
             child: FilledButton(
               onPressed: () => Navigator.pushReplacement(
                 context,
-                MaterialPageRoute<void>(
+                AppPageRoute<void>(
                   builder: (_) =>
                       ResumeEditor(store: widget.store, draft: result!),
                 ),

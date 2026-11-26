@@ -6,7 +6,13 @@ import 'package:flutter/services.dart';
 
 import 'app_store.dart';
 import 'banner_ads.dart';
+import 'design.dart';
 import 'membership_status.dart';
+
+/// The feed's separator between rows, shared so the ad row matches the cards.
+const discoveryGapHeight = 6.0;
+Color discoveryGapColor(BuildContext context) =>
+    context.isDark ? context.colors.canvas : context.colors.inset;
 
 /// The platform view stays laid out while loading, but takes no feed space
 /// until the SDK has rendered a creative. Guests never initialize the SDK.
@@ -197,23 +203,29 @@ class _PlatformBannerState extends State<_PlatformBanner>
     if (finished || !started) return const SizedBox.shrink();
     return Offstage(
       offstage: !ready || !widget.fits,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 4, bottom: 12),
-        child: Center(
-          child: SizedBox(
-            width: 300,
-            height: height,
-            child: widget.platform == TargetPlatform.iOS
-                ? UiKitView(
-                    viewType: 'cn.kelance.bojian/banner',
-                    onPlatformViewCreated: created,
-                    layoutDirection: TextDirection.ltr,
-                  )
-                : AndroidView(
-                    viewType: 'cn.kelance.bojian/banner',
-                    onPlatformViewCreated: created,
-                    layoutDirection: TextDirection.ltr,
-                  ),
+      // A row of its own, separated from the cards by the feed's gap.
+      child: ColoredBox(
+        color: discoveryGapColor(context),
+        child: Container(
+          color: context.colors.surface,
+          margin: const EdgeInsets.only(bottom: discoveryGapHeight),
+          padding: const EdgeInsets.only(top: 4, bottom: 12),
+          child: Center(
+            child: SizedBox(
+              width: 300,
+              height: height,
+              child: widget.platform == TargetPlatform.iOS
+                  ? UiKitView(
+                      viewType: 'cn.kelance.bojian/banner',
+                      onPlatformViewCreated: created,
+                      layoutDirection: TextDirection.ltr,
+                    )
+                  : AndroidView(
+                      viewType: 'cn.kelance.bojian/banner',
+                      onPlatformViewCreated: created,
+                      layoutDirection: TextDirection.ltr,
+                    ),
+            ),
           ),
         ),
       ),

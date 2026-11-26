@@ -255,15 +255,15 @@ class AppUpdateInstaller extends ChangeNotifier {
       final directory = Directory(
         '${(await getTemporaryDirectory()).path}/update',
       );
-      directory.createSync(recursive: true);
+      await directory.create(recursive: true);
       final file = File('${directory.path}/bojian-${release.buildNumber}.apk');
       // 清理旧版本的安装包，保留本版本已下载完整的包，重试时直接安装。
-      for (final entry in directory.listSync()) {
-        if (entry.path != file.path) entry.deleteSync(recursive: true);
+      await for (final entry in directory.list(followLinks: false)) {
+        if (entry.path != file.path) await entry.delete(recursive: true);
       }
       if (release.sizeBytes > 0 &&
-          file.existsSync() &&
-          file.lengthSync() == release.sizeBytes) {
+          await file.exists() &&
+          await file.length() == release.sizeBytes) {
         await _handOver(file, release);
         return;
       }
@@ -287,7 +287,7 @@ class AppUpdateInstaller extends ChangeNotifier {
         await sink.close();
       }
       if (release.sizeBytes > 0 && received != release.sizeBytes) {
-        file.deleteSync();
+        await file.delete();
         throw const HttpException('安装包不完整');
       }
       await _handOver(file, release);

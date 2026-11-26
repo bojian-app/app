@@ -1,7 +1,9 @@
 import 'dart:async';
+
+import 'playful_refresh.dart';
+
 import 'dart:math';
 
-import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -127,9 +129,15 @@ const _crystal = [Color(0xFFF7FCFF), Color(0xFFCDDEF2), Color(0xFF91B3DD)];
 
 /// 会员开通页：会员身份、权益、套餐、专享模板、权益对比和常见问题。
 class MembershipPage extends StatefulWidget {
-  const MembershipPage({super.key, required this.store, this.embedded = false});
+  const MembershipPage({
+    super.key,
+    required this.store,
+    this.embedded = false,
+    this.onExit,
+  });
   final AppStore store;
   final bool embedded;
+  final VoidCallback? onExit;
   static Color backgroundColor(BuildContext context) =>
       _MembershipColors.of(context).background;
 
@@ -358,6 +366,9 @@ class _MembershipPageState extends State<MembershipPage>
         backgroundColor: palette.background,
         appBar: AppPageBar(
           title: Text(widget.embedded ? '会员中心' : '开通会员'),
+          leading: widget.onExit == null
+              ? null
+              : BackButton(onPressed: widget.onExit),
           automaticallyImplyLeading: !widget.embedded,
           backgroundColor: palette.background,
           foregroundColor: palette.text,
@@ -476,19 +487,20 @@ class _MembershipPageState extends State<MembershipPage>
               _TemplateStrip(templates: templates),
             ],
             const Padding(
-              padding: EdgeInsets.fromLTRB(20, 32, 20, 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _SectionTitle('会员权益'),
-                  SizedBox(height: 14),
-                  _BenefitTable(),
-                  SizedBox(height: 32),
-                  _SectionTitle('常见问题'),
-                  SizedBox(height: 14),
-                  _FaqList(),
-                ],
-              ),
+              padding: EdgeInsets.fromLTRB(20, 32, 20, 14),
+              child: _SectionTitle('会员权益'),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: _BenefitTable(),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 32, 20, 14),
+              child: _SectionTitle('常见问题'),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 28),
+              child: _FaqList(),
             ),
           ],
         ),
@@ -657,31 +669,56 @@ class _MetalMembershipCard extends StatelessWidget {
           fit: BoxFit.contain,
           cacheHeight: 96,
         );
-        if (finish == AppAccent.warm) {
+        if (finish != AppAccent.blue) {
           // Regrade the blue badge while preserving white lettering and alpha.
           badge = ColorFiltered(
-            colorFilter: const ColorFilter.matrix([
-              0,
-              0,
-              1,
-              0,
-              0,
-              .35,
-              .65,
-              0,
-              0,
-              0,
-              .8,
-              .2,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              1,
-              0,
-            ]),
+            colorFilter: ColorFilter.matrix(
+              finish == AppAccent.warm
+                  ? const [
+                      0,
+                      0,
+                      1,
+                      0,
+                      0,
+                      .35,
+                      .65,
+                      0,
+                      0,
+                      0,
+                      .8,
+                      .2,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      1,
+                      0,
+                    ]
+                  : const [
+                      .8,
+                      .2,
+                      0,
+                      0,
+                      0,
+                      .2,
+                      .5,
+                      .3,
+                      0,
+                      0,
+                      .3,
+                      .7,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      1,
+                      0,
+                    ],
+            ),
             child: badge,
           );
         }
@@ -1560,11 +1597,11 @@ class _BenefitTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = _MembershipColors.of(context);
-    final memberTint = palette.benefitTint;
-    Widget cell(Widget child, {bool member = false, int flex = 4}) => Expanded(
-      flex: flex,
-      child: Container(
-        color: member ? memberTint : null,
+    Widget cell(Widget child, {bool centerVertically = false}) => TableCell(
+      verticalAlignment: centerVertically
+          ? TableCellVerticalAlignment.middle
+          : TableCellVerticalAlignment.top,
+      child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
         child: child,
       ),
@@ -1576,59 +1613,71 @@ class _BenefitTable extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: palette.line),
       ),
-      child: Column(
+      child: Stack(
         children: [
-          IntrinsicHeight(
+          Positioned.fill(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                cell(
-                  Text(
-                    '特权',
-                    style: TextStyle(fontSize: 12, color: palette.muted),
-                  ),
-                  flex: 5,
-                ),
-                cell(
-                  Text(
-                    '免费用户',
-                    style: TextStyle(fontSize: 12, color: palette.muted),
-                  ),
-                ),
-                cell(
-                  Row(
-                    children: [
-                      HugeIcon(
-                        icon: HugeIcons.strokeRoundedCrown,
-                        size: 14,
-                        color: palette.accent,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          '会员',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: palette.accent,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  member: true,
+                const Spacer(flex: 9),
+                Expanded(
+                  flex: 4,
+                  child: ColoredBox(color: palette.benefitTint),
                 ),
               ],
             ),
           ),
-          for (final (icon, name, free, member) in _benefits)
-            DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: palette.line)),
+          Table(
+            columnWidths: const {
+              0: FlexColumnWidth(5),
+              1: FlexColumnWidth(4),
+              2: FlexColumnWidth(4),
+            },
+            children: [
+              TableRow(
+                children: [
+                  cell(
+                    Text(
+                      '特权',
+                      style: TextStyle(fontSize: 12, color: palette.muted),
+                    ),
+                  ),
+                  cell(
+                    Text(
+                      '免费用户',
+                      style: TextStyle(fontSize: 12, color: palette.muted),
+                    ),
+                  ),
+                  cell(
+                    Row(
+                      children: [
+                        HugeIcon(
+                          icon: HugeIcons.strokeRoundedCrown,
+                          size: 14,
+                          color: palette.accent,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '会员',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: palette.accent,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    centerVertically: true,
+                  ),
+                ],
               ),
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+              for (final (icon, name, free, member) in _benefits)
+                TableRow(
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: palette.line)),
+                  ),
                   children: [
                     cell(
                       Row(
@@ -1647,7 +1696,7 @@ class _BenefitTable extends StatelessWidget {
                           ),
                         ],
                       ),
-                      flex: 5,
+                      centerVertically: true,
                     ),
                     cell(
                       Text(
@@ -1664,12 +1713,11 @@ class _BenefitTable extends StatelessWidget {
                           color: palette.accent,
                         ),
                       ),
-                      member: true,
                     ),
                   ],
                 ),
-              ),
-            ),
+            ],
+          ),
         ],
       ),
     );
@@ -1964,7 +2012,7 @@ class _MembershipCheckoutPageState extends State<MembershipCheckoutPage> {
   /// 用结果页替换确认订单页，返回时直接回到会员页。
   void _showResult(Map<String, dynamic> order) {
     Navigator.of(context).pushReplacement(
-      CupertinoPageRoute<void>(
+      AppPageRoute<void>(
         builder: (_) => MembershipOrderResultPage(
           store: widget.store,
           plan: widget.plan,
@@ -2459,9 +2507,8 @@ Future<bool> showMembershipRequired(
     cancelLabel: purchasable ? '暂不' : null,
   );
   if (open == true && purchasable && context.mounted) {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => MembershipPage(store: store)),
-    );
+    await Navigator.of(context)
+        .push<void>(AppPageRoute(builder: (_) => MembershipPage(store: store)));
   }
   return true;
 }

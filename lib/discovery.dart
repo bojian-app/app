@@ -5,21 +5,24 @@ import 'content_report.dart';
 import 'playful_refresh.dart';
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'article_rich_content.dart';
 import 'article_declaration.dart';
+import 'article_poll.dart' show ArticlePollCard;
+import 'panel_sheet.dart';
 import 'article_reaction_button.dart';
 import 'resume_guidance_view.dart';
 import 'guidance_feed_card.dart';
 import 'resume_updated_label.dart';
+import 'resume_pages.dart' show ResumeLibrary;
+import 'story_composer.dart';
 export 'story_composer.dart';
 import 'profile_avatar.dart';
-import 'profile_identity.dart';
 import 'article_comment_tile.dart';
 import 'withdraw_comment_button.dart';
 import 'app_icons.dart';
 
-import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
 
 import 'app_store.dart';
@@ -33,21 +36,30 @@ import 'messages_button.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
 import 'story_author_identity.dart';
+import 'update_badge.dart';
 import 'user_profile_page.dart';
 
-Color _discoveryGapColor(BuildContext context) =>
-    context.isDark ? context.colors.canvas : context.colors.inset;
+part 'discovery_header.dart';
+
+const _feedGapHeight = discoveryGapHeight;
+
+Color _discoveryGapColor(BuildContext context) => discoveryGapColor(context);
 
 class DiscoveryPage extends StatefulWidget {
-  const DiscoveryPage({super.key, required this.store});
+  const DiscoveryPage({
+    super.key,
+    required this.store,
+    this.onOpenProfile,
+    this.onOpenMembership,
+    this.onOpenService,
+  });
   final AppStore store;
+  final VoidCallback? onOpenProfile, onOpenMembership, onOpenService;
   @override
   State<DiscoveryPage> createState() => _DiscoveryPageState();
 }
 
 class _DiscoveryPageState extends State<DiscoveryPage> {
-  static const categories = ['推荐', '简历分享', '动态'];
-  static const headerActionsWidth = 88.0;
   bool scanning = false;
 
   Future<void> scan() async {
@@ -63,7 +75,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
   final search = TextEditingController();
   final searchFocus = FocusNode();
   String query = '';
-  final _seenArticles = <String, Set<int>>{};
+  final _seenArticles = <int>{};
   @override
   void dispose() {
     search.dispose();
@@ -71,90 +83,11 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     super.dispose();
   }
 
-  Widget feed(String category) {
-    final stories = widget.store.stories
-        .where(
-          (s) =>
-              (category == '推荐' || s.category == category) &&
-              (query.isEmpty ||
-                  '${s.title} ${s.excerpt} ${s.author}'.toLowerCase().contains(
-                    query.toLowerCase(),
-                  )),
-        )
-        .toList();
-    // Only refreshes animate newcomers in; the first batch a list shows (for
-    // example right after sign-in, when the feed was still empty) appears as is.
-    final known = _seenArticles.putIfAbsent(category, () => <int>{});
-    final added = known.isEmpty
-        ? const <int>{}
-        : stories
-              .where((story) => !known.contains(story.id))
-              .map((story) => story.id)
-              .toSet();
-    known.addAll(stories.map((story) => story.id));
-    return LayoutBuilder(
-      builder: (context, constraints) => AutoPaginate.section(
-        store: widget.store,
-        section: 'feed',
-        child: PlayfulRefresh(
-          hasError: () => widget.store.errors['feed'] != null,
-          onRefresh: () => widget.store.load('feed'),
-          child: ListView(
-            key: PageStorageKey('discovery-feed-$category'),
-            physics: const AlwaysScrollableScrollPhysics(),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.only(bottom: 24),
-            children: [
-              if (stories.isEmpty && widget.store.loading.contains('feed'))
-                const _FeedSkeleton()
-              else if (stories.isEmpty)
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: (constraints.maxHeight - 24).clamp(
-                      0.0,
-                      double.infinity,
-                    ),
-                  ),
-                  child: Center(
-                    child: DataStatus(
-                      store: widget.store,
-                      section: 'feed',
-                      empty: stories.isEmpty,
-                      title: query.isEmpty ? '还没有发布的内容' : '没有找到相关内容',
-                      subtitle: query.isEmpty ? '' : '试试其他关键词。',
-                    ),
-                  ),
-                ),
-              for (final story in stories)
-                _FeedArticleEntrance(
-                  key: ValueKey('discovery-story-${story.id}'),
-                  animate: added.contains(story.id),
-                  child: FeedRow(
-                    gapColor: _discoveryGapColor(context),
-                    child: StoryCard(
-                      story: story,
-                      store: widget.store,
-                      flat: true,
-                    ),
-                  ),
-                ),
-              if (stories.isNotEmpty && widget.store.errors['feed'] != null)
-                DataStatus(store: widget.store, section: 'feed', empty: false),
-              PageLoadingFooter(
-                visible: widget.store.loadingMore.contains('feed'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget searchBar(BuildContext context, {double collapse = 0}) {
+  Widget searchBar(BuildContext context) {
     final height = (MediaQuery.textScalerOf(context).scale(13) * 1.2 + 8)
         .clamp(32.0, double.infinity)
         .toDouble();
-    final rowHeight = (height + 8).clamp(44.0, double.infinity).toDouble();
+    final rowHeight = (height + 8).clamp(48.0, double.infinity).toDouble();
     final buttonStyle =
         (IconButtonTheme.of(context).style ?? const ButtonStyle()).copyWith(
           minimumSize: const WidgetStatePropertyAll(Size.square(44)),
@@ -162,13 +95,14 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         );
     return Padding(
-      // Align the search field to the page gutter while preserving the
-      // scan icon's artwork alignment at the opposite edge.
+      // The avatar's tap target is padded, so its visible edge meets the
+      // page gutter on the right.
       padding: const EdgeInsets.fromLTRB(
         appPageHorizontalPadding,
-        0,
-        appPageHorizontalPadding - 13,
-        0,
+        2,
+        appPageHorizontalPadding -
+            (kMinInteractiveDimension - _discoveryAvatarSize) / 2,
+        2,
       ),
       child: SizedBox(
         key: const ValueKey('discovery-search-row'),
@@ -176,247 +110,227 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
         child: Row(
           children: [
             Expanded(
-              child: IgnorePointer(
-                ignoring: collapse > 0,
-                child: Opacity(
-                  opacity: (1 - collapse * 2).clamp(0.0, 1.0),
-                  child: SizedBox(
-                    height: height,
-                    child: TextField(
-                      key: const ValueKey('discovery-search'),
-                      controller: search,
-                      focusNode: searchFocus,
-                      textInputAction: TextInputAction.search,
-                      textAlignVertical: TextAlignVertical.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.2,
-                        color: context.colors.ink,
+              child: SizedBox(
+                height: height,
+                child: TextField(
+                  key: const ValueKey('discovery-search'),
+                  controller: search,
+                  focusNode: searchFocus,
+                  textInputAction: TextInputAction.search,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.2,
+                    color: context.colors.ink,
+                  ),
+                  onChanged: (value) => setState(() => query = value.trim()),
+                  onSubmitted: (_) => searchFocus.unfocus(),
+                  decoration: InputDecoration(
+                    hintText: '搜索',
+                    hintStyle: TextStyle(
+                      color: context.colors.muted,
+                      fontSize: 13,
+                      height: 1.2,
+                    ),
+                    filled: true,
+                    fillColor: context.colors.inset,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints.tightFor(
+                      width: 36,
+                      height: height,
+                    ),
+                    prefixIcon: Center(
+                      child: AppIcon(
+                        AppIcons.search,
+                        size: 16,
+                        color: context.colors.muted,
                       ),
-                      onChanged: (value) =>
-                          setState(() => query = value.trim()),
-                      onSubmitted: (_) => searchFocus.unfocus(),
-                      decoration: InputDecoration(
-                        hintText: '搜索',
-                        hintStyle: TextStyle(
-                          color: context.colors.muted,
-                          fontSize: 13,
-                          height: 1.2,
-                        ),
-                        filled: true,
-                        fillColor: context.colors.inset,
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                        ),
-                        prefixIconConstraints: BoxConstraints.tightFor(
-                          width: 36,
-                          height: height,
-                        ),
-                        prefixIcon: Center(
-                          child: AppIcon(
-                            AppIcons.search,
-                            size: 16,
-                            color: context.colors.muted,
+                    ),
+                    suffixIconConstraints: BoxConstraints.tightFor(
+                      width: 32,
+                      height: height,
+                    ),
+                    suffixIcon: search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: '清空搜索',
+                            padding: EdgeInsets.zero,
+                            onPressed: () {
+                              search.clear();
+                              setState(() => query = '');
+                              searchFocus.requestFocus();
+                            },
+                            icon: AppIcon(
+                              AppIcons.clear,
+                              size: 16,
+                              color: context.colors.muted,
+                            ),
                           ),
-                        ),
-                        suffixIconConstraints: BoxConstraints.tightFor(
-                          width: 32,
-                          height: height,
-                        ),
-                        suffixIcon: search.text.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: '清空搜索',
-                                padding: EdgeInsets.zero,
-                                onPressed: () {
-                                  search.clear();
-                                  setState(() => query = '');
-                                  searchFocus.requestFocus();
-                                },
-                                icon: AppIcon(
-                                  AppIcons.clear,
-                                  size: 16,
-                                  color: context.colors.muted,
-                                ),
-                              ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
                     ),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            SizedBox(
-              width: headerActionsWidth,
-              height: 44,
-              child: ColoredBox(
-                color: context.colors.surface,
-                child: IconButtonTheme(
-                  data: IconButtonThemeData(style: buttonStyle),
-                  child: Row(
-                    children: [
-                      SizedBox.square(
-                        dimension: 44,
-                        child: MessagesButton(
-                          key: const ValueKey('discovery-messages'),
-                          store: widget.store,
-                          iconSize: 20,
-                        ),
-                      ),
-                      SizedBox.square(
-                        dimension: 44,
-                        child: IconButton(
-                          key: const ValueKey('discovery-scan'),
-                          tooltip: '扫一扫',
-                          onPressed: scanning ? null : scan,
-                          icon: const AppIcon(AppIcons.scan, size: 20),
-                        ),
-                      ),
-                    ],
-                  ),
+            IconButtonTheme(
+              data: IconButtonThemeData(style: buttonStyle),
+              child: SizedBox.square(
+                dimension: 44,
+                child: MessagesButton(
+                  key: const ValueKey('discovery-messages'),
+                  store: widget.store,
+                  icon: AppIcons.notification,
+                  iconSize: 20,
                 ),
               ),
+            ),
+            _DiscoveryAvatarMenu(
+              store: widget.store,
+              onOpenProfile: widget.onOpenProfile,
+              onOpenMembership: widget.onOpenMembership,
+              onOpenService: widget.onOpenService,
+              onScan: scanning ? null : scan,
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget headerWidth(Widget child) =>
+      Center(child: SizedBox(width: 600, child: child));
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: context.colors.surface,
-      child: DefaultTabController(
-        length: categories.length,
-        child: Stack(
-          children: [
-            NestedScrollView(
-              headerSliverBuilder: (context, innerScrolled) => [
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _DiscoveryHeaderDelegate(
-                    rowHeight:
-                        (MediaQuery.textScalerOf(context).scale(13) * 1.2 + 16)
-                            .clamp(44.0, double.infinity),
-                    builder: (context, collapse) => ColoredBox(
-                      color: context.colors.surface,
-                      child: Padding(
-                        padding: EdgeInsets.zero,
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 600),
-                            child: Stack(
-                              children: [
-                                Positioned(
-                                  // Collapsed tabs keep their page gutter and
-                                  // leave room for the two actions on the right.
-                                  left: 0,
-                                  right:
-                                      (appPageHorizontalPadding -
-                                          13 +
-                                          headerActionsWidth) *
-                                      collapse,
-                                  bottom:
-                                      (((MediaQuery.textScalerOf(context)
-                                                              .scale(13) *
-                                                          1.2 +
-                                                      16)
-                                                  .clamp(
-                                                    44.0,
-                                                    double.infinity,
-                                                  ) -
-                                              38) /
-                                          2) *
-                                      collapse,
-                                  child: ProfileContentTabs(
-                                    tabBarKey: const ValueKey('discovery-tabs'),
-                                    horizontalPadding:
-                                        appPageHorizontalPadding - 8,
-                                    showDivider: false,
-                                    tabs: [
-                                      for (final category in categories)
-                                        Tab(text: category, height: 36),
-                                    ],
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: searchBar(context, collapse: collapse),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+    final store = widget.store;
+    final term = query.toLowerCase();
+    final stories = term.isEmpty
+        ? store.stories.toList(growable: false)
+        : store.stories
+              .where(
+                (story) => '${story.title} ${story.excerpt} ${story.author}'
+                    .toLowerCase()
+                    .contains(term),
+              )
+              .toList();
+    late final indices = {
+      for (var i = 0; i < stories.length; i++)
+        ValueKey('discovery-story-${stories[i].id}'): i,
+    };
+    final ids = store.stories.map((story) => story.id).toSet();
+    // Only records received after the first batch animate into the feed.
+    final added = _seenArticles.isEmpty
+        ? const <int>{}
+        : ids.difference(_seenArticles);
+    _seenArticles.addAll(ids);
+    final feed = CustomScrollView(
+      key: const PageStorageKey('discovery-feed-推荐'),
+      physics: const AlwaysScrollableScrollPhysics(),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      slivers: [
+        SliverToBoxAdapter(child: DiscoveryBanner(store: store)),
+        if (stories.isEmpty && store.loading.contains('feed'))
+          const SliverToBoxAdapter(child: _FeedSkeleton())
+        else if (stories.isEmpty)
+          SliverLayoutBuilder(
+            builder: (context, constraints) => SliverToBoxAdapter(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight:
+                      (constraints.viewportMainAxisExtent -
+                              constraints.precedingScrollExtent -
+                              24)
+                          .clamp(0.0, double.infinity),
+                ),
+                child: Center(
+                  child: DataStatus(
+                    store: store,
+                    section: 'feed',
+                    empty: true,
+                    title: query.isEmpty ? '还没有发布的内容' : '没有找到相关内容',
+                    subtitle: query.isEmpty ? '' : '试试其他关键词。',
                   ),
                 ),
-                SliverToBoxAdapter(child: DiscoveryBanner(store: widget.store)),
-                SliverToBoxAdapter(
-                  child: ColoredBox(
-                    color: _discoveryGapColor(context),
-                    child: const SizedBox(height: 8),
-                  ),
-                ),
-              ],
-              body: TabBarView(
-                children: [for (final category in categories) feed(category)],
               ),
             ),
-            Positioned(
-              right: 10,
-              bottom: 18,
-              child: InviteFloatingBadge(store: widget.store),
+          )
+        else
+          SliverList.builder(
+            itemCount: stories.length,
+            findChildIndexCallback: (key) => indices[key],
+            itemBuilder: (context, index) {
+              final story = stories[index];
+              return _FeedArticleEntrance(
+                key: ValueKey('discovery-story-${story.id}'),
+                animate: added.contains(story.id),
+                child: FeedRow(
+                  gapColor: _discoveryGapColor(context),
+                  child: StoryCard(story: story, store: store, flat: true),
+                ),
+              );
+            },
+          ),
+        if (stories.isNotEmpty && store.errors['feed'] != null)
+          SliverToBoxAdapter(
+            child: DataStatus(store: store, section: 'feed', empty: false),
+          ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: PageLoadingFooter(
+              visible: store.loadingMore.contains('feed'),
             ),
-          ],
+          ),
         ),
+      ],
+    );
+    return ColoredBox(
+      color: context.colors.surface,
+      child: Column(
+        children: [
+          headerWidth(searchBar(context)),
+          Divider(
+            key: const ValueKey('discovery-feed-divider'),
+            height: _feedGapHeight,
+            thickness: _feedGapHeight,
+            color: _discoveryGapColor(context),
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                AutoPaginate.section(
+                  store: store,
+                  section: 'feed',
+                  child: PlayfulRefresh(
+                    hasError: () => store.errors['feed'] != null,
+                    onRefresh: () => store.load('feed'),
+                    child: feed,
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  bottom: 18,
+                  child: InviteFloatingBadge(store: store),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
-}
-
-class _DiscoveryHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _DiscoveryHeaderDelegate({
-    required this.rowHeight,
-    required this.builder,
-  });
-  final double rowHeight;
-  final Widget Function(BuildContext context, double collapse) builder;
-
-  @override
-  double get minExtent => rowHeight;
-  @override
-  double get maxExtent => rowHeight + 38;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) => builder(
-    context,
-    (shrinkOffset / (maxExtent - minExtent)).clamp(0.0, 1.0),
-  );
-
-  @override
-  bool shouldRebuild(_DiscoveryHeaderDelegate oldDelegate) =>
-      rowHeight != oldDelegate.rowHeight || builder != oldDelegate.builder;
 }
 
 /// Only newly arriving records expand into the list. Existing keyed cards
@@ -484,7 +398,7 @@ class FeedRow extends StatelessWidget {
     color: gapColor ?? context.colors.canvas,
     child: Container(
       color: context.colors.surface,
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: _feedGapHeight),
       padding: const EdgeInsets.symmetric(horizontal: feedOuterPadding),
       child: Center(
         child: ConstrainedBox(
@@ -517,17 +431,7 @@ class StoryCard extends StatelessWidget {
   final bool authorNavigationEnabled;
   final VoidCallback? onBookmark, onDetailClosed;
   Future<void> _openDetail(BuildContext context) async {
-    dismissKeyboard();
-    await Navigator.of(context).push(
-      _StoryDetailRoute(
-        builder: (_) => StoryDetail(story: story, store: store),
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : Theme.of(context).platform == TargetPlatform.android
-            ? const Duration(milliseconds: 260)
-            : null,
-      ),
-    );
+    await openPage<void>(context, StoryDetail(story: story, store: store));
     onDetailClosed?.call();
   }
 
@@ -544,7 +448,7 @@ class StoryCard extends StatelessWidget {
         )
       : _StorySurface(
           flat: flat,
-          onTap: () => _openDetail(context),
+          onTap: story.feedPoll == null ? () => _openDetail(context) : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -652,48 +556,66 @@ class StoryCard extends StatelessWidget {
                   ),
                 ),
               ],
+              if (story.feedPoll case final poll?)
+                ArticlePollCard(
+                  key: ValueKey('story-poll-${story.id}'),
+                  block: poll,
+                  store: store,
+                  articleID: story.id,
+                  embedded: true,
+                ),
               SizedBox(height: flat ? 2 : 8),
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      switch (DateTime.tryParse(story.publishedAt)) {
-                        final date? => resumeUpdatedLabel(date),
-                        null => '',
-                      },
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: context.colors.muted,
+                    // Without the reaction buttons that set this row's height,
+                    // padding gives a poll post the same row height as others.
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        vertical: story.feedPoll == null ? 0 : 11,
+                      ),
+                      child: Text(
+                        switch (DateTime.tryParse(story.publishedAt)) {
+                          final date? => resumeUpdatedLabel(date),
+                          null => '',
+                        },
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: context.colors.muted,
+                        ),
                       ),
                     ),
                   ),
-                  ArticleReactionButton(
-                    key: ValueKey('story-like-${story.id}'),
-                    reaction: ArticleReaction.like,
-                    count: story.likes,
-                    compact: true,
-                    active: story.liked,
-                    onTap: () => runRequest(context, () => store.like(story)),
-                  ),
-                  SizedBox(width: flat ? 12 : 16),
-                  _Reaction(
-                    icon: AppIcons.comment,
-                    label: '${story.commentCount}',
-                    onTap: () => _openDetail(context),
-                  ),
-                  SizedBox(width: flat ? 12 : 16),
-                  ArticleReactionButton(
-                    key: ValueKey('story-bookmark-${story.id}'),
-                    reaction: ArticleReaction.bookmark,
-                    compact: true,
-                    count: story.favorites,
-                    active: story.saved,
-                    onTap:
-                        onBookmark ??
-                        () => runRequest(context, () => store.bookmark(story)),
-                  ),
+                  if (story.feedPoll == null) ...[
+                    ArticleReactionButton(
+                      key: ValueKey('story-like-${story.id}'),
+                      reaction: ArticleReaction.like,
+                      count: story.likes,
+                      compact: true,
+                      active: story.liked,
+                      onTap: () => runRequest(context, () => store.like(story)),
+                    ),
+                    SizedBox(width: flat ? 12 : 16),
+                    _Reaction(
+                      icon: AppIcons.comment,
+                      label: '${story.commentCount}',
+                      onTap: () => _openDetail(context),
+                    ),
+                    SizedBox(width: flat ? 12 : 16),
+                    ArticleReactionButton(
+                      key: ValueKey('story-bookmark-${story.id}'),
+                      reaction: ArticleReaction.bookmark,
+                      compact: true,
+                      count: story.favorites,
+                      active: story.saved,
+                      onTap:
+                          onBookmark ??
+                          () =>
+                              runRequest(context, () => store.bookmark(story)),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -761,7 +683,7 @@ class _StorySurface extends StatelessWidget {
     required this.child,
   });
   final bool flat;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Widget child;
 
   @override
@@ -883,15 +805,6 @@ class _StoryCover extends StatelessWidget {
   );
 }
 
-class _StoryDetailRoute extends CupertinoPageRoute<void> {
-  _StoryDetailRoute({required super.builder, required this.duration});
-
-  final Duration? duration;
-
-  @override
-  Duration get transitionDuration => duration ?? super.transitionDuration;
-}
-
 class StoryDetail extends StatefulWidget {
   const StoryDetail({super.key, required this.story, required this.store});
   final Story story;
@@ -901,13 +814,94 @@ class StoryDetail extends StatefulWidget {
 }
 
 class _StoryDetailState extends State<StoryDetail> {
+  final scroll = ScrollController();
+  // Heading blocks get keys, so the table of contents can scroll to them.
+  final headingKeys = <int, GlobalKey>{};
   late ArticleRichBody body = _buildBody(widget.story.content);
 
-  ArticleRichBody _buildBody(Map<String, dynamic> content) => ArticleRichBody(
-    content: content.isEmpty
+  ArticleRichBody _buildBody(Map<String, dynamic> content) {
+    final data = content.isEmpty
         ? richContent(widget.story.paragraphs.join('\n'))
-        : content,
-  );
+        : content;
+    headingKeys
+      ..clear()
+      ..addAll({
+        for (final heading in articleHeadings(data))
+          heading.blockIndex: GlobalKey(),
+      });
+    return ArticleRichBody(
+      store: widget.store,
+      articleID: widget.story.id,
+      content: data,
+      headingKeys: headingKeys,
+    );
+  }
+
+  List<ArticleHeading> get headings => articleHeadings(body.content);
+
+  Future<void> showContents() async {
+    final items = headings;
+    if (items.isEmpty) return;
+    final minLevel = items.map((h) => h.level).reduce(math.min);
+    final picked = await showPanelSheet<int>(
+      context,
+      builder: (sheet) => PanelSheet(
+        title: '目录',
+        child: ListView(
+          key: const ValueKey('article-contents'),
+          children: [
+            for (final heading in items)
+              InkWell(
+                key: ValueKey('article-contents-${heading.blockIndex}'),
+                onTap: () => Navigator.pop(sheet, heading.blockIndex),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    12 + (heading.level - minLevel) * 16.0,
+                    12,
+                    12,
+                    12,
+                  ),
+                  child: Text(
+                    heading.text,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: heading.level == minLevel
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color: context.colors.ink,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) await jumpToHeading(picked);
+  }
+
+  Future<void> jumpToHeading(int blockIndex) async {
+    var target = headingKeys[blockIndex]?.currentContext;
+    // The article is one list item; bring it back into the tree first.
+    if (target == null && scroll.hasClients) {
+      scroll.jumpTo(0);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      target = headingKeys[blockIndex]?.currentContext;
+    }
+    if (target == null || !target.mounted) return;
+    await Scrollable.ensureVisible(
+      target,
+      alignment: .04,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 320),
+      curve: Curves.easeInOutCubic,
+    );
+  }
+
   String? bodyError;
   Future<void> loadBody() async {
     try {
@@ -920,6 +914,9 @@ class _StoryDetailState extends State<StoryDetail> {
         if (result.data['status'] != null &&
             result.data['status'] != 'PUBLISHED') {
           articleRemoved = true;
+        }
+        if (result.data['can_comment'] is bool) {
+          widget.story.canComment = result.data['can_comment'] as bool;
         }
         if (result.data['content'] != null) {
           final content = result.data['content'];
@@ -963,7 +960,9 @@ class _StoryDetailState extends State<StoryDetail> {
   final threadErrors = <int, String>{};
   final expandedThreads = <int>{};
   void reply(ArticleComment target) {
-    if (widget.store.pending.contains('comment-${widget.story.id}')) return;
+    if (!widget.story.canComment ||
+        widget.store.pending.contains('comment-${widget.story.id}'))
+      return;
     setState(() {
       replyTarget = target;
       commentSendError = null;
@@ -1028,28 +1027,25 @@ class _StoryDetailState extends State<StoryDetail> {
     });
   }
 
-  List<ArticleComment> get displayedComments {
-    final local = widget.store
-        .localContent('PostArticlesIdComments', widget.story.id)
-        .where((r) => r['parent_id'] == null)
-        .map(ArticleComment.fromJson)
-        .toList();
-    return [
-      ...local.reversed,
-      ...widget.story.comments.where((c) => !local.any((v) => v.id == c.id)),
-    ];
+  Map<int?, List<ArticleComment>> localCommentsByParent() {
+    final grouped = <int?, List<ArticleComment>>{};
+    for (final row in widget.store.localContent(
+      'PostArticlesIdComments',
+      widget.story.id,
+    )) {
+      final comment = ArticleComment.fromJson(row);
+      (grouped[comment.parentID] ??= []).add(comment);
+    }
+    return grouped;
   }
 
-  List<ArticleComment> threadComments(int root) {
-    final local = widget.store
-        .localContent('PostArticlesIdComments', widget.story.id)
-        .where((r) => integer(r['parent_id']) == root)
-        .map(ArticleComment.fromJson)
-        .toList();
-    return [
-      ...local.reversed,
-      ...(threads[root] ?? []).where((c) => !local.any((v) => v.id == c.id)),
-    ];
+  List<ArticleComment> mergeComments(
+    List<ArticleComment> remote,
+    List<ArticleComment>? local,
+  ) {
+    if (local == null || local.isEmpty) return remote;
+    final ids = local.map((c) => c.id).toSet();
+    return [...local.reversed, ...remote.where((c) => !ids.contains(c.id))];
   }
 
   Widget commentTile(
@@ -1082,34 +1078,38 @@ class _StoryDetailState extends State<StoryDetail> {
         : null,
     onAuthorTap: () =>
         openUserProfile(context, store: widget.store, userID: c.authorID),
-    onReply: c.visible ? () => reply(c) : null,
+    onReply: widget.story.canComment && c.visible ? () => reply(c) : null,
     onReport: () => reportContent(
       context,
       store: widget.store,
       subjectType: 'COMMENT',
       subjectID: c.id,
     ),
-    onRetry: c.local == null ? null : () => widget.store.sendContent(c.local!),
-    onEdit: () => setState(() {
-      comment.text = c.content;
-      replyTarget = c.replyToID == null
-          ? null
-          : ArticleComment(
-              id: c.replyToID!,
-              authorID: 0,
-              author: c.replyToName,
-              content: '',
-              parentID: c.parentID,
-            );
-      commentFocus.requestFocus();
-    }),
+    onRetry: !widget.story.canComment || c.local == null
+        ? null
+        : () => widget.store.sendContent(c.local!),
+    onEdit: !widget.story.canComment
+        ? null
+        : () => setState(() {
+            comment.text = c.content;
+            replyTarget = c.replyToID == null
+                ? null
+                : ArticleComment(
+                    id: c.replyToID!,
+                    authorID: 0,
+                    author: c.replyToName,
+                    content: '',
+                    parentID: c.parentID,
+                  );
+            commentFocus.requestFocus();
+          }),
     onLike: () => react(c, false),
     onDislike: () => react(c, true),
     pending: widget.store.pending.contains(
       'comment-reaction-${widget.story.id}-${c.id}',
     ),
   );
-  Widget thread(ArticleComment root) {
+  Widget thread(ArticleComment root, List<ArticleComment>? local) {
     final expanded = expandedThreads.contains(root.id);
     return Padding(
       padding: const EdgeInsets.only(left: 42),
@@ -1117,17 +1117,10 @@ class _StoryDetailState extends State<StoryDetail> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (expanded) ...[
-            for (final c in threadComments(root.id))
+            for (final c in mergeComments(threads[root.id] ?? const [], local))
               commentTile(c, nested: true),
             if (loadingThreads.contains(root.id))
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
+              const DotMatrixLoader(compact: true),
             if (threadErrors.containsKey(root.id))
               TextButton(
                 onPressed: () => loadThread(root.id),
@@ -1141,7 +1134,8 @@ class _StoryDetailState extends State<StoryDetail> {
               ),
           ],
           if (root.replyCount > 0 ||
-              threadComments(root.id).isNotEmpty ||
+              local?.isNotEmpty == true ||
+              threads[root.id]?.isNotEmpty == true ||
               expanded)
             ReplyThreadToggle(
               key: ValueKey('article-thread-toggle-${root.id}'),
@@ -1200,7 +1194,10 @@ class _StoryDetailState extends State<StoryDetail> {
           ModalRoute.of(context)?.isCurrent != true) {
         return;
       }
-      if (displayedComments.any(
+      if (mergeComments(
+            widget.story.comments,
+            localCommentsByParent()[null],
+          ).any(
             (c) => const {'SENDING', 'QUEUED', 'PENDING'}.contains(c.status),
           ) ||
           threads.values
@@ -1293,6 +1290,7 @@ class _StoryDetailState extends State<StoryDetail> {
     refreshTimer?.cancel();
     moderationTimer?.cancel();
     unawaited(realtime?.cancel());
+    scroll.dispose();
     commentFocus.dispose();
     comment.dispose();
     super.dispose();
@@ -1304,12 +1302,145 @@ class _StoryDetailState extends State<StoryDetail> {
     builder: (context, _) => _buildPage(context),
   );
 
+  List<Widget> _articleHeader(bool commentsEmpty) => [
+    if (widget.story.title.trim().isNotEmpty)
+      Text(
+        widget.story.title,
+        style: TextStyle(
+          fontSize: 26,
+          height: 1.45,
+          fontWeight: FontWeight.w700,
+          shadows: articleBoldShadows(context, context.colors.ink, size: 26),
+        ),
+      ),
+    ArticleDeclarationLabel(body.content),
+    if (widget.story.title.trim().isNotEmpty ||
+        readArticleDeclaration(body.content).label.isNotEmpty)
+      const SizedBox(height: 20),
+    Row(
+      children: [
+        ProfileAvatar(
+          seed: widget.story.authorID > 0
+              ? '${widget.story.authorID}'
+              : widget.story.author,
+          url: widget.story.authorAvatarURL,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.story.author,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              Text(
+                widget.story.role,
+                style: TextStyle(fontSize: 11, color: context.colors.muted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          widget.story.publishedAt.split('T').first,
+          style: TextStyle(color: context.colors.muted, fontSize: 11),
+        ),
+      ],
+    ),
+    const SizedBox(height: 26),
+    if (widget.story.cover == 1) ...[_StoryCover(), const SizedBox(height: 24)],
+    if (widget.story.hasGuidance)
+      Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: OutlinedButton(
+          onPressed: () => openPage(
+            context,
+            ResumeGuidanceView(store: widget.store, id: widget.story.id),
+          ),
+          child: const Text('查看简历'),
+        ),
+      ),
+    body,
+    if (bodyError != null)
+      TextButton(onPressed: loadBody, child: Text('$bodyError，点击重试')),
+    Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        key: const ValueKey('article-end-actions'),
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          ArticleReactionButton(
+            key: const ValueKey('detail-like'),
+            count: widget.story.likes,
+            reaction: ArticleReaction.like,
+            active: widget.story.liked,
+            onTap: widget.store.pending.contains('like-${widget.story.id}')
+                ? null
+                : () => runRequest(
+                    context,
+                    () => widget.store.like(widget.story),
+                  ),
+          ),
+          const SizedBox(width: 8),
+          ArticleReactionButton(
+            key: const ValueKey('detail-bookmark'),
+            reaction: ArticleReaction.bookmark,
+            count: widget.story.favorites,
+            active: widget.story.saved,
+            onTap: widget.store.pending.contains('bookmark-${widget.story.id}')
+                ? null
+                : () => runRequest(
+                    context,
+                    () => widget.store.bookmark(widget.story),
+                  ),
+          ),
+        ],
+      ),
+    ),
+    const Divider(),
+    const SizedBox(height: 18),
+    Text(
+      '评论（${widget.story.commentCount}）',
+      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+    ),
+    const SizedBox(height: 4),
+    if (commentError != null) ...[
+      Text(
+        commentError!,
+        style: TextStyle(color: context.colors.muted, fontSize: 12),
+      ),
+      TextButton(onPressed: loadComments, child: const Text('重新加载评论')),
+    ],
+    if (commentsLoading) const DotMatrixLoader(compact: true),
+    if (commentsEmpty && commentError == null && !commentsLoading)
+      EmptyState(
+        widget.story.canComment ? '还没有评论，聊聊你的看法' : '还没有评论',
+        '',
+        compact: true,
+      ),
+  ];
+
   Widget _buildPage(BuildContext context) {
-    final comments = displayedComments;
+    final local = localCommentsByParent();
+    final comments = mergeComments(widget.story.comments, local[null]);
+    final header = _articleHeader(comments.isEmpty);
     return Scaffold(
       backgroundColor: context.colors.surface,
       appBar: AppPageBar(
+        // The icon's own edge, not its 48 px tap target, sits on the gutter.
+        actionsPadding: const EdgeInsetsDirectional.only(end: 10),
         actions: [
+          if (!articleRemoved && headings.length >= 2)
+            IconButton(
+              key: const ValueKey('article-contents-button'),
+              tooltip: '目录',
+              onPressed: showContents,
+              icon: const AppIcon(AppIcons.outline, size: 20),
+            ),
           if (!articleRemoved && widget.story.authorID == widget.store.userID)
             ArticleOwnerActions(
               store: widget.store,
@@ -1332,7 +1463,8 @@ class _StoryDetailState extends State<StoryDetail> {
                   !loadingMoreComments &&
                   commentError == null,
               onLoadMore: loadMoreComments,
-              child: ListView(
+              child: ListView.builder(
+                controller: scroll,
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(
@@ -1341,164 +1473,41 @@ class _StoryDetailState extends State<StoryDetail> {
                   appPageHorizontalPadding,
                   24,
                 ),
-                children: [
-                  Text(
-                    widget.story.title,
-                    style: const TextStyle(
-                      fontSize: 26,
-                      height: 1.45,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  ArticleDeclarationLabel(body.content),
-                  const SizedBox(height: 20),
-                  Row(
+                itemCount: header.length + comments.length + 1,
+                itemBuilder: (context, index) {
+                  if (index < header.length) return header[index];
+                  if (index == header.length + comments.length) {
+                    return PageLoadingFooter(visible: loadingMoreComments);
+                  }
+                  final root = comments[index - header.length];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      ProfileAvatar(
-                        seed: widget.story.authorID > 0
-                            ? '${widget.story.authorID}'
-                            : widget.story.author,
-                        url: widget.story.authorAvatarURL,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.story.author,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                              ),
-                            ),
-                            Text(
-                              widget.story.role,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: context.colors.muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        widget.story.publishedAt.split('T').first,
-                        style: TextStyle(
-                          color: context.colors.muted,
-                          fontSize: 11,
-                        ),
-                      ),
+                      commentTile(root),
+                      thread(root, local[root.id]),
+                      const SizedBox(height: 10),
                     ],
-                  ),
-                  const SizedBox(height: 26),
-                  if (widget.story.cover == 1) ...[
-                    _StoryCover(),
-                    const SizedBox(height: 24),
-                  ],
-                  if (widget.story.hasGuidance)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: OutlinedButton(
-                        onPressed: () => openPage(
-                          context,
-                          ResumeGuidanceView(
-                            store: widget.store,
-                            id: widget.story.id,
-                          ),
-                        ),
-                        child: const Text('查看简历'),
-                      ),
-                    ),
-                  body,
-                  if (bodyError != null)
-                    TextButton(
-                      onPressed: loadBody,
-                      child: Text('$bodyError，点击重试'),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      key: const ValueKey('article-end-actions'),
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        ArticleReactionButton(
-                          key: const ValueKey('detail-like'),
-                          count: widget.story.likes,
-                          reaction: ArticleReaction.like,
-                          active: widget.story.liked,
-                          onTap:
-                              widget.store.pending.contains(
-                                'like-${widget.story.id}',
-                              )
-                              ? null
-                              : () => runRequest(
-                                  context,
-                                  () => widget.store.like(widget.story),
-                                ),
-                        ),
-                        const SizedBox(width: 8),
-                        ArticleReactionButton(
-                          key: const ValueKey('detail-bookmark'),
-                          reaction: ArticleReaction.bookmark,
-                          count: widget.story.favorites,
-                          active: widget.story.saved,
-                          onTap:
-                              widget.store.pending.contains(
-                                'bookmark-${widget.story.id}',
-                              )
-                              ? null
-                              : () => runRequest(
-                                  context,
-                                  () => widget.store.bookmark(widget.story),
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(),
-                  const SizedBox(height: 18),
-                  Text(
-                    '评论（${widget.story.commentCount}）',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  if (commentError != null) ...[
-                    Text(
-                      commentError!,
-                      style: TextStyle(
-                        color: context.colors.muted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: loadComments,
-                      child: const Text('重新加载评论'),
-                    ),
-                  ],
-                  if (commentsLoading)
-                    const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  if (comments.isEmpty &&
-                      commentError == null &&
-                      !commentsLoading)
-                    const EmptyState('还没有评论，聊聊你的看法', '', compact: true),
-                  for (final c in comments) ...[
-                    commentTile(c),
-                    thread(c),
-                    const SizedBox(height: 10),
-                  ],
-                  PageLoadingFooter(visible: loadingMoreComments),
-                ],
+                  );
+                },
               ),
             ),
       bottomNavigationBar: articleRemoved
           ? null
+          : !widget.story.canComment
+          ? SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                  horizontal: 20,
+                ),
+                child: Text(
+                  '仅作者关注的人可以回复',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: context.colors.muted, fontSize: 13),
+                ),
+              ),
+            )
           : Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.viewInsetsOf(context).bottom,
@@ -1641,7 +1650,7 @@ class _StoryDetailState extends State<StoryDetail> {
 
   Future<void> _send() async {
     final text = comment.text.trim();
-    if (text.isEmpty) return;
+    if (!widget.story.canComment || text.isEmpty) return;
     final target = replyTarget;
     widget.store.enqueueContent(
       'PostArticlesIdComments',

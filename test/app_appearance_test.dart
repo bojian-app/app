@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 class _DelayedStorage extends MemoryStorage {
   final started = Completer<void>();
@@ -103,8 +104,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-3')));
-      await tester.pumpAndSettle();
+      await openMyPage(tester);
       await tester.tap(find.byKey(const ValueKey('profile-settings')));
       await tester.pumpAndSettle();
 
@@ -120,6 +120,11 @@ void main() {
 
       expect(find.text('跟随系统'), findsOneWidget);
       expect(settings().colors.palette, AppAccent.blue);
+      await choose('主题色', '珊瑚暖色');
+      expect(settings().colors.palette, AppAccent.warm);
+      await choose('主题色', '青竹绿');
+      expect(settings().colors.palette, AppAccent.green);
+      expect(settings().colors.accent, AppAccent.green.seed);
       await choose('主题色', '珊瑚暖色');
       expect(settings().colors.palette, AppAccent.warm);
       await choose('外观模式', '深色');
@@ -140,7 +145,9 @@ void main() {
 
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-2')));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tapDiscoveryMenuItem(tester, 'discovery-service');
       await tester.pumpAndSettle();
       expect(
         tester.element(find.byType(CustomerServicePage)).colors.palette,

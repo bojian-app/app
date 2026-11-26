@@ -10,10 +10,12 @@ class MessagesButton extends StatefulWidget {
     super.key,
     required this.store,
     this.color,
+    this.icon = AppIcons.inbox,
     this.iconSize = 24,
   });
   final AppStore store;
   final Color? color;
+  final AppIconData icon;
   final double iconSize;
 
   @override
@@ -53,20 +55,18 @@ class _MessagesButtonState extends State<MessagesButton> {
           icon: Stack(
             clipBehavior: Clip.none,
             children: [
-              AppIcon(
-                AppIcons.inbox,
-                size: widget.iconSize,
-                color: widget.color,
-              ),
+              AppIcon(widget.icon, size: widget.iconSize, color: widget.color),
               if (unread > 0)
                 PositionedDirectional(
                   top: -8,
-                  end: -9,
+                  end: -13,
                   child: Container(
                     key: const ValueKey('messages-unread-badge'),
-                    constraints: const BoxConstraints(minWidth: 16),
+                    // Wider than tall, so even one digit sits in an oval.
+                    constraints: const BoxConstraints(minWidth: 24),
+                    alignment: Alignment.center,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
+                      horizontal: 5,
                       vertical: 1,
                     ),
                     decoration: BoxDecoration(

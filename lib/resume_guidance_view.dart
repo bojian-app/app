@@ -49,7 +49,8 @@ class ResumeGuidanceView extends StatefulWidget {
   State<ResumeGuidanceView> createState() => _ResumeGuidanceViewState();
 }
 
-class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
+class _ResumeGuidanceViewState extends State<ResumeGuidanceView>
+    with LoadingHoldState<ResumeGuidanceView> {
   final guidance = GuidanceFlowController();
   Map<String, dynamic>? data;
   String? error;
@@ -604,7 +605,7 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   }
 
   double documentScale(BuildContext context) =>
-      math.min(680.0, MediaQuery.sizeOf(context).width - 24) /
+      math.min(680.0, MediaQuery.sizeOf(context).width - resumeSheetInset) /
       resumePaperSize.width;
 
   List<ResumeReviewNote> inlineNotes(BuildContext context) {
@@ -858,6 +859,7 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
   Widget build(BuildContext context) {
     ModalRoute.isCurrentOf(context);
     scheduleNotificationFocus();
+    final showLoading = holdLoading(data == null && error == null);
     return GuidanceWalkthrough(
       store: widget.store,
       controller: guidance,
@@ -902,7 +904,9 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
           ),
       ],
       child: Scaffold(
+        extendBodyBehindAppBar: showLoading,
         appBar: AppPageBar(
+          backgroundColor: showLoading ? Colors.transparent : null,
           title: Text(
             ownerDetail
                 ? '简历详情'
@@ -957,97 +961,104 @@ class _ResumeGuidanceViewState extends State<ResumeGuidanceView> {
               ),
           ],
         ),
-        body: data == null
-            ? Center(
-                child: error == null
-                    ? const CircularProgressIndicator(strokeWidth: 2)
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(error!),
-                          TextButton(
-                            onPressed: load,
-                            child: const Text('重新加载'),
-                          ),
-                        ],
-                      ),
-              )
-            : ownerLanding
-            ? GuidanceParticipantList(
-                title: '${data!['title'] ?? '分享的简历'}',
-                records: records,
-                onReview: openReviewer,
-                onRefresh: load,
-                onOpenProfile: (person) => openUserProfile(
-                  context,
-                  store: widget.store,
-                  userID: person.userID,
-                ),
-              )
-            : Column(
-                children: [
-                  if (ownerReview && reviewerRecords.isNotEmpty)
-                    GuidanceReviewHeading(
-                      onOpenProfile: () => openUserProfile(
-                        context,
-                        store: widget.store,
-                        userID: integer(reviewerRecords.first['reviewer_id']),
-                      ),
-                      participant: GuidanceParticipant(
-                        reviewerKey!,
-                        reviewerRecords,
-                      ),
-                    ),
-                  if (data!['is_owner'] != true &&
-                      '${data!['question'] ?? ''}'.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        appPageHorizontalPadding,
-                        4,
-                        appPageHorizontalPadding,
-                        12,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '${data!['question']}',
-                          style: const TextStyle(fontSize: 13, height: 1.6),
+        body: LoadingGate(
+          loading: data == null && error == null,
+          builder: (_) => data == null
+              ? error == null
+                    ? const DotMatrixLoader()
+                    : Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(error!),
+                            TextButton(
+                              onPressed: load,
+                              child: const Text('重新加载'),
+                            ),
+                          ],
+                        ),
+                      )
+              : ownerLanding
+              ? GuidanceParticipantList(
+                  title: '${data!['title'] ?? '分享的简历'}',
+                  records: records,
+                  onReview: openReviewer,
+                  onRefresh: load,
+                  onOpenProfile: (person) => openUserProfile(
+                    context,
+                    store: widget.store,
+                    userID: person.userID,
+                  ),
+                )
+              : Column(
+                  children: [
+                    if (ownerReview && reviewerRecords.isNotEmpty)
+                      GuidanceReviewHeading(
+                        onOpenProfile: () => openUserProfile(
+                          context,
+                          store: widget.store,
+                          userID: integer(reviewerRecords.first['reviewer_id']),
+                        ),
+                        participant: GuidanceParticipant(
+                          reviewerKey!,
+                          reviewerRecords,
                         ),
                       ),
-                    ),
-                  Expanded(
-                    key: const ValueKey('tour-document'),
-                    child: data!['snapshot'] == null
-                        ? SingleChildScrollView(
-                            padding: const EdgeInsets.all(20),
-                            child: ArticleRichBody(
-                              content: Map<String, dynamic>.from(
-                                data!['legacy_content'] as Map? ?? {},
-                              ),
-                            ),
-                          )
-                        : ResumeDocumentView(
-                            key: documentKey,
-                            store: widget.store,
-                            onAnnotationSelected: () =>
-                                guidance.complete('reviewer.selected'),
-                            onOriginalShown: () => guidance.complete(
-                              ownerReview
-                                  ? 'review.compared'
-                                  : 'reviewer.compared',
-                            ),
-                            resume: displayResume,
-                            onAnnotate: data!['is_owner'] == true
-                                ? null
-                                : annotate,
-                            reviewNotes: inlineNotes(context),
-                            reviewNoteBuilder: reviewNote,
-                            reviewHighlights: reviewHighlights,
-                            onReviewTap: openReviewMarks,
+                    if (data!['is_owner'] != true &&
+                        '${data!['question'] ?? ''}'.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          appPageHorizontalPadding,
+                          4,
+                          appPageHorizontalPadding,
+                          12,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '${data!['question']}',
+                            style: const TextStyle(fontSize: 13, height: 1.6),
                           ),
-                  ),
-                ],
-              ),
+                        ),
+                      ),
+                    Expanded(
+                      key: const ValueKey('tour-document'),
+                      child: data!['snapshot'] == null
+                          ? SingleChildScrollView(
+                              padding: const EdgeInsets.all(20),
+                              child: ArticleRichBody(
+                                store: widget.store,
+                                articleID: widget.notification
+                                    ? null
+                                    : widget.id,
+                                content: Map<String, dynamic>.from(
+                                  data!['legacy_content'] as Map? ?? {},
+                                ),
+                              ),
+                            )
+                          : ResumeDocumentView(
+                              key: documentKey,
+                              store: widget.store,
+                              onAnnotationSelected: () =>
+                                  guidance.complete('reviewer.selected'),
+                              onOriginalShown: () => guidance.complete(
+                                ownerReview
+                                    ? 'review.compared'
+                                    : 'reviewer.compared',
+                              ),
+                              resume: displayResume,
+                              onAnnotate: data!['is_owner'] == true
+                                  ? null
+                                  : annotate,
+                              reviewNotes: inlineNotes(context),
+                              reviewNoteBuilder: reviewNote,
+                              reviewHighlights: reviewHighlights,
+                              onReviewTap: openReviewMarks,
+                            ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

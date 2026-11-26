@@ -47,6 +47,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
   final viewportKey = GlobalKey();
   double headerHeight = 400, collapseExtent = 174;
   bool measuring = false, openingDetails = false;
+  // The loading page stays up for a moment even when the profile arrives fast.
+  late final loadingHold = LoadingHold(() {
+    if (mounted) setState(() {});
+  });
   bool compact = false;
   PageRoute<void>? detailsRoute;
 
@@ -207,6 +211,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   @override
   void dispose() {
+    loadingHold.dispose();
     publicProfile.dispose();
     scroll.dispose();
     super.dispose();
@@ -215,11 +220,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
   @override
   Widget build(BuildContext context) {
     measureHeader();
-    if (profile == null) {
+    final showLoading = loadingHold.update(profile == null && loading);
+    if (profile == null || showLoading) {
       return Scaffold(
-        appBar: AppPageBar(title: const Text('个人主页')),
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
+        extendBodyBehindAppBar: showLoading,
+        appBar: AppPageBar(
+          backgroundColor: showLoading ? Colors.transparent : null,
+          title: const Text('个人主页'),
+        ),
+        body: showLoading
+            ? const DotMatrixLoader()
             : Center(child: status(profileError ?? '该用户主页暂不可见', retry: true)),
       );
     }
@@ -287,8 +297,23 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     scrolledUnderElevation: 0,
                     surfaceTintColor: Colors.transparent,
                     shadowColor: Colors.transparent,
-                    bottom: const ProfileContentTabs(
-                      tabs: [
+                    bottom: ProfileContentTabs(
+                      trailing:
+                          widget.store.userID != widget.userID &&
+                              publicProfile.following != null
+                          ? TextButton(
+                              onPressed: publicProfile.changingFollow
+                                  ? null
+                                  : () => runRequest(
+                                      context,
+                                      publicProfile.toggleFollow,
+                                    ),
+                              child: Text(
+                                publicProfile.following! ? '已关注' : '关注',
+                              ),
+                            )
+                          : null,
+                      tabs: const [
                         Tab(
                           key: ValueKey('profile-tab-articles'),
                           text: '动态',
@@ -329,9 +354,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     SliverFillRemaining(
                       // EmptyState measures its available height and scrolls internally.
                       hasScrollBody: true,
-                      child: loading
-                          ? status('正在加载动态…')
-                          : const Center(child: EmptyState('暂时没有公开动态', '')),
+                      child: LoadingGate(
+                        loading: loading,
+                        builder: (_) => loading
+                            ? const DotMatrixLoader()
+                            : const Center(child: EmptyState('暂时没有公开动态', '')),
+                      ),
                     ),
                   SliverLayoutBuilder(
                     builder: (context, constraints) => SliverToBoxAdapter(

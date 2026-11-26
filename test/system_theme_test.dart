@@ -1,3 +1,7 @@
+import 'package:bojian_mobile/membership_page.dart';
+import 'package:bojian_mobile/discovery.dart';
+import 'package:bojian_mobile/customer_service_page.dart';
+import 'package:bojian_mobile/account_pages.dart';
 import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/auth_page.dart';
 import 'package:bojian_mobile/design.dart';
@@ -112,8 +116,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('nav-3')));
-      await tester.pumpAndSettle();
+      await openMyPage(tester);
       final shell = tester.state<AppShellState>(find.byType(AppShell));
       final signOut = find.byKey(const ValueKey('account-sign-out'));
       await openSharedAccountMenu(tester);
@@ -149,7 +152,7 @@ void main() {
   );
 
   testWidgets(
-    'A dark system starts directly in the dark theme and colors visited tabs',
+    'A dark system starts in dark mode and preserves it on shortcut destinations',
     (tester) async {
       tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
       final store = await testStore(authenticated: true, seeded: true);
@@ -161,20 +164,20 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      for (var index = 0; index < 4; index++) {
-        await tester.tap(find.byKey(ValueKey('nav-$index')));
+      final home = tester.element(find.byType(DiscoveryPage));
+      expect(home.colors.surface, AppColors.dark.surface);
+      for (final (entry, destination) in [
+        ('discovery-membership', MembershipPage),
+        ('discovery-service', CustomerServicePage),
+        ('discovery-my-page', ProfilePage),
+      ]) {
+        await tapDiscoveryMenuItem(tester, entry);
         await tester.pumpAndSettle();
-        final context = tester.element(find.byKey(ValueKey('nav-$index')));
+        final context = tester.element(find.byType(destination));
         expect(Theme.of(context).brightness, Brightness.dark);
-        final navMaterial = tester.widget<Material>(
-          find
-              .ancestor(
-                of: find.byKey(ValueKey('nav-$index')),
-                matching: find.byType(Material),
-              )
-              .first,
-        );
-        expect(navMaterial.color, AppColors.dark.surface);
+        expect(context.colors.surface, AppColors.dark.surface);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
       }
     },

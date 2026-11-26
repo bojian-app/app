@@ -11,7 +11,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'api/bojian_api.dart';
 import 'app_store.dart';
-import 'design.dart' show openPage, toast;
+import 'design.dart' show AppPageRoute, openPage, toast;
 import 'design_shapes.dart';
 import 'invitation_qr_panel.dart';
 import 'invitation_scan_page.dart';
@@ -1071,9 +1071,8 @@ class _FriendCodeDialogState extends State<_FriendCodeDialog> {
   }
 
   Future<void> scan() async {
-    final code = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const InvitationScanPage()),
-    );
+    final code = await Navigator.of(context)
+        .push<String>(AppPageRoute(builder: (_) => const InvitationScanPage()));
     if (mounted && code != null) {
       setState(() {
         controller.text = code;

@@ -127,17 +127,39 @@ void main() {
     },
   );
 
-  test('Invalid image never requests an upload authorization', () async {
-    await File(photo.path).writeAsString('not a photo');
-    await expectLater(
-      uploadResumePhoto(
+  test('Renamed and extensionless portraits upload as valid PNGs', () async {
+    final original = await photo.readAsBytes();
+    for (final name in ['portrait.jpg', 'portrait']) {
+      final copy = await File(photo.path).copy('${directory.path}/$name');
+      final saved = await uploadResumePhoto(
         store,
         ResumeDraft(id: 1, title: '简历'),
-        photo,
-        upload: (_, _, _) async {},
-      ),
-      throwsA(isA<ApiFailure>()),
-    );
+        XFile(copy.path),
+        upload: (_, file, mime) async {
+          expect(gateway.lastBody?['content_type'], 'image/png');
+          expect(gateway.lastBody?['filename'], endsWith('.png'));
+          expect(mime, 'image/png');
+          expect(await file.readAsBytes(), original);
+        },
+      );
+      expect(saved.photoFileID, 9);
+    }
+  });
+
+  test('Non-images and truncated images never request an upload', () async {
+    final signature = (await photo.readAsBytes()).sublist(0, 8);
+    for (final bytes in [utf8.encode('not a photo'), signature]) {
+      await File(photo.path).writeAsBytes(bytes);
+      await expectLater(
+        uploadResumePhoto(
+          store,
+          ResumeDraft(id: 1, title: '简历'),
+          photo,
+          upload: (_, _, _) async {},
+        ),
+        throwsA(isA<ApiFailure>()),
+      );
+    }
     expect(gateway.calls, isEmpty);
   });
 

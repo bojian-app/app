@@ -142,6 +142,8 @@ extension AppStoreArticles on AppStore {
           ]
         : page.toList();
     story.commentsCursor = v.nextCursor;
+    if (v.data['can_comment'] is bool)
+      story.canComment = v.data['can_comment'] as bool;
     story.commentCount = v.data.containsKey('total')
         ? integer(v.data['total'])
         : story.comments.fold<int>(

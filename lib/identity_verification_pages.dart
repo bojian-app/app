@@ -26,7 +26,7 @@ class _IdentityConfirmationPageState extends State<IdentityConfirmationPage> {
       return;
     }
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      AppPageRoute<void>(
         builder: (_) => IdentityFacePage(controller: widget.controller),
       ),
     );

@@ -97,6 +97,7 @@ class Story {
     this.content = const {},
     this.comments = const [],
     this.commentCount = 0,
+    this.canComment = true,
     this.cover = 0,
     this.liked = false,
     this.saved = false,
@@ -119,6 +120,27 @@ class Story {
   int likes, favorites;
   bool liked, saved;
 
+  /// The poll of a post that holds nothing but a poll. Such posts are voted on
+  /// directly in the feed, with no reactions and no detail page.
+  Map<String, dynamic>? get feedPoll {
+    if (hasGuidance) return null;
+    Map<String, dynamic>? poll;
+    for (final block in (content['blocks'] as List? ?? []).whereType<Map>()) {
+      if (block['kind'] == 'poll') {
+        if (poll != null || integer(block['poll_id']) <= 0) return null;
+        poll = Map<String, dynamic>.from(block);
+        continue;
+      }
+      final spans = block['spans'];
+      final blank =
+          block['kind'] == 'paragraph' &&
+          spans is List &&
+          spans.every((s) => s is! Map || '${s['text'] ?? ''}'.trim().isEmpty);
+      if (!blank) return null;
+    }
+    return poll;
+  }
+
   void setBookmark(bool active) {
     if (saved == active) return;
     saved = active;
@@ -136,6 +158,7 @@ class Story {
   /// Where the next page of top-level comments starts; empty at the end.
   String commentsCursor = '';
   int commentCount;
+  bool canComment;
   int? guidanceParticipantCount;
 }
 
@@ -255,6 +278,50 @@ String plainContent(dynamic content) {
       .join('\n');
 }
 
+String articlePreviewText(dynamic content) {
+  if (content is String) return content.trim();
+  if (content is! Map || content['blocks'] is! List) return '';
+  final parts = <String>[];
+  for (final block in (content['blocks'] as List).whereType<Map>()) {
+    final kind = block['kind'];
+    final spans = block['spans'];
+    final text = spans is List
+        ? spans.whereType<Map>().map((span) => span['text'] ?? '').join().trim()
+        : '';
+    if (text.isNotEmpty) {
+      parts.add(text);
+    } else if (kind == 'image' || kind == 'video') {
+      final data = block[kind];
+      final caption = data is Map
+          ? '${data['caption'] ?? data['alt'] ?? ''}'.trim()
+          : '';
+      parts.add(
+        '[${kind == 'image' ? '图片' : '视频'}]${caption.isEmpty ? '' : ' $caption'}',
+      );
+    } else if (kind == 'poll' || kind == 'link') {
+      final label = kind == 'link'
+          ? '链接'
+          : block['mode'] == 'question'
+          ? '问答'
+          : '投票';
+      final name =
+          '${block['title'] ?? (kind == 'link' ? block['url'] ?? '' : '')}'
+              .trim();
+      parts.add('[$label]${name.isEmpty ? '' : ' $name'}');
+    } else if (kind == 'table') {
+      parts.add('[表格]');
+    }
+  }
+  return parts.join('\n');
+}
+
+String articleListLabel(Map<String, dynamic> row, {String fallback = '动态'}) {
+  final title = '${row['title'] ?? ''}'.trim();
+  if (title.isNotEmpty) return title;
+  final preview = articlePreviewText(row['content']);
+  return preview.isEmpty ? fallback : preview;
+}
+
 Map<String, dynamic> richContent(String text) => {
   'blocks': text
       .split('\n')
@@ -293,7 +360,10 @@ Story decodeStory(Map<String, dynamic> v) {
     guidanceParticipantCount: decodeGuidanceParticipantCount(
       v['guidance_participant_count'],
     ),
-    excerpt: body,
+    excerpt: articlePreviewText(content),
+    canComment: v['can_comment'] is bool
+        ? v['can_comment'] as bool
+        : !(content is Map && content['followed_replies_only'] == true),
     paragraphs: body.split('\n'),
     content: content is Map
         ? Map<String, dynamic>.from(content)

@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 import 'support/resume_editor_helpers.dart';
 
 const articleTitle = '一页简历拿到 5 个面试，\n我删掉了这些内容';
@@ -144,14 +145,10 @@ void main() {
   ) async {
     final semantics = tester.ensureSemantics();
     await launch(tester, guest: true);
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
     await tester.pumpAndSettle();
-    final card = find
-        .ancestor(of: find.text('产品经理 · 社招简历'), matching: find.byType(InkWell))
-        .last;
-    await tester.tapAt(tester.getTopLeft(card) + const Offset(8, 30));
+    await tester.tap(find.bySemanticsLabel('产品经理 · 社招简历预览'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
@@ -201,8 +198,7 @@ void main() {
   ) async {
     await launch(tester, guest: true);
     // Writing now starts from the profile's posts tab.
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     await tester.tap(find.byKey(const ValueKey('profile-tab-articles')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('profile-publish-article')));

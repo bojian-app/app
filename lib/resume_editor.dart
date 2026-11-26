@@ -158,7 +158,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
       await validateResumePhoto(file);
       if (!mounted || !isCurrent()) return;
       final cropped = await Navigator.of(context).push<XFile>(
-        MaterialPageRoute(builder: (_) => ResumePhotoCropPage(file: file)),
+        AppPageRoute(builder: (_) => ResumePhotoCropPage(file: file)),
       );
       if (cropped == null) return;
       if (!isCurrent()) {
@@ -486,7 +486,7 @@ class _ResumeEditorState extends State<ResumeEditor> {
       );
     }
     if (index == 0) _retainedSectionPhoto = originalPhoto;
-    final route = MaterialPageRoute<bool>(
+    final route = AppPageRoute<bool>(
       builder: (_) => ResumeSectionEditorPage(
         title: sectionNames[index],
         changes: _sectionRevision,

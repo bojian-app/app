@@ -364,9 +364,7 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
                         if (p == null) {
                           return SizedBox(
                             height: math.min(160, maxImageHeight),
-                            child: const Center(
-                              child: CircularProgressIndicator(),
-                            ),
+                            child: const DotMatrixLoader(compact: true),
                           );
                         }
                         if (compact) {

@@ -1010,15 +1010,7 @@ class _RegionCommentsState extends State<_RegionComments>
                                         ),
                                       )
                                     : items == null
-                                    ? const Center(
-                                        child: SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        ),
-                                      )
+                                    ? const DotMatrixLoader(compact: true)
                                     : const Center(
                                         child: EmptyState(
                                           '还没有评论，聊聊你的看法',

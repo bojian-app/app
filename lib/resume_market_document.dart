@@ -1,32 +1,19 @@
-import 'resume_native_market.dart';
-import 'resume_preview_color.dart';
-import 'resume_module_order.dart';
-
-import 'resume_photo_image.dart';
-
+import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-
-import 'resume_native_export.dart';
-
-import 'resume_additional_fields.dart';
-
-import 'dart:ui' as ui;
-
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'dart:typed_data';
 
 import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'design.dart';
-import 'template_preview_resources.dart';
-import 'template_preview_cache.dart';
+import 'resume_additional_fields.dart';
 import 'resume_document.dart';
+import 'resume_module_order.dart';
+import 'resume_native_export.dart';
+import 'resume_preview_color.dart';
 import 'resume_theme.dart';
 import 'resume_thumbnail.dart';
+import 'template_preview_cache.dart';
 
 /// Same marketplace field contract as desktop template filling.
 Map<String, dynamic> marketResumeFields(ResumeDraft resume) {
@@ -166,59 +153,22 @@ int marketTemplateProtocol(Map<String, dynamic> dom) {
   return (dom['html'] as String? ?? '').contains('data-bj-section') ? 2 : 1;
 }
 
-String marketDocumentHtml({
-  required Map<String, dynamic> dom,
-  required ResumeDraft resume,
-  required String captureScript,
-  required String rendererScript,
-  String photo = '',
-  String fontStyles = '',
-  Map<String, dynamic>? fields,
-  bool marketplacePreview = false,
-  bool thumbnail = false,
-  bool monochrome = false,
-  String previewScript = '',
-}) {
-  final payload = jsonEncode({
-    'html': dom['html'],
-    'protocol_version': marketTemplateProtocol(dom),
-    'fields': fields ?? marketResumeFields(resume),
-    'photo': photo,
-  }).replaceAll('<', r'\u003c');
-  final css = (dom['css'] as String? ?? '').replaceAll(
-    RegExp(r'</style', caseSensitive: false),
-    '< /style',
-  );
-  return '''<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="${thumbnail
-      ? 'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'
-      : marketplacePreview
-      ? 'width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=4'
-      : 'width=826,minimum-scale=0.1,maximum-scale=2.5'}">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src file: data:">
-<style>$fontStyles</style><style>$css</style><style>
-html,body{margin:0!important;padding:0!important;background:#f5f7fa!important;font-family:var(--resume-font,system-ui,-apple-system,sans-serif)!important}
-#pages{padding:16px;width:794px;margin:0 auto;filter:${monochrome ? resumePrintGrayCss : 'none'}!important}
-.paper{width:794px;height:1123px;position:relative;background:white;overflow:hidden;margin-bottom:16px}
-.inner{position:absolute;left:61.5px;top:61.5px;width:671px;height:1000px;overflow:hidden}
-#flow,.flow{position:absolute;left:0;top:0;width:671px;height:1000px;column-width:671px;column-gap:32px;column-fill:auto}
-#flow{left:-100000px}
-#flow *, .flow *{font-family:var(--resume-font,system-ui,-apple-system,sans-serif)!important}
-p{white-space:pre-wrap} img{max-width:100%}
-${thumbnail ? '''
-html,body{overflow:hidden!important;background:white!important}
-#pages{padding:0;margin:0;transform-origin:top left}
-#pages>.paper{margin:0}
-#pages>.paper~.paper{display:none}
-''' : ''}
-</style></head><body>$resumePrintGraySvg<div id="flow"></div><div id="pages"></div>
-${thumbnail ? '''<script>
-function fitThumbnail(){document.getElementById('pages').style.transform='scale('+window.innerWidth/794+')';}
-fitThumbnail();window.addEventListener('resize',fitThumbnail);
-</script>''' : ''}
-<script>const payload=$payload;</script><script>$captureScript</script><script>$rendererScript</script>
-<script>$previewScript</script>
-</body></html>''';
+/// Themes already decoded for a template, so covers of resumes that use one
+/// can be set at once instead of loading the template again.
+class MarketThemeCache {
+  static final _themes = <String, ResumeTheme>{};
+  static String _key(AppStore store, int templateID) =>
+      '${store.epoch}:$templateID';
+  static ResumeTheme? get(AppStore store, int templateID) =>
+      _themes[_key(store, templateID)];
+  static void put(AppStore store, int templateID, ResumeTheme theme) =>
+      _themes[_key(store, templateID)] = theme;
+}
+
+/// How many template-resume thumbnails are still loading, so a page can wait
+/// for them before it is shown.
+class MarketThumbnailLoads {
+  static int pending = 0;
 }
 
 class ResumeMarketDocumentView extends StatefulWidget {
@@ -238,59 +188,28 @@ class ResumeMarketDocumentView extends StatefulWidget {
       ResumeMarketDocumentViewState();
 }
 
+/// Template resumes are theme packages (`bojian-theme-v1`) typeset by the
+/// built-in [ResumeDocumentView]; there is no web/HTML rendering path.
 class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
-  WebViewController? controller;
-  NativeMarketDocument? nativeDocument;
-  // Theme packages style the built-in typesetter instead of a template DOM.
   ResumeTheme? theme;
   final themeDocumentKey = GlobalKey<ResumeDocumentViewState>();
   bool ready = false;
   String? error;
-  int pages = 0, operation = 0, captureToken = 0;
-  Completer<Uint8List>? captured;
-  Completer<ResumeExportLayout>? nativeLayout;
-  Completer<int>? fontReady;
-  bool exporting = false;
-  File? documentFile;
-  Future<void>? exportResourcesReady;
+  int operation = 0;
   Timer? loadTimeout;
   Color background = AppColors.light.canvas;
+  bool counted = false;
+
+  void trackLoading(bool loading) {
+    if (!widget.thumbnail || loading == counted) return;
+    counted = loading;
+    MarketThumbnailLoads.pending += loading ? 1 : -1;
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     background = widget.thumbnail ? Colors.white : context.colors.canvas;
-    final web = controller;
-    if (web != null) unawaited(updateBackground(web));
-  }
-
-  // Change only the page surround; template paper and exported pixels keep
-  // their authored colors and the current document/scroll position stays put.
-  Future<void> updateBackground(WebViewController web) async {
-    final color = background;
-    try {
-      await web.setBackgroundColor(color);
-      if (!mounted || background != color) return;
-      final hex = color.toARGB32().toRadixString(16).substring(2);
-      await web.runJavaScript('''
-        for (const node of [document.documentElement, document.body]) {
-          node?.style.setProperty('background-color', '#$hex', 'important');
-        }
-      ''');
-    } on PlatformException {
-      // Navigation can replace the DOM mid-update; apply again when it finishes.
-    }
-  }
-
-  Future<void> updatePreviewColor(WebViewController web) async {
-    try {
-      await web.runJavaScript(
-        "document.getElementById('pages')?.style.setProperty('filter', "
-        "'${widget.monochrome ? resumePrintGrayCss : 'none'}', 'important');",
-      );
-    } on PlatformException {
-      // Reapply to the replacement DOM when navigation finishes.
-    }
   }
 
   @override
@@ -302,9 +221,6 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
   @override
   void didUpdateWidget(ResumeMarketDocumentView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.monochrome != widget.monochrome && controller != null) {
-      unawaited(updatePreviewColor(controller!));
-    }
     if (oldWidget.resume.id != widget.resume.id ||
         oldWidget.resume.revision != widget.resume.revision ||
         oldWidget.thumbnail != widget.thumbnail ||
@@ -315,56 +231,10 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
 
   @override
   void dispose() {
+    trackLoading(false);
     operation++;
-    nativeDocument?.dispose();
     loadTimeout?.cancel();
-    if (fontReady != null && !fontReady!.isCompleted) {
-      fontReady!.completeError(const ApiFailure('导出已取消'));
-    }
-    if (captured != null && !captured!.isCompleted) {
-      captured!.completeError(const ApiFailure('导出已取消'));
-    }
-    if (nativeLayout != null && !nativeLayout!.isCompleted) {
-      nativeLayout!.completeError(const ApiFailure('导出已取消'));
-    }
-    final file = documentFile;
-    if (file != null) {
-      unawaited(file.delete().catchError((_) => file));
-    }
     super.dispose();
-  }
-
-  Future<String> photoData(String url) async {
-    if (Uri.tryParse(url)?.scheme != 'https') {
-      throw const ApiFailure('简历照片暂不可用');
-    }
-    final ready = Completer<ui.Image>();
-    final stream = ResumePhotoImage(
-      url,
-      fileID: widget.resume.photoFileID,
-    ).resolve(ImageConfiguration.empty);
-    late ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (info, _) {
-        if (!ready.isCompleted) ready.complete(info.image.clone());
-      },
-      onError: (Object e, StackTrace? s) {
-        if (!ready.isCompleted) {
-          ready.completeError(const ApiFailure('简历照片加载失败'));
-        }
-      },
-    );
-    stream.addListener(listener);
-    ui.Image? image;
-    try {
-      image = await ready.future.timeout(const Duration(seconds: 30));
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (bytes == null) throw const ApiFailure('简历照片暂不可用');
-      return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
-    } finally {
-      stream.removeListener(listener);
-      image?.dispose();
-    }
   }
 
   Future<void> load() async {
@@ -400,200 +270,19 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
         throw const ApiFailure('模板已更新，请刷新预览');
       }
       final schema = dom.data['schema'];
-      if (isResumeThemeSchema(schema)) {
-        final value = await resumeThemeOf(
-          resume.marketTemplateID,
-          schema as Map,
-        );
-        if (!mounted || request != operation || epoch != widget.store.epoch) {
-          return;
-        }
-        final oldNative = nativeDocument;
-        setState(() {
-          theme = value;
-          nativeDocument = null;
-          controller = null;
-          ready = true;
-          pages = 0;
-        });
-        loadTimeout?.cancel();
-        if (oldNative != null) {
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => oldNative.dispose(),
-          );
-        }
-        return;
-      }
-      if (theme != null) setState(() => theme = null);
-      if ((dom.data['html'] as String? ?? '').trim().isEmpty) {
+      if (!isResumeThemeSchema(schema)) {
         throw const ApiFailure('模板版面暂不可用');
       }
-      final photoURL = detail?.data['photo_url'] as String? ?? resume.photoURL;
-      final photo =
-          resume.photoFileID > 0 && (!widget.thumbnail || photoURL.isNotEmpty)
-          ? await photoData(photoURL)
-          : '';
-      final nativePayload = schema is Map ? schema['native'] : null;
-      if (nativePayload is Map) {
-        final nativePhoto = photo.isEmpty
-            ? null
-            : base64Decode(photo.split(',').last);
-        final value = await NativeMarketDocument.load(
-          nativePayload,
-          marketResumeFields(resume),
-          nativePhoto,
-        );
-        if (!mounted || request != operation || epoch != widget.store.epoch) {
-          value.dispose();
-          return;
-        }
-        final previous = nativeDocument;
-        setState(() {
-          nativeDocument = value;
-          controller = null;
-          ready = true;
-          pages = value.document.pages.length;
-        });
-        loadTimeout?.cancel();
-        if (previous != null) {
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => previous.dispose(),
-          );
-        }
-        return;
-      }
-      final oldNative = nativeDocument;
-      if (oldNative != null) {
-        setState(() => nativeDocument = null);
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => oldNative.dispose(),
-        );
-      }
-      final resources = await TemplatePreviewResources.load();
+      final value = await resumeThemeOf(resume.marketTemplateID, schema as Map);
       if (!mounted || request != operation || epoch != widget.store.epoch) {
         return;
       }
-      final htmlFile = await resources.createDocument(
-        marketDocumentHtml(
-          dom: dom.data,
-          resume: resume,
-          photo: photo,
-          captureScript: '',
-          rendererScript: resources.renderer,
-          fontStyles: resumeDocumentFontStyles,
-          thumbnail: widget.thumbnail,
-          monochrome: widget.monochrome,
-        ),
-      );
-      if (!mounted || request != operation || epoch != widget.store.epoch) {
-        await htmlFile.delete();
-        return;
-      }
-      final previousFile = documentFile;
-      documentFile = htmlFile;
-      if (previousFile != null) {
-        unawaited(previousFile.delete().catchError((_) => previousFile));
-      }
-      final web = WebViewController();
-      if (!widget.thumbnail && web.platform is AndroidWebViewController) {
-        // Honor the document viewport and fit its full width on first load.
-        // Android otherwise lays out the 826px page at the device width.
-        await (web.platform as AndroidWebViewController).setUseWideViewPort(
-          true,
-        );
-      }
-      await web.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await web.setBackgroundColor(background);
-      await web.addJavaScriptChannel(
-        'BojianPages',
-        onMessageReceived: (message) {
-          if (!mounted || request != operation || epoch != widget.store.epoch) {
-            return;
-          }
-          try {
-            final data = jsonDecode(message.message) as Map;
-            if (data['type'] == 'font-ready' &&
-                data['token'] == captureToken &&
-                fontReady != null &&
-                !fontReady!.isCompleted) {
-              fontReady!.complete(integer(data['count']));
-            }
-            if (data['type'] == 'ready') {
-              loadTimeout?.cancel();
-              setState(() {
-                error = null;
-                ready = true;
-                pages = integer(data['count']);
-              });
-            }
-            if (data['type'] == 'native-layout' &&
-                data['token'] == captureToken &&
-                nativeLayout != null &&
-                !nativeLayout!.isCompleted) {
-              nativeLayout!.complete(
-                marketExportLayout(
-                  data['pages'] as List,
-                  wordModel: data['word_model'] as Map?,
-                  requiresWordFlow: marketTemplateProtocol(dom.data) >= 2,
-                ),
-              );
-            }
-            if (data['type'] == 'error') {
-              final failure = ApiFailure(
-                data['message'] as String? ?? '模板版面加载失败',
-              );
-              if (data['token'] == captureToken &&
-                  fontReady != null &&
-                  !fontReady!.isCompleted) {
-                fontReady!.completeError(failure);
-              } else if (data['token'] == captureToken &&
-                  nativeLayout != null &&
-                  !nativeLayout!.isCompleted) {
-                nativeLayout!.completeError(failure);
-              } else if (data['token'] == captureToken &&
-                  captured != null &&
-                  !captured!.isCompleted) {
-                captured!.completeError(failure);
-              } else {
-                setState(() => error = failure.message);
-              }
-            }
-            if (data['type'] == 'page' &&
-                data['token'] == captureToken &&
-                captured != null &&
-                !captured!.isCompleted) {
-              captured!.complete(base64Decode(data['data'] as String));
-            }
-          } catch (_) {
-            if (nativeLayout != null && !nativeLayout!.isCompleted) {
-              nativeLayout!.completeError(const ApiFailure('模板版面数据无效'));
-            }
-            if (mounted) setState(() => error = '模板版面数据无效');
-          }
-        },
-      );
-      await web.setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) {
-            if (mounted && controller == web) {
-              unawaited(updateBackground(web));
-              unawaited(updatePreviewColor(web));
-            }
-          },
-          onNavigationRequest: (request) =>
-              request.url == Uri.file(htmlFile.path).toString() ||
-                  request.url == 'about:blank' ||
-                  request.url.startsWith('data:text/html')
-              ? NavigationDecision.navigate
-              : NavigationDecision.prevent,
-        ),
-      );
-      if (!mounted || request != operation || epoch != widget.store.epoch) {
-        return;
-      }
-      exportResourcesReady = null;
-      setState(() => controller = web);
-      await web.loadFile(htmlFile.path);
+      MarketThemeCache.put(widget.store, resume.marketTemplateID, value);
+      setState(() {
+        theme = value;
+        ready = true;
+      });
+      loadTimeout?.cancel();
     } catch (e) {
       if (mounted && request == operation && epoch == widget.store.epoch) {
         loadTimeout?.cancel();
@@ -602,196 +291,35 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
     }
   }
 
-  Future<void> _prepareExportResources() async {
-    final web = controller;
-    if (web == null) throw const ApiFailure('请等待预览加载完成');
-    final existing = exportResourcesReady;
-    if (existing != null) return existing;
-    final pending = () async {
-      final script = await rootBundle.loadString(
-        'assets/templates/html2canvas.min.js',
-      );
-      if (!mounted || controller != web) throw const ApiFailure('导出已取消');
-      await web.runJavaScript(script);
-    }();
-    exportResourcesReady = pending;
-    try {
-      await pending;
-    } catch (_) {
-      if (identical(exportResourcesReady, pending)) exportResourcesReady = null;
-      rethrow;
-    }
-  }
-
-  Future<int> _setExportMode(bool enabled) async {
-    // Grayscale is a viewing preference, not a change to exported artwork.
-    await controller!.runJavaScript(
-      "document.getElementById('pages')?.style.setProperty('filter', "
-      "'${!enabled && widget.monochrome ? resumePrintGrayCss : 'none'}', 'important');",
-    );
-    final waiting = Completer<int>();
-    fontReady = waiting;
-    captureToken++;
-    final result = waiting.future.timeout(const Duration(seconds: 45));
-    try {
-      final values = await Future.wait<Object?>([
-        result,
-        controller!.runJavaScript(
-          'setResumeExportMode($enabled,$captureToken)',
-        ),
-      ], eagerError: true);
-      return values.first! as int;
-    } catch (error, stack) {
-      if (!waiting.isCompleted) waiting.completeError(error, stack);
-      rethrow;
-    } finally {
-      fontReady = null;
-    }
-  }
-
-  Future<void> _restorePreview(int request, int epoch) async {
-    if (!mounted || request != operation || epoch != widget.store.epoch) return;
-    try {
-      final count = await _setExportMode(false);
-      if (mounted && request == operation) setState(() => pages = count);
-    } catch (_) {
-      if (mounted && request == operation) {
-        setState(() => error = '预览恢复失败，请重试');
-      }
-    }
-  }
-
   Future<ResumeExportLayout> captureLayout({
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
   }) async {
-    if (theme != null && ready) {
-      final view = themeDocumentKey.currentState;
-      if (view == null) throw const ApiFailure('请等待预览加载完成');
-      return view.captureLayout(
-        isCancelled: isCancelled,
-        onProgress: onProgress,
-      );
+    final view = themeDocumentKey.currentState;
+    if (theme == null || !ready || view == null) {
+      throw const ApiFailure('请等待预览加载完成');
     }
-    final value = nativeDocument;
-    if (value != null && ready) {
-      final request = operation, epoch = widget.store.epoch;
-      return value.export(
-        isCancelled: () =>
-            !mounted ||
-            request != operation ||
-            epoch != widget.store.epoch ||
-            isCancelled(),
-        onProgress: onProgress,
-      );
-    }
-    if (!ready || controller == null) throw const ApiFailure('请等待预览加载完成');
-    if (exporting) throw const ApiFailure('正在导出，请稍后再试');
-    final request = operation;
-    final epoch = widget.store.epoch;
-    if (isCancelled()) throw const ApiFailure('导出已取消');
-    onProgress('正在准备模板文字和排版…');
-    exporting = true;
-    try {
-      await _prepareExportResources();
-      if (!mounted ||
-          request != operation ||
-          epoch != widget.store.epoch ||
-          isCancelled()) {
-        throw const ApiFailure('导出已取消');
-      }
-      await _setExportMode(true);
-      if (!mounted ||
-          request != operation ||
-          epoch != widget.store.epoch ||
-          isCancelled()) {
-        throw const ApiFailure('导出已取消');
-      }
-      final waiting = Completer<ResumeExportLayout>();
-      nativeLayout = waiting;
-      captureToken++;
-      await controller!.runJavaScript('exportNativeLayout($captureToken)');
-      final result = await waiting.future.timeout(const Duration(seconds: 90));
-      if (!mounted ||
-          request != operation ||
-          epoch != widget.store.epoch ||
-          isCancelled()) {
-        throw const ApiFailure('导出已取消');
-      }
-      return result;
-    } finally {
-      nativeLayout = null;
-      await _restorePreview(request, epoch);
-      exporting = false;
-    }
+    return view.captureLayout(isCancelled: isCancelled, onProgress: onProgress);
   }
 
   Future<List<Uint8List>> capturePages({
     required bool Function() isCancelled,
     required ValueChanged<String> onProgress,
   }) async {
-    if (theme != null && ready && error == null) {
-      final view = themeDocumentKey.currentState;
-      if (view == null) throw const ApiFailure('请等待模板预览加载完成');
-      return view.capturePages(
-        isCancelled: isCancelled,
-        onProgress: onProgress,
-      );
-    }
-    final value = nativeDocument;
-    if (value != null && ready && error == null) {
-      final request = operation, epoch = widget.store.epoch;
-      return value.capture(
-        isCancelled: () =>
-            !mounted ||
-            request != operation ||
-            epoch != widget.store.epoch ||
-            isCancelled(),
-        onProgress: onProgress,
-      );
-    }
-    if (!ready || controller == null || error != null) {
+    final view = themeDocumentKey.currentState;
+    if (theme == null || !ready || error != null || view == null) {
       throw const ApiFailure('请等待模板预览加载完成');
     }
-    if (exporting) throw const ApiFailure('正在导出，请稍后再试');
-    final epoch = widget.store.epoch, request = operation;
-    void check() {
-      if (!mounted ||
-          isCancelled() ||
-          epoch != widget.store.epoch ||
-          request != operation) {
-        throw const ApiFailure('导出已取消');
-      }
-    }
-
-    final result = <Uint8List>[];
-    exporting = true;
-    try {
-      check();
-      await _prepareExportResources();
-      check();
-      final exportPages = await _setExportMode(true);
-      for (var index = 0; index < exportPages; index++) {
-        check();
-        onProgress('正在生成第 ${index + 1}/$exportPages 页…');
-        captured = Completer<Uint8List>();
-        final waiting = captured!.future.timeout(const Duration(seconds: 60));
-        captureToken++;
-        await controller!.runJavaScript('capturePage($index,$captureToken)');
-        result.add(await waiting);
-        check();
-        captured = null;
-      }
-      return result;
-    } finally {
-      captured = null;
-      await _restorePreview(request, epoch);
-      exporting = false;
-    }
+    return view.capturePages(isCancelled: isCancelled, onProgress: onProgress);
   }
 
   @override
-  Widget build(BuildContext context) => Stack(
+  Widget build(BuildContext context) {
+    trackLoading(!ready && error == null);
+    return _buildStack(context);
+  }
+
+  Widget _buildStack(BuildContext context) => Stack(
     children: [
       if (theme case final ResumeTheme theme when error == null)
         Positioned.fill(
@@ -807,29 +335,16 @@ class ResumeMarketDocumentViewState extends State<ResumeMarketDocumentView> {
                   ),
                 ),
         ),
-      if (nativeDocument != null)
-        Positioned.fill(
-          child: ResumePreviewColor(
-            monochrome: widget.monochrome,
-            child: NativeMarketPages(
-              value: nativeDocument!,
-              thumbnail: widget.thumbnail,
-            ),
-          ),
-        ),
-      if (controller != null) WebViewWidget(controller: controller!),
-      if (!ready && error == null)
-        Positioned.fill(
-          child: ColoredBox(
+      Positioned.fill(
+        child: LoadingGate(
+          loading: !ready && error == null,
+          loader: ColoredBox(
             color: background,
-            child: const Center(
-              child: SizedBox.square(
-                dimension: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
+            child: widget.thumbnail ? null : const DotMatrixLoader(),
           ),
+          builder: (_) => const SizedBox.shrink(),
         ),
+      ),
       if (error != null && widget.thumbnail)
         Positioned.fill(
           child: ColoredBox(

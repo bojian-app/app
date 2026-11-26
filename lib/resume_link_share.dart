@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart';
 
 import 'api/bojian_api.dart';
@@ -141,7 +142,7 @@ class _ResumeLinkShareState extends State<ResumeLinkShare> {
             ),
             const SizedBox(height: 24),
             if (loading)
-              const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              const DotMatrixLoader(compact: true)
             else ...[
               if (error != null)
                 Padding(

@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:bojian_mobile/app_store.dart';
 import 'package:bojian_mobile/resume_document.dart';
-import 'package:bojian_mobile/resume_market_document.dart';
 import 'package:bojian_mobile/resume_preview_color.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'resume_preview_menu_test.dart' show openPreview, action;
 import 'support/fake_gateway.dart';
-import 'support/fake_template_webview.dart';
 
 void main() {
   testWidgets(
@@ -156,65 +154,4 @@ void main() {
       });
     },
   );
-
-  testWidgets('Web template switches in place without reloading its pages', (
-    tester,
-  ) async {
-    final api = FakeGateway();
-    api.documents['GetResumesId'] = {'revision': 1};
-    api.documents['GetResumesIdDomPreview'] = {
-      'template_id': 7,
-      'html': '<h1 style="color:red">{{name}}</h1>',
-      'css': '',
-    };
-    final store = AppStore(api: api, storage: MemoryStorage());
-    await tester.runAsync(() => store.initialize());
-    store.session = {'access_token': 'test'};
-    addTearDown(store.dispose);
-    late FakeTemplateWebView web;
-    final resume = ResumeDraft(
-      id: 42,
-      title: '打印测试',
-      revision: 1,
-      marketTemplateID: 7,
-    );
-    store.resumes.add(resume);
-    await tester.runAsync(() async {
-      web = FakeTemplateWebView()..install();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ResumePreview(store: store, resumeId: resume.id),
-        ),
-      );
-      await web.loaded.future.timeout(const Duration(seconds: 5));
-    });
-    await tester.pumpAndSettle();
-    final controller = web.controllers.single;
-    expect(controller.html, contains('filter:none!important'));
-    await action(tester, 'monochrome-preview');
-    expect(
-      controller.scripts.last,
-      contains("'url(#print-gray)', 'important'"),
-    );
-    await action(tester, 'monochrome-preview');
-    expect(controller.scripts.last, contains("'none', 'important'"));
-    expect(controller.loadCount, 1);
-    expect(web.controllers, hasLength(1));
-    expect(
-      tester
-          .widget<ResumeMarketDocumentView>(
-            find.byType(ResumeMarketDocumentView),
-          )
-          .monochrome,
-      isFalse,
-    );
-    expect(
-      api.calls.where(
-        (method) => method.startsWith('Post') || method.startsWith('Patch'),
-      ),
-      isEmpty,
-    );
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.runAsync(() async => Future<void>.delayed(Duration.zero));
-  });
 }

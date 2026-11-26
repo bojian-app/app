@@ -288,7 +288,7 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
     final visible = articles
         .where((row) => !widget.publishedOnly || row['status'] == 'PUBLISHED')
         .where((row) => !widget.draftsOnly || row['status'] == 'DRAFT')
-        .where((row) => '${row['title']}'.contains(query))
+        .where((row) => articleListLabel(row).contains(query))
         .toList();
     final body = Center(
       child: ConstrainedBox(
@@ -328,7 +328,7 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                             ),
                             child: AppSearchField(
                               fieldKey: const ValueKey('my-articles-search'),
-                              hintText: '搜索文章标题',
+                              hintText: '搜索文章',
                               fillColor: context.colors.surface,
                               clearable: false,
                               contentPadding: const EdgeInsets.symmetric(
@@ -419,12 +419,7 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                   sliver: SliverList.list(
                     children: [
                       if (loading)
-                        const Padding(
-                          padding: EdgeInsets.all(40),
-                          child: Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
+                        const ListSkeleton(count: 4)
                       else ...[
                         if (status == 'SUBMITTED' && articles.isNotEmpty)
                           Padding(
@@ -554,14 +549,14 @@ class _DraftRowState extends State<_DraftRow> {
 
   Future<String> _excerpt() async {
     final row = widget.row;
-    if (row.containsKey('content')) return plainContent(row['content']);
+    if (row.containsKey('content')) return articlePreviewText(row['content']);
     try {
       final detail = await widget.store.request(
         'GetArticlesId',
         path: {'id': '${row['id']}'},
       );
       if (detail.data['id'] == row['id'] && detail.data['status'] == 'DRAFT') {
-        return plainContent(detail.data['content']);
+        return articlePreviewText(detail.data['content']);
       }
     } catch (_) {
       // The title still opens the draft when a preview is unavailable.
@@ -571,7 +566,7 @@ class _DraftRowState extends State<_DraftRow> {
 
   Future<void> _showActions() async {
     final draftID = widget.row['id'];
-    final title = '${widget.row['title'] ?? ''}'.trim();
+    final title = articleListLabel(widget.row, fallback: '无标题草稿');
     final edited = _time(widget.row['updated_at']);
     final action = await showPanelSheet<_DraftAction>(
       context,
@@ -585,7 +580,7 @@ class _DraftRowState extends State<_DraftRow> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title.isEmpty ? '无标题草稿' : title,
+                  title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -652,7 +647,7 @@ class _DraftRowState extends State<_DraftRow> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final title = '${widget.row['title'] ?? ''}'.trim();
+    final title = articleListLabel(widget.row, fallback: '无标题草稿');
     final edited = _time(widget.row['updated_at']);
     return Column(
       children: [
@@ -669,7 +664,7 @@ class _DraftRowState extends State<_DraftRow> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          title.isEmpty ? '无标题草稿' : title,
+                          title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -851,7 +846,7 @@ class _ArticleCard extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                '${row['title'] ?? ''}',
+                articleListLabel(row),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -956,15 +951,17 @@ class OwnArticlePreview extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 14),
-            Text(
-              story.title,
-              style: const TextStyle(
-                fontSize: 24,
-                height: 1.45,
-                fontWeight: FontWeight.w700,
+            if (story.title.trim().isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text(
+                story.title,
+                style: const TextStyle(
+                  fontSize: 24,
+                  height: 1.45,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
+            ],
             if ('${row['review_reason'] ?? ''}'.trim().isNotEmpty) ...[
               const SizedBox(height: 16),
               Container(
@@ -991,6 +988,8 @@ class OwnArticlePreview extends StatelessWidget {
               )
             else
               ArticleRichBody(
+                store: store,
+                articleID: story.id,
                 content: story.content.isEmpty
                     ? richContent(story.paragraphs.join('\n'))
                     : story.content,

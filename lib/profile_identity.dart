@@ -150,12 +150,13 @@ class ProfileHeader extends StatelessWidget {
       final nameHeight = namePainter.height;
       final avatarTop = inset + toolbar + 24 + pullProgress * pullExtent;
       final nameTop = avatarTop + 106;
-      final compactAvatarCenterX = identity == null
-          ? appPageHorizontalPadding + 13
-          : 74.0;
-      final compactNameLeft = identity == null
-          ? appPageHorizontalPadding + 26 + 12
-          : 104.0;
+      final hasBack = onMenu != null;
+      final compactAvatarCenterX = hasBack
+          ? 74.0
+          : appPageHorizontalPadding + 13;
+      final compactNameLeft = hasBack
+          ? 104.0
+          : appPageHorizontalPadding + 26 + 12;
       // Leave room for both 44px action buttons, their divider and a 12px gap.
       final compactNameRight = identity == null
           ? appPageHorizontalPadding + 89 + 12
@@ -280,6 +281,7 @@ class ProfileHeader extends StatelessWidget {
               // remainder below it with one alpha, so they fade as one.
               if (settled > 0)
                 Positioned(
+                  key: const ValueKey('profile-collapsed-body-fill'),
                   top: scrollOffset + surfaceHeight,
                   left: 0,
                   right: 0,
@@ -385,28 +387,16 @@ class ProfileHeader extends StatelessWidget {
                 data: IconButtonThemeData(style: buttonStyle),
                 child: Row(
                   children: [
-                    if (identity != null)
+                    if (hasBack)
                       IconButton(
-                        key: const ValueKey('profile-menu'),
+                        key: ValueKey(
+                          identity == null ? 'profile-back' : 'profile-menu',
+                        ),
                         tooltip: '返回',
                         onPressed: onMenu,
                         icon: AppIcon(AppIcons.back, size: 20, color: color),
                       ),
                     const Spacer(),
-                    if (identity == null &&
-                        store.loading.contains('profile') &&
-                        t < .5)
-                      Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: color,
-                            semanticsLabel: '正在刷新',
-                          ),
-                        ),
-                      ),
                     if (identity == null)
                       Stack(
                         alignment: Alignment.center,
@@ -573,10 +563,40 @@ class ProfileContentTabs extends StatelessWidget
   }
 }
 
-class _ProfileAboutSummary extends StatelessWidget {
+class _ProfileAboutSummary extends StatefulWidget {
   const _ProfileAboutSummary({required this.bio, required this.onTap});
   final String bio;
   final VoidCallback onTap;
+
+  @override
+  State<_ProfileAboutSummary> createState() => _ProfileAboutSummaryState();
+}
+
+class _ProfileAboutSummaryState extends State<_ProfileAboutSummary> {
+  // The header rebuilds on every scroll tick. Keep the measured text subtree
+  // while the bio is the same; its own layout still tracks width and typography.
+  late Widget text = _ProfileAboutText(widget.bio);
+
+  @override
+  void didUpdateWidget(_ProfileAboutSummary oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.bio != oldWidget.bio) text = _ProfileAboutText(widget.bio);
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    child: InkWell(
+      key: const ValueKey('profile-about-summary'),
+      onTap: widget.onTap,
+      child: text,
+    ),
+  );
+}
+
+class _ProfileAboutText extends StatelessWidget {
+  const _ProfileAboutText(this.bio);
+  final String bio;
 
   @override
   Widget build(BuildContext context) {
@@ -616,88 +636,80 @@ class _ProfileAboutSummary extends StatelessWidget {
         ),
       ],
     );
-    return Semantics(
-      button: true,
-      child: InkWell(
-        key: const ValueKey('profile-about-summary'),
-        onTap: onTap,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final actionLabel = TextPainter(
-              text: TextSpan(text: '关于我', style: style),
-              textDirection: Directionality.of(context),
-              textScaler: textScaler,
-              locale: Localizations.maybeLocaleOf(context),
-            )..layout();
-            final inlineScale =
-                textScaler.scale(style.fontSize!) / style.fontSize!;
-            final iconHeight = 14 * inlineScale;
-            final actionSize = Size(
-              actionLabel.width + 17 * inlineScale,
-              actionLabel.height < iconHeight ? iconHeight : actionLabel.height,
-            );
-            actionLabel.dispose();
-            bool fits(TextSpan span, {bool reserveTrailingSpace = false}) {
-              final painter =
-                  TextPainter(
-                    text: span,
-                    textDirection: Directionality.of(context),
-                    textScaler: textScaler,
-                    locale: Localizations.maybeLocaleOf(context),
-                    maxLines: 3,
-                  )..setPlaceholderDimensions([
-                    PlaceholderDimensions(
-                      size: actionSize,
-                      alignment: PlaceholderAlignment.middle,
-                    ),
-                  ]);
-              try {
-                painter.layout(maxWidth: constraints.maxWidth);
-                if (painter.didExceedMaxLines) return false;
-                if (!reserveTrailingSpace) return true;
-                final lines = painter.computeLineMetrics();
-                // Leave breathing room after the ellipsis and About me action.
-                return lines.length < 3 ||
-                    lines.last.width <= constraints.maxWidth * .8;
-              } finally {
-                painter.dispose();
-              }
-            }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final actionLabel = TextPainter(
+          text: TextSpan(text: '关于我', style: style),
+          textDirection: Directionality.of(context),
+          textScaler: textScaler,
+          locale: Localizations.maybeLocaleOf(context),
+        )..layout();
+        final inlineScale = textScaler.scale(style.fontSize!) / style.fontSize!;
+        final iconHeight = 14 * inlineScale;
+        final actionSize = Size(
+          actionLabel.width + 17 * inlineScale,
+          actionLabel.height < iconHeight ? iconHeight : actionLabel.height,
+        );
+        actionLabel.dispose();
+        bool fits(TextSpan span, {bool reserveTrailingSpace = false}) {
+          final painter =
+              TextPainter(
+                text: span,
+                textDirection: Directionality.of(context),
+                textScaler: textScaler,
+                locale: Localizations.maybeLocaleOf(context),
+                maxLines: 3,
+              )..setPlaceholderDimensions([
+                PlaceholderDimensions(
+                  size: actionSize,
+                  alignment: PlaceholderAlignment.middle,
+                ),
+              ]);
+          try {
+            painter.layout(maxWidth: constraints.maxWidth);
+            if (painter.didExceedMaxLines) return false;
+            if (!reserveTrailingSpace) return true;
+            final lines = painter.computeLineMetrics();
+            // Leave breathing room after the ellipsis and About me action.
+            return lines.length < 3 ||
+                lines.last.width <= constraints.maxWidth * .8;
+          } finally {
+            painter.dispose();
+          }
+        }
 
-            var span = summary(text);
-            if (!fits(span)) {
-              final characters = text.characters.toList();
-              var low = 0, high = characters.length;
-              while (low < high) {
-                final middle = (low + high + 1) ~/ 2;
-                if (fits(
-                  summary(
-                    characters.take(middle).join().trimRight(),
-                    clipped: true,
-                  ),
-                  reserveTrailingSpace: true,
-                )) {
-                  low = middle;
-                } else {
-                  high = middle - 1;
-                }
-              }
-              span = summary(
-                characters.take(low).join().trimRight(),
+        var span = summary(text);
+        if (!fits(span)) {
+          final characters = text.characters.toList();
+          var low = 0, high = characters.length;
+          while (low < high) {
+            final middle = (low + high + 1) ~/ 2;
+            if (fits(
+              summary(
+                characters.take(middle).join().trimRight(),
                 clipped: true,
-              );
+              ),
+              reserveTrailingSpace: true,
+            )) {
+              low = middle;
+            } else {
+              high = middle - 1;
             }
-            return Text.rich(
-              span,
-              key: const ValueKey('profile-about-text'),
-              maxLines: 3,
-              textScaler: textScaler,
-              locale: Localizations.maybeLocaleOf(context),
-              semanticsLabel: text.isEmpty ? '关于我' : '$text  关于我',
-            );
-          },
-        ),
-      ),
+          }
+          span = summary(
+            characters.take(low).join().trimRight(),
+            clipped: true,
+          );
+        }
+        return Text.rich(
+          span,
+          key: const ValueKey('profile-about-text'),
+          maxLines: 3,
+          textScaler: textScaler,
+          locale: Localizations.maybeLocaleOf(context),
+          semanticsLabel: text.isEmpty ? '关于我' : '$text  关于我',
+        );
+      },
     );
   }
 }

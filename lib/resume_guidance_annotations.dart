@@ -1,4 +1,5 @@
 import 'app_page_bar.dart';
+import 'playful_refresh.dart';
 import 'content_report.dart';
 import 'withdraw_comment_button.dart';
 import 'content_moderation.dart';
@@ -305,7 +306,9 @@ class GuidanceAnnotations extends StatefulWidget {
 }
 
 class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
-    with GuidanceLiveReload<GuidanceAnnotations> {
+    with
+        GuidanceLiveReload<GuidanceAnnotations>,
+        LoadingHoldState<GuidanceAnnotations> {
   List<Map<String, dynamic>>? items;
   String? error;
   int? busy;
@@ -741,66 +744,74 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: context.colors.canvas,
-    appBar: AppPageBar(
-      title: Text(
-        widget.commentsOnly
-            ? '全部评论'
-            : widget.mineOnly
-            ? '我的优化建议'
-            : '指点记录',
+  Widget build(BuildContext context) {
+    final showLoading = holdLoading(error == null && items == null);
+    return Scaffold(
+      backgroundColor: context.colors.canvas,
+      extendBodyBehindAppBar: showLoading,
+      appBar: AppPageBar(
+        backgroundColor: showLoading ? Colors.transparent : null,
+        title: Text(
+          widget.commentsOnly
+              ? '全部评论'
+              : widget.mineOnly
+              ? '我的优化建议'
+              : '指点记录',
+        ),
       ),
-    ),
-    body: SafeArea(
-      top: false,
-      child: error != null
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(error!, textAlign: TextAlign.center),
-                  TextButton(onPressed: load, child: const Text('重新加载')),
-                ],
-              ),
-            )
-          : items == null
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-          : RefreshIndicator(
-              onRefresh: load,
-              child: displayedItems.isEmpty
-                  ? LayoutBuilder(
-                      builder: (context, constraints) => ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: [
-                          SizedBox(
-                            height: constraints.maxHeight,
-                            child: Center(
-                              child: EmptyState(
-                                widget.commentsOnly ? '暂无评论' : '还没有指点记录',
-                                '',
-                                compact: true,
+      body: SafeArea(
+        top: false,
+        child: LoadingGate(
+          loading: error == null && items == null,
+          builder: (_) => error != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(error!, textAlign: TextAlign.center),
+                      TextButton(onPressed: load, child: const Text('重新加载')),
+                    ],
+                  ),
+                )
+              : items == null
+              ? const DotMatrixLoader()
+              : PlayfulRefresh(
+                  onRefresh: load,
+                  child: displayedItems.isEmpty
+                      ? LayoutBuilder(
+                          builder: (context, constraints) => ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height: constraints.maxHeight,
+                                child: Center(
+                                  child: EmptyState(
+                                    widget.commentsOnly ? '暂无评论' : '还没有指点记录',
+                                    '',
+                                    compact: true,
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
-                    )
-                  : ListView.separated(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(
-                        appPageHorizontalPadding,
-                        12,
-                        appPageHorizontalPadding,
-                        24,
-                      ),
-                      itemCount: displayedItems.length,
-                      separatorBuilder: (_, index) =>
-                          const SizedBox(height: 12),
-                      itemBuilder: (_, index) =>
-                          recordCard(displayedItems[index]),
-                    ),
-            ),
-    ),
-  );
+                        )
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(
+                            appPageHorizontalPadding,
+                            12,
+                            appPageHorizontalPadding,
+                            24,
+                          ),
+                          itemCount: displayedItems.length,
+                          separatorBuilder: (_, index) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (_, index) =>
+                              recordCard(displayedItems[index]),
+                        ),
+                ),
+        ),
+      ),
+    );
+  }
 }

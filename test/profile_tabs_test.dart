@@ -122,8 +122,7 @@ Future<AppStore> mount(
   );
   await tester.pumpAndSettle();
   if (shell) {
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
   }
   return store;
 }
@@ -863,14 +862,14 @@ void main() {
   );
 
   testWidgets(
-    'The menu blocks page scrolling and footer taps until dismissed',
+    'The menu blocks page scrolling and profile actions until dismissed',
     (tester) async {
       await mount(tester, ProfileContentGateway(), shell: true);
       final state = tester.state<AppShellState>(find.byType(AppShell));
       final initialOffset = nested(tester).outerController.offset;
       await openSharedAccountMenu(tester);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('nav-1')).hitTestable(), findsNothing);
+      expect(find.byKey(const ValueKey('profile-settings')).hitTestable(), findsNothing);
       await tester.dragFrom(const Offset(370, 400), const Offset(0, -180));
       await tester.pumpAndSettle();
       expect(state.selected, 3);
@@ -878,7 +877,7 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('profile-drawer')), findsNothing);
-      expect(find.byKey(const ValueKey('nav-1')).hitTestable(), findsOneWidget);
+      expect(find.byKey(const ValueKey('profile-settings')).hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

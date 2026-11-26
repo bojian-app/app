@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 
 import 'api/bojian_api.dart';
 import 'app_store.dart';
+import 'photo_format.dart';
 
 const maximumResumeFileBytes = 20 * 1024 * 1024;
 
@@ -33,6 +34,8 @@ Future<void> uploadResumeDocument(
   XFile file,
   String mimeType, {
   http.Client? client,
+  String? filename,
+  Duration timeout = const Duration(seconds: 90),
 }) async {
   final uri = Uri.tryParse(authorization['upload_url'] as String? ?? '');
   final fields = authorization['fields'];
@@ -58,16 +61,15 @@ Future<void> uploadResumeDocument(
       request.fields[entry.key as String] = entry.value as String;
     }
     request.files.add(
-      await http.MultipartFile.fromPath(
+      http.MultipartFile(
         'file',
-        file.path,
-        filename: file.name,
+        file.openRead(),
+        await file.length(),
+        filename: filename ?? photoUploadName(file.name, mimeType),
         contentType: MediaType.parse(mimeType),
       ),
     );
-    final response = await transport
-        .send(request)
-        .timeout(const Duration(seconds: 90));
+    final response = await transport.send(request).timeout(timeout);
     await response.stream.drain<void>().timeout(const Duration(seconds: 20));
     if (response.statusCode == 419 &&
         (uri.host == 'qiniup.com' || uri.host.endsWith('.qiniup.com'))) {

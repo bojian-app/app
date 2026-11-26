@@ -440,20 +440,6 @@ void main() {
         await File('${output.path}/preview-${i + 1}.png')
             .writeAsBytes(bytes!.buffer.asUint8List());
       }
-      final marketHtml = marketDocumentHtml(
-        dom: {
-          'html': '<h1>{{name}}</h1><table><tr><td>{{position}}</td><td>{{city}}</td></tr></table><p><img alt="{{photo}}" style="width:75pt;height:90pt;object-fit:cover"></p><h2>工作经历</h2><p>{{#work_experiences}}</p><h3>{{title}}</h3><p><b>{{subtitle}}</b></p><p>{{detail}}</p><p>{{/work_experiences}}</p>',
-          'css': '@page{margin:46pt} h1{font-size:24pt;color:#245EA8} h2{font-size:13pt;color:#245EA8;border-bottom:1px solid #245EA8}h3{font-size:12pt}p,td{font-size:10.5pt;line-height:1.5}table{width:100%;border-collapse:collapse}td{border:1px solid #ddd;padding:6px}',
-        },
-        resume: draft,
-        photo: 'data:image/png;base64,${base64Encode(avatarBytes)}',
-        captureScript: '',
-        rendererScript: await rootBundle.loadString(
-          'assets/templates/market_renderer.js',
-        ),
-        fontStyles: resumeDocumentFontStyles,
-      );
-      await File('${output.path}/market.html').writeAsString(marketHtml);
       await File('${output.path}/regular.ttf').writeAsBytes(regular);
       await File('${output.path}/bold.ttf').writeAsBytes(bold);
       await File('${output.path}/medium.ttf').writeAsBytes(

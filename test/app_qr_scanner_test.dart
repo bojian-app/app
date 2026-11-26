@@ -10,6 +10,7 @@ import 'package:image_picker_platform_interface/image_picker_platform_interface.
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 const qrContent = 'https://bojian.kelance.cn?invite_code=A2B3C4D5';
 
@@ -147,7 +148,7 @@ void main() {
         home: Scaffold(body: DiscoveryPage(store: store)),
       ),
     );
-    await tester.tap(find.byTooltip('扫一扫'));
+    await tapDiscoveryMenuItem(tester, 'discovery-scan');
     await tester.pumpAndSettle();
     expect(find.byType(AppQRScanner), findsOneWidget);
     camera.captures.add(capture([qrContent]));

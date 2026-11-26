@@ -101,7 +101,8 @@ class ResumePhotoCropPage extends StatefulWidget {
   State<ResumePhotoCropPage> createState() => _ResumePhotoCropPageState();
 }
 
-class _ResumePhotoCropPageState extends State<ResumePhotoCropPage> {
+class _ResumePhotoCropPageState extends State<ResumePhotoCropPage>
+    with LoadingHoldState<ResumePhotoCropPage> {
   ui.Image? image;
   Rect? crop;
   bool saving = false;
@@ -176,55 +177,66 @@ class _ResumePhotoCropPageState extends State<ResumePhotoCropPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFF171A21),
-    appBar: AppPageBar(
-      title: Text(widget.aspectRatio == 1 ? '裁剪头像' : '裁剪简历照片'),
-      actions: [
-        TextButton(
-          onPressed: image == null || saving ? null : _confirm,
-          child: Text(saving ? '处理中…' : '使用照片'),
-        ),
-      ],
-    ),
-    body: SafeArea(
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              '拖动裁剪框调整位置，拖动右下角或双指调整大小',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ),
-          Expanded(
-            child: error != null
-                ? Center(
-                    child: Text(
-                      error!,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  )
-                : image == null
-                ? const Center(child: CircularProgressIndicator())
-                : ResumePhotoCropCanvas(
-                    image: image!,
-                    aspectRatio: widget.aspectRatio,
-                    onChanged: (value) => crop = value,
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              widget.aspectRatio == 1 ? '头像 · 1:1' : '简历照片 · 5:6',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
+  Widget build(BuildContext context) {
+    final showLoading = holdLoading(error == null && image == null);
+    return Scaffold(
+      backgroundColor: const Color(0xFF171A21),
+      extendBodyBehindAppBar: showLoading,
+      appBar: AppPageBar(
+        backgroundColor: showLoading ? Colors.transparent : null,
+        title: Text(widget.aspectRatio == 1 ? '裁剪头像' : '裁剪简历照片'),
+        actions: [
+          TextButton(
+            onPressed: image == null || saving ? null : _confirm,
+            child: Text(saving ? '处理中…' : '使用照片'),
           ),
         ],
       ),
-    ),
-  );
+      body: SafeArea(
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                '拖动裁剪框调整位置，拖动右下角或双指调整大小',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+            Expanded(
+              child: LoadingGate(
+                loading: error == null && image == null,
+                builder: (_) => error != null
+                    ? Center(
+                        child: Text(
+                          error!,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      )
+                    : image == null
+                    ? const DotMatrixLoader(
+                        base: Color(0xFF2A2A2A),
+                        active: Color(0xFFA0A0A0),
+                      )
+                    : ResumePhotoCropCanvas(
+                        image: image!,
+                        aspectRatio: widget.aspectRatio,
+                        onChanged: (value) => crop = value,
+                      ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                widget.aspectRatio == 1 ? '头像 · 1:1' : '简历照片 · 5:6',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class ResumePhotoCropCanvas extends StatefulWidget {

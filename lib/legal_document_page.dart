@@ -200,7 +200,12 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
                               GlobalKey.new,
                             ),
                             padding: const EdgeInsets.only(top: 30),
-                            child: _LegalSectionView(section: section),
+                            // Retain each chapter's paint commands across scroll frames.
+                            // The common Column keeps precise document coordinates for
+                            // cross-section text selection and directory jumps.
+                            child: RepaintBoundary(
+                              child: _LegalSectionView(section: section),
+                            ),
                           ),
                         ),
                       const SizedBox(
@@ -225,6 +230,16 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
   }
 }
 
+// A blank line between spans replaces fixed widget padding. Keep this line's
+// logical height fixed as the surrounding paragraph responds to text scaling.
+TextSpan _legalGap(TextScaler scaler, double height) => TextSpan(
+  text: '\n\n',
+  style: TextStyle(
+    fontSize: height,
+    height: height / scaler.scale(height).clamp(1, double.infinity),
+  ),
+);
+
 class _LegalSectionView extends StatelessWidget {
   const _LegalSectionView({required this.section});
 
@@ -243,40 +258,67 @@ class _LegalSectionView extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 14),
-      for (var index = 0; index < section.blocks.length; index++)
-        Padding(
-          padding: EdgeInsets.only(
-            bottom: index == section.blocks.length - 1 ? 0 : 12,
-          ),
-          child: switch (section.blocks[index]) {
-            LegalParagraph(:final text, :final emphasized) => Text(
-              text,
-              style: TextStyle(
-                color: context.colors.ink,
-                fontSize: 14,
-                height: 1.85,
-                fontWeight: emphasized ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-            LegalSubheading(:final text) => Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                text,
-                style: const TextStyle(
-                  fontSize: 14,
-                  height: 1.7,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            final LegalTable table => _LegalTableView(
-              key: ValueKey('legal-${section.id}-table'),
-              table: table,
-            ),
-          },
-        ),
+      ...blockGroups(context),
     ],
   );
+  List<Widget> blockGroups(BuildContext context) {
+    final groups = <Widget>[];
+    var spans = <InlineSpan>[];
+    final scaler = MediaQuery.textScalerOf(context);
+    final paragraphGap = _legalGap(scaler, 12);
+    final subheadingGap = _legalGap(scaler, 20);
+    final paragraphStyle = TextStyle(
+      color: context.colors.ink,
+      fontSize: 14,
+      fontWeight: FontWeight.w400,
+      height: 1.85,
+    );
+    final emphasisStyle = paragraphStyle.copyWith(fontWeight: FontWeight.w600);
+    const subheadingStyle = TextStyle(
+      fontSize: 14,
+      height: 1.7,
+      fontWeight: FontWeight.w600,
+    );
+
+    // Contiguous paragraphs can share one layout and selection registration.
+    void finishText() {
+      if (spans.isEmpty) return;
+      groups.add(Text.rich(TextSpan(children: spans)));
+      spans = [];
+    }
+
+    for (final block in section.blocks) {
+      if (block is LegalTable) {
+        finishText();
+        if (groups.isNotEmpty) groups.add(const SizedBox(height: 12));
+        groups.add(
+          _LegalTableView(
+            key: ValueKey('legal-${section.id}-table'),
+            table: block,
+          ),
+        );
+      } else {
+        final subheading = block is LegalSubheading;
+        if (spans.isNotEmpty) {
+          spans.add(subheading ? subheadingGap : paragraphGap);
+        } else if (groups.isNotEmpty || subheading) {
+          groups.add(
+            SizedBox(
+              height: (groups.isNotEmpty ? 12 : 0) + (subheading ? 8 : 0),
+            ),
+          );
+        }
+        final style = switch (block) {
+          LegalSubheading() => subheadingStyle,
+          LegalParagraph(emphasized: true) => emphasisStyle,
+          _ => paragraphStyle,
+        };
+        spans.add(TextSpan(text: block.plainText, style: style));
+      }
+    }
+    finishText();
+    return groups;
+  }
 }
 
 class _LegalTableView extends StatelessWidget {
@@ -343,57 +385,50 @@ class _LegalTableView extends StatelessWidget {
 
   /// On phones each original table row becomes a vertical definition list, so
   /// long provider names and pending disclosures remain readable without zoom.
-  Widget narrowTable(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      for (var rowIndex = 0; rowIndex < table.rows.length; rowIndex++) ...[
-        if (rowIndex > 0) const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                table.headers.first,
-                style: TextStyle(
-                  color: context.colors.muted,
-                  fontSize: 11.5,
-                  height: 1.6,
-                ),
+  Widget narrowTable(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final fieldGap = _legalGap(scaler, 10);
+    final valueGap = _legalGap(scaler, 3);
+    final labelStyle = TextStyle(
+      color: context.colors.muted,
+      fontSize: 11.5,
+      height: 1.6,
+    );
+    const firstValueStyle = TextStyle(
+      fontSize: 13.5,
+      fontWeight: FontWeight.w600,
+      height: 1.7,
+    );
+    const valueStyle = TextStyle(fontSize: 13, height: 1.8);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var rowIndex = 0; rowIndex < table.rows.length; rowIndex++) ...[
+          if (rowIndex > 0) const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  for (
+                    var column = 0;
+                    column < table.headers.length;
+                    column++
+                  ) ...[
+                    if (column > 0) fieldGap,
+                    TextSpan(text: table.headers[column], style: labelStyle),
+                    valueGap,
+                    TextSpan(
+                      text: table.rows[rowIndex][column],
+                      style: column == 0 ? firstValueStyle : valueStyle,
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 3),
-              Text(
-                table.rows[rowIndex].first,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  height: 1.7,
-                ),
-              ),
-              for (
-                var columnIndex = 1;
-                columnIndex < table.headers.length;
-                columnIndex++
-              ) ...[
-                const SizedBox(height: 10),
-                Text(
-                  table.headers[columnIndex],
-                  style: TextStyle(
-                    color: context.colors.muted,
-                    fontSize: 11.5,
-                    height: 1.6,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  table.rows[rowIndex][columnIndex],
-                  style: const TextStyle(fontSize: 13, height: 1.8),
-                ),
-              ],
-            ],
+            ),
           ),
-        ),
+        ],
       ],
-    ],
-  );
+    );
+  }
 }

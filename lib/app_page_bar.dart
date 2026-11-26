@@ -15,6 +15,8 @@ class AppPageBar extends StatelessWidget implements PreferredSizeWidget {
     this.titleSpacing,
     this.backgroundColor,
     this.foregroundColor,
+    this.actionsPadding,
+    this.leadingWidth = 56,
   });
 
   static const titleStyle = TextStyle(
@@ -28,6 +30,8 @@ class AppPageBar extends StatelessWidget implements PreferredSizeWidget {
   final bool automaticallyImplyLeading;
   final double? titleSpacing;
   final Color? backgroundColor, foregroundColor;
+  final EdgeInsetsGeometry? actionsPadding;
+  final double leadingWidth;
 
   @override
   Size get preferredSize =>
@@ -58,13 +62,14 @@ class AppPageBar extends StatelessWidget implements PreferredSizeWidget {
               ),
         leading: leading,
         actions: actions,
+        actionsPadding: actionsPadding,
         bottom: bottom,
         automaticallyImplyLeading: automaticallyImplyLeading,
         centerTitle: false,
         titleSpacing:
             titleSpacing ?? (hasLeading ? 0 : appPageHorizontalPadding),
         toolbarHeight: kToolbarHeight,
-        leadingWidth: 56,
+        leadingWidth: leadingWidth,
         titleTextStyle: style,
         iconTheme: IconThemeData(color: foreground, size: 22),
         backgroundColor: backgroundColor ?? context.colors.surface,

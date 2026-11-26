@@ -134,6 +134,7 @@ void main() {
       for (final id in [store.userID, 0]) {
         await tester.pumpWidget(
           MaterialApp(
+            key: ValueKey(id),
             theme: appTheme,
             home: Scaffold(
               body: StoryCard(story: article(id), store: store),

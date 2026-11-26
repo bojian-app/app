@@ -1,6 +1,5 @@
 import 'package:bojian_mobile/main.dart';
 import 'package:bojian_mobile/app_store.dart';
-import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/account_pages.dart';
 import 'package:bojian_mobile/resume_pages.dart';
 import 'package:flutter/cupertino.dart';
@@ -37,8 +36,7 @@ void main() {
     final api = FakeGateway();
     final store = await testStore(authenticated: true, api: api);
     await launch(tester, width: 360, store: store);
-    await tester.tap(find.byKey(ValueKey('nav-${AppShell.profileTab}')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     expect(find.text('每一点积累，都算数'), findsNothing);
     expect(find.text('动态'), findsOneWidget);
     expect(find.text('收藏'), findsOneWidget);
@@ -87,8 +85,7 @@ void main() {
     store.name = '一个比较长的个人昵称用于检查排版';
     store.bio = '个人介绍内容。' * 15;
     await launch(tester, width: 844, store: store);
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     tester.view.physicalSize = const Size(844, 360);
     await tester.pumpAndSettle();
     await openSharedAccountMenu(tester);
@@ -113,8 +110,7 @@ void main() {
       await launch(tester, store: store);
       expect(find.byKey(const ValueKey('discovery-resume-card')), findsNothing);
       expect(find.text('创建我的简历'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('nav-3')));
-      await tester.pumpAndSettle();
+      await openMyPage(tester);
       await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('添加简历'));
@@ -165,26 +161,31 @@ void main() {
     await launch(tester);
     expect(find.text('还没有发布的内容'), findsOneWidget);
     expect(find.textContaining('陈一然'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
     await tester.pumpAndSettle();
     expect(find.text('这里还没有内容'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('nav-0')));
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('discovery-messages')));
     await tester.pumpAndSettle();
     expect(find.text('暂无系统通知'), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     expect(find.text('测试账号'), findsOneWidget);
     await openSharedAccountMenu(tester);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-points-card')), findsNothing);
-    expect(find.text('草稿箱'), findsOneWidget);
-    expect(find.text('隐私与设置'), findsOneWidget);
+    final menu = find.byKey(const ValueKey('profile-drawer'));
+    expect(
+      find.descendant(of: menu, matching: find.text('草稿箱')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: menu, matching: find.text('隐私与设置')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
   testWidgets('Failed server requests show retry rather than sample content', (
@@ -206,14 +207,10 @@ void main() {
       tester,
       store: await testStore(authenticated: true, seeded: true),
     );
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     await tester.tap(find.byKey(const ValueKey('profile-tab-resumes')));
     await tester.pumpAndSettle();
-    final card = find
-        .ancestor(of: find.text('产品经理 · 社招简历'), matching: find.byType(InkWell))
-        .last;
-    await tester.tapAt(tester.getTopLeft(card) + const Offset(8, 30));
+    await tester.tap(find.bySemanticsLabel('产品经理 · 社招简历预览'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
@@ -231,10 +228,20 @@ void main() {
   });
   testWidgets('Narrow phone layouts fit all destinations', (tester) async {
     await launch(tester, width: 320);
-    for (var i = 0; i < 4; i++) {
-      await tester.tap(find.byKey(ValueKey('nav-$i')));
+    for (final entry in [
+      'discovery-membership',
+      'discovery-service',
+      'discovery-my-page',
+    ]) {
+      await tapDiscoveryMenuItem(tester, entry);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('discovery-profile')).hitTestable(),
+        findsOneWidget,
+      );
     }
   });
   testWidgets('Logout clears private account content and navigation stack', (
@@ -242,8 +249,7 @@ void main() {
   ) async {
     final store = await testStore(authenticated: true, seeded: true);
     await launch(tester, store: store);
-    await tester.tap(find.byKey(ValueKey('nav-${AppShell.profileTab}')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     await tester.tap(find.byKey(const ValueKey('profile-settings')));
     await tester.pumpAndSettle();
     final signOut = find.byKey(const ValueKey('settings-sign-out'));

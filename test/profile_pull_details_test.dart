@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 const bio = '个人介绍内容。个人介绍内容。个人介绍内容。';
 const surface = ValueKey('profile-pull-preview');
@@ -76,8 +77,7 @@ Future<AppStore> mount(
   );
   await tester.pumpAndSettle();
   if (realApp) {
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
   }
   api.calls.clear();
   return store;
@@ -280,7 +280,10 @@ void main() {
           }
         }
         expect(previousAvatar.width, closeTo(44, .01));
-        expect(previousAvatar.center.dx, closeTo(74, .01));
+        final compactAvatarX = config.app
+            ? 74.0
+            : appPageHorizontalPadding + 13;
+        expect(previousAvatar.center.dx, closeTo(compactAvatarX, .01));
         if (config.name == 'light') {
           store.loading.add('profile');
           store.changed();

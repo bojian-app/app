@@ -91,7 +91,7 @@ class StoryAuthorAvatar extends StatelessWidget {
       label: '${name ?? story.author}的头像',
       child: InkWell(
         key: ValueKey('story-author-avatar-${story.id}'),
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(size / 2 + 4),
         onTap: canOpen
             ? () => openPage(
                 context,

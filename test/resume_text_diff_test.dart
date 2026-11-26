@@ -31,6 +31,26 @@ void main() {
     );
   });
 
+  test('whole-section changes retain their text and token similarity', () {
+    final paragraph = '提升转化率。' * 2500;
+    final same = TextDiff.compare(paragraph, paragraph)!;
+    expect(same.segments.single.text, paragraph);
+    expect(same.similarity, 1);
+    expect(TextDiff.compare('', '')!.segments, isEmpty);
+    for (final (before, after) in [
+      ('', paragraph),
+      (paragraph, ''),
+      ('目标。', '目标。$paragraph'),
+      ('$paragraph。', '新增。'),
+    ]) {
+      final diff = TextDiff.compare(before, after)!;
+      expect(join(diff.original), before);
+      expect(join(diff.revised), after);
+      expect(diff.readable, isFalse);
+      if (before.isEmpty || after.isEmpty) expect(diff.similarity, 0);
+    }
+  });
+
   test('complete rewrites are not marked token by token', () {
     final diff = TextDiff.compare('做网站', '主导支付结算系统重构上线')!;
     expect(diff.readable, isFalse);

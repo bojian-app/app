@@ -186,6 +186,8 @@ void main() {
       await mount(tester, api);
       await tester.tap(find.text('求职复盘'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('发布设置'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('内容声明'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('含 AI 生成内容'));
@@ -202,6 +204,8 @@ void main() {
         'type': 'ai',
       });
       await tester.tap(find.text('求职复盘'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('发布设置'));
       await tester.pumpAndSettle();
       expect(find.text('含 AI 生成内容'), findsOneWidget);
       await tester.tap(find.text('内容声明'));

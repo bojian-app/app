@@ -4,9 +4,11 @@ import 'dart:io';
 import 'dart:math' show Random, max;
 
 import 'package:file_selector/file_selector.dart' show XFile;
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:vector_graphics/vector_graphics.dart' show AssetBytesLoader;
 
 import 'api/bojian_api.dart';
 import 'app_icons.dart';
@@ -26,7 +28,16 @@ import 'legal_document_page.dart';
 import 'settings_page.dart'
     show AccountSecurityPage, SettingsPage, buildFeedbackPage;
 
+typedef _TranscriptLine = ({String sender, String text, String? image});
+
 typedef _Faq = (String question, String answer);
+
+Widget _serviceIcon(String name, {double? size}) => SvgPicture(
+  AssetBytesLoader('assets/customer_service/icons/$name.svg'),
+  width: size,
+  height: size,
+  excludeFromSemantics: true,
+);
 
 String _orderIcon(String title, {Object? category}) => switch (category) {
   'AI_ADDON' => 'ai',
@@ -114,6 +125,16 @@ const _warmHeaderGradient = LinearGradient(
   end: Alignment.bottomRight,
   colors: [Color(0xFFF0E9FC), Color(0xFFFFFAF6), Color(0xFFFFE5D4)],
 );
+const _greenHeaderGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0xFFE3F5EA), Color(0xFFF7FCF9), Color(0xFFD2EFE0)],
+);
+const _greenDarkHeaderGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0xFF1F2E26), Color(0xFF232A26), Color(0xFF1F3A2E)],
+);
 const _warmDarkHeaderGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
@@ -171,6 +192,8 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
   late final _feedbackTap = TapGestureRecognizer()..onTap = openFeedback;
   final input = TextEditingController();
   final scroll = ScrollController();
+  int followRequest = 0;
+  int historyBeforeAnchor = 0;
   final messages = <_Message>[];
   ({XFile file, String mime, int epoch})? attachment;
   int? uploadedId;
@@ -187,7 +210,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
   bool? agentOnline;
   String? agentNumber;
   String waitingFor = '';
-  List<Map<String, dynamic>> transcript = [];
+  List<_TranscriptLine> transcript = [];
   ({String content, int? fileId, String nonce})? pendingLive;
   bool get human => liveStatus == 'CONNECTED' || liveStatus == 'QUEUED';
 
@@ -204,6 +227,8 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
     agentOnline = null;
     agentNumber = null;
     transcript = [];
+    historyBeforeAnchor = 0;
+    followRequest++;
     pendingLive = null;
   }
 
@@ -218,21 +243,49 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
         }.contains(data['status'])) {
       throw const ApiFailure('人工客服连接暂不可用');
     }
-    final rows = (data['messages'] as List)
-        .whereType<Map>()
-        .map((m) => Map<String, dynamic>.from(m))
-        .toList();
+    final rows = [
+      for (final message in (data['messages'] as List).whereType<Map>())
+        (
+          sender: '${message['sender']}',
+          text: '${message['text']}',
+          image: message['image'] as String?,
+        ),
+    ];
+    final status = data['status'] as String;
+    final waiting = '${data['waiting_for'] ?? ''}';
+    final count = integer(data['ahead']);
+    final online = data['agent_online'] as bool?;
+    final number = data['agent_number'] as String?;
+    final typing = status == 'CONNECTED' && data['agent_typing'] == true;
+    if (id == liveId &&
+        status == liveStatus &&
+        waiting == waitingFor &&
+        count == ahead &&
+        online == agentOnline &&
+        number == agentNumber &&
+        typing == agentTyping &&
+        liveError.isEmpty &&
+        listEquals(transcript, rows)) {
+      return;
+    }
     final changed = transcript.length != rows.length;
     final follow = !scroll.hasClients || scroll.position.extentAfter < 100;
     setState(() {
+      // Start a restored, multi-screen history at its newest row without
+      // laying out the intervening rows just to reach the bottom.
+      if (liveId == null &&
+          rows.length * 16 > MediaQuery.sizeOf(context).height) {
+        historyBeforeAnchor = rows.length;
+      }
+      historyBeforeAnchor = historyBeforeAnchor.clamp(0, rows.length);
       liveId = id;
-      liveStatus = data['status'] as String;
+      liveStatus = status;
       liveError = '';
-      waitingFor = '${data['waiting_for'] ?? ''}';
-      ahead = integer(data['ahead']);
-      agentOnline = data['agent_online'] as bool?;
-      agentNumber = data['agent_number'] as String?;
-      agentTyping = liveStatus == 'CONNECTED' && data['agent_typing'] == true;
+      waitingFor = waiting;
+      ahead = count;
+      agentOnline = online;
+      agentNumber = number;
+      agentTyping = typing;
       transcript = rows;
     });
     if (changed && follow) scrollToLatest();
@@ -461,13 +514,23 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
   }
 
   void scrollToLatest() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (scroll.hasClients) {
-        scroll.animateTo(
-          scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-        );
+    final request = ++followRequest;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!scroll.hasClients || request != followRequest) return;
+      final position = scroll.position;
+      await position.animateTo(
+        position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+      // Variable-height rows can revise the estimated end during an animation.
+      while (mounted &&
+          request == followRequest &&
+          scroll.hasClients &&
+          scroll.position == position &&
+          position.extentAfter > 1) {
+        position.jumpTo(position.maxScrollExtent);
+        await WidgetsBinding.instance.endOfFrame;
       }
     });
   }
@@ -693,67 +756,75 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop && interceptBack) goBack();
       },
-      child: Scaffold(
-        backgroundColor: pageColor,
-        appBar: browsing
-            ? null
-            : AppPageBar(
-                leading: BackButton(onPressed: goBack),
-                title: Text(agentTyping ? '正在输入中...' : '客服小简'),
-                actions: [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      right: appPageHorizontalPadding,
-                    ),
-                    child: TextButton(
-                      onPressed: sending || picking || opening ? null : finish,
-                      style: TextButton.styleFrom(
-                        foregroundColor: colors.muted,
-                        minimumSize: const Size(0, 48),
-                        padding: EdgeInsets.zero,
+      child: AppPageSwitcher(
+        depth: browsing ? 0 : 1,
+        child: Scaffold(
+          key: ValueKey(browsing ? 'support-center' : 'support-chat'),
+          backgroundColor: pageColor,
+          appBar: browsing
+              ? null
+              : AppPageBar(
+                  leading: BackButton(onPressed: goBack),
+                  title: Text(agentTyping ? '正在输入中...' : '客服小简'),
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        right: appPageHorizontalPadding,
                       ),
-                      child: const Text('结束会话'),
+                      child: TextButton(
+                        onPressed: sending || picking || opening
+                            ? null
+                            : finish,
+                        style: TextButton.styleFrom(
+                          foregroundColor: colors.muted,
+                          minimumSize: const Size(0, 48),
+                          padding: EdgeInsets.zero,
+                        ),
+                        child: const Text('结束会话'),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+          body: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: browsing ? 680 : double.infinity,
               ),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: browsing ? 680 : double.infinity,
-            ),
-            child: browsing
-                ? _helpCenter()
-                : SafeArea(
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 680),
-                              child: SizedBox.expand(child: _conversation()),
+              child: browsing
+                  ? _helpCenter()
+                  : SafeArea(
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 680,
+                                ),
+                                child: SizedBox.expand(child: _conversation()),
+                              ),
                             ),
                           ),
-                        ),
-                        LayoutBuilder(
-                          builder: (_, constraints) {
-                            final inset =
-                                appPageHorizontalPadding +
-                                max(0.0, (constraints.maxWidth - 680) / 2);
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (MediaQuery.viewInsetsOf(context).bottom ==
-                                    0)
-                                  _chatOrders(inset),
-                                _inputBar(inset),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
+                          LayoutBuilder(
+                            builder: (_, constraints) {
+                              final inset =
+                                  appPageHorizontalPadding +
+                                  max(0.0, (constraints.maxWidth - 680) / 2);
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (MediaQuery.viewInsetsOf(context).bottom ==
+                                      0)
+                                    _chatOrders(inset),
+                                  _inputBar(inset),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),
@@ -764,12 +835,14 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
       switch ((context.colors.palette, context.isDark)) {
         (AppAccent.warm, true) => _warmDarkHeaderGradient,
         (AppAccent.warm, false) => _warmHeaderGradient,
+        (AppAccent.green, true) => _greenDarkHeaderGradient,
+        (AppAccent.green, false) => _greenHeaderGradient,
         (AppAccent.blue, true) => _darkHeaderGradient,
         (AppAccent.blue, false) => _headerGradient,
       };
 
   Widget _helpCenter() {
-    final warm = context.colors.palette == AppAccent.warm;
+    final palette = context.colors.palette;
     final gradient = serviceGradient;
     final textScale = MediaQuery.textScalerOf(context);
     final topInset = MediaQuery.paddingOf(context).top;
@@ -821,18 +894,20 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Z优简客服中心',
+                    '客服中心',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 20,
                       height: 1.3,
                       fontWeight: FontWeight.w700,
-                      color: switch ((warm, context.isDark)) {
-                        (true, true) => const Color(0xFFFFD4D0),
-                        (true, false) => const Color(0xFF641E28),
-                        (false, true) => const Color(0xFFDBECFF),
-                        (false, false) => const Color(0xFF163C73),
+                      color: switch ((palette, context.isDark)) {
+                        (AppAccent.warm, true) => const Color(0xFFFFD4D0),
+                        (AppAccent.warm, false) => const Color(0xFF641E28),
+                        (AppAccent.green, true) => const Color(0xFFD6F3E2),
+                        (AppAccent.green, false) => const Color(0xFF14452D),
+                        (AppAccent.blue, true) => const Color(0xFFDBECFF),
+                        (AppAccent.blue, false) => const Color(0xFF163C73),
                       },
                     ),
                   ),
@@ -1053,7 +1128,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
               color: colors.surface,
               borderRadius: BorderRadius.circular(6),
             ),
-            child: SvgPicture.asset('assets/customer_service/$icon.svg'),
+            child: _serviceIcon(icon),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1180,9 +1255,20 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: context.colors.palette == AppAccent.warm
-                    ? const [Color(0xFFEB365B), Color(0xFFEB704C)]
-                    : const [Color(0xFF2458D9), Color(0xFF3078CA)],
+                colors: switch (context.colors.palette) {
+                  AppAccent.warm => const [
+                    Color(0xFFEB365B),
+                    Color(0xFFEB704C),
+                  ],
+                  AppAccent.green => const [
+                    Color(0xFF1D9A62),
+                    Color(0xFF2F8F6E),
+                  ],
+                  AppAccent.blue => const [
+                    Color(0xFF2458D9),
+                    Color(0xFF3078CA),
+                  ],
+                },
               ),
               borderRadius: const BorderRadius.all(Radius.circular(36)),
             ),
@@ -1194,12 +1280,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                 shadowColor: Colors.transparent,
                 minimumSize: const Size(0, 44),
               ),
-              icon: SvgPicture.asset(
-                'assets/customer_service/chat.svg',
-                width: 17,
-                height: 17,
-                excludeFromSemantics: true,
-              ),
+              icon: _serviceIcon('chat', size: 17),
               label: Text(
                 messages.isEmpty && liveId == null ? '发起新服务' : '继续咨询',
                 style: const TextStyle(
@@ -1213,12 +1294,14 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
       ],
     ),
   );
-  Widget _avatar(double size) => Image.asset(
-    'assets/customer_service/assistant.webp',
-    width: size,
-    height: size,
-    cacheWidth: (size * 3).ceil(),
-    excludeFromSemantics: true,
+  Widget _avatar(double size) => ClipOval(
+    child: Image.asset(
+      'assets/customer_service/assistant.webp',
+      width: size,
+      height: size,
+      cacheWidth: (size * 3).ceil(),
+      excludeFromSemantics: true,
+    ),
   );
 
   Widget _shortcuts() {
@@ -1275,12 +1358,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                           padding: const EdgeInsets.symmetric(vertical: 9),
                           child: Column(
                             children: [
-                              SvgPicture.asset(
-                                'assets/customer_service/$icon.svg',
-                                width: 28,
-                                height: 28,
-                                excludeFromSemantics: true,
-                              ),
+                              _serviceIcon(icon, size: 28),
                               const SizedBox(height: 7),
                               Text(
                                 label,
@@ -1371,6 +1449,14 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                             fontWeight: FontWeight.w600,
                             color: switch (i) {
                               0 => colors.accent,
+                              1 when colors.palette == AppAccent.green =>
+                                context.isDark
+                                    ? const Color(0xff9be0b9)
+                                    : const Color(0xff2a8a57),
+                              2 when colors.palette == AppAccent.green =>
+                                context.isDark
+                                    ? const Color(0xffb5e6a0)
+                                    : const Color(0xff5a8a1f),
                               1 when colors.palette == AppAccent.warm =>
                                 context.isDark
                                     ? const Color(0xffffb097)
@@ -1504,12 +1590,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                       ),
                       child: Row(
                         children: [
-                          SvgPicture.asset(
-                            'assets/customer_service/$icon.svg',
-                            width: 21,
-                            height: 21,
-                            excludeFromSemantics: true,
-                          ),
+                          _serviceIcon(icon, size: 21),
                           const SizedBox(width: 11),
                           Expanded(
                             child: Text(
@@ -1582,64 +1663,117 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
     return _systemNote(copy);
   }
 
-  Widget _conversation() => SingleChildScrollView(
-    controller: scroll,
-    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-    padding: const EdgeInsets.symmetric(
-      horizontal: appPageHorizontalPadding,
-      vertical: 18,
-    ),
-    child: Column(
-      children: [
-        if (transcript.isEmpty && !opening) _serviceNotice(_combinedGreeting),
-        for (final row in transcript)
-          if (row['sender'] == 'SYSTEM')
-            _serviceNotice('${row['text']}')
-          else
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _bubble(
-                _Message(
-                  '${row['text']}',
-                  fromUser: row['sender'] == 'USER',
-                  agentNumber: row['sender'] == 'AGENT' ? agentNumber : null,
-                  imageUrl: row['image'] as String?,
-                ),
-              ),
+  Widget transcriptBubble(_TranscriptLine row) {
+    if (row.sender == 'SYSTEM') return _serviceNotice(row.text);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _bubble(
+        _Message(
+          row.text,
+          fromUser: row.sender == 'USER',
+          agentNumber: row.sender == 'AGENT' ? agentNumber : null,
+          imageUrl: row.image,
+        ),
+      ),
+    );
+  }
+
+  Widget _conversation() => Listener(
+    onPointerDown: (_) => followRequest++,
+    child: CustomScrollView(
+      controller: scroll,
+      center: const ValueKey('chat-tail'),
+      anchor: historyBeforeAnchor == 0 ? 0 : 1,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      slivers: [
+        if (historyBeforeAnchor > 0)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              appPageHorizontalPadding,
+              18,
+              appPageHorizontalPadding,
+              0,
             ),
-        if (liveError.isNotEmpty)
-          TextButton(
-            onPressed: opening ? null : enterConversation,
-            child: Text('$liveError 点击重试'),
+            sliver: SliverList.builder(
+              itemCount: historyBeforeAnchor,
+              itemBuilder: (_, index) =>
+                  transcriptBubble(transcript[historyBeforeAnchor - 1 - index]),
+            ),
           ),
-        if (opening) _systemNote('正在连接客服中心…'),
-        if (liveStatus == 'OFFLINE') _systemNote('当前为非服务时间，你可以使用自助咨询或提交意见反馈。'),
-        if (liveStatus == 'QUEUED')
-          _systemNote(
-            ahead == 0 && agentOnline == false
-                ? '当前还没有客服在线。'
-                : '排队中，前面有 $ahead 人。你可以先描述问题。',
+        SliverPadding(
+          key: const ValueKey('chat-tail'),
+          padding: EdgeInsets.fromLTRB(
+            appPageHorizontalPadding,
+            historyBeforeAnchor == 0 ? 18 : 0,
+            appPageHorizontalPadding,
+            0,
           ),
-        if (liveStatus == 'CONNECTED' && waitingFor == 'USER')
-          _systemNote('等待你回复'),
-        if (liveStatus == 'CLOSED')
-          TextButton(
-            onPressed: () {
-              setState(() {
-                resetLive();
-                messages.clear();
-              });
-              enterConversation();
-            },
-            child: const Text('重新发起咨询'),
+          sliver: SliverList.builder(
+            itemCount: transcript.length - historyBeforeAnchor,
+            itemBuilder: (_, index) =>
+                transcriptBubble(transcript[historyBeforeAnchor + index]),
           ),
-        if (messages.isEmpty && !opening && !human && liveStatus != 'CLOSED')
-          _welcome(),
-        for (final message in messages)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: _bubble(message),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: appPageHorizontalPadding,
           ),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              children: [
+                if (transcript.isEmpty && !opening)
+                  _serviceNotice(_combinedGreeting),
+                if (liveError.isNotEmpty)
+                  TextButton(
+                    onPressed: opening ? null : enterConversation,
+                    child: Text('$liveError 点击重试'),
+                  ),
+                if (opening) _systemNote('正在连接客服中心…'),
+                if (liveStatus == 'OFFLINE')
+                  _systemNote('当前为非服务时间，你可以使用自助咨询或提交意见反馈。'),
+                if (liveStatus == 'QUEUED')
+                  _systemNote(
+                    ahead == 0 && agentOnline == false
+                        ? '当前还没有客服在线。'
+                        : '排队中，前面有 $ahead 人。你可以先描述问题。',
+                  ),
+                if (liveStatus == 'CONNECTED' && waitingFor == 'USER')
+                  _systemNote('等待你回复'),
+                if (liveStatus == 'CLOSED')
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        resetLive();
+                        messages.clear();
+                      });
+                      enterConversation();
+                    },
+                    child: const Text('重新发起咨询'),
+                  ),
+                if (messages.isEmpty &&
+                    !opening &&
+                    !human &&
+                    liveStatus != 'CLOSED')
+                  _welcome(),
+              ],
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            appPageHorizontalPadding,
+            0,
+            appPageHorizontalPadding,
+            18,
+          ),
+          sliver: SliverList.builder(
+            itemCount: messages.length,
+            itemBuilder: (_, index) => Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _bubble(messages[index]),
+            ),
+          ),
+        ),
       ],
     ),
   );
@@ -1786,6 +1920,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
               ),
             if (message.photo case final photo?)
               Semantics(
+                container: true,
                 button: true,
                 label: '查看已发送的图片',
                 child: InkWell(
@@ -1849,12 +1984,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
             runSpacing: 2,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SvgPicture.asset(
-                'assets/customer_service/${_orderIcon(title)}.svg',
-                width: 20,
-                height: 20,
-                excludeFromSemantics: true,
-              ),
+              _serviceIcon(_orderIcon(title), size: 20),
               Text(
                 title,
                 style: TextStyle(

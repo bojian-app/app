@@ -109,7 +109,8 @@ class MembershipWalletPage extends StatefulWidget {
   State<MembershipWalletPage> createState() => _MembershipWalletPageState();
 }
 
-class _MembershipWalletPageState extends State<MembershipWalletPage> {
+class _MembershipWalletPageState extends State<MembershipWalletPage>
+    with LoadingHoldState<MembershipWalletPage> {
   MembershipWallet? wallet;
   String? error;
   int? using;
@@ -204,13 +205,15 @@ class _MembershipWalletPageState extends State<MembershipWalletPage> {
     final c = context.colors;
     final data = wallet;
     final showCoupons = !usesAppleMembership;
+    final showLoading = holdLoading(data == null && error == null);
     return DefaultTabController(
       length: showCoupons ? 2 : 1,
       initialIndex: showCoupons ? 1 : 0,
       child: Scaffold(
         backgroundColor: c.canvas,
+        extendBodyBehindAppBar: showLoading,
         appBar: AppBar(
-          backgroundColor: c.canvas,
+          backgroundColor: showLoading ? Colors.transparent : c.canvas,
           foregroundColor: c.ink,
           centerTitle: true,
           scrolledUnderElevation: 0,
@@ -237,33 +240,39 @@ class _MembershipWalletPageState extends State<MembershipWalletPage> {
               : const Text('会员卡'),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(1),
-            child: Divider(height: 1, color: c.border),
+            child: Divider(
+              height: 1,
+              color: showLoading ? Colors.transparent : c.border,
+            ),
           ),
         ),
-        body: data == null
-            ? Center(
-                child: error == null
-                    ? const CircularProgressIndicator()
-                    : TextButton(
-                        onPressed: _load,
-                        child: const Text('加载失败，点击重试'),
-                      ),
-              )
-            : TabBarView(
-                children: [
-                  _WalletList(
-                    cards: data.cards,
-                    onUseCard: using == null ? _use : null,
-                    onRefresh: _load,
-                  ),
-                  if (showCoupons)
+        body: LoadingGate(
+          loading: data == null && error == null,
+          builder: (_) => data == null
+              ? error == null
+                    ? const DotMatrixLoader()
+                    : Center(
+                        child: TextButton(
+                          onPressed: _load,
+                          child: const Text('加载失败，点击重试'),
+                        ),
+                      )
+              : TabBarView(
+                  children: [
                     _WalletList(
-                      coupons: data.coupons,
-                      onUseCoupon: _useCoupon,
+                      cards: data.cards,
+                      onUseCard: using == null ? _use : null,
                       onRefresh: _load,
                     ),
-                ],
-              ),
+                    if (showCoupons)
+                      _WalletList(
+                        coupons: data.coupons,
+                        onUseCoupon: _useCoupon,
+                        onRefresh: _load,
+                      ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -412,7 +421,7 @@ class _WalletListState extends State<_WalletList> {
                 ),
               ),
               Expanded(
-                child: RefreshIndicator(
+                child: PlayfulRefresh(
                   onRefresh: widget.onRefresh,
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),

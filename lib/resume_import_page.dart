@@ -54,7 +54,7 @@ class _ImportResumeState extends State<ImportResume> {
   void openReview(ResumeDraft draft) {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
+      AppPageRoute(
         builder: (_) => ResumeEditor(
           store: widget.store,
           draft: draft,

@@ -1,5 +1,5 @@
+import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/route_transition_snapshot.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,6 +11,7 @@ void main() {
       addTearDown(name.dispose);
       await tester.pumpWidget(
         MaterialApp(
+          theme: appTheme,
           home: RouteTransitionSnapshot(
             child: Scaffold(
               body: Builder(
@@ -21,11 +22,10 @@ void main() {
                       builder: (_, value, _) => Text(value),
                     ),
                     TextButton(
-                      onPressed: () => Navigator.of(context).push(
-                        CupertinoPageRoute<void>(
-                          builder: (_) => const RouteTransitionSnapshot(
-                            child: Scaffold(body: Text('详情')),
-                          ),
+                      onPressed: () => openPage<void>(
+                        context,
+                        const RouteTransitionSnapshot(
+                          child: Scaffold(body: Text('详情')),
                         ),
                       ),
                       child: const Text('打开'),

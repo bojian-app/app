@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 class _DelayedGateway extends FakeGateway {
   Completer<ApiDocument>? profile;
@@ -144,8 +145,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AppShell), findsOneWidget);
     expect(find.byType(PhoneBindingDialog), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('nav-3')));
-    await tester.pumpAndSettle();
+    await openMyPage(tester);
     await tester.tap(find.byKey(const ValueKey('profile-settings')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('账号安全'));

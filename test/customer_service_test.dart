@@ -15,6 +15,83 @@ class _ChatGallery extends ImagePickerPlatform {
 }
 
 void main() {
+  testWidgets('长会话按需加载，重复轮询保留气泡，收到消息时保留阅读位置', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 760);
+    addTearDown(tester.view.reset);
+    final api = FakeGateway();
+    final history = List.generate(
+      240,
+      (i) => {
+        'sender': i.isEven ? 'USER' : 'AGENT',
+        'text': '历史消息 $i：${'操作记录 ' * (1 + i % 5)}',
+      },
+    );
+    final session = {
+      'id': 42,
+      'status': 'CONNECTED',
+      'waiting_for': 'USER',
+      'messages': history,
+    };
+    api.documents['PostSupportSessions'] = session;
+    api.documents['GetSupportSessionsId'] = session;
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(home: CustomerServicePage(store: store)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('发起新服务'));
+    final center = find.byKey(const ValueKey('support-center'));
+    final chat = find.byKey(const ValueKey('support-chat'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(tester.getTopLeft(center).dx, lessThan(0));
+    expect(tester.getTopLeft(chat).dx, greaterThan(0));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 145));
+    expect(tester.getTopLeft(chat).dx, greaterThan(0));
+    expect(tester.getTopLeft(center).dx, lessThan(0));
+    await tester.tap(find.text('继续咨询'));
+    await tester.pumpAndSettle();
+    expect(center, findsNothing);
+    expect(chat, findsOneWidget);
+
+    final rows = find.byWidgetPredicate(
+      (w) => w is Text && w.textSpan?.toPlainText().startsWith('历史消息') == true,
+    );
+    final visible = rows.evaluate().map((e) => e.widget).toSet();
+    final position = Scrollable.of(tester.element(rows.first)).position;
+    expect(visible.length, inExclusiveRange(0, 30));
+    expect(find.textContaining('历史消息 239：'), findsOneWidget);
+    expect(position.extentAfter, lessThan(1));
+
+    Future<void> poll() async {
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+    }
+
+    await poll();
+    expect(rows.evaluate().map((e) => e.widget).toSet(), visible);
+
+    history.last['text'] = '客服更正了这条消息';
+    await poll();
+    expect(find.text('客服更正了这条消息'), findsOneWidget);
+    position.jumpTo(position.pixels - 900);
+    await tester.pumpAndSettle();
+    final offset = position.pixels;
+    history.add({'sender': 'AGENT', 'text': '客服新回复'});
+    await poll();
+    expect(position.pixels, closeTo(offset, 1));
+    expect(find.text('客服新回复'), findsNothing);
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(find.text('客服新回复'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('人工会话从排队到接通、回复和释放', (tester) async {
     final api = FakeGateway();
     const notice = {
@@ -110,7 +187,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('客服小简'), findsOneWidget);
 
-    api.documents['PostSupportSessionsIdMessages'] = {
+    final afterSend = {
       ...connected,
       'waiting_for': 'AGENT',
       'messages': [
@@ -119,6 +196,8 @@ void main() {
         {'sender': 'USER', 'text': '订单 123'},
       ],
     };
+    api.documents['PostSupportSessionsIdMessages'] = afterSend;
+    api.documents['GetSupportSessionsId'] = afterSend;
     await tester.enterText(find.byType(TextField), '订单 123');
     await tester.pump();
     await tester.tap(find.text('发送'));

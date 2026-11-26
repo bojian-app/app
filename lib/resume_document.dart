@@ -12,6 +12,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'design.dart' show appPageHorizontalPadding;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
@@ -28,6 +29,9 @@ import 'api/bojian_api.dart';
 import 'resume_guidance_privacy.dart';
 
 // Point dimensions and typography mirror the macOS standard PDF template.
+/// The paper keeps the same side gutters as every other page.
+const resumeSheetInset = appPageHorizontalPadding * 2;
+
 const resumePaperSize = Size(595.28, 841.89);
 const resumePaperMargin = 46.0;
 const resumePaperInk = Color(0xFF26292E);
@@ -202,11 +206,13 @@ class ResumeReviewPlacement {
 class ResumeDocument {
   ResumeDocument(
     ResumeDraft resume, {
-    this.fontFamily = resumeDocumentFontFamily,
+    // Null is the device's system font; exports pass the bundled family.
+    this.fontFamily,
     String photoURL = '',
     List<ResumeReviewChange> reviewChanges = const [],
     List<ResumeReviewNote> reviewNotes = const [],
     ResumeTheme? theme,
+    bool standardCoverOnly = false,
   }) : theme = theme ?? ResumeTheme.standard,
        layout = ResumeLayout.resolve(
          resume.source['app_layout'] ?? resume.template,
@@ -216,6 +222,11 @@ class ResumeDocument {
       fontFamily,
       reviewChanges,
       reviewNotes,
+      stopAfterFirstPage:
+          standardCoverOnly &&
+          this.theme.isStandard &&
+          reviewChanges.isEmpty &&
+          reviewNotes.isEmpty,
     );
     builder.compose(
       resume,
@@ -224,6 +235,47 @@ class ResumeDocument {
           resume.source['app_privacy_photo'] == true,
     );
   }
+  // Drafts can be edited in place, including nested rich-text spans.
+  static String layoutKey(
+    ResumeDraft resume, {
+    required String photoURL,
+    ResumeTheme? theme,
+    List<ResumeReviewNote> reviewNotes = const [],
+    List<ResumeReviewChange> reviewChanges = const [],
+  }) => jsonEncode([
+    resume.source,
+    resume.template,
+    resume.name,
+    resume.title,
+    resume.position,
+    resume.city,
+    resume.phone,
+    resume.email,
+    resume.summary,
+    resume.education,
+    resume.experience,
+    resume.skills,
+    photoURL,
+    resume.photoFileID,
+    identityHashCode(theme),
+    reviewNotes
+        .map((v) => [v.key, v.fieldPath, v.height, v.selectedText])
+        .toList(),
+    reviewChanges
+        .map(
+          (v) => [
+            v.key,
+            v.fieldPath,
+            v.original,
+            v.replacement,
+            v.accepted,
+            v.appendReplacement,
+            v.previewOnly,
+          ],
+        )
+        .toList(),
+  ]);
+
   final String? fontFamily;
   final ResumeLayout layout;
   final ResumeTheme theme;
@@ -240,17 +292,23 @@ class ResumeDocument {
   }
 }
 
+class _StandardCoverComplete implements Exception {
+  const _StandardCoverComplete();
+}
+
 class _ResumeTypesetter {
   _ResumeTypesetter(
     this.document,
     this.fontFamily,
     this.reviewChanges,
-    this.reviewNotes,
-  ) {
+    this.reviewNotes, {
+    required this.stopAfterFirstPage,
+  }) {
     page = ResumeSheet();
     document.pages.add(page);
   }
   final ResumeDocument document;
+  final bool stopAfterFirstPage;
   final String? fontFamily;
   final List<ResumeReviewChange> reviewChanges;
   final appliedChanges = <String>{};
@@ -267,33 +325,46 @@ class _ResumeTypesetter {
   late double x = left, column = width;
   _ResumeBox? box;
 
-  // A system font without a real bold face gets the bundled bold instead of
-  // a synthesized one whose weight varies along the line.
-  String? family(FontWeight weight) =>
-      fontFamily == null && ResumeSystemFonts.needsBundledBold(weight.value)
-      ? resumeDocumentFontFamily
-      : fontFamily;
+  // A system font without a real bold face keeps drawing in the same font; the
+  // glyphs are thickened with thin same-colour copies instead, as in articles.
+  // The offset follows the font size so it survives scaling the paper.
+  List<Shadow>? boldShadows(FontWeight weight, double size, Color? color) {
+    if (fontFamily != null ||
+        !ResumeSystemFonts.needsBundledBold(weight.value)) {
+      return null;
+    }
+    final offset = size * .026;
+    final ink = color ?? resumePaperInk;
+    return [
+      Shadow(color: ink, offset: Offset(offset, 0)),
+      Shadow(color: ink, offset: Offset(-offset, 0)),
+    ];
+  }
 
   TextStyle style(double size, {bool bold = false, Color? color}) {
     final weight = bold ? FontWeight.w600 : FontWeight.w400;
+    final ink = color ?? theme.body.color;
     return TextStyle(
-      fontFamily: family(weight),
+      fontFamily: fontFamily,
       fontSize: size,
       height: theme.body.height ?? (size + 4) / size,
       fontWeight: weight,
-      color: color ?? theme.body.color,
+      color: ink,
+      shadows: boldShadows(weight, size, ink),
     );
   }
 
   TextStyle themed(ResumeThemeText text, {Color? color}) {
     final weight = FontWeight.values[(text.weight ~/ 100 - 1).clamp(0, 8)];
+    final ink = color ?? text.color ?? theme.body.color;
     return TextStyle(
-      fontFamily: family(weight),
+      fontFamily: fontFamily,
       fontSize: text.size,
       height: text.height ?? theme.body.height ?? (text.size + 4) / text.size,
       fontWeight: weight,
       letterSpacing: text.letterSpacing,
-      color: color ?? text.color ?? theme.body.color,
+      color: ink,
+      shadows: boldShadows(weight, text.size, ink),
     );
   }
 
@@ -310,6 +381,9 @@ class _ResumeTypesetter {
   }
 
   void nextPage() {
+    // The standard footer prints only the current page number. Once pagination
+    // crosses this boundary, no subsequent content modifies the cover.
+    if (stopAfterFirstPage) throw const _StandardCoverComplete();
     final open = box;
     if (open != null) open.close(page, y + open.padding.bottom);
     page = ResumeSheet();
@@ -806,7 +880,11 @@ class _ResumeTypesetter {
 
   void compose(ResumeDraft resume, bool hasPhoto) {
     if (theme.isStandard) {
-      composeStandard(resume, hasPhoto);
+      try {
+        composeStandard(resume, hasPhoto);
+      } on _StandardCoverComplete {
+        return;
+      }
     } else {
       composeThemed(resume, hasPhoto);
     }
@@ -2779,7 +2857,8 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
     inertia.stop();
     if (zoomed) resetZoom();
     final scale =
-        math.min(680.0, viewportSize.width - 24) / resumePaperSize.width;
+        math.min(680.0, viewportSize.width - resumeSheetInset) /
+        resumePaperSize.width;
     final position = pageScroll.position;
     final offset =
         16 +
@@ -3233,41 +3312,15 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
   @override
   Widget build(BuildContext context) {
     final resume = widget.resume;
-    const font = resumeDocumentFontFamily;
-    final key = jsonEncode([
-      resume.source,
-      resume.template,
-      resume.name,
-      resume.title,
-      resume.position,
-      resume.city,
-      resume.phone,
-      resume.email,
-      resume.summary,
-      resume.education,
-      resume.experience,
-      resume.skills,
-      font,
-      photoURL,
-      resume.photoFileID,
-      identityHashCode(widget.theme),
-      widget.reviewNotes
-          .map((v) => [v.key, v.fieldPath, v.height, v.selectedText])
-          .toList(),
-      widget.reviewChanges
-          .map(
-            (v) => [
-              v.key,
-              v.fieldPath,
-              v.original,
-              v.replacement,
-              v.accepted,
-              v.appendReplacement,
-              v.previewOnly,
-            ],
-          )
-          .toList(),
-    ]);
+    // On screen the resume is set in the system font.
+    const String? font = null;
+    final key = ResumeDocument.layoutKey(
+      resume,
+      photoURL: photoURL,
+      theme: widget.theme,
+      reviewNotes: widget.reviewNotes,
+      reviewChanges: widget.reviewChanges,
+    );
     if (key != cacheKey) {
       selectedRegion = null;
       document?.dispose();
@@ -3388,7 +3441,10 @@ class ResumeDocumentViewState extends State<ResumeDocumentView>
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final width = math.min(680.0, constraints.maxWidth - 24);
+                  final width = math.min(
+                    680.0,
+                    constraints.maxWidth - resumeSheetInset,
+                  );
                   final scale = width / resumePaperSize.width;
                   final placedBadges =
                       <int, List<(ResumeReviewHighlight, Rect)>>{};

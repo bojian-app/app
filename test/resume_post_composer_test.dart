@@ -149,4 +149,62 @@ void main() {
     expect(find.byType(ResumePostComposer), findsOneWidget);
     expect(find.text('账号已切换，请重试'), findsOneWidget);
   });
+
+  testWidgets(
+    'A rejected résumé post locates only a verified sentence in its editable text',
+    (tester) async {
+      const sentence = '这一句需要修改。';
+      const text = '  🌿 分享感想。$sentence$sentence';
+      final api = PostGateway();
+      api.documents['PostResumesIdGuidance'] = {
+        'status': 'REJECTED',
+        'moderation': {
+          'violations': [
+            {
+              'message': '本地测试的审核原因',
+              'excerpts': [
+                {
+                  'field': 'body',
+                  'text': sentence,
+                  'match': '修改',
+                  'start_utf16': text.trim().lastIndexOf(sentence),
+                },
+                {
+                  'field': 'body',
+                  'block_index': 2,
+                  'text': sentence,
+                  'start_utf16': text.trim().indexOf(sentence),
+                },
+                {'field': 'content', 'text': '快照里的另一句。'},
+              ],
+            },
+          ],
+        },
+      };
+      await mount(tester, api);
+      await tester.enterText(field, text);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      final dialog = find.byType(AlertDialog);
+      expect(
+        find.descendant(
+          of: dialog,
+          matching: find.textContaining('快照里的另一句。', findRichText: true),
+        ),
+        findsWidgets,
+      );
+      final locate = find.descendant(of: dialog, matching: find.text('定位原文'));
+      expect(locate, findsOneWidget);
+      await tester.ensureVisible(locate);
+      await tester.tap(locate);
+      await tester.pumpAndSettle();
+      expect(dialog, findsNothing);
+      final input = tester.widget<TextField>(field);
+      expect(input.focusNode!.hasFocus, isTrue);
+      expect(input.controller!.text, text);
+      expect(input.controller!.selection.start, text.lastIndexOf(sentence));
+      expect(input.controller!.selection.textInside(text), sentence);
+      expect(api.calls, isNot(contains('GetFeed')));
+    },
+  );
 }

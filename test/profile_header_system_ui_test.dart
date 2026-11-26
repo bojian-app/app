@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_gateway.dart';
+import 'support/profile_navigation_helpers.dart';
 
 // Sample the painted status-bar position, as the platform does, so a style
 // below a SafeArea cannot make this test pass.
@@ -73,8 +74,7 @@ void main() {
         expect(tester.getTopLeft(find.byType(DiscoveryPage)).dy, inset);
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.dark);
         await expectDiscoveryStatusBackground(tester);
-        await tester.tap(find.byKey(const ValueKey('nav-3')));
-        await tester.pumpAndSettle();
+        await openMyPage(tester);
         final list = find.byKey(const ValueKey('profile-scroll'));
         final profileState = tester.state(find.byType(ProfilePage));
         final scroll = tester
@@ -117,12 +117,11 @@ void main() {
         tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
         await tester.pumpAndSettle();
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.light);
-        await tester.tap(find.byKey(const ValueKey('nav-0')));
+        await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
         await expectDiscoveryStatusBackground(tester);
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.light);
-        await tester.tap(find.byKey(const ValueKey('nav-3')));
-        await tester.pumpAndSettle();
+        await openMyPage(tester);
         scroll.jumpTo(scroll.position.maxScrollExtent);
         await tester.pumpAndSettle();
         expect(
@@ -139,13 +138,12 @@ void main() {
         await tester.pumpAndSettle();
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.dark);
         final offset = scroll.offset;
-        await tester.tap(find.byKey(const ValueKey('nav-0')));
+        await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
         expect(tester.getTopLeft(find.byType(DiscoveryPage)).dy, inset);
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.dark);
         await expectDiscoveryStatusBackground(tester);
-        await tester.tap(find.byKey(const ValueKey('nav-3')));
-        await tester.pumpAndSettle();
+        await openMyPage(tester);
         expect(tester.state(find.byType(ProfilePage)), same(profileState));
         expect(scroll.offset, closeTo(offset, .01));
         expect(statusStyle(tester).statusBarIconBrightness, Brightness.dark);

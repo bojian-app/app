@@ -30,6 +30,8 @@ class _MembershipColors {
         (AppAccent.blue, true) => dark,
         (AppAccent.warm, false) => warmLight,
         (AppAccent.warm, true) => warmDark,
+        (AppAccent.green, false) => greenLight,
+        (AppAccent.green, true) => greenDark,
       };
 
   static const light = _MembershipColors(
@@ -99,41 +101,101 @@ class _MembershipColors {
     selection: Color(0xFFFFA2A6),
     benefitTint: Color(0x22F4B5A5),
   );
+
+  static const greenLight = _MembershipColors(
+    background: Colors.white,
+    surface: Color(0xFFF7FCF9),
+    surfaceHi: Color(0xFFE6F4EC),
+    line: Color(0xFFD6E8DD),
+    text: Color(0xFF1F3A2D),
+    muted: Color(0xFF56705F),
+    accent: Color(0xFF1A7A4E),
+    accentInk: Colors.white,
+    selectedBorder: Color(0xFF5FBF8F),
+    unselectedBorder: Color(0xFFD9E8DF),
+    selectedPlan: [Color(0xFFF5FCF8), Color(0xFFDDF1E6)],
+    unselectedPlan: [Colors.white, Color(0xFFF7FCF9)],
+    selection: Color(0xFF1D8A5A),
+    benefitTint: Color(0xFFE9F6EF),
+  );
+
+  static const greenDark = _MembershipColors(
+    background: Color(0xFF121A16),
+    surface: Color(0xFF1B2620),
+    surfaceHi: Color(0xFF2A3830),
+    line: Color(0x29BFE8D2),
+    text: Color(0xFFEAF7F0),
+    muted: Color(0xFFA9C3B3),
+    accent: Color(0xFFCDEBD9),
+    accentInk: Color(0xFF173A28),
+    selectedBorder: Color(0xFF7FB898),
+    unselectedBorder: Color(0xFF334239),
+    selectedPlan: [Color(0xFF2D4A3B), Color(0xFF21362B)],
+    unselectedPlan: [Color(0xFF1F2E26), Color(0xFF17221C)],
+    selection: Color(0xFF7FD8AE),
+    benefitTint: Color(0x227FD8AE),
+  );
 }
 
 /// The metal face and its embossing stay dark in both display modes.
 extension _MembershipFinish on AppAccent {
-  List<Color> get metalFace => this == AppAccent.warm
-      ? const [
-          Color(0xFF775159),
-          Color(0xFF50323A),
-          Color(0xFF352127),
-          Color(0xFF4B3036),
-        ]
-      : const [
-          Color(0xFF3A4D68),
-          Color(0xFF233249),
-          Color(0xFF162234),
-          Color(0xFF1E2D42),
-        ];
-  Color get metalInk =>
-      this == AppAccent.warm ? const Color(0xFF42282C) : _platinumInk;
-  Color get engraving => this == AppAccent.warm
-      ? const Color(0xFFF8EAE4)
-      : const Color(0xFFE4ECF7);
-  Color get secondaryEngraving => this == AppAccent.warm
-      ? const Color(0xFFDDC2B9)
-      : const Color(0xFFB9CAE0);
+  List<Color> get metalFace => switch (this) {
+    AppAccent.warm => const [
+      Color(0xFF775159),
+      Color(0xFF50323A),
+      Color(0xFF352127),
+      Color(0xFF4B3036),
+    ],
+    AppAccent.green => const [
+      Color(0xFF3F6B55),
+      Color(0xFF264636),
+      Color(0xFF182C21),
+      Color(0xFF22382B),
+    ],
+    AppAccent.blue => const [
+      Color(0xFF3A4D68),
+      Color(0xFF233249),
+      Color(0xFF162234),
+      Color(0xFF1E2D42),
+    ],
+  };
+  Color get metalInk => switch (this) {
+    AppAccent.warm => const Color(0xFF42282C),
+    AppAccent.green => const Color(0xFF1E3A2A),
+    AppAccent.blue => _platinumInk,
+  };
+  Color get engraving => switch (this) {
+    AppAccent.warm => const Color(0xFFF8EAE4),
+    AppAccent.green => const Color(0xFFE6F4EC),
+    AppAccent.blue => const Color(0xFFE4ECF7),
+  };
+  Color get secondaryEngraving => switch (this) {
+    AppAccent.warm => const Color(0xFFDDC2B9),
+    AppAccent.green => const Color(0xFFB9D6C4),
+    AppAccent.blue => const Color(0xFFB9CAE0),
+  };
   LinearGradient get crystalGradient => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: this == AppAccent.warm
-        ? const [Color(0xFFFFF7EE), Color(0xFFF2CEBD), Color(0xFFD7A295)]
-        : _crystal,
+    colors: switch (this) {
+      AppAccent.warm => const [
+        Color(0xFFFFF7EE),
+        Color(0xFFF2CEBD),
+        Color(0xFFD7A295),
+      ],
+      AppAccent.green => const [
+        Color(0xFFF3FFF8),
+        Color(0xFFC9EBD7),
+        Color(0xFF8FC7A6),
+      ],
+      AppAccent.blue => _crystal,
+    },
   );
   LinearGradient get purchaseGradient => LinearGradient(
-    colors: this == AppAccent.warm
-        ? const [Color(0xFFD86654), Color(0xFFB72E4C)]
-        : _blueGradient,
+    colors: switch (this) {
+      AppAccent.warm => const [Color(0xFFD86654), Color(0xFFB72E4C)],
+      AppAccent.green => const [Color(0xFF2FB27A), Color(0xFF157A4F)],
+      AppAccent.blue => _blueGradient,
+    },
   );
 }

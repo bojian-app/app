@@ -267,17 +267,47 @@ extension AppStoreResumes on AppStore {
     await load('resumes');
   }
 
+  Future<int> createArticleDraft({
+    required String title,
+    required Map<String, dynamic> content,
+    String visibility = 'PUBLIC',
+    bool? followedRepliesOnly,
+    required int expectedEpoch,
+  }) async {
+    final response = await request(
+      'PostArticles',
+      body: {
+        'title': title,
+        'content': content,
+        'visibility': visibility,
+        'followed_replies_only': ?followedRepliesOnly,
+      },
+      expectedEpoch: expectedEpoch,
+    );
+    final id = integer(response.data['id']);
+    if (id <= 0) throw const ApiFailure('草稿保存结果无效，请重试');
+    return id;
+  }
+
   Future<void> saveArticleDraft({
     required int id,
     required String title,
     required Map<String, dynamic> content,
     int? resumeID,
+    String? visibility,
+    bool? followedRepliesOnly,
     required int expectedEpoch,
   }) async {
     await request(
       'PatchArticlesId',
       path: {'id': '$id'},
-      body: {'title': title, 'content': content, 'resume_id': ?resumeID},
+      body: {
+        'title': title,
+        'content': content,
+        'resume_id': ?resumeID,
+        'visibility': ?visibility,
+        'followed_replies_only': ?followedRepliesOnly,
+      },
       expectedEpoch: expectedEpoch,
     );
   }
@@ -305,19 +335,18 @@ extension AppStoreResumes on AppStore {
     String text,
     String category, {
     Map<String, dynamic>? content,
+    String visibility = 'PUBLIC',
+    bool? followedRepliesOnly,
     void Function(int)? onDraftSaved,
   }) async {
     final version = epoch;
-    final draft = await request(
-      'PostArticles',
-      body: {
-        'title': title,
-        'content': content ?? richContent(text),
-        'visibility': 'PUBLIC',
-      },
+    final id = await createArticleDraft(
+      title: title,
+      content: content ?? richContent(text),
+      visibility: visibility,
+      followedRepliesOnly: followedRepliesOnly,
+      expectedEpoch: version,
     );
-    final id = integer(draft.data['id']);
-    if (id <= 0) throw const ApiFailure('草稿保存结果无效，请重试');
     onDraftSaved?.call(id);
     return submitArticleDraft(id, expectedEpoch: version);
   }

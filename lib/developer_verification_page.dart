@@ -69,7 +69,7 @@ class _DeveloperVerificationPageState extends State<DeveloperVerificationPage> {
       return;
     }
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      AppPageRoute<void>(
         builder: (_) => IdentityConfirmationPage(controller: controller),
       ),
     );

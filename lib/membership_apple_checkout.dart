@@ -83,7 +83,7 @@ class _AppleMembershipCheckoutPageState
     if (_resultShown || !mounted || !_completed) return;
     _resultShown = true;
     Navigator.of(context).pushReplacement(
-      CupertinoPageRoute<void>(
+      AppPageRoute<void>(
         builder: (_) => _AppleMembershipResultPage(
           store: purchases.store,
           plan: plan,

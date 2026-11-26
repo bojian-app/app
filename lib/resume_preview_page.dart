@@ -107,7 +107,7 @@ class _ResumePreviewState extends State<ResumePreview> {
       }
       if (ModalRoute.of(context)?.isCurrent != true) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
+        AppPageRoute<void>(
           builder: (_) => ResumePreview(store: store, resumeId: selected),
         ),
       );
@@ -129,7 +129,7 @@ class _ResumePreviewState extends State<ResumePreview> {
       }
       toast(context, '副本已创建，原简历已保留');
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
+        AppPageRoute<void>(
           builder: (_) => ResumePreview(store: store, resumeId: copied.id),
         ),
       );

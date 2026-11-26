@@ -30,7 +30,14 @@ void _expectNoAuthRequests(FakeGateway api) {
 void _expectTableValues(Finder table, LegalTable source) {
   for (final value in source.rows.expand((row) => row)) {
     expect(
-      find.descendant(of: table, matching: find.text(value)),
+      find.descendant(
+        of: table,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText &&
+              widget.text.toPlainText().split('\n').contains(value),
+        ),
+      ),
       findsOneWidget,
       reason: 'The displayed disclosure must retain the complete table value',
     );
@@ -176,6 +183,54 @@ void main() {
   );
 
   for (final kind in LegalDocumentKind.values) {
+    testWidgets('Copying ${kind.name} includes every section and table row', (
+      tester,
+    ) async {
+      String? clipboard;
+      final messenger = tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = call.arguments['text'] as String;
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+      await tester.pumpWidget(MaterialApp(home: LegalDocumentPage(kind: kind)));
+      await tester.pumpAndSettle();
+      final region = tester.state<SelectableRegionState>(
+        find.byType(SelectableRegion),
+      );
+      region.selectAll(SelectionChangedCause.keyboard);
+      await tester.pump();
+      region.contextMenuButtonItems
+          .singleWhere((item) => item.type == ContextMenuButtonType.copy)
+          .onPressed!();
+      await tester.pump();
+      final document = legalDocumentFor(kind);
+      final text = clipboard!;
+      expect(text, contains(document.introduction.first.text));
+      var previousHeading = -1;
+      for (final section in document.sections) {
+        final heading = text.indexOf(section.title);
+        expect(heading, greaterThan(previousHeading), reason: section.title);
+        previousHeading = heading;
+        for (final block in section.blocks) {
+          if (block is LegalTable) {
+            for (final cell in [
+              ...block.headers,
+              ...block.rows.expand((r) => r),
+            ]) {
+              expect(text, contains(cell));
+            }
+          } else {
+            expect(text, contains(block.plainText));
+          }
+        }
+      }
+    });
+
     testWidgets('All ${kind.name} sections remain readable on a small screen', (
       tester,
     ) async {

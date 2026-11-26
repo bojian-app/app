@@ -17,12 +17,17 @@ enum ArticleNotice {
   final String label;
 }
 
-typedef ArticleDeclaration = ({bool original, ArticleNotice notice});
+typedef ArticleDeclaration = ({
+  bool original,
+  ArticleNotice notice,
+  bool watermark,
+});
 
 ArticleDeclaration readArticleDeclaration(Map<String, dynamic> content) {
   final data = content['declaration'];
   return (
     original: data is Map && data['original'] == true,
+    watermark: data is Map && data['watermark'] == true,
     notice: ArticleNotice.values.firstWhere(
       (entry) => data is Map && entry.name == data['type'],
       orElse: () => ArticleNotice.none,
@@ -76,6 +81,7 @@ class _DeclarationSheet extends StatefulWidget {
 
 class _DeclarationSheetState extends State<_DeclarationSheet> {
   late bool original = widget.initial.original;
+  late bool watermark = widget.initial.watermark;
   late ArticleNotice notice = widget.initial.notice;
 
   void explain() {
@@ -112,11 +118,21 @@ class _DeclarationSheetState extends State<_DeclarationSheet> {
   Widget build(BuildContext context) => _SheetFrame(
     title: '内容声明',
     action: '确定',
-    onPressed: () =>
-        Navigator.pop(context, (original: original, notice: notice)),
+    onPressed: () => Navigator.pop(context, (
+      original: original,
+      notice: notice,
+      watermark: watermark,
+    )),
     child: ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       children: [
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('图片水印'),
+          value: watermark,
+          onChanged: (value) => setState(() => watermark = value),
+        ),
+        const Divider(),
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
           title: const Text('这是我的原创内容'),

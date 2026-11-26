@@ -14,6 +14,37 @@ import 'generated/auth.pb.dart' as auth;
 import 'http_routes.dart';
 import '../app_environment.dart';
 
+typedef ModerationExcerpt = ({
+  String field,
+  String text,
+  String match,
+  int? blockIndex,
+  int? startUtf16,
+});
+
+extension ModerationExcerptLocation on ModerationExcerpt {
+  int? indexIn(String source, {bool trimmed = false}) {
+    final reported = startUtf16;
+    if (reported != null) {
+      final prefix = trimmed ? source.length - source.trimLeft().length : 0;
+      final start = prefix + reported;
+      if (reported < 0 ||
+          start > source.length ||
+          !source.startsWith(text, start)) {
+        return null;
+      }
+      return start;
+    }
+    final start = source.indexOf(text);
+    return start >= 0 && source.indexOf(text, start + 1) < 0 ? start : null;
+  }
+}
+
+typedef ModerationViolation = ({
+  String message,
+  List<ModerationExcerpt> excerpts,
+});
+
 class ApiFailure implements Exception {
   const ApiFailure(
     this.message, {
@@ -27,21 +58,43 @@ class ApiFailure implements Exception {
   final bool unauthenticated;
   final Object? cause;
   final Object? details;
-  List<String> get violationMessages {
+  List<ModerationViolation> get violations {
     final value = details;
     if (value is! Map) return const [];
     final moderation = value['moderation'];
     if (moderation is! Map) return const [];
     final violations = moderation['violations'];
     if (violations is! List) return const [];
-    return violations
-        .whereType<Map>()
-        .map((v) => v['message'])
-        .whereType<String>()
-        .where((v) => v.trim().isNotEmpty)
-        .toSet()
-        .toList();
+    final byReason = <String, Set<ModerationExcerpt>>{};
+    for (final row in violations.whereType<Map>()) {
+      final message = row['message'];
+      if (message is! String || message.trim().isEmpty) continue;
+      final excerpts = byReason.putIfAbsent(message, () => {});
+      final raw = row['excerpts'];
+      if (raw is! List) continue;
+      for (final item in raw.whereType<Map>()) {
+        final text = item['text'];
+        if (text is! String || text.trim().isEmpty) continue;
+        excerpts.add((
+          field: item['field'] is String ? item['field'] as String : '',
+          text: text,
+          match: item['match'] is String ? item['match'] as String : '',
+          blockIndex: item['block_index'] is int
+              ? item['block_index'] as int
+              : null,
+          startUtf16: item['start_utf16'] is int
+              ? item['start_utf16'] as int
+              : null,
+        ));
+      }
+    }
+    return [
+      for (final entry in byReason.entries)
+        (message: entry.key, excerpts: entry.value.toList()),
+    ];
   }
+
+  List<String> get violationMessages => [for (final v in violations) v.message];
 
   @override
   String toString() => message;
