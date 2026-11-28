@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'package:flutter/cupertino.dart'
     show CupertinoAlertDialog, CupertinoDialogAction;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -15,9 +16,11 @@ import 'app_store.dart';
 import 'api/bojian_api.dart';
 import 'article_rich_content.dart';
 import 'article_link.dart';
+import 'article_media_picker.dart';
 import 'article_photo.dart';
 import 'article_poll.dart';
 import 'article_privacy.dart';
+import 'article_tags.dart';
 import 'article_topic.dart';
 
 import 'package:flutter_quill/quill_delta.dart' show Delta;
@@ -68,6 +71,14 @@ class _ArticleBlockEmbed extends quill.EmbedBuilder {
                       : () => state.editCaption(embedContext, block),
                   child: const Text('编辑说明'),
                 ),
+              if (kind == 'poll')
+                IconButton(
+                  tooltip: block['mode'] == 'question' ? '编辑问答' : '编辑投票',
+                  icon: const AppIcon(AppIcons.edit, size: 18),
+                  onPressed: state.busy
+                      ? null
+                      : () => state.editPoll(embedContext, block),
+                ),
               if (kind == 'link')
                 IconButton(
                   tooltip: '编辑链接',
@@ -114,6 +125,9 @@ class _StoryComposerState extends State<StoryComposer> {
   final editorKey = GlobalKey<quill.EditorState>();
   _ComposerAction? pendingAction;
   bool choosing = false;
+
+  /// Set while picked pictures and videos are on their way up.
+  ({int done, int total})? uploading;
   bool get busy => pendingAction != null || choosing;
   _ToolPanel panel = _ToolPanel.none;
   bool headingPicker = false;
@@ -122,6 +136,10 @@ class _StoryComposerState extends State<StoryComposer> {
   String get watermarkLabel => 'Z优简 · ${userDisplayName(widget.store.name)}';
   bool allowExit = false;
   late final String initialTitle, initialDelta;
+  late final List<String> initialTags;
+
+  /// Chosen apart from the writing, and listed under it.
+  final tags = <String>[];
   late final ArticleDeclaration initialDeclaration;
   late ArticleDeclaration declaration;
   late final int session;
@@ -134,7 +152,9 @@ class _StoryComposerState extends State<StoryComposer> {
       declaration != initialDeclaration ||
       privacy != initialPrivacy ||
       title.text != initialTitle ||
+      tagsChanged ||
       jsonEncode(editor.document.toDelta().toJson()) != initialDelta;
+  bool get tagsChanged => !listEquals(tags, initialTags);
   @override
   void initState() {
     super.initState();
@@ -142,6 +162,9 @@ class _StoryComposerState extends State<StoryComposer> {
     privacy = initialPrivacy = ArticlePrivacy.fromDraft(widget.draft);
     declaration = initialDeclaration = readArticleDeclaration(originalContent);
     title.text = initialTitle = '${widget.draft?['title'] ?? ''}';
+    final split = splitArticleTags(originalContent);
+    if (!guidance) tags.addAll(split.tags);
+    initialTags = [...tags];
     editor = widget.draft == null
         ? quill.QuillController.basic()
         : quill.QuillController(
@@ -149,7 +172,7 @@ class _StoryComposerState extends State<StoryComposer> {
               articleDeltaFromContent(
                 guidance
                     ? richContent('${originalContent['question'] ?? ''}')
-                    : originalContent,
+                    : split.body,
               ),
             ),
             selection: const TextSelection.collapsed(offset: 0),
@@ -221,7 +244,7 @@ class _StoryComposerState extends State<StoryComposer> {
               (op.data is String && (op.data as String).trim().isNotEmpty),
         );
   bool get hasDraftContent =>
-      title.text.trim().isNotEmpty || hasPublishableContent;
+      title.text.trim().isNotEmpty || tags.isNotEmpty || hasPublishableContent;
 
   void changePanel(_ToolPanel next) {
     if (busy) return;
@@ -264,8 +287,20 @@ class _StoryComposerState extends State<StoryComposer> {
     applyDelta(delta, cursor);
   }
 
+  /// How many more pictures and videos the post has room for.
+  int get mediaRoom =>
+      maxArticleMedia -
+      articleMediaCount(
+        articleContentFromDelta(editor.document.toDelta().toJson()),
+      );
+
   Future<void> insertTool(String tool) async {
     if (busy) return;
+    final room = tool == '图片或视频' ? mediaRoom : 0;
+    if (tool == '图片或视频' && room <= 0) {
+      toast(context, '一条动态最多添加 $maxArticleMedia 个图片或视频');
+      return;
+    }
     final selection = editor.selection;
     dismissKeyboard();
     setState(() {
@@ -276,26 +311,24 @@ class _StoryComposerState extends State<StoryComposer> {
       if (tool == '话题') {
         final name = await pickArticleTopic(context, widget.store);
         if (!mounted || name == null || widget.store.epoch != session) return;
-        final topic = '#$name#';
-        final (start, end) = selectedRange(selection);
-        final delta = Delta()
-          ..retain(start)
-          ..delete(end - start)
-          ..insert(topic, {'link': articleTopicLink(name)})
-          ..insert(' ');
-        applyDelta(delta, start + topic.length + 1);
-      } else if (tool == '投票') {
-        final poll = await openArticlePollComposer(context, widget.store);
-        if (!mounted || poll == null || widget.store.epoch != session) return;
-        // Finishing a poll or question publishes the post at once; it is not
-        // placed in the editor first.
-        setState(() => choosing = false);
-        await publish(poll: poll);
-        return;
+        if (!tags.contains(name)) setState(() => tags.add(name));
       } else {
         final List<Map<String, dynamic>> blocks;
         if (tool == '图片或视频') {
-          blocks = await pickArticlePhotos(context, widget.store);
+          blocks = await pickArticlePhotos(
+            context,
+            widget.store,
+            limit: room,
+            onProgress: (done, total) {
+              if (mounted) {
+                setState(() => uploading = (done: done, total: total));
+              }
+            },
+          );
+        } else if (tool == '投票') {
+          // It joins the writing, and is published along with it.
+          final poll = await openArticlePollComposer(context, widget.store);
+          blocks = [?poll];
         } else {
           final url = await editArticleLink(context);
           blocks = [
@@ -309,9 +342,40 @@ class _StoryComposerState extends State<StoryComposer> {
     } catch (error) {
       if (mounted) await showRequestFailure(context, error);
     } finally {
-      if (mounted) setState(() => choosing = false);
+      if (mounted) {
+        setState(() {
+          choosing = false;
+          uploading = null;
+        });
+      }
     }
   }
+
+  Widget uploadStatus(int done, int total) => Padding(
+    key: const ValueKey('composer-uploading'),
+    padding: const EdgeInsets.fromLTRB(
+      appPageHorizontalPadding,
+      8,
+      appPageHorizontalPadding,
+      8,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 6,
+      children: [
+        Text(
+          '正在上传 $done/$total',
+          style: TextStyle(fontSize: 12, color: context.colors.muted),
+        ),
+        LinearProgressIndicator(
+          // Moves on its own until the first one is up.
+          value: done == 0 ? null : done / total,
+          minHeight: 3,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ],
+    ),
+  );
 
   (int, int) selectedRange(TextSelection selection) {
     final last = editor.document.length - 1;
@@ -364,6 +428,36 @@ class _StoryComposerState extends State<StoryComposer> {
     replaceBlock(embed, {...block, 'url': url.toString()});
   }
 
+  /// A saved poll never changes: finishing its form makes a new one, which
+  /// takes the old one's place.
+  Future<void> editPoll(
+    quill.EmbedContext embed,
+    Map<String, dynamic> block,
+  ) async {
+    dismissKeyboard();
+    final poll = await openArticlePollComposer(
+      context,
+      widget.store,
+      initial: block,
+    );
+    if (!mounted ||
+        poll == null ||
+        widget.store.epoch != session ||
+        embed.node.parent == null) {
+      return;
+    }
+    replaceBlock(embed, poll);
+  }
+
+  /// A poll's time runs from when it is made, so one left in a draft may have
+  /// closed before the post goes out.
+  static bool hasClosedPoll(Map<String, dynamic> content) =>
+      (content['blocks'] as List? ?? const []).whereType<Map>().any((block) {
+        if (block['kind'] != 'poll') return false;
+        final end = DateTime.tryParse('${block['ends_at'] ?? ''}');
+        return end != null && !end.isAfter(DateTime.now());
+      });
+
   void replaceBlock(quill.EmbedContext embed, Map<String, dynamic> block) {
     final offset = embed.node.documentOffset;
     applyDelta(
@@ -381,22 +475,31 @@ class _StoryComposerState extends State<StoryComposer> {
     if (mounted && selected != null) setState(() => declaration = selected);
   }
 
-  /// [poll] is a poll or question just made in the form: it joins the post
-  /// being published, and returns to the editor only if publishing fails.
-  Future<void> publish({bool submit = true, Map<String, dynamic>? poll}) async {
+  Future<void> publish({bool submit = true}) async {
     if (busy) return;
     final text = editor.document.toPlainText().trim();
-    if (poll == null && !(submit ? hasPublishableContent : hasDraftContent)) {
+    if (!(submit ? hasPublishableContent : hasDraftContent)) {
       toast(context, submit ? '请写下正文或插入内容' : '请先填写标题或正文');
       return;
     }
     dismissKeyboard();
     final operations = editor.document.toDelta().toJson();
-    final content = guidance
-        ? {...originalContent, 'question': text}
-        : widget.draft != null && jsonEncode(operations) == initialDelta
-        ? originalContent
-        : {...originalContent, ...articleContentFromDelta(operations)};
+    final Map<String, dynamic> content;
+    if (guidance) {
+      content = {...originalContent, 'question': text};
+    } else if (widget.draft != null &&
+        !tagsChanged &&
+        jsonEncode(operations) == initialDelta) {
+      content = originalContent;
+    } else {
+      final written = articleContentFromDelta(operations);
+      content = {
+        ...originalContent,
+        ...written,
+        if (tags.isNotEmpty)
+          'blocks': [...written['blocks'] as List, articleTagBlock(tags)],
+      };
+    }
     if (declaration != initialDeclaration) {
       if (declaration.label.isEmpty && !declaration.watermark) {
         content.remove('declaration');
@@ -409,8 +512,14 @@ class _StoryComposerState extends State<StoryComposer> {
         };
       }
     }
-    if (poll != null) {
-      content['blocks'] = [...(content['blocks'] as List? ?? const []), poll];
+    final excess = articleMediaCount(content) - maxArticleMedia;
+    if (excess > 0) {
+      toast(context, '一条动态最多 $maxArticleMedia 个图片或视频，请删掉 $excess 个');
+      return;
+    }
+    if (submit && hasClosedPoll(content)) {
+      toast(context, '投票或问答已过截止时间，请重新设置后发布');
+      return;
     }
     editor.readOnly = true;
     setState(
@@ -469,8 +578,6 @@ class _StoryComposerState extends State<StoryComposer> {
       if (!mounted) return;
       editor.readOnly = false;
       setState(() => pendingAction = null);
-      // Keep the poll: it is saved already, so the writer can try again.
-      if (poll != null) placeBlocks(editor.selection, [poll]);
       if (chosen != null && locations[chosen] != null) {
         _revealExcerpt(chosen.field == 'title', locations[chosen]!);
       }
@@ -646,6 +753,14 @@ class _StoryComposerState extends State<StoryComposer> {
     ],
   );
 
+  /// A chosen tag as it will look on the post, with a way to drop it.
+  Widget tagChip(String tag) => ArticleHangTag(
+    tag,
+    key: ValueKey('composer-tag-$tag'),
+    shade: tags.indexOf(tag).isOdd,
+    onRemove: busy ? () {} : () => setState(() => tags.remove(tag)),
+  );
+
   quill.DefaultTextBlockStyle style(
     double size, {
     bool bold = false,
@@ -812,7 +927,10 @@ class _StoryComposerState extends State<StoryComposer> {
                     }
                   },
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 280),
+                    // Tags sit right under the writing, so leave them in view.
+                    constraints: BoxConstraints(
+                      minHeight: tags.isEmpty ? 280 : 160,
+                    ),
                     child: quill.QuillEditor.basic(
                       key: const ValueKey('composer-body'),
                       controller: editor,
@@ -830,7 +948,7 @@ class _StoryComposerState extends State<StoryComposer> {
                           }
                         },
                         scrollable: false,
-                        minHeight: 280,
+                        minHeight: tags.isEmpty ? 280 : 160,
                         placeholder: guidance ? '想请教的问题…' : '写下你的经历与想法…',
                         embedBuilders: [_ArticleBlockEmbed(this)],
                         customStyles: quill.DefaultStyles(
@@ -861,6 +979,15 @@ class _StoryComposerState extends State<StoryComposer> {
                     ),
                   ),
                 ),
+                if (tags.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    key: const ValueKey('composer-tags'),
+                    spacing: 6,
+                    runSpacing: 8,
+                    children: [for (final tag in tags) tagChip(tag)],
+                  ),
+                ],
               ],
             ),
           ),
@@ -871,7 +998,14 @@ class _StoryComposerState extends State<StoryComposer> {
                 padding: EdgeInsets.only(
                   bottom: MediaQuery.viewInsetsOf(context).bottom,
                 ),
-                child: _ComposerToolbar(state: this),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (uploading case final progress?)
+                      uploadStatus(progress.done, progress.total),
+                    _ComposerToolbar(state: this),
+                  ],
+                ),
               ),
       ),
     ),

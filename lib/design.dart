@@ -144,16 +144,26 @@ class DataStatus extends StatelessWidget {
     required this.empty,
     this.title = '这里还没有内容',
     this.subtitle = '下拉刷新，查看最新内容。',
+    this.art = EmptyArt.post,
   });
   final AppStore store;
   final String section, title, subtitle;
+
+  /// Nothing else is listed, so an empty or failed state takes the page.
   final bool empty;
+  final EmptyArt art;
   @override
   Widget build(BuildContext context) {
     if (store.loading.contains(section)) {
       return empty ? const ListSkeleton() : const SizedBox.shrink();
     }
     final error = store.errors[section];
+    if (empty && store.isAuthenticated && error != null) {
+      return EmptyState.failed(
+        error,
+        onRetry: () => runRequest(context, () => store.load(section)),
+      );
+    }
     if (!store.isAuthenticated || error != null) {
       return Padding(
         padding: const EdgeInsets.all(20),
@@ -184,7 +194,9 @@ class DataStatus extends StatelessWidget {
         ),
       );
     }
-    return empty ? EmptyState(title, subtitle) : const SizedBox.shrink();
+    return empty
+        ? EmptyState(title, subtitle, art: art)
+        : const SizedBox.shrink();
   }
 }
 

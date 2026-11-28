@@ -188,6 +188,23 @@ class FakeGateway implements ApiGateway {
             as Map<String, dynamic>,
       );
     }
+    final term = method == 'GetFeed'
+        ? (query['query'] ?? '').toLowerCase()
+        : '';
+    if (term.isNotEmpty) {
+      // The server answers a search with the matching dynamics only.
+      final rows = documents[method]?['items'] as List? ?? [];
+      return ApiDocument({
+        'items': [
+          for (final row in rows.cast<Map>())
+            if ('${row['title']} ${(row['author'] as Map?)?['display_name']} '
+                    '${plainContent(row['content'])}'
+                .toLowerCase()
+                .contains(term))
+              row,
+        ],
+      });
+    }
     return ApiDocument(documents[method] ?? {'items': []});
   }
 

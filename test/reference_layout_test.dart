@@ -140,6 +140,8 @@ void main() {
           expect(find.text('没有找到相关内容'), findsOneWidget);
           expect(find.text(story.title), findsNothing);
           await capture(tester, 'discovery-reference-empty-${config.name}');
+          await tester.tap(find.byTooltip('清空搜索'));
+          await tester.pumpAndSettle();
         }
         final discoveryScroll = discoveryFeedPosition(tester);
         discoveryScroll.jumpTo(0);

@@ -2,6 +2,7 @@ import 'app_page_bar.dart';
 
 import 'package:flutter/material.dart';
 
+import 'contents_sheet.dart';
 import 'design.dart';
 import 'legal_document.dart';
 
@@ -35,71 +36,18 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
   }
 
   Future<void> showDirectory() async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: context.colors.surface,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        top: false,
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * .62,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  appPageHorizontalPadding,
-                  0,
-                  appPageHorizontalPadding,
-                  12,
-                ),
-                child: Text(
-                  '${document.title}目录',
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(
-                    appPageHorizontalPadding,
-                    0,
-                    appPageHorizontalPadding,
-                    16,
-                  ),
-                  itemCount: document.sections.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final section = document.sections[index];
-                    return TextButton(
-                      key: ValueKey('legal-directory-${section.id}'),
-                      onPressed: () => Navigator.of(context).pop(section.id),
-                      style: TextButton.styleFrom(
-                        foregroundColor: context.colors.ink,
-                        alignment: Alignment.centerLeft,
-                        minimumSize: const Size.fromHeight(52),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        overlayColor: Colors.transparent,
-                      ).withoutHover(),
-                      child: Text(
-                        section.title,
-                        style: const TextStyle(fontSize: 14, height: 1.5),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
+    final selected = await showContentsSheet<String>(
+      context,
+      title: '${document.title}目录',
+      entries: [
+        for (final section in document.sections)
+          (
+            key: ValueKey('legal-directory-${section.id}'),
+            value: section.id,
+            title: section.title,
+            indent: 0,
           ),
-        ),
-      ),
+      ],
     );
     if (!mounted || selected == null) return;
     final target = sectionKeys[selected]?.currentContext;

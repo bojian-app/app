@@ -153,12 +153,13 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(tester.getSize(card).width, cardSize.width);
-          expect(tester.getSize(card).height, greaterThan(cardSize.height));
-          final discoveryOrigin = tester.getTopLeft(card);
           expect(
-            tester.widget<Text>(title).style!.fontSize,
-            greaterThan(titleSize),
+            tester.getSize(card).height,
+            greaterThanOrEqualTo(cardSize.height),
           );
+          final discoveryOrigin = tester.getTopLeft(card);
+          // Feed titles share one size with poll questions everywhere.
+          expect(tester.widget<Text>(title).style!.fontSize, titleSize);
           expect(tester.getRect(avatar).shift(-discoveryOrigin), avatarRect);
           expect(tester.takeException(), isNull);
         },

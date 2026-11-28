@@ -176,8 +176,16 @@ void main() {
     expect(find.byType(StoryDetail), findsNothing);
     expect(find.text('单选投票'), findsNothing);
     expect(find.textContaining('人参与'), findsNothing);
-    expect(find.textContaining('截止'), findsOneWidget);
-    await tester.tap(find.text('[投票] 选一个'));
+    // The box names the vote and its time left, and states it once.
+    final box = find.byKey(const ValueKey('feed-vote'));
+    expect(find.textContaining('「投票」还剩'), findsOneWidget);
+    expect(find.textContaining('截止'), findsNothing);
+    expect(find.textContaining('[投票]'), findsNothing);
+    expect(
+      find.descendant(of: box, matching: find.text('选一个')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('选一个'));
     await tester.pumpAndSettle();
     expect(find.byType(StoryDetail), findsNothing);
 
@@ -388,8 +396,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('回答错啦！正确答案是：4'), findsOneWidget);
-      expect(find.text('回答错误'), findsNothing);
+      if (embedded) {
+        // The feed card stamps the verdict and gives only the answer.
+        expect(find.bySemanticsLabel('回答错误'), findsOneWidget);
+        expect(find.text('正确答案：4'), findsOneWidget);
+        expect(find.textContaining('回答错啦'), findsNothing);
+      } else {
+        expect(find.text('回答错啦！正确答案是：4'), findsOneWidget);
+        expect(find.text('回答错误'), findsNothing);
+      }
     }
     // A right answer is congratulated, with the answer.
     api.documents['GetArticlesIdPollsPollID'] = {
@@ -428,6 +443,135 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('回答错啦！'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('A feed question is stated and answered inside its own box', (
+    tester,
+  ) async {
+    final api = FakeGateway();
+    api.documents['GetArticlesIdPollsPollID'] = {
+      'responded': false,
+      'closed': false,
+      'participants': 0,
+    };
+    api.documents['PostArticlesIdPollsPollID'] = {
+      'responded': true,
+      'closed': false,
+      'participants': 1,
+      'correct': true,
+      'correct_answer': '一剑光寒十九洲',
+    };
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    final ends = DateTime.now().add(const Duration(hours: 23, minutes: 30));
+    final story = decodeStory({
+      'id': 5,
+      'title': '',
+      'content': {
+        'blocks': [
+          {
+            'kind': 'poll',
+            'mode': 'question',
+            'poll_id': 7,
+            'title': '下一句是什么？',
+            'ends_at': ends.toUtc().toIso8601String(),
+          },
+        ],
+      },
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StoryCard(story: story, store: store, flat: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final box = find.byKey(const ValueKey('feed-question'));
+    expect(find.text('「问答」还剩23小时'), findsOneWidget);
+    expect(find.text('下一句是什么？'), findsOneWidget);
+    expect(
+      find.descendant(of: box, matching: find.text('下一句是什么？')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('截止'), findsNothing);
+    expect(find.text('0/50'), findsNothing);
+
+    // An empty answer is asked for rather than sent.
+    await tester.tap(find.text('提交'));
+    await tester.pump();
+    expect(find.text('请先输入答案'), findsOneWidget);
+    expect(api.calls, isNot(contains('PostArticlesIdPollsPollID')));
+
+    await tester.enterText(find.byType(TextField), '一剑光寒十九洲');
+    await tester.tap(find.text('提交'));
+    await tester.pumpAndSettle();
+    expect(api.lastMutationBody?['answer'], '一剑光寒十九洲');
+    expect(find.byKey(const ValueKey('answer-stamp')), findsOneWidget);
+    expect(find.text('回答\n正确'), findsOneWidget);
+    expect(find.text('正确答案：一剑光寒十九洲'), findsOneWidget);
+    expect(find.textContaining('恭喜你'), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byType(StoryDetail), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('A multiple choice vote asks for a choice before it is sent', (
+    tester,
+  ) async {
+    final api = FakeGateway();
+    api.documents['GetArticlesIdPollsPollID'] = {
+      'responded': false,
+      'closed': false,
+      'participants': 0,
+    };
+    api.documents['PostArticlesIdPollsPollID'] = {
+      'responded': true,
+      'closed': false,
+      'participants': 1,
+      'counts': [1, 0],
+      'selections': [0],
+    };
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: Scaffold(
+          body: ArticlePollCard(
+            store: store,
+            articleID: 1,
+            embedded: true,
+            block: const {
+              'kind': 'poll',
+              'mode': 'poll',
+              'poll_id': 3,
+              'title': '想去哪',
+              'multiple': true,
+              'max_selections': 2,
+              'options': ['山', '海'],
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('「多选投票」'), findsOneWidget);
+    await tester.tap(find.text('投票'));
+    await tester.pump();
+    expect(find.text('请先选择选项'), findsOneWidget);
+    expect(api.calls, isNot(contains('PostArticlesIdPollsPollID')));
+    await tester.tap(find.text('山'));
+    await tester.pump();
+    await tester.tap(find.text('投票'));
+    await tester.pumpAndSettle();
+    expect(api.lastMutationBody?['selections'], [0]);
+    expect(find.text('100%'), findsOneWidget);
+    expect(find.text('投票'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 }

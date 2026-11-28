@@ -174,4 +174,16 @@ void main() {
       expect(find.text('录视频'), findsOneWidget);
     },
   );
+
+  testWidgets('The picker shows how many more the post can take', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: ArticleMediaPicker(limit: 4)),
+    );
+    expect(find.text('下一步(0/4)'), findsOneWidget);
+    await tester.tap(find.byTooltip('上传说明'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('最多 9 个图片或视频'), findsOneWidget);
+  });
 }

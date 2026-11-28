@@ -17,7 +17,6 @@ import 'app_store.dart';
 import 'app_update.dart';
 import 'app_photo_picker.dart';
 import 'developer_verification_page.dart';
-import 'form_page_layout.dart';
 import 'design.dart';
 import 'membership_page.dart';
 import 'order_history_page.dart';
@@ -107,7 +106,12 @@ class _AddFriendSheetState extends State<AddFriendSheet> {
         if (error != null)
           Text(error!, style: TextStyle(color: context.colors.muted)),
         if (searched && results.isEmpty && error == null)
-          const EmptyState('没有找到匹配的用户。', '试试其他昵称或Z优简 ID', compact: true),
+          const EmptyState(
+            '没有找到匹配的用户。',
+            '试试其他昵称或Z优简 ID',
+            art: EmptyArt.search,
+            compact: true,
+          ),
         for (final user in results)
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -567,12 +571,12 @@ class _ProfilePageState extends State<ProfilePage>
                 child: !store.isAuthenticated
                     ? Scaffold(
                         backgroundColor: context.colors.surface,
-                        appBar: widget.onExit == null
-                            ? null
-                            : AppPageBar(
-                                leading: BackButton(onPressed: widget.onExit),
-                                title: const Text('我的'),
-                              ),
+                        appBar: AppPageBar(
+                          leading: widget.onExit == null
+                              ? null
+                              : BackButton(onPressed: widget.onExit),
+                          title: const Text('我的'),
+                        ),
                         body: SafeArea(
                           child: DataStatus(
                             store: store,
@@ -1039,21 +1043,6 @@ class _ProfileMenuIdentity extends StatelessWidget {
   );
 }
 
-class _ProfileSurface extends StatelessWidget {
-  const _ProfileSurface({required this.child});
-  final Widget child;
-  @override
-  Widget build(BuildContext context) => Material(
-    color: context.colors.surface,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(18),
-      side: BorderSide(color: context.colors.border),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: child,
-  );
-}
-
 class _ProfileContentTab extends StatefulWidget {
   const _ProfileContentTab({required this.index, required this.child});
   final int index;
@@ -1068,8 +1057,19 @@ class _ProfileContentTabState extends State<_ProfileContentTab>
   TabController? tabs;
   bool active = false;
 
+  /// Whether the list has been through its first frame, which it spends joined.
+  bool settled = false;
+
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => settled = true);
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -1100,12 +1100,18 @@ class _ProfileContentTabState extends State<_ProfileContentTab>
     // resting at its top lets a drag or fling in the visible list expand the
     // header, and focus in one tab moves the others. Only the visible tab joins
     // the coordinator; switching controllers keeps each list's offset.
+    //
+    // A new list joins for its first frame even when idle. A swipe builds the
+    // next page before it is the current one, and a list that started apart
+    // would not hear of the change: it would never join, and the header would
+    // stop following drags on it. Its scroll position also has to be made by
+    // the coordinator to be able to return to it.
     final inner = PrimaryScrollController.maybeOf(context);
     final child = FocusScope(
       canRequestFocus: active,
       child: TickerMode(enabled: active, child: widget.child),
     );
-    return active && inner != null
+    return (active || !settled) && inner != null
         ? PrimaryScrollController(
             // Matches the inheritance NestedScrollView gives its body.
             automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
@@ -1151,11 +1157,7 @@ class _SignOutButtonState extends State<_SignOutButton> {
 }
 
 class ProfileEditor extends StatefulWidget {
-  const ProfileEditor({
-    super.key,
-    required this.store,
-    this.action = ProfileEditAction.settings,
-  });
+  const ProfileEditor({super.key, required this.store, required this.action});
   final AppStore store;
   final ProfileEditAction action;
   @override
@@ -1222,7 +1224,9 @@ class _ProfileEditorState extends State<ProfileEditor> {
                     children: [
                       for (var i = 0; i < systemAvatarNames.length; i++)
                         SizedBox(
-                          width: (constraints.maxWidth - 36) / 4,
+                          // Five per row; floor so rounding never wraps early.
+                          width: ((constraints.maxWidth - 48) / 5)
+                              .floorToDouble(),
                           child: Semantics(
                             selected: currentSystemAvatar == i,
                             child: InkWell(
@@ -1246,7 +1250,9 @@ class _ProfileEditorState extends State<ProfileEditor> {
                                       seed: '',
                                       variant: i,
                                       size:
-                                          (constraints.maxWidth - 36) / 4 - 10,
+                                          ((constraints.maxWidth - 48) / 5)
+                                              .floorToDouble() -
+                                          10,
                                     ),
                                   ),
                                   const SizedBox(height: 5),
@@ -1349,7 +1355,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
 
   Future<void> saveProfile() async {
     if (saving || choosing) return;
-    if (widget.action == ProfileEditAction.settings &&
+    if (widget.action == ProfileEditAction.nickname &&
         name.text.trim().isEmpty) {
       toast(context, '给自己取一个昵称吧');
       return;
@@ -1379,7 +1385,8 @@ class _ProfileEditorState extends State<ProfileEditor> {
           await widget.store.updateProfile(
             name.text.trim(),
             bio.text.trim(),
-            updateName: widget.action == ProfileEditAction.settings,
+            updateName: widget.action == ProfileEditAction.nickname,
+            updateBio: widget.action == ProfileEditAction.bio,
           );
         }
       } finally {
@@ -1396,264 +1403,38 @@ class _ProfileEditorState extends State<ProfileEditor> {
     }
   }
 
-  Widget _avatarSection() => _ProfileSurface(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Semantics(
-            label: '更换个人头像',
-            button: true,
-            child: InkWell(
-              onTap: saving || choosing ? null : chooseAvatar,
-              borderRadius: BorderRadius.circular(30),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: context.colors.canvas,
-                      borderRadius: BorderRadius.circular(32),
-                      border: Border.all(color: context.colors.border),
-                    ),
-                    child: ProfileAvatar(
-                      seed: avatarSeed,
-                      url: widget.store.avatarURL,
-                      variant: selectedAvatar,
-                      file: selectedPhoto,
-                      size: 84,
-                    ),
-                  ),
-                  Positioned(
-                    right: -2,
-                    bottom: -2,
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: context.colors.palette.seed,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                      ),
-                      child: const AppIcon(
-                        AppIcons.avatarEdit,
-                        size: 13,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextButton(
-            style: TextButton.styleFrom(
-              minimumSize: const Size(0, 36),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              textStyle: Theme.of(context).textTheme.labelLarge
-                  ?.copyWith(fontSize: 12, fontWeight: FontWeight.w600),
-            ).withoutHover(),
-            onPressed: saving || choosing ? null : chooseAvatar,
-            child: Text(choosing ? '选择中…' : '更换头像'),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _profileField(
-    TextEditingController controller,
-    String label,
-    int limit, {
-    bool multiline = false,
-  }) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: controller,
-            builder: (context, value, _) => Text(
-              '${value.text.characters.length}/$limit',
-              style: TextStyle(fontSize: 10, color: context.colors.muted),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 10),
-      TextField(
-        key: ValueKey(multiline ? 'profile-bio' : 'profile-name'),
-        controller: controller,
-        enabled: !saving,
-        textInputAction: multiline
-            ? TextInputAction.newline
-            : TextInputAction.next,
-        minLines: multiline ? 4 : 1,
-        maxLines: multiline ? 6 : 1,
-        maxLength: limit,
-        buildCounter: (
-          _, {
-          required currentLength,
-          required isFocused,
-          maxLength,
-        }) => null,
-        style: TextStyle(
-          fontSize: multiline ? 14 : 16,
-          height: 1.6,
-          fontWeight: multiline ? FontWeight.w400 : FontWeight.w600,
-        ),
-        decoration: InputDecoration(
-          hintText: multiline ? '介绍一下自己' : '填写你的昵称',
-          fillColor: context.colors.canvas,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 13,
-          ),
-        ),
-      ),
-    ],
-  );
-
-  Widget _detailsSection() => _ProfileSurface(
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.action == ProfileEditAction.settings) ...[
-            _profileField(name, '昵称', 20),
-            const SizedBox(height: 20),
-            const Divider(height: 1),
-            const SizedBox(height: 20),
-          ],
-          _profileField(bio, '个人简介', 120, multiline: true),
-        ],
-      ),
-    ),
-  );
-
   @override
-  Widget build(BuildContext context) {
-    if (widget.action == ProfileEditAction.avatar) {
-      return PopScope(
-        canPop: !saving,
-        child: ProfileAvatarEditorView(
-          preview: (size) => ProfileAvatar(
-            seed: avatarSeed,
-            url: widget.store.avatarURL,
-            variant: selectedAvatar,
-            file: selectedPhoto,
-            size: size,
-            borderRadius: 0,
-          ),
-          saving: saving,
-          choosing: choosing,
-          hasChanges: selectedAvatar != null || selectedPhoto != null,
-          onGallery: chooseLocalPhoto,
-          onSystemAvatar: chooseAvatar,
-          onSave: saveProfile,
+  Widget build(BuildContext context) => PopScope(
+    canPop: !saving,
+    child: switch (widget.action) {
+      ProfileEditAction.avatar => ProfileAvatarEditorView(
+        preview: (size) => ProfileAvatar(
+          seed: avatarSeed,
+          url: widget.store.avatarURL,
+          variant: selectedAvatar,
+          file: selectedPhoto,
+          size: size,
+          borderRadius: 0,
         ),
-      );
-    }
-    if (widget.action == ProfileEditAction.bio) {
-      return PopScope(
-        canPop: !saving,
-        child: ProfileBiographyEditorView(
-          controller: bio,
-          saving: saving,
-          onSave: saveProfile,
-        ),
-      );
-    }
-    return PopScope(
-      canPop: !saving,
-      child: Scaffold(
-        appBar: AppPageBar(
-          title: const Text('编辑个人资料'),
-          actions: const [DismissKeyboardButton()],
-        ),
-        body: GestureDetector(
-          onTap: dismissKeyboard,
-          behavior: HitTestBehavior.translucent,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: LayoutBuilder(
-                builder: (context, constraints) => ListView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(
-                    appPageHorizontalPadding,
-                    16,
-                    appPageHorizontalPadding,
-                    24,
-                  ),
-                  children: [
-                    if (constraints.maxWidth >= 600)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(width: 190, child: _avatarSection()),
-                          const SizedBox(width: 16),
-                          Expanded(child: _detailsSection()),
-                        ],
-                      )
-                    else ...[
-                      _avatarSection(),
-                      const SizedBox(height: 16),
-                      _detailsSection(),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        bottomNavigationBar: AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
-          ),
-          child: BottomActionBar(
-            maxWidth: 760,
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                key: const ValueKey('profile-save'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                ).withoutHover(),
-                onPressed: saving || choosing ? null : saveProfile,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (saving) ...[
-                      const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(width: 10),
-                    ],
-                    Text(saving ? '正在保存…' : '保存资料'),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+        saving: saving,
+        choosing: choosing,
+        hasChanges: selectedAvatar != null || selectedPhoto != null,
+        onGallery: chooseLocalPhoto,
+        onSystemAvatar: chooseAvatar,
+        onSave: saveProfile,
       ),
-    );
-  }
+      ProfileEditAction.nickname => ProfileNicknameEditorView(
+        controller: name,
+        saving: saving,
+        onSave: saveProfile,
+      ),
+      ProfileEditAction.bio => ProfileBiographyEditorView(
+        controller: bio,
+        saving: saving,
+        onSave: saveProfile,
+      ),
+    },
+  );
 
   @override
   void dispose() {

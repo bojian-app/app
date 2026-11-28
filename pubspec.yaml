@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.3.0+26112802
 
 environment:
   sdk: ^3.13.5
@@ -55,6 +55,7 @@ dependencies:
   flutter_quill: ^11.6.0
   fluwx_no_pay: ^6.0.6
   video_player: ^2.11.1
+  image: ^4.10.1
   image_picker: ^1.2.4
   image_picker_android: ^0.8.13+25
   image_picker_platform_interface: ^2.11.0
@@ -86,6 +87,7 @@ flutter:
   uses-material-design: true
   shaders:
     - shaders/print_gray.frag
+    - shaders/liquid_glass.frag
   assets:
     - assets/invitation/reward-envelope-blank.png
     - assets/invitation/icons/
@@ -100,6 +102,10 @@ flutter:
             - --no-optimize-clips
             - --no-optimize-overdraw
     - assets/branding/app_icon.png
+    - assets/avatars/
+    - assets/startup/
+    - assets/discovery/invite_ad.webp
+    - assets/discovery/invite_ad_dark.webp
     - assets/membership/platinum_emblem_blue.png
     - assets/membership/chip_otter.png
     - assets/membership/invite_badge.png
@@ -113,7 +119,19 @@ flutter:
     - assets/login/wechat.jpg
     - assets/login/douyin.jpg
     # List optimized runtime images explicitly; keep PNG originals out of the bundle.
-    - assets/empty_states/cat_detective.webp
+    - assets/empty_states/empty_resume.webp
+    - assets/empty_states/empty_post.webp
+    - assets/empty_states/empty_draft.webp
+    - assets/empty_states/empty_saved.webp
+    - assets/empty_states/empty_search.webp
+    - assets/empty_states/empty_comment.webp
+    - assets/empty_states/empty_message.webp
+    - assets/empty_states/profile_hidden.webp
+    - assets/empty_states/load_failed.webp
+    - assets/empty_states/content_gone.webp
+    - assets/empty_states/empty_order.webp
+    - assets/empty_states/empty_coupon.webp
+    - assets/empty_states/empty_section.webp
     - assets/resume_ai/identity-student.webp
     - assets/resume_ai/identity-graduate.webp
     - assets/resume_ai/identity-professional.webp

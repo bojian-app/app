@@ -13,6 +13,8 @@ import 'support/fake_gateway.dart';
 
 class ProfileGateway extends FakeGateway {
   String? failure;
+  int articleCount = 1;
+  bool? isFollowing;
   final paths = <Map<String, String>>[];
   @override
   Future<ApiDocument> call(
@@ -52,14 +54,16 @@ class ProfileGateway extends FakeGateway {
               'public_id': '100002',
               'bio': '记录工作中的收获，也分享面试中的思考。',
               'city': '上海市',
+              'is_following': ?isFollowing,
             }
           : {
               'items': [
-                {
-                  'id': 8,
-                  'title': '我的面试复盘',
-                  'published_at': '2026-10-09T07:00:00Z',
-                },
+                for (var i = 0; i < articleCount; i++)
+                  {
+                    'id': 8 + i,
+                    'title': '我的面试复盘',
+                    'published_at': '2026-10-09T07:00:00Z',
+                  },
               ],
             },
     );
@@ -149,6 +153,50 @@ void main() {
     },
   );
 
+  testWidgets(
+    'The collapsed bar stays on screen however far the feed scrolls',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.padding = const FakeViewPadding(top: 40);
+      addTearDown(tester.view.reset);
+      final api = ProfileGateway()..articleCount = 20;
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      await launchProfile(tester, store);
+      final scroll = tester
+          .widget<CustomScrollView>(
+            find.byKey(const ValueKey('public-profile-scroll')),
+          )
+          .controller!;
+      for (final offset in [200.0, 500.0, 1200.0]) {
+        scroll.jumpTo(offset);
+        await tester.pumpAndSettle();
+        final back = find.byKey(const ValueKey('profile-menu'));
+        expect(back.hitTestable(), findsOneWidget, reason: 'at $offset');
+        expect(
+          tester.getTopLeft(back).dy,
+          closeTo(40, 1),
+          reason: 'at $offset',
+        );
+        final bar = tester.getRect(
+          find.byKey(const ValueKey('profile-compact-header')),
+        );
+        // The opaque bar covers the status bar, and once fully collapsed it
+        // meets the tabs.
+        expect(bar.top, closeTo(0, 1), reason: 'at $offset');
+        if (offset >= 500) {
+          expect(
+            bar.bottom,
+            closeTo(tester.getTopLeft(find.byType(ProfileContentTabs)).dy, 1),
+            reason: 'at $offset',
+          );
+        }
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('Public article opens complete detail and no draft is exposed', (
     tester,
   ) async {
@@ -174,22 +222,22 @@ void main() {
   });
 
   testWidgets(
-    'Unavailable profile hides identity and skips article requests, retry can recover',
+    'Unavailable profile hides identity, skips articles and offers the way back',
     (tester) async {
       final api = ProfileGateway()..failure = 'profile';
       final store = await testStore(authenticated: true, api: api);
       addTearDown(store.dispose);
       await launchProfile(tester, store);
       expect(find.text('该用户主页暂不可见'), findsOneWidget);
+      expect(find.text('对方可能没有公开个人主页，暂时看不到资料和动态'), findsOneWidget);
+      expect(find.text('重新加载'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('profile-unavailable-back')),
+        findsOneWidget,
+      );
       expect(find.byType(ProfileHeader), findsNothing);
       expect(api.paths.where((p) => p['second'] == 'articles'), isEmpty);
-      api.failure = null;
-      await tester.tap(find.text('重新加载'));
-      await tester.pumpAndSettle();
-      expect(find.text('小林'), findsNWidgets(2));
-      expect(find.text('我的面试复盘'), findsOneWidget);
-      // Public profiles no longer offer pull-to-refresh, so there is no
-      // in-place reload to hide a profile that later becomes unavailable.
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -394,4 +442,63 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('Following is a button on the avatar, not beside the tabs', (
+    tester,
+  ) async {
+    final api = ProfileGateway()
+      ..isFollowing = false
+      ..articleCount = 12
+      ..documents['PutUsersIdFollow'] = {'following': true}
+      ..documents['DeleteUsersIdFollow'] = {'following': false};
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await launchProfile(tester, store);
+    final badge = find.byKey(const ValueKey('profile-follow'));
+    final avatar = tester.getRect(
+      find.byKey(const ValueKey('profile-identity-avatar')),
+    );
+    final centre = tester.getCenter(badge);
+    expect(avatar.contains(centre), isTrue);
+    expect(centre.dx, greaterThan(avatar.center.dx));
+    expect(centre.dy, greaterThan(avatar.center.dy));
+    expect(find.text('关注'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(ProfileContentTabs),
+        matching: find.byType(TextButton),
+      ),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('profile-page-title')), findsNothing);
+
+    await tester.tap(find.byTooltip('关注'));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('PutUsersIdFollow'));
+    expect(find.text('已关注'), findsOneWidget);
+    // The tap followed them without opening the details behind the avatar.
+    expect(find.byType(ProfileDetailsPage), findsNothing);
+    await tester.tap(find.byTooltip('取消关注'));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('DeleteUsersIdFollow'));
+    expect(find.byTooltip('关注'), findsOneWidget);
+
+    // Gone once the header has collapsed, where it could not be seen.
+    await tester.drag(
+      find.byKey(const ValueKey('public-profile-scroll')),
+      const Offset(0, -600),
+    );
+    await tester.pumpAndSettle();
+    expect(badge.hitTestable(), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Nothing to follow wears no button', (tester) async {
+    final store = await testStore(authenticated: true, api: ProfileGateway());
+    addTearDown(store.dispose);
+    await launchProfile(tester, store);
+    expect(find.byKey(const ValueKey('profile-follow')), findsNothing);
+  });
 }

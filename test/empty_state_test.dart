@@ -1,8 +1,17 @@
 import 'package:bojian_mobile/design.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Every kind of page has its artwork in the bundle', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    for (final art in EmptyArt.values) {
+      final bytes = await rootBundle.load(art.asset);
+      expect(bytes.lengthInBytes, greaterThan(0), reason: art.asset);
+    }
+  });
+
   testWidgets(
     'Shared artwork loads in light and dark narrow layouts with large text',
     (tester) async {
@@ -21,6 +30,7 @@ void main() {
                     child: EmptyState(
                       '没有找到相关内容',
                       '试试其他关键词，或去发现页看看。',
+                      art: EmptyArt.search,
                       action: TextButton(
                         onPressed: () => tapped = true,
                         child: const Text('去看看'),
@@ -39,7 +49,7 @@ void main() {
         final provider = image.image as ResizeImage;
         expect(
           (provider.imageProvider as AssetImage).assetName,
-          EmptyState.illustrationAsset,
+          EmptyArt.search.asset,
         );
         await tester.ensureVisible(find.text('去看看'));
         await tester.tap(find.text('去看看'));
@@ -58,7 +68,14 @@ void main() {
           home: Scaffold(
             body: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              children: const [EmptyState('还没有评论，聊聊你的看法', '', compact: true)],
+              children: const [
+                EmptyState(
+                  '还没有评论，聊聊你的看法',
+                  '',
+                  art: EmptyArt.comment,
+                  compact: true,
+                ),
+              ],
             ),
           ),
         ),

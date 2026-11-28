@@ -55,7 +55,8 @@ class _MessagesPageState extends State<MessagesPage> {
       final store = widget.store;
       const section = 'messages';
       final empty = store.inbox.isEmpty;
-      _markPassiveRead(store);
+      // A retained tab keeps rebuilding while hidden: nothing is read there.
+      if (TickerMode.valuesOf(context).enabled) _markPassiveRead(store);
       final divider = Divider(
         height: 1,
         indent: appPageHorizontalPadding + 56,
@@ -97,7 +98,17 @@ class _MessagesPageState extends State<MessagesPage> {
             ),
           if (store.loading.contains(section) && empty)
             const ListSkeleton(count: 5),
-          if (store.errors[section] != null)
+          if (store.errors[section] != null &&
+              empty &&
+              !store.loading.contains(section))
+            Padding(
+              padding: gutter,
+              child: EmptyState.failed(
+                store.errors[section]!,
+                onRetry: () => store.load(section),
+              ),
+            )
+          else if (store.errors[section] != null)
             _status(
               AppIcons.error,
               store.errors[section]!,
@@ -107,7 +118,10 @@ class _MessagesPageState extends State<MessagesPage> {
           if (empty &&
               !store.loading.contains(section) &&
               store.errors[section] == null)
-            Padding(padding: gutter, child: const EmptyState('暂无系统通知', '')),
+            Padding(
+              padding: gutter,
+              child: const EmptyState('暂无系统通知', '', art: EmptyArt.message),
+            ),
         ],
       );
       final content = AutoPaginate.section(
@@ -118,7 +132,10 @@ class _MessagesPageState extends State<MessagesPage> {
           onRefresh: () => store.load(section),
           child: ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 24),
+            // Clears the home shell's floating tab bar when shown there.
+            padding: EdgeInsets.only(
+              bottom: 24 + MediaQuery.paddingOf(context).bottom,
+            ),
             itemCount: inbox.length + 2,
             findChildIndexCallback: (key) => indices[key],
             itemBuilder: (context, index) {

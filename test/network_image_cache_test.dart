@@ -88,6 +88,56 @@ void main() {
       expect(downloads, 2);
     });
 
+    testWidgets('A rendition that cannot be had gives way to the original', (
+      tester,
+    ) async {
+      final asked = <String>[];
+      await tester.runAsync(() async {
+        final file = await createSystemAvatarFile(3);
+        final png = await file.readAsBytes();
+        await discardSystemAvatarFile(file);
+        NetworkImageStore.instance = NetworkImageStore(
+          directory: () async => directory,
+          download: (url) async {
+            asked.add('$url');
+            if (url.query.contains('imageMogr2')) {
+              throw const HttpException('too large to resize');
+            }
+            return png;
+          },
+        );
+        const object = 'https://cdn.example.com/users/9/POST_ASSET/long.png';
+        const rendition =
+            '$object?imageMogr2/auto-orient%7CimageView2/3/w/1440/h/1440/q/85'
+            '&e=1&token=a';
+        const original = '$object?e=1&token=b';
+        // Each size is its own file on the device.
+        expect(stableImageKey(rendition), isNot(stableImageKey(original)));
+        expect(
+          stableImageKey(rendition),
+          stableImageKey(rendition.replaceFirst('e=1&token=a', 'e=2&token=c')),
+        );
+        // The signature covers the address as the server wrote it.
+        expect(Uri.parse(rendition).toString(), rendition);
+        final loaded = Completer<void>();
+        final stream = const CachedNetworkImage(
+          rendition,
+          fallback: original,
+        ).resolve(ImageConfiguration.empty);
+        final listener = ImageStreamListener(
+          (_, _) => loaded.complete(),
+          onError: (error, _) => loaded.completeError(error),
+        );
+        stream.addListener(listener);
+        await loaded.future;
+        stream.removeListener(listener);
+      });
+      expect(asked.map((url) => url.contains('imageMogr2')), [true, false]);
+      PaintingBinding.instance.imageCache
+        ..clear()
+        ..clearLiveImages();
+    });
+
     testWidgets('One avatar download serves every page and size', (
       tester,
     ) async {

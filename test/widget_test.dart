@@ -167,7 +167,7 @@ void main() {
     expect(find.text('这里还没有内容'), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('discovery-messages')));
+    await tapAppTab(tester, 'messages');
     await tester.pumpAndSettle();
     expect(find.text('暂无系统通知'), findsOneWidget);
     await tester.binding.handlePopRoute();
@@ -229,17 +229,17 @@ void main() {
   testWidgets('Narrow phone layouts fit all destinations', (tester) async {
     await launch(tester, width: 320);
     for (final entry in [
-      'discovery-membership',
-      'discovery-service',
-      'discovery-my-page',
+      'membership',
+      'messages',
+      'profile',
     ]) {
-      await tapDiscoveryMenuItem(tester, entry);
+      await tapAppTab(tester, entry);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const ValueKey('discovery-profile')).hitTestable(),
+        find.byKey(const ValueKey('discovery-scan')).hitTestable(),
         findsOneWidget,
       );
     }

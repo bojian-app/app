@@ -133,7 +133,8 @@ class GuidanceParticipantList extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  if (people.isEmpty) const EmptyState('暂时还没有人参与指点', ''),
+                  if (people.isEmpty)
+                    const EmptyState('暂时还没有人参与指点', '', art: EmptyArt.comment),
                   for (final person in people)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),

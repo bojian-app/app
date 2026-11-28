@@ -19,6 +19,7 @@ void main() {
   final calls = <int, List<String>>{};
   late AppStore store;
   late ValueNotifier<bool> active;
+  const houseAd = ValueKey('discovery-house-ad');
 
   setUp(() async {
     WidgetsBinding.instance.handleAppLifecycleStateChanged(
@@ -161,26 +162,69 @@ void main() {
   );
 
   for (final terminal in ['closed', 'failed']) {
-    testWidgets('$terminal stays collapsed after tab switches and rebuilds', (
-      tester,
-    ) async {
+    testWidgets(
+      '$terminal keeps the house ad after tab switches and rebuilds',
+      (tester) async {
+        await mount(tester);
+        final id = created.single;
+        await notify(tester, id, 'loaded', {'height': 88.0});
+        await notify(tester, id, terminal);
+        expect(tester.getSize(getBanner()).height, 172);
+        expect(find.byKey(houseAd), findsOneWidget);
+        expect(disposed, [id]);
+        active.value = false;
+        await tester.pumpAndSettle();
+        store.changed();
+        active.value = true;
+        await tester.pumpAndSettle();
+        expect(tester.getSize(getBanner()).height, 172);
+        expect(created, [id]);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+    );
+  }
+
+  testWidgets(
+    'The house ad replaces the creative after 5 visible seconds for good',
+    (tester) async {
       await mount(tester);
       final id = created.single;
-      await notify(tester, id, 'loaded', {'height': 88.0});
-      await notify(tester, id, terminal);
-      expect(tester.getSize(getBanner()).height, 0);
-      expect(disposed, [id]);
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.byKey(houseAd), findsNothing);
+      await notify(tester, id, 'loaded', {'height': 150.0});
+      await tester.pump(const Duration(seconds: 3));
       active.value = false;
       await tester.pumpAndSettle();
-      store.changed();
+      await tester.pump(const Duration(seconds: 10));
+      expect(disposed, isEmpty);
       active.value = true;
       await tester.pumpAndSettle();
-      expect(tester.getSize(getBanner()).height, 0);
+      await tester.pump(const Duration(seconds: 1));
+      expect(disposed, isEmpty);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(disposed, [id]);
+      expect(find.byKey(houseAd), findsOneWidget);
+      expect(tester.getSize(getBanner()).height, 172);
+      // Same left and right edges as the article content: 24 on each side.
+      expect(tester.getRect(find.byKey(houseAd)).left, 24);
+      expect(tester.getSize(find.byKey(houseAd)), const Size(312, 150));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await mount(tester);
+      expect(find.byKey(houseAd), findsOneWidget);
       expect(created, [id]);
+      MembershipStatus.instance.apply(
+        store.userID,
+        DateTime.now().add(const Duration(days: 30)),
+      );
+      await tester.pump();
+      expect(find.byKey(houseAd), findsOneWidget);
+      MembershipStatus.instance.reset(); // Cancels the expiry timer.
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
-    });
-  }
+    },
+  );
 
   testWidgets(
     'Hidden tabs defer initial loading and late creatives remain hidden until return',
@@ -269,18 +313,21 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.iOS}),
   );
 
-  testWidgets('members and unknown membership never create an ad view', (
+  testWidgets('members see only the house ad; unknown membership waits', (
     tester,
   ) async {
     MembershipStatus.instance.reset();
     await mount(tester);
     expect(created, isEmpty);
+    expect(find.byKey(houseAd), findsNothing);
     MembershipStatus.instance.apply(
       store.userID,
       DateTime.now().add(const Duration(days: 30)),
     );
     await tester.pump();
     expect(created, isEmpty);
+    expect(find.byKey(houseAd), findsOneWidget);
+    expect(tester.getSize(getBanner()).height, 172);
     MembershipStatus.instance.apply(store.userID, null);
     await tester.pump();
     expect(created, isNotEmpty);

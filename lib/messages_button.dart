@@ -60,39 +60,42 @@ class _MessagesButtonState extends State<MessagesButton> {
                 PositionedDirectional(
                   top: -8,
                   end: -13,
-                  child: Container(
-                    key: const ValueKey('messages-unread-badge'),
-                    // Wider than tall, so even one digit sits in an oval.
-                    constraints: const BoxConstraints(minWidth: 24),
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCC4939),
-                      border: Border.all(
-                        color: context.colors.surface,
-                        width: 1.5,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      unread > 99 ? '99+' : '$unread',
-                      textScaler: TextScaler.noScaling,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        height: 1.2,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
+                  child: UnreadBadge(unread),
                 ),
             ],
           ),
         ),
       );
     },
+  );
+}
+
+/// The red oval counting unread messages, drawn over an icon's corner.
+class UnreadBadge extends StatelessWidget {
+  const UnreadBadge(this.count, {super.key});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('messages-unread-badge'),
+    // Wider than tall, so even one digit sits in an oval.
+    constraints: const BoxConstraints(minWidth: 24),
+    alignment: Alignment.center,
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(
+      color: const Color(0xFFCC4939),
+      border: Border.all(color: context.colors.surface, width: 1.5),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text(
+      count > 99 ? '99+' : '$count',
+      textScaler: TextScaler.noScaling,
+      style: const TextStyle(
+        fontSize: 9,
+        height: 1.2,
+        color: Colors.white,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
   );
 }

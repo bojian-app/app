@@ -91,7 +91,7 @@ class GuidanceFeedCard extends StatelessWidget {
                   maxLines: flat ? 2 : 3,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: compactTypography ? 14 : (flat ? 16 : 15),
+                    fontSize: compactTypography || flat ? 14 : 15,
                     height: 1.45,
                     fontWeight: feedTitleWeight,
                     color: context.colors.ink,

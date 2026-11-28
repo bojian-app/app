@@ -280,10 +280,11 @@ void main() {
           }
         }
         expect(previousAvatar.width, closeTo(44, .01));
-        final compactAvatarX = config.app
-            ? 74.0
-            : appPageHorizontalPadding + 13;
-        expect(previousAvatar.center.dx, closeTo(compactAvatarX, .01));
+        // Neither a standalone page nor a home tab shows a back button.
+        expect(
+          previousAvatar.center.dx,
+          closeTo(appPageHorizontalPadding + 13, .01),
+        );
         if (config.name == 'light') {
           store.loading.add('profile');
           store.changed();
@@ -674,7 +675,7 @@ void main() {
       await openDetails(tester);
       await tester.tap(find.byKey(const ValueKey('profile-details-edit')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('profile-edit-settings')));
+      await tester.tap(find.byKey(const ValueKey('profile-edit-nickname')));
       await tester.pumpAndSettle();
       expect(find.byType(ProfileEditor), findsOneWidget);
       await tester.ensureVisible(find.byKey(const ValueKey('profile-name')));

@@ -123,6 +123,7 @@ class _ComposerToolbar extends StatelessWidget {
                           ? null
                           : () => state.changePanel(_ToolPanel.insert),
                     ),
+                    const DismissKeyboardButton(),
                     IconButton(
                       tooltip: '发布设置',
                       icon: const AppIcon(AppIcons.settings, size: 22),

@@ -10,7 +10,12 @@ extension _ResumeEditorEducation on _ResumeEditorState {
     onChanged: (index) => _update(() => _educationIndex = index),
     itemKey: (index) => ObjectKey(educationEntries[index]),
     itemBuilder: _educationEntry,
-    emptyState: const EmptyState('还没有教育经历', '通过右上角“更多”添加教育经历', compact: true),
+    emptyState: const EmptyState(
+      '还没有教育经历',
+      '通过右上角“更多”添加教育经历',
+      art: EmptyArt.section,
+      compact: true,
+    ),
   );
 
   Future<void> _showEducationActions(BuildContext sectionContext) =>

@@ -14,20 +14,31 @@ Future<void> openSharedAccountMenu(WidgetTester tester) async {
 }
 
 ScrollPosition discoveryFeedPosition(WidgetTester tester) {
-  final scrollable = find.descendant(
-    of: find.byKey(const PageStorageKey('discovery-feed-推荐')),
-    matching: find.byType(Scrollable),
-  ).first;
+  final scrollable = find
+      .descendant(
+        of: find.byKey(const PageStorageKey('discovery-feed-推荐')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
   return tester.state<ScrollableState>(scrollable).position;
 }
 
-Future<void> tapDiscoveryMenuItem(WidgetTester tester, String itemKey) async {
-  await tester.tap(find.byKey(const ValueKey('discovery-profile')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.byKey(ValueKey(itemKey)));
+/// The scroll position of the home page's search results.
+ScrollPosition discoverySearchPosition(WidgetTester tester, String term) {
+  final scrollable = find
+      .descendant(
+        of: find.byKey(ValueKey('discovery-search-$term')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  return tester.state<ScrollableState>(scrollable).position;
 }
 
+/// Taps a destination in the home shell's tab bar without settling.
+Future<void> tapAppTab(WidgetTester tester, String name) =>
+    tester.tap(find.byKey(ValueKey('app-tab-$name')));
+
 Future<void> openMyPage(WidgetTester tester) async {
-  await tapDiscoveryMenuItem(tester, 'discovery-my-page');
+  await tapAppTab(tester, 'profile');
   await tester.pumpAndSettle();
 }

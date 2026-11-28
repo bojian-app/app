@@ -30,7 +30,12 @@ extension _ResumeEditorProjects on _ResumeEditorState {
     onChanged: (index) => _update(() => _projectIndex = index),
     itemKey: (index) => ObjectKey(_projects[index]),
     itemBuilder: _projectEntry,
-    emptyState: const EmptyState('还没有项目经历', '通过右上角“更多”添加项目经历', compact: true),
+    emptyState: const EmptyState(
+      '还没有项目经历',
+      '通过右上角“更多”添加项目经历',
+      art: EmptyArt.section,
+      compact: true,
+    ),
   );
 
   Future<void> _showProjectActions(BuildContext context) =>
@@ -255,7 +260,12 @@ extension _ResumeEditorProjects on _ResumeEditorState {
       onChanged: (index) => _update(() => _setAdditionalIndex(key, index)),
       itemKey: (index) => ObjectKey(list[index]),
       itemBuilder: (index) => _additionalEntry(key, index),
-      emptyState: EmptyState('还没有$label', '通过右上角“更多”添加$label', compact: true),
+      emptyState: EmptyState(
+        '还没有$label',
+        '通过右上角“更多”添加$label',
+        art: EmptyArt.section,
+        compact: true,
+      ),
     );
   }
 

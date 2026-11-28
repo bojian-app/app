@@ -1,4 +1,5 @@
 import 'package:bojian_mobile/about_page.dart';
+import 'package:bojian_mobile/app_icons.dart';
 import 'package:bojian_mobile/app_update.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -135,6 +136,57 @@ void main() {
       expect(find.text('已是最新版本'), findsNothing);
     },
   );
+
+  testWidgets('About shows the release notes without being asked', (
+    tester,
+  ) async {
+    final store = await testStore();
+    addTearDown(store.dispose);
+    updates.releases = [
+      AppRelease.fromJson({
+        'version_name': '1.2.0',
+        'build_number': 2026112795,
+        'notes': ['应用名称更新为「Z优简」'],
+      }),
+    ];
+    await tester.pumpWidget(MaterialApp(home: AboutPage(store: store)));
+    await tester.pump();
+    expect(find.text('更新日志'), findsOneWidget);
+    expect(find.text('应用名称更新为「Z优简」'), findsOneWidget);
+  });
+
+  for (final (name, scale) in [('1.1.0', 1.0), ('1.1.0-beta.20261128', 2.0)]) {
+    testWidgets('A newer version sits with its arrow at the row end ($name)', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final store = await testStore();
+      addTearDown(store.dispose);
+      versions('1.0.0', 1, name, 2);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
+          home: AboutPage(store: store),
+        ),
+      );
+      await tester.pump();
+      final version = find.text('v$name').first;
+      final row = find.ancestor(of: version, matching: find.byType(Row)).first;
+      final arrow = tester.getRect(
+        find.descendant(of: row, matching: find.byType(AppIcon)),
+      );
+      expect(arrow.right, tester.getRect(row).right);
+      expect(tester.getRect(row).right, 360 - 24);
+      expect(tester.getRect(version).right, arrow.left - 8);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets(
     'About distinguishes a detected release from an installable package',

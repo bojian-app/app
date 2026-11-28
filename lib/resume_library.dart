@@ -103,6 +103,7 @@ class ResumeLibrary extends StatelessWidget {
                 DataStatus(
                   store: store,
                   section: 'resumes',
+                  art: EmptyArt.resume,
                   empty: store.resumes.isEmpty,
                   title: embedded ? '这里还没有内容' : '创建你的第一份简历',
                   subtitle: embedded ? '下拉刷新，查看最新内容。' : '从一份空白简历开始，逐步整理你的经历。',
@@ -132,6 +133,7 @@ class ResumeLibrary extends StatelessWidget {
         child: DataStatus(
           store: store,
           section: 'resumes',
+          art: EmptyArt.resume,
           empty: store.resumes.isEmpty,
           title: '这里还没有内容',
           subtitle: '下拉刷新，查看最新内容。',
@@ -175,6 +177,10 @@ class ResumeLibrary extends StatelessWidget {
         child: PageLoadingFooter(
           visible: store.loadingMore.contains('resumes'),
         ),
+      ),
+      // Clears the home shell's floating tab bar.
+      SliverToBoxAdapter(
+        child: SizedBox(height: MediaQuery.paddingOf(context).bottom),
       ),
     ],
   );

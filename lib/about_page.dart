@@ -18,7 +18,7 @@ class _AboutPageState extends State<AboutPage> with WidgetsBindingObserver {
   final updates = AppUpdates.instance;
   final installer = AppUpdateInstaller();
   bool startingInstall = false;
-  bool logExpanded = false;
+  bool logExpanded = true;
 
   @override
   void initState() {
@@ -271,7 +271,13 @@ class _UpdateRow extends StatelessWidget {
                     )
                   else ...[
                     if (hasUpdate)
-                      Flexible(
+                      // As wide as the number needs, up to a limit: a flexible
+                      // child would share the row with the title and leave the
+                      // arrow stranded short of the edge.
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width * .4,
+                        ),
                         child: Padding(
                           padding: const EdgeInsets.only(left: 12, right: 8),
                           child: Text(

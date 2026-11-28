@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/design.dart';
+import 'package:bojian_mobile/article_media_picker.dart';
 import 'package:bojian_mobile/article_rich_content.dart';
+import 'package:bojian_mobile/article_tags.dart';
 import 'package:bojian_mobile/story_composer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -66,7 +70,7 @@ void main() {
   });
 
   testWidgets(
-    'A link card and a topic insert at the cursor and survive reopening',
+    'A link card goes in at the cursor, a topic goes under the writing',
     (tester) async {
       final api = ComposerGateway();
       final store = await testStore(authenticated: true, api: api);
@@ -115,11 +119,21 @@ void main() {
         {
           'kind': 'paragraph',
           'spans': [
-            {'text': '#求职 / 复盘#', 'topic': '求职 / 复盘'},
-            {'text': ' 后'},
+            {'text': '后'},
           ],
         },
       ]);
+      // The topic is listed on its own, and picking it again adds nothing.
+      expect(editor.document.toPlainText(), isNot(contains('#')));
+      const chip = ValueKey('composer-tag-求职 / 复盘');
+      expect(find.byKey(chip), findsOneWidget);
+      await tester.tap(find.byTooltip('话题'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '求职 / 复盘');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(chip), findsOneWidget);
       expect(articleContentFromDelta(articleDeltaFromContent(doc)), doc);
       expect(
         tester
@@ -130,10 +144,87 @@ void main() {
       await tester.tap(find.byTooltip('移除卡片'));
       await tester.pumpAndSettle();
       expect(find.text('example.org'), findsNothing);
-      expect(editor.document.toPlainText(), contains('#求职 / 复盘# 后'));
+      await tester.tap(find.byTooltip('移除话题'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(chip), findsNothing);
+      expect(editor.document.toPlainText(), contains('后'));
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Tags are saved after the writing and reopen apart from it', (
+    tester,
+  ) async {
+    final api = ComposerGateway();
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: StoryComposer(store: store),
+      ),
+    );
+    final editor = tester
+        .widget<quill.QuillEditor>(find.byKey(const ValueKey('composer-body')))
+        .controller;
+    editor.replaceText(0, 0, '面试很顺利', const TextSelection.collapsed(offset: 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('话题'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '求职');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存草稿'));
+    await tester.pumpAndSettle();
+    final saved = api.article!['content'] as Map<String, dynamic>;
+    expect(saved['blocks'], [
+      {
+        'kind': 'paragraph',
+        'spans': [
+          {'text': '面试很顺利'},
+        ],
+      },
+      articleTagBlock(['求职']),
+    ]);
+
+    // An older draft holds its topic at the end of a sentence.
+    await tester.pumpWidget(
+      MaterialApp(
+        key: const ValueKey('again'),
+        theme: appTheme,
+        home: StoryComposer(
+          store: store,
+          draft: const {
+            'id': 7,
+            'title': '',
+            'content': {
+              'blocks': [
+                {
+                  'kind': 'paragraph',
+                  'spans': [
+                    {'text': '面试很顺利 '},
+                    {'text': '#求职#', 'topic': '求职'},
+                    {'text': ' '},
+                  ],
+                },
+              ],
+            },
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final reopened = tester
+        .widget<quill.QuillEditor>(find.byKey(const ValueKey('composer-body')))
+        .controller;
+    expect(reopened.document.toPlainText(), '面试很顺利\n');
+    expect(find.byKey(const ValueKey('composer-tag-求职')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets(
     'Formatting applies to selected text and failed submissions preserve content',
@@ -285,71 +376,20 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('Finishing a poll publishes the post at once', (tester) async {
-    tester.view.physicalSize = const Size(390, 780);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final api = ComposerGateway();
-    api.documents['PostArticlePolls'] = {
-      'kind': 'poll',
-      'poll_id': 31,
-      'mode': 'question',
-      'title': '穆兰有几位大神师？',
-    };
-    final store = await testStore(authenticated: true, api: api);
-    addTearDown(store.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: appTheme,
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => StoryComposer(store: store),
-                ),
-              ),
-              child: const Text('写动态'),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('写动态'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('更多'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('投票'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('问答'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, '穆兰有几位大神师？');
-    await tester.enterText(find.byType(TextField).last, '4');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('完成'));
-    await tester.pumpAndSettle();
-    // The writing page is gone; the poll was not left in an editor.
-    expect(find.byType(StoryComposer), findsNothing);
-    expect(api.calls, contains('PostArticlePolls'));
-    final blocks = (api.article!['content'] as Map)['blocks'] as List;
-    expect(blocks.last, containsPair('poll_id', 31));
-    await tester.pump(const Duration(seconds: 4));
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('A poll that fails to publish stays in the editor', (
+  testWidgets('A finished poll joins the writing and waits for publishing', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 780);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final api = ComposerGateway()..failing = 'PostArticles';
-    api.documents['PostArticlePolls'] = {
+    final api = ComposerGateway();
+    Map<String, dynamic> question(int id, String title) => {
       'kind': 'poll',
-      'poll_id': 32,
+      'poll_id': id,
       'mode': 'question',
-      'title': '失败重试',
+      'title': title,
     };
+    api.documents['PostArticlePolls'] = question(31, '穆兰有几位大神师？');
     final store = await testStore(authenticated: true, api: api);
     addTearDown(store.dispose);
     await tester.pumpWidget(
@@ -359,30 +399,149 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    List<Map<String, dynamic>> placed() => [
+      for (final op
+          in tester
+              .widget<quill.QuillEditor>(
+                find.byKey(const ValueKey('composer-body')),
+              )
+              .controller
+              .document
+              .toDelta()
+              .toJson())
+        if (op['insert'] case final Map insert)
+          jsonDecode(insert['bojian-block'] as String) as Map<String, dynamic>,
+    ];
+    Future<void> fill(String title) async {
+      await tester.enterText(find.byType(TextField).first, title);
+      await tester.enterText(find.byType(TextField).last, '4');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+    }
+
     await tester.tap(find.byTooltip('更多'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('投票'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('问答'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, '失败重试');
-    await tester.enterText(find.byType(TextField).last, '答案');
+    await fill('穆兰有几位大神师？');
+    // Back on the writing page with the question in it, and nothing sent.
+    expect(find.byType(StoryComposer), findsOneWidget);
+    expect(find.text('穆兰有几位大神师？'), findsOneWidget);
+    expect(placed().single['poll_id'], 31);
+    expect(api.calls, isNot(contains('PostArticles')));
+
+    // Changing it puts the new one where the old one was.
+    api.documents['PostArticlePolls'] = question(33, '改过的题目');
+    await tester.ensureVisible(find.byTooltip('编辑问答'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('完成'));
+    await tester.tap(find.byTooltip('编辑问答'));
     await tester.pumpAndSettle();
-    final editor = tester.widget<quill.QuillEditor>(
-      find.byKey(const ValueKey('composer-body')),
-    );
+    await fill('改过的题目');
+    expect(placed().single['poll_id'], 33);
+    expect(api.calls, isNot(contains('PostArticles')));
+
+    await tester.tap(find.text('发布'));
+    await tester.pumpAndSettle();
+    final blocks = (api.article!['content'] as Map)['blocks'] as List;
     expect(
-      editor.controller.document.toDelta().toJson().any(
-        (op) => op['insert'] is Map,
-      ),
-      isTrue,
+      blocks.whereType<Map>().where((b) => b['kind'] == 'poll').single,
+      containsPair('poll_id', 33),
     );
-    expect(editor.controller.readOnly, isFalse);
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('A closed poll can be saved in a draft but not published', (
+    tester,
+  ) async {
+    final api = ComposerGateway();
+    final store = await testStore(authenticated: true, api: api);
+    addTearDown(store.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: StoryComposer(
+          store: store,
+          draft: const {
+            'title': '过期的投票',
+            'content': {
+              'blocks': [
+                {
+                  'kind': 'poll',
+                  'poll_id': 5,
+                  'mode': 'poll',
+                  'title': '去哪',
+                  'options': ['山', '海'],
+                  'ends_at': '2020-01-01T00:00:00Z',
+                },
+              ],
+            },
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('重新发布'));
+    await tester.pump();
+    expect(find.textContaining('已过截止时间'), findsOneWidget);
+    expect(api.calls, isNot(contains('PostArticles')));
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final pictures in [maxArticleMedia, maxArticleMedia + 1]) {
+    testWidgets('A post holds no more than nine pictures ($pictures)', (
+      tester,
+    ) async {
+      final api = ComposerGateway();
+      final store = await testStore(authenticated: true, api: api);
+      addTearDown(store.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTheme,
+          home: StoryComposer(
+            store: store,
+            draft: {
+              'title': '很多图片',
+              'content': {
+                'blocks': [
+                  for (var i = 0; i < pictures; i++)
+                    {
+                      'kind': 'image',
+                      'image': {'url': 'https://example.com/$i.png'},
+                    },
+                ],
+              },
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byTooltip('图片或视频'));
+      await tester.pump();
+      expect(find.text('一条动态最多添加 9 个图片或视频'), findsOneWidget);
+      expect(find.byType(ArticleMediaPicker), findsNothing);
+      // The pictures never arrive here, so nothing ever comes to rest: clear
+      // the first message by hand.
+      ScaffoldMessenger.of(tester.element(find.byType(StoryComposer)))
+          .removeCurrentSnackBar();
+      await tester.pump();
+      await tester.tap(find.text('重新发布'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      if (pictures > maxArticleMedia) {
+        expect(find.textContaining('请删掉 1 个'), findsOneWidget);
+        expect(api.calls, isNot(contains('PostArticlesIdPublish')));
+      } else {
+        expect(api.calls, contains('PostArticlesIdPublish'));
+      }
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets(
     'Selections survive outside touches and the format bar keeps the keyboard',

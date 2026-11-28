@@ -1,6 +1,6 @@
 import 'package:bojian_mobile/membership_page.dart';
 import 'package:bojian_mobile/discovery.dart';
-import 'package:bojian_mobile/customer_service_page.dart';
+import 'package:bojian_mobile/messages_page.dart';
 import 'package:bojian_mobile/account_pages.dart';
 import 'package:bojian_mobile/app_shell.dart';
 import 'package:bojian_mobile/auth_page.dart';
@@ -167,11 +167,11 @@ void main() {
       final home = tester.element(find.byType(DiscoveryPage));
       expect(home.colors.surface, AppColors.dark.surface);
       for (final (entry, destination) in [
-        ('discovery-membership', MembershipPage),
-        ('discovery-service', CustomerServicePage),
-        ('discovery-my-page', ProfilePage),
+        ('membership', MembershipPage),
+        ('messages', MessagesPage),
+        ('profile', ProfilePage),
       ]) {
-        await tapDiscoveryMenuItem(tester, entry);
+        await tapAppTab(tester, entry);
         await tester.pumpAndSettle();
         final context = tester.element(find.byType(destination));
         expect(Theme.of(context).brightness, Brightness.dark);

@@ -1,3 +1,4 @@
+import 'package:bojian_mobile/article_photo.dart';
 import 'package:bojian_mobile/article_rich_content.dart';
 import 'package:bojian_mobile/app_store.dart';
 import 'package:flutter/material.dart';
@@ -212,5 +213,60 @@ void main() {
     expect(find.byType(Table), findsOneWidget);
     expect(find.text('内容'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Pictures and captions stand clear of what follows them', (
+    tester,
+  ) async {
+    Map<String, dynamic> words(String text) => {
+      'kind': 'paragraph',
+      'spans': [
+        if (text.isNotEmpty) {'text': text},
+      ],
+    };
+    Map<String, dynamic> picture(String caption) => {
+      'kind': 'image',
+      'image': {'url': 'https://example.com/$caption.png', 'caption': caption},
+    };
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ArticleRichBody(
+              content: {
+                'blocks': [
+                  picture('甲'),
+                  picture('乙'),
+                  words('正文'),
+                  words('下一段'),
+                  picture('丙'),
+                  words(''),
+                  picture('丁'),
+                ],
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    final photos = find.byType(ArticleNetworkPhoto);
+    double top(Finder f) => tester.getTopLeft(f).dy;
+    double bottom(Finder f) => tester.getBottomLeft(f).dy;
+    // The first starts the body, with nothing to stand clear of.
+    expect(top(photos.at(0)), top(find.byType(ArticleRichBody)));
+    expect(
+      top(photos.at(1)) - bottom(find.text('甲')),
+      ArticleRichBody.objectGap,
+    );
+    final first = find.text('正文', findRichText: true);
+    final second = find.text('下一段', findRichText: true);
+    expect(top(first) - bottom(find.text('乙')), ArticleRichBody.blockGap);
+    expect(top(second), bottom(first));
+    expect(top(photos.at(2)) - bottom(second), ArticleRichBody.blockGap);
+    // An empty line is room enough: nothing is added around it.
+    expect(
+      top(photos.at(3)) - bottom(find.text('丙')),
+      closeTo(15 * ArticleRichBody.lineHeight, 1),
+    );
   });
 }

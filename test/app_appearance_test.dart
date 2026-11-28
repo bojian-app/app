@@ -46,7 +46,11 @@ void main() {
     final preferences = AppAppearance(storage);
     addTearDown(preferences.dispose);
     await preferences.restore();
-    expect(preferences.value, (accent: AppAccent.warm, mode: ThemeMode.system));
+    expect(preferences.value, (
+      accent: AppAccent.warm,
+      mode: ThemeMode.system,
+      tabBar: AppTabBarStyle.solid,
+    ));
     await Future.wait([
       preferences.update(mode: ThemeMode.dark),
       preferences.update(accent: AppAccent.blue),
@@ -54,7 +58,11 @@ void main() {
     final restored = AppAppearance(storage);
     addTearDown(restored.dispose);
     await restored.restore();
-    expect(restored.value, (accent: AppAccent.blue, mode: ThemeMode.dark));
+    expect(restored.value, (
+      accent: AppAccent.blue,
+      mode: ThemeMode.dark,
+      tabBar: AppTabBarStyle.solid,
+    ));
   });
 
   testWidgets(
@@ -141,13 +149,33 @@ void main() {
       final restored = AppAppearance(store.storage);
       addTearDown(restored.dispose);
       await restored.restore();
-      expect(restored.value, (accent: AppAccent.warm, mode: ThemeMode.system));
+      expect(restored.value, (
+        accent: AppAccent.warm,
+        mode: ThemeMode.system,
+        tabBar: AppTabBarStyle.solid,
+      ));
 
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      await tapDiscoveryMenuItem(tester, 'discovery-service');
+      await openMyPage(tester);
+      await tester.tap(find.byKey(const ValueKey('profile-settings')));
+      await tester.pumpAndSettle();
+      final service = find.byKey(const ValueKey('settings-customer-service'));
+      await tester.scrollUntilVisible(
+        service,
+        120,
+        scrollable: find
+            .descendant(
+              of: find.byType(SettingsPage),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.ensureVisible(service);
+      await tester.pumpAndSettle();
+      await tester.tap(service);
       await tester.pumpAndSettle();
       expect(
         tester.element(find.byType(CustomerServicePage)).colors.palette,

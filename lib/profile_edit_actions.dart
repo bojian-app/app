@@ -5,8 +5,8 @@ import 'design.dart';
 
 enum ProfileEditAction {
   avatar('更改头像'),
-  bio('编辑个人简介'),
-  settings('设置个人资料');
+  nickname('更改昵称'),
+  bio('编辑个人简介');
 
   const ProfileEditAction(this.label);
   final String label;

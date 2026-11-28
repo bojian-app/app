@@ -17,6 +17,16 @@ enum AppAccent {
   final Color seed;
 }
 
+/// How the bar at the bottom of the home screen is drawn.
+enum AppTabBarStyle {
+  solid('实色'),
+  glass('玻璃'),
+  frosted('毛玻璃');
+
+  const AppTabBarStyle(this.label);
+  final String label;
+}
+
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
   const AppColors({

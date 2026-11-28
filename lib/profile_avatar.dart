@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'api/bojian_api.dart';
 import 'app_store.dart';
@@ -11,11 +11,27 @@ import 'resume_importer.dart';
 import 'resume_photo.dart';
 import 'photo_format.dart';
 
-const systemAvatarNames = ['小熊', '小猫', '兔子', '狐狸', '熊猫', '考拉', '企鹅', '小狗'];
+const systemAvatarNames = [
+  '听歌',
+  '冰淇淋',
+  '元气',
+  '摄影',
+  '篮球',
+  '墨镜',
+  '比耶',
+  '阅读',
+  '咖啡',
+  '灵感',
+];
+String systemAvatarAsset(int variant) =>
+    'assets/avatars/avatar_${variant + 1}.webp';
 String profileAvatarSeed(AppStore store) =>
     store.userID > 0 ? '${store.userID}' : store.publicID;
+// Uploads named system-avatar-N.png or system-avatar-v2-N.webp hold retired
+// sets. They keep showing their stored image and must not mark a current choice
+// as selected.
 int? storedSystemAvatar(String url) {
-  final match = RegExp(r'system-avatar-([0-7])\.png')
+  final match = RegExp(r'system-avatar-v3-([0-9])\.webp')
       .firstMatch(Uri.tryParse(url)?.path ?? '');
   return match == null ? null : int.parse(match.group(1)!);
 }
@@ -56,9 +72,10 @@ class ProfileAvatar extends StatelessWidget {
   final String semanticsLabel;
   @override
   Widget build(BuildContext context) {
-    final fallback = CustomPaint(
-      painter: SystemAvatarPainter(variant ?? assignedAvatar(seed)),
-      size: Size.square(size),
+    final fallback = Image.asset(
+      systemAvatarAsset(variant ?? assignedAvatar(seed)),
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
     );
     final avatar = ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius ?? size / 2),
@@ -93,173 +110,21 @@ class ProfileAvatar extends StatelessWidget {
   }
 }
 
-class SystemAvatarPainter extends CustomPainter {
-  const SystemAvatarPainter(this.variant);
-  final int variant;
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.scale(size.width / 100, size.height / 100);
-    final i = variant % 8;
-    final backgrounds = [
-      0xFFF3E7D5,
-      0xFFE1EDFF,
-      0xFFFFE7EC,
-      0xFFFFE9D8,
-      0xFFE6F0E6,
-      0xFFE8E5FA,
-      0xFFDFF1F4,
-      0xFFF4EBCF,
-    ];
-    final coats = [
-      0xFFC4966C,
-      0xFF8AABDA,
-      0xFFFFFAF4,
-      0xFFE99C62,
-      0xFFFFFCF7,
-      0xFFA9A5C7,
-      0xFF465E73,
-      0xFFD5B077,
-    ];
-    final coat = Color(coats[i]);
-    final dark = const Color(0xFF344052);
-    void oval(Rect rect, Color color) =>
-        canvas.drawOval(rect, Paint()..color = color);
-    canvas.drawRect(
-      const Rect.fromLTWH(0, 0, 100, 100),
-      Paint()..color = Color(backgrounds[i]),
-    );
-    oval(const Rect.fromLTWH(16, 73, 68, 52), coat);
-    if (i == 2) {
-      oval(const Rect.fromLTWH(28, 8, 16, 44), coat);
-      oval(const Rect.fromLTWH(56, 8, 16, 44), coat);
-      oval(const Rect.fromLTWH(32, 14, 8, 28), const Color(0xFFF1B8CA));
-      oval(const Rect.fromLTWH(60, 14, 8, 28), const Color(0xFFF1B8CA));
-    } else if (i == 1 || i == 3) {
-      for (final x in [22.0, 61.0]) {
-        canvas.drawPath(
-          Path()
-            ..moveTo(x, 47)
-            ..lineTo(x + 1, 18)
-            ..lineTo(x + 23, 38)
-            ..close(),
-          Paint()..color = coat,
-        );
-        canvas.drawPath(
-          Path()
-            ..moveTo(x + 6, 39)
-            ..lineTo(x + 6, 26)
-            ..lineTo(x + 16, 36)
-            ..close(),
-          Paint()..color = const Color(0xFFECC3BE),
-        );
-      }
-    } else if (i != 6) {
-      for (final x in [19.0, 65.0]) {
-        final earColor = i == 4 ? dark : coat;
-        oval(
-          Rect.fromLTWH(
-            x,
-            i == 7 ? 33 : 23,
-            i == 7 ? 17 : 22,
-            i == 7 ? 42 : 24,
-          ),
-          earColor,
-        );
-        if (i != 4 && i != 7) {
-          oval(Rect.fromLTWH(x + 5, 29, 12, 13), coat.withValues(alpha: .5));
-        }
-      }
-    }
-    oval(const Rect.fromLTWH(22, 30, 56, 55), coat);
-    if (i == 4) {
-      oval(const Rect.fromLTWH(30, 46, 17, 21), dark);
-      oval(const Rect.fromLTWH(53, 46, 17, 21), dark);
-    }
-    if (i == 6) {
-      oval(const Rect.fromLTWH(29, 40, 42, 42), const Color(0xFFFFFAF0));
-    }
-    if (i == 3 || i == 7) {
-      oval(const Rect.fromLTWH(31, 59, 38, 23), const Color(0xFFFFF3DD));
-    }
-    for (final x in [39.0, 61.0]) {
-      canvas.drawCircle(
-        Offset(x, 55),
-        3.2,
-        Paint()..color = i == 4 ? Colors.white : dark,
-      );
-    }
-    if (i == 5) {
-      oval(const Rect.fromLTWH(44, 56, 12, 16), dark);
-    } else if (i == 6) {
-      canvas.drawPath(
-        Path()
-          ..moveTo(44, 65)
-          ..lineTo(56, 65)
-          ..lineTo(50, 73)
-          ..close(),
-        Paint()..color = const Color(0xFFE8B45D),
-      );
-    } else {
-      oval(const Rect.fromLTWH(46, 63, 8, 6), dark);
-    }
-    if (i != 6) {
-      canvas.drawArc(
-        const Rect.fromLTWH(44, 67, 12, 9),
-        .1,
-        2.94,
-        false,
-        Paint()
-          ..color = dark
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.6
-          ..strokeCap = StrokeCap.round,
-      );
-    }
-    if (i != 4) {
-      oval(
-        const Rect.fromLTWH(28, 62, 9, 5),
-        const Color(0xFFE8A9A1).withValues(alpha: .65),
-      );
-      oval(
-        const Rect.fromLTWH(63, 62, 9, 5),
-        const Color(0xFFE8A9A1).withValues(alpha: .65),
-      );
-    }
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(SystemAvatarPainter oldDelegate) =>
-      oldDelegate.variant != variant;
-}
-
 Future<XFile> createSystemAvatarFile(int variant) async {
-  final recorder = ui.PictureRecorder();
-  SystemAvatarPainter(variant).paint(Canvas(recorder), const Size.square(512));
-  final picture = recorder.endRecording();
-  ui.Image? image;
+  final bytes = await rootBundle.load(systemAvatarAsset(variant));
+  final directory = await Directory.systemTemp.createTemp(
+    'bojian-system-avatar-',
+  );
+  final file = File('${directory.path}/system-avatar-v3-$variant.webp');
   try {
-    image = await picture.toImage(512, 512);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (bytes == null) throw const ApiFailure('头像生成失败，请重试');
-    final directory = await Directory.systemTemp.createTemp(
-      'bojian-system-avatar-',
+    await file.writeAsBytes(
+      bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
     );
-    final file = File('${directory.path}/system-avatar-$variant.png');
-    try {
-      await file.writeAsBytes(
-        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
-      );
-    } catch (_) {
-      await directory.delete(recursive: true);
-      rethrow;
-    }
-    return XFile(file.path);
-  } finally {
-    image?.dispose();
-    picture.dispose();
+  } catch (_) {
+    await directory.delete(recursive: true);
+    rethrow;
   }
+  return XFile(file.path);
 }
 
 Future<void> discardSystemAvatarFile(XFile file) async {

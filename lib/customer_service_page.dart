@@ -54,9 +54,9 @@ const _chatAvatarSize = 32.0;
 const _chatAvatarGap = 8.0;
 const _bubbleWidthFactor = .88;
 const _serviceHoursNotice = '您好！人工客服上班时间为法定工作日 09:00 - 18:00。';
-const _feedbackIntro = '其他时段，您可以通过「';
+const _feedbackIntro = '其他时段也可以留言，回复可能较慢；也可通过「';
 const _feedbackLabel = '意见反馈';
-const _feedbackOutro = '」留言。';
+const _feedbackOutro = '」提交问题。';
 const _feedbackNotice = '$_feedbackIntro$_feedbackLabel$_feedbackOutro';
 const _combinedGreeting = '$_serviceHoursNotice$_feedbackNotice';
 
@@ -64,6 +64,7 @@ const _combinedGreeting = '$_serviceHoursNotice$_feedbackNotice';
 const _systemNoticeCopy = {
   '人工客服的服务时间为每天北京时间 09:00–18:00。服务时间内会为你匹配空闲客服，非服务时间暂时无法接通人工客服。':
       _combinedGreeting,
+  '其他时段，您可以通过「意见反馈」留言。': _feedbackNotice,
   '已接通人工客服。轮到回复的一方五分钟内未回复，会话将自动结束。':
       '已为您接通人工客服，请描述您遇到的问题。若等待回复满 5 分钟，本次会话将自动结束。',
   '等待回复已超过五分钟，本次人工会话已结束。': '超过五分钟未回复，本次对话已结束',
@@ -1734,7 +1735,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                 if (liveStatus == 'QUEUED')
                   _systemNote(
                     ahead == 0 && agentOnline == false
-                        ? '当前还没有客服在线。'
+                        ? '当前还没有客服在线，你可以先留言。'
                         : '排队中，前面有 $ahead 人。你可以先描述问题。',
                   ),
                 if (liveStatus == 'CONNECTED' && waitingFor == 'USER')

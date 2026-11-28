@@ -5,13 +5,21 @@ import 'package:flutter/material.dart';
 import 'api/bojian_api.dart';
 import 'app_theme.dart';
 
-typedef AppearanceChoice = ({AppAccent accent, ThemeMode mode});
+typedef AppearanceChoice = ({
+  AppAccent accent,
+  ThemeMode mode,
+  AppTabBarStyle tabBar,
+});
 
 /// Local to this installation, including when switching accounts.
 class AppAppearance extends ValueNotifier<AppearanceChoice> {
   AppAppearance(this._storage) : super(_defaults);
 
-  static const _defaults = (accent: AppAccent.blue, mode: ThemeMode.system);
+  static const _defaults = (
+    accent: AppAccent.blue,
+    mode: ThemeMode.system,
+    tabBar: AppTabBarStyle.solid,
+  );
 
   static const _key = 'bojian.appearance';
   final SessionStorage _storage;
@@ -32,6 +40,9 @@ class AppAppearance extends ValueNotifier<AppearanceChoice> {
       _saved = (
         accent: AppAccent.values.asNameMap()[data['accent']] ?? AppAccent.blue,
         mode: ThemeMode.values.asNameMap()[data['mode']] ?? ThemeMode.system,
+        tabBar:
+            AppTabBarStyle.values.asNameMap()[data['tabBar']] ??
+            AppTabBarStyle.solid,
       );
       value = _saved;
     } catch (_) {
@@ -39,17 +50,29 @@ class AppAppearance extends ValueNotifier<AppearanceChoice> {
     }
   }
 
-  Future<void> update({AppAccent? accent, ThemeMode? mode}) async {
+  Future<void> update({
+    AppAccent? accent,
+    ThemeMode? mode,
+    AppTabBarStyle? tabBar,
+  }) async {
     await restore();
     if (_disposed) return;
-    final next = (accent: accent ?? value.accent, mode: mode ?? value.mode);
+    final next = (
+      accent: accent ?? value.accent,
+      mode: mode ?? value.mode,
+      tabBar: tabBar ?? value.tabBar,
+    );
     if (next == value) return _writes;
     final revision = ++_revision;
     final write = _writes.catchError((_) {}).then((_) async {
       try {
         await _storage.write(
           _key,
-          jsonEncode({'accent': next.accent.name, 'mode': next.mode.name}),
+          jsonEncode({
+            'accent': next.accent.name,
+            'mode': next.mode.name,
+            'tabBar': next.tabBar.name,
+          }),
         );
         _saved = next;
       } catch (_) {

@@ -77,7 +77,12 @@ extension _ResumeEditorWork on _ResumeEditorState {
     onChanged: (index) => _update(() => _workIndex = index),
     itemKey: (index) => ObjectKey(workEntries[index]),
     itemBuilder: (index) => _workEntry(index),
-    emptyState: const EmptyState('还没有工作经历', '通过右上角“更多”添加工作经历', compact: true),
+    emptyState: const EmptyState(
+      '还没有工作经历',
+      '通过右上角“更多”添加工作经历',
+      art: EmptyArt.section,
+      compact: true,
+    ),
   );
 
   Map<String, String> _workGenerationInput(WorkExperienceFields entry) => {

@@ -7,18 +7,28 @@ import 'package:flutter/services.dart';
 
 import 'app_store.dart';
 import 'app_page_bar.dart';
+import 'app_icons.dart';
+import 'app_tab_bar.dart';
 import 'design.dart';
 import 'discovery.dart';
 import 'account_pages.dart';
 import 'membership_page.dart';
-import 'customer_service_page.dart';
+import 'messages_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store});
   final AppStore store;
   static const membershipTab = 1;
-  static const serviceTab = 2;
+  static const messagesTab = 2;
   static const profileTab = 3;
+
+  /// The bar's tabs from left to right, either side of the publish button.
+  static const _bar = <(int, String, String)>[
+    (0, 'home', '首页'),
+    (membershipTab, 'membership', '成为会员'),
+    (messagesTab, 'messages', '消息'),
+    (profileTab, 'profile', '我的'),
+  ];
   @override
   State<AppShell> createState() => AppShellState();
 }
@@ -30,7 +40,7 @@ class AppShellState extends State<AppShell>
   final visited = <int>{0};
   int displayed = 0;
   int? previous;
-  bool selectedFromHistory = false;
+  Timer? prewarmTimer;
   bool reducedMotion = false;
   late final AnimationController transition;
   late final Animation<double> progress;
@@ -49,8 +59,9 @@ class AppShellState extends State<AppShell>
     // Lay the profile's resume covers out while the home page is idle, so the
     // first visit to the profile tab does not hitch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<void>.delayed(const Duration(milliseconds: 800), () {
-        if (mounted && widget.store.isAuthenticated) {
+      if (!mounted) return;
+      prewarmTimer = Timer(const Duration(milliseconds: 800), () {
+        if (widget.store.isAuthenticated) {
           unawaited(ProfilePage.prewarm(widget.store));
         }
       });
@@ -77,7 +88,8 @@ class AppShellState extends State<AppShell>
     previous = animate ? displayed : null;
     displayed = selected;
     if (animate) {
-      final side = Offset(selectedFromHistory ? -1 : 1, 0);
+      // Pages travel the same way as the bar's selection.
+      final side = Offset(displayed < previous! ? -1 : 1, 0);
       entering = Tween(begin: side, end: Offset.zero).animate(progress);
       leaving = Tween(begin: Offset.zero, end: -side).animate(progress);
     }
@@ -86,11 +98,16 @@ class AppShellState extends State<AppShell>
   void select(int index) {
     dismissKeyboard();
     if (selected == index) return;
+    // The retained page loads itself once; later visits refresh the inbox.
+    if (index == AppShell.messagesTab &&
+        visited.contains(index) &&
+        widget.store.isAuthenticated) {
+      unawaited(widget.store.load('messages'));
+    }
     final startSlide = !reducedMotion && !transition.isAnimating;
     setState(() {
       final existing = _history.indexOf(index);
-      selectedFromHistory = existing != -1;
-      if (selectedFromHistory) {
+      if (existing != -1) {
         _history.removeRange(existing + 1, _history.length);
       } else {
         _history.add(index);
@@ -107,55 +124,95 @@ class AppShellState extends State<AppShell>
     if (_history.length > 1) select(_history[_history.length - 2]);
   }
 
+  void publish() {
+    dismissKeyboard();
+    if (!widget.store.isAuthenticated) {
+      widget.store.endSession();
+      return;
+    }
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    openPage(context, StoryComposer(store: widget.store));
+  }
+
   @override
   void dispose() {
+    prewarmTimer?.cancel();
     transition.removeStatusListener(transitionFinished);
     transition.dispose();
     super.dispose();
   }
 
   Widget page(int index) => switch (index) {
-    0 => DiscoveryPage(
-      store: widget.store,
-      onOpenMembership: () => select(AppShell.membershipTab),
-      onOpenService: () => select(AppShell.serviceTab),
-      onOpenProfile: () => select(AppShell.profileTab),
-    ),
+    0 => DiscoveryPage(store: widget.store),
     AppShell.membershipTab =>
       widget.store.isAuthenticated
           ? MembershipPage(
               key: ValueKey('membership-${widget.store.userID}'),
               store: widget.store,
               embedded: true,
-              onExit: goBack,
             )
           : guestPage('会员中心'),
-    AppShell.serviceTab =>
+    AppShell.messagesTab =>
       widget.store.isAuthenticated
-          ? CustomerServicePage(
-              key: ValueKey(widget.store.epoch),
-              onExit: goBack,
+          ? MessagesPage(
+              key: ValueKey('messages-${widget.store.epoch}'),
               store: widget.store,
-              embedded: true,
+              standalone: true,
             )
-          : guestPage('在线客服'),
-    _ => ProfilePage(store: widget.store, onExit: goBack),
+          : guestPage('消息'),
+    _ => ProfilePage(store: widget.store),
   };
 
   Widget guestPage(String title) => AnnotatedRegion<SystemUiOverlayStyle>(
     value: appSystemUiStyle(context),
     child: Scaffold(
-      appBar: AppPageBar(
-        leading: BackButton(onPressed: goBack),
-        title: Text(title),
-      ),
+      appBar: AppPageBar(title: Text(title)),
       body: DataStatus(store: widget.store, section: 'profile', empty: false),
+    ),
+  );
+
+  Widget tabBar() => ListenableBuilder(
+    listenable: Listenable.merge([widget.store, widget.store.appearance]),
+    builder: (context, _) => AppTabBar(
+      style: widget.store.appearance.value.tabBar,
+      items: [
+        for (final (tab, name, label) in AppShell._bar)
+          (
+            key: ValueKey('app-tab-$name'),
+            label: label,
+            icon: switch (tab) {
+              0 => AppIcons.tabHome,
+              AppShell.membershipTab => AppIcons.tabMembership,
+              AppShell.messagesTab => AppIcons.tabMessages,
+              _ => AppIcons.tabProfile,
+            },
+          ),
+      ],
+      unread: {
+        AppShell._bar.indexWhere((item) => item.$1 == AppShell.messagesTab):
+            widget.store.unread,
+      },
+      updateAt: AppShell._bar.indexWhere(
+        (item) => item.$1 == AppShell.profileTab,
+      ),
+      selected: AppShell._bar.indexWhere((item) => item.$1 == selected),
+      onSelect: (index) => select(AppShell._bar[index].$1),
+      action: (
+        key: const ValueKey('app-tab-publish'),
+        label: '发布新动态',
+        icon: AppIcons.add,
+      ),
+      onAction: publish,
     ),
   );
 
   @override
   Widget build(BuildContext context) => RouteTransitionSnapshot(
     child: Scaffold(
+      // Pages run beneath the bar and end their scrolling above it: the
+      // Scaffold reports the bar's height as their bottom padding.
+      extendBody: true,
+      bottomNavigationBar: tabBar(),
       body: SafeArea(
         top: false,
         bottom: false,
@@ -272,7 +329,7 @@ class _RetainedTabState extends State<_RetainedTab> {
                     },
                     child: SafeArea(
                       top: widget.index < AppShell.membershipTab,
-                      bottom: widget.index != AppShell.serviceTab,
+                      bottom: false,
                       child: ColoredBox(
                         color: context.colors.canvas,
                         child: PopScope(
@@ -294,11 +351,7 @@ class _RetainedTabState extends State<_RetainedTab> {
     );
   }
 
-  // The signed-in service page handles returning from a chat before exiting.
-  bool get handlesBack =>
-      widget.active &&
-      widget.index != 0 &&
-      (widget.index != AppShell.serviceTab || !widget.store.isAuthenticated);
+  bool get handlesBack => widget.active && widget.index != 0;
 
   @override
   void dispose() {

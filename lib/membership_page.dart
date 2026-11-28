@@ -390,7 +390,10 @@ class _MembershipPageState extends State<MembershipPage>
           ],
         ),
         body: ListView(
-          padding: EdgeInsets.zero,
+          // 作为首页标签页时，列表末尾要让出悬浮底栏。
+          padding: EdgeInsets.only(
+            bottom: widget.embedded ? MediaQuery.paddingOf(context).bottom : 0,
+          ),
           children: [
             _Header(
               store: store,
@@ -901,23 +904,10 @@ class _MetalMembershipCard extends StatelessWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: finish.engraving.withValues(alpha: .4),
-                              width: 1,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(1.5),
-                            child: ProfileAvatar(
-                              seed: profileAvatarSeed(store),
-                              url: store.avatarURL,
-                              size: 32 * k,
-                              borderRadius: 16 * k,
-                            ),
-                          ),
+                        ProfileAvatar(
+                          seed: profileAvatarSeed(store),
+                          url: store.avatarURL,
+                          size: 32 * k,
                         ),
                         SizedBox(width: 9 * k),
                         Expanded(

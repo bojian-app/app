@@ -5,6 +5,74 @@ typedef AppIconData = List<List<dynamic>>;
 
 /// Shared stroke-rounded Hugeicons vocabulary.
 abstract final class AppIcons {
+  // Two-tone entries of the bottom tab bar: a filled body marked with
+  // `opacity` (HugeIcon's secondary layer, painted in its secondaryColor)
+  // beneath the stroked outline of the matching Hugeicon.
+
+  /// A house under overhanging eaves with an arched door.
+  static final tabHome = [
+    _tone(
+      'M4 9.5L8.135 4.97C9.982 3.323 10.905 2.5 12 2.5C13.095 2.5 14.018 3.323 '
+      '15.865 4.97L20 9.5V14.5C20 17.8 20 19.45 18.975 20.475C17.95 21.5 16.3 '
+      '21.5 13 21.5H11C7.7 21.5 6.05 21.5 5.025 20.475C4 19.45 4 17.8 4 14.5Z',
+    ),
+    ...HugeIcons.strokeRoundedHome08.sublist(0, 2),
+    _line(
+      'M9.75 21.5V18C9.75 16.757 10.757 15.75 12 15.75C13.243 15.75 14.25 '
+      '16.757 14.25 18V21.5',
+    ),
+  ];
+
+  /// A pennant with a star.
+  static final tabMembership = [
+    _tone(
+      'M4.5 3V14C4.5 16.33 4.931 17.09 6.928 18.289L9.942 20.097C10.945 20.699 '
+      '11.446 21 12 21C12.554 21 13.055 20.699 14.058 20.097L17.073 18.289C19.069 '
+      '17.09 19.5 16.33 19.5 14V3Z',
+    ),
+    ...HugeIcons.strokeRoundedHonourStar,
+  ];
+
+  /// A bell with a filled body.
+  static final tabMessages = [
+    _tone(
+      'M19.2311 18H4.76887C3.79195 18 3 17.208 3 16.2311C3 15.762 3.18636 '
+      '15.3121 3.51809 14.9803L4.12132 14.3771C4.68393 13.8145 5 13.0514 5 '
+      '12.2558V9.5C5 5.63401 8.13401 2.5 12 2.5C15.866 2.5 19 5.634 19 9.5'
+      'V12.2558C19 13.0514 19.3161 13.8145 19.8787 14.3771L20.4819 14.9803'
+      'C20.8136 15.3121 21 15.762 21 16.2311C21 17.208 20.208 18 19.2311 18Z',
+    ),
+    ...HugeIcons.strokeRoundedNotification01,
+  ];
+
+  /// A head and shoulders, both filled.
+  static final tabProfile = [
+    _tone(
+      'M4 21C4.284 17.306 7.3 14.219 11.001 14.038C11.313 14.023 11.645 14.01 12 '
+      '14L12.995 14.066C16.729 14.315 19.713 17.269 20 21Z',
+    ),
+    [
+      'circle',
+      {'cx': '12', 'cy': '7', 'r': '4', 'fill': 'currentColor', 'opacity': '1'},
+    ],
+    ...HugeIcons.strokeRoundedUser,
+  ];
+
+  static List<dynamic> _tone(String d) => [
+    'path',
+    {'d': d, 'fill': 'currentColor', 'opacity': '1'},
+  ];
+
+  static List<dynamic> _line(String d) => [
+    'path',
+    {
+      'd': d,
+      'stroke': 'currentColor',
+      'strokeWidth': '1.5',
+      'strokeLinecap': 'round',
+      'strokeLinejoin': 'round',
+    },
+  ];
   static const drag = HugeIcons.strokeRoundedDragDropVertical;
   static const switchResume = HugeIcons.strokeRoundedExchange01;
   static const more = HugeIcons.strokeRoundedMoreHorizontal;
@@ -95,6 +163,7 @@ abstract final class AppIcons {
   static const imageCache = HugeIcons.strokeRoundedImage02;
   static const feedback = HugeIcons.strokeRoundedBubbleChatQuestion;
   static const about = HugeIcons.strokeRoundedInformationCircle;
+  static const logout = HugeIcons.strokeRoundedLogout01;
   static const publicProfile = HugeIcons.strokeRoundedUserGroup;
   static const personalInfo = HugeIcons.strokeRoundedContact01;
   static const jobExpectation = HugeIcons.strokeRoundedTarget02;
@@ -105,7 +174,6 @@ abstract final class AppIcons {
   static const createArticle = HugeIcons.strokeRoundedPencilEdit02;
   static const addResume = HugeIcons.strokeRoundedPlusSignSquare;
   static const avatarUpload = HugeIcons.strokeRoundedImageUpload;
-  static const avatarEdit = HugeIcons.strokeRoundedImageAdd02;
   static const wechat = HugeIcons.strokeRoundedWechat;
   static const moments = HugeIcons.strokeRoundedAperture;
   static const link = HugeIcons.strokeRoundedLink01;
@@ -139,17 +207,27 @@ class AppIcon extends StatelessWidget {
     super.key,
     this.size,
     this.color,
+    this.secondaryColor,
     this.semanticLabel,
   });
   final AppIconData icon;
   final double? size;
   final Color? color;
+
+  /// Paints the layer of a two-tone icon that is marked with `opacity`.
+  final Color? secondaryColor;
   final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) => Semantics(
     label: semanticLabel,
     excludeSemantics: semanticLabel == null,
-    child: HugeIcon(icon: icon, size: size, color: color, strokeWidth: 1.8),
+    child: HugeIcon(
+      icon: icon,
+      size: size,
+      color: color,
+      secondaryColor: secondaryColor,
+      strokeWidth: 1.8,
+    ),
   );
 }

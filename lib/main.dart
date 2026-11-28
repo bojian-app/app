@@ -63,6 +63,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool openingImport = false;
   bool entryAllowed = false;
   bool preparingStartup = true;
+  final startupLoading = StartupLoading();
 
   @override
   void initState() {
@@ -99,11 +100,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           .accessibilityFeatures
           .disableAnimations;
       await Future.wait([
-        initialization,
-        store.appearance.restore(),
-        if (widget.startupAnimationEnabled && !reduceMotion)
-          Future<void>.delayed(startupAnimationDuration),
+        startupLoading.track(initialization),
+        startupLoading.track(store.appearance.restore()),
       ]);
+      if (!mounted) return;
+      startupLoading.finish();
+      if (widget.startupAnimationEnabled && !reduceMotion) {
+        await startupLoading.delivered.timeout(
+          startupHandoverLimit,
+          onTimeout: () {},
+        );
+      }
     } finally {
       BannerAds.ready.value = mounted && widget.bannerAdsEnabled;
       if (mounted) {
@@ -206,6 +213,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     files.incoming.removeListener(sharedFileChanged);
     files.error.removeListener(sharedFileError);
     applePurchases?.dispose();
+    startupLoading.dispose();
     store.dispose();
     super.dispose();
   }
@@ -237,6 +245,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       child: preparingStartup
           ? StartupAnimation(
               key: const ValueKey('startup-session-gate'),
+              loading: startupLoading,
               animate: widget.startupAnimationEnabled,
             )
           : entryAllowed

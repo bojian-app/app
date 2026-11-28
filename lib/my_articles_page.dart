@@ -1,7 +1,4 @@
 import 'article_owner_actions.dart';
-import 'article_poll.dart' show openArticlePollComposer;
-import 'article_privacy.dart';
-import 'content_moderation.dart';
 import 'app_page_bar.dart';
 import 'panel_sheet.dart';
 import 'playful_refresh.dart';
@@ -9,6 +6,8 @@ import 'playful_refresh.dart';
 import 'dart:async';
 
 import 'article_rich_content.dart';
+import 'article_tags.dart';
+import 'article_topic.dart';
 
 import 'package:flutter/material.dart';
 
@@ -218,15 +217,10 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
       final detail = {...row, ...response.data};
       final story = decodeStory(response.data);
       if (detail['status'] == 'DRAFT') {
-        // A poll or question is edited in its own form, not in the editor.
-        if (story.feedPoll case final poll?) {
-          await _editPoll(detail, poll);
-        } else {
-          await openPage(
-            context,
-            StoryComposer(store: widget.store, draft: detail),
-          );
-        }
+        await openPage(
+          context,
+          StoryComposer(store: widget.store, draft: detail),
+        );
         if (mounted && widget.store.epoch == session) await _load();
       } else {
         await openPage(
@@ -238,47 +232,6 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
       if (mounted) toast(context, '$e');
     } finally {
       if (mounted) setState(() => opening = null);
-    }
-  }
-
-  /// Reopens a taken-down poll or question in its form. Finishing it
-  /// publishes the post again with the new poll in place of the old one.
-  Future<void> _editPoll(
-    Map<String, dynamic> draft,
-    Map<String, dynamic> poll,
-  ) async {
-    final session = widget.store.epoch;
-    final block = await openArticlePollComposer(
-      context,
-      widget.store,
-      initial: poll,
-    );
-    if (block == null || !mounted || widget.store.epoch != session) return;
-    try {
-      final content = Map<String, dynamic>.from(draft['content'] as Map? ?? {});
-      content['blocks'] = [
-        for (final old in content['blocks'] as List? ?? const [])
-          if (old is Map && old['kind'] != 'poll') old,
-        block,
-      ];
-      final privacy = ArticlePrivacy.fromDraft(draft);
-      final id = integer(draft['id']);
-      await widget.store.saveArticleDraft(
-        id: id,
-        title: '${draft['title'] ?? ''}',
-        content: content,
-        resumeID: draft['resume_id'] as int?,
-        visibility: privacy.visibility,
-        followedRepliesOnly: privacy.followedRepliesOnly,
-        expectedEpoch: session,
-      );
-      final status = await widget.store.submitArticleDraft(
-        id,
-        expectedEpoch: session,
-      );
-      if (mounted) toast(context, articleSubmissionMessage(status));
-    } catch (error) {
-      if (mounted) await showRequestFailure(context, error);
     }
   }
 
@@ -463,7 +416,10 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                     feedLayout ? 0 : appPageHorizontalPadding,
                     feedLayout || widget.draftsOnly ? 0 : 12,
                     feedLayout ? 0 : appPageHorizontalPadding,
-                    24,
+                    // Embedded lists clear the home shell's floating tab bar.
+                    widget.embedded
+                        ? 24 + MediaQuery.paddingOf(context).bottom
+                        : 24,
                   ),
                   sliver: SliverList.list(
                     children: [
@@ -481,7 +437,14 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                               ),
                             ),
                           ),
-                        if (error != null)
+                        if (error != null && visible.isEmpty)
+                          EmptyState.failed(
+                            error!,
+                            onRetry: () => _load(
+                              more: articles.isNotEmpty && cursor.isNotEmpty,
+                            ),
+                          )
+                        else if (error != null)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 24),
                             child: Column(
@@ -517,6 +480,11 @@ class _MyArticlesPageState extends State<MyArticlesPage> {
                                 : status == 'SUBMITTED'
                                 ? '提交后的文章会显示在这里'
                                 : '下拉刷新，查看最新状态',
+                            art: query.isNotEmpty
+                                ? EmptyArt.search
+                                : status == 'DRAFT'
+                                ? EmptyArt.draft
+                                : EmptyArt.post,
                           ),
                         for (final row in visible)
                           if (feedLayout)
@@ -663,15 +631,12 @@ class _DraftRowState extends State<_DraftRow> {
                   _DraftActionTile(
                     label: '继续编辑',
                     icon: AppIcons.edit,
-                    color: sheetContext.colors.accent,
                     onTap: () => Navigator.pop(sheetContext, _DraftAction.edit),
                   ),
                   _DraftActionTile(
                     key: ValueKey('draft-delete-$draftID'),
                     label: '删除草稿',
                     icon: AppIcons.delete,
-                    color: Theme.of(sheetContext).colorScheme.error,
-                    destructive: true,
                     onTap: () =>
                         Navigator.pop(sheetContext, _DraftAction.delete),
                   ),
@@ -796,15 +761,11 @@ class _DraftActionTile extends StatelessWidget {
     super.key,
     required this.label,
     required this.icon,
-    required this.color,
     required this.onTap,
-    this.destructive = false,
   });
   final String label;
   final AppIconData icon;
-  final Color color;
   final VoidCallback onTap;
-  final bool destructive;
 
   @override
   Widget build(BuildContext context) => ListTile(
@@ -816,7 +777,7 @@ class _DraftActionTile extends StatelessWidget {
       child: Center(
         widthFactor: 1,
         heightFactor: 1,
-        child: AppIcon(icon, size: 20, color: color),
+        child: AppIcon(icon, size: 20, color: context.colors.ink),
       ),
     ),
     title: Text(
@@ -824,7 +785,7 @@ class _DraftActionTile extends StatelessWidget {
       style: TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.w500,
-        color: destructive ? color : context.colors.ink,
+        color: context.colors.ink,
       ),
     ),
     onTap: onTap,
@@ -1035,14 +996,19 @@ class OwnArticlePreview extends StatelessWidget {
                 '${story.content['question'] ?? story.excerpt}',
                 style: const TextStyle(fontSize: 15, height: 1.6),
               )
-            else
+            else ...[
               ArticleRichBody(
                 store: store,
                 articleID: story.id,
                 content: story.content.isEmpty
                     ? richContent(story.paragraphs.join('\n'))
-                    : story.content,
+                    : splitArticleTags(story.content).body,
               ),
+              if (story.tags.isNotEmpty) ...[
+                const SizedBox(height: 7),
+                ArticleTagRow(tags: story.tags, store: store),
+              ],
+            ],
           ],
         ),
       ),

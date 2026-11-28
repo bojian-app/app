@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:bojian_mobile/feed_search.dart';
 import 'package:bojian_mobile/discovery.dart';
 import 'package:bojian_mobile/account_pages.dart';
 import 'package:bojian_mobile/app_shell.dart';
@@ -233,6 +234,7 @@ void main() {
     await tester.pumpAndSettle();
     final field = find.byKey(const ValueKey('discovery-search'));
     await tester.enterText(field, '不存在的关键词');
+    await tester.pump(FeedSearch.pause);
     await tester.pumpAndSettle();
     expect(find.text('没有找到相关内容'), findsOneWidget);
     await tester.tap(

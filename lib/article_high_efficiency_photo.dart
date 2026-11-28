@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:image_picker/image_picker.dart';
 
 import 'api/bojian_api.dart';
+import 'article_photo_shrink.dart';
 
 const _stillPhotoBrands = {
   'heic',
@@ -57,67 +57,27 @@ bool isHighEfficiencyPhoto(List<int> prefix) => _fileBrands(prefix).any(
       _stillPhotoBrands.contains(brand) || _sequenceBrands.contains(brand),
 );
 
-Future<XFile> articlePhotoAsPng(XFile file, {required int maxBytes}) async {
+/// A HEIF or AVIF photo as the JPEG that is uploaded in its place.
+Future<XFile> articlePhotoAsJpeg(XFile file, {required int maxBytes}) async {
   final size = await file.length();
   if (size <= 0 || size > maxBytes) {
     throw ApiFailure('照片不能为空，且不能超过 ${maxBytes ~/ (1024 * 1024)} MB');
   }
-  final builder = BytesBuilder(copy: false);
-  await for (final chunk in file.openRead(0, size)) {
-    builder.add(chunk);
-  }
-  final bytes = builder.takeBytes();
+  final bytes = await file.readAsBytes();
   if (!isHighEfficiencyPhoto(bytes)) {
     throw const ApiFailure('无法识别这张照片的格式，请重新选择');
   }
   if (_fileBrands(bytes).any(_sequenceBrands.contains)) {
     throw const ApiFailure('仅支持静态 HEIF 或 AVIF 照片');
   }
-  ui.ImmutableBuffer? buffer;
-  ui.ImageDescriptor? descriptor;
-  ui.Codec? codec;
-  ui.Image? frame;
+  final Uint8List jpeg;
   try {
-    buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    descriptor = await ui.ImageDescriptor.encoded(buffer);
-    final width = descriptor.width, height = descriptor.height;
-    final pixels = width * height;
-    if (width <= 0 || height <= 0 || pixels > 64 * 1024 * 1024) {
-      throw const ApiFailure('照片分辨率过高或无效，请选择尺寸较小的图片');
-    }
-    // Leave room for PNG overhead even when the pixels compress poorly.
-    final scale = math.min(
-      1.0,
-      math.min(
-        4096 / math.max(width, height),
-        math.sqrt(maxBytes / (5 * pixels)),
-      ),
-    );
-    codec = await descriptor.instantiateCodec(
-      targetWidth: math.max(1, (width * scale).floor()),
-      targetHeight: math.max(1, (height * scale).floor()),
-    );
-    if (codec.frameCount != 1) {
-      throw const ApiFailure('仅支持静态 HEIF 或 AVIF 照片');
-    }
-    frame = (await codec.getNextFrame()).image;
-    final png = await frame.toByteData(format: ui.ImageByteFormat.png);
-    if (png == null || png.lengthInBytes > maxBytes) {
-      throw const ApiFailure('转换后的照片过大，请选择尺寸较小的图片');
-    }
-    return XFile.fromData(
-      png.buffer.asUint8List(png.offsetInBytes, png.lengthInBytes),
-      path: file.path,
-      mimeType: 'image/png',
-    );
-  } on ApiFailure {
-    rethrow;
+    jpeg = (await shrinkPhoto(bytes, convert: true))!;
   } catch (_) {
     throw const ApiFailure('当前设备无法读取这张照片，请重新选择');
-  } finally {
-    frame?.dispose();
-    codec?.dispose();
-    descriptor?.dispose();
-    buffer?.dispose();
   }
+  if (jpeg.length > maxBytes) {
+    throw const ApiFailure('转换后的照片过大，请选择尺寸较小的图片');
+  }
+  return XFile.fromData(jpeg, path: file.path, mimeType: 'image/jpeg');
 }

@@ -251,12 +251,7 @@ class _MembershipWalletPageState extends State<MembershipWalletPage>
           builder: (_) => data == null
               ? error == null
                     ? const DotMatrixLoader()
-                    : Center(
-                        child: TextButton(
-                          onPressed: _load,
-                          child: const Text('加载失败，点击重试'),
-                        ),
-                      )
+                    : Center(child: EmptyState.failed('加载失败', onRetry: _load))
               : TabBarView(
                   children: [
                     _WalletList(
@@ -397,9 +392,13 @@ class _WalletListState extends State<_WalletList> {
                               child: ListView(
                                 padding: const EdgeInsets.all(16),
                                 children: past.isEmpty
-                                    ? [
-                                        const SizedBox(height: 100),
-                                        const Center(child: Text('暂无历史记录')),
+                                    ? const [
+                                        SizedBox(height: 48),
+                                        EmptyState(
+                                          '暂无历史记录',
+                                          '',
+                                          art: EmptyArt.coupon,
+                                        ),
                                       ]
                                     : past,
                               ),
@@ -428,16 +427,15 @@ class _WalletListState extends State<_WalletList> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     children: visible.isEmpty
                         ? [
-                            const SizedBox(height: 100),
-                            Center(
-                              child: Text(
-                                filter != '全部'
-                                    ? '暂无符合条件的卡券'
-                                    : widget.cards != null
-                                    ? '暂无可用会员卡'
-                                    : '暂无可用优惠券',
-                                style: TextStyle(color: c.muted),
-                              ),
+                            const SizedBox(height: 48),
+                            EmptyState(
+                              filter != '全部'
+                                  ? '暂无符合条件的卡券'
+                                  : widget.cards != null
+                                  ? '暂无可用会员卡'
+                                  : '暂无可用优惠券',
+                              '',
+                              art: EmptyArt.coupon,
                             ),
                           ]
                         : visible,

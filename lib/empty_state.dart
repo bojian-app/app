@@ -2,19 +2,51 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 
-/// Shared empty-content presentation. Loading and request failures are separate
-/// states; screen-specific copy and actions belong to the caller.
+/// The artwork of one kind of empty, withheld or failed page.
+enum EmptyArt {
+  resume('empty_resume'),
+  post('empty_post'),
+  draft('empty_draft'),
+  saved('empty_saved'),
+  search('empty_search'),
+  comment('empty_comment'),
+  message('empty_message'),
+  profileHidden('profile_hidden'),
+  loadFailed('load_failed'),
+  contentGone('content_gone'),
+  order('empty_order'),
+  coupon('empty_coupon'),
+  section('empty_section');
+
+  const EmptyArt(this.file);
+  final String file;
+  String get asset => 'assets/empty_states/$file.webp';
+}
+
+/// Shared presentation of a page with nothing to list. Screen-specific artwork,
+/// copy and actions belong to the caller.
 class EmptyState extends StatelessWidget {
   const EmptyState(
     this.title,
     this.detail, {
     super.key,
+    required this.art,
     this.compact = false,
     this.action,
   });
 
-  static const illustrationAsset = 'assets/empty_states/cat_detective.webp';
+  /// A request that failed, with the way to try again.
+  EmptyState.failed(
+    this.title, {
+    super.key,
+    required VoidCallback? onRetry,
+    String retryLabel = '重新加载',
+    this.compact = false,
+  }) : detail = '',
+       art = EmptyArt.loadFailed,
+       action = TextButton(onPressed: onRetry, child: Text(retryLabel));
 
+  final EmptyArt art;
   final String title, detail;
   final bool compact;
   final Widget? action;
@@ -39,11 +71,12 @@ class EmptyState extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Image.asset(
-                  illustrationAsset,
-                  width: small ? 104 : 156,
-                  height: small ? 84 : 126,
+                  art.asset,
+                  // The scenes are 3:2, with two figures that need the room.
+                  width: small ? 144 : 216,
+                  height: small ? 96 : 144,
                   fit: BoxFit.contain,
-                  cacheWidth: 468,
+                  cacheWidth: 720,
                   excludeFromSemantics: true,
                 ),
                 const SizedBox(height: 12),

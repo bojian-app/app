@@ -98,10 +98,13 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    // The picture's placeholder keeps moving until it is decoded, so these
+    // wait a set time instead of for stillness.
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('作者小简'), findsOneWidget);
     await tester.tap(find.text('作者小简'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     expect(find.byType(InteractiveViewer), findsOneWidget);
     expect(find.text('作者小简'), findsOneWidget);
   });

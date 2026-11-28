@@ -142,6 +142,66 @@ class ProfileAvatarEditorView extends StatelessWidget {
   );
 }
 
+class ProfileNicknameEditorView extends StatelessWidget {
+  const ProfileNicknameEditorView({
+    super.key,
+    required this.controller,
+    required this.saving,
+    required this.onSave,
+  });
+
+  final TextEditingController controller;
+  final bool saving;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final line = UnderlineInputBorder(
+      borderSide: BorderSide(color: context.colors.border),
+    );
+    return Scaffold(
+      key: const ValueKey('profile-nickname-editor'),
+      backgroundColor: context.colors.surface,
+      appBar: AppPageBar(
+        title: const Text('昵称', maxLines: 1, overflow: TextOverflow.ellipsis),
+        actions: [
+          _ProfileSaveAction(saving: saving, onSave: saving ? null : onSave),
+        ],
+      ),
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(
+            horizontal: appPageHorizontalPadding,
+            vertical: 16,
+          ),
+          child: TextField(
+            key: const ValueKey('profile-name'),
+            controller: controller,
+            enabled: !saving,
+            autofocus: true,
+            maxLength: 20,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => onSave(),
+            style: TextStyle(fontSize: 16, color: context.colors.ink),
+            decoration: InputDecoration(
+              hintText: '填写你的昵称',
+              filled: false,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              border: line,
+              enabledBorder: line,
+              disabledBorder: line,
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: context.colors.accent),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ProfileBiographyEditorView extends StatelessWidget {
   const ProfileBiographyEditorView({
     super.key,

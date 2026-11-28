@@ -225,16 +225,13 @@ void main() {
         );
         expect(
           find.byKey(const ValueKey('profile-name')),
-          action == ProfileEditAction.settings ? findsOneWidget : findsNothing,
+          action == ProfileEditAction.nickname ? findsOneWidget : findsNothing,
         );
         expect(
           find.byKey(const ValueKey('profile-bio')),
-          action == ProfileEditAction.avatar ? findsNothing : findsOneWidget,
+          action == ProfileEditAction.bio ? findsOneWidget : findsNothing,
         );
-        expect(
-          find.text('更换头像'),
-          action == ProfileEditAction.settings ? findsOneWidget : findsNothing,
-        );
+        expect(find.text('设置个人资料'), findsNothing);
         if (action == ProfileEditAction.avatar) {
           expect(find.byKey(const ValueKey('profile-save')), findsNothing);
           await tester.tap(find.byKey(const ValueKey('profile-avatar-system')));
@@ -281,6 +278,28 @@ void main() {
     },
   );
 
+  testWidgets('Nickname refuses a blank and saves only the nickname', (
+    tester,
+  ) async {
+    final api = FakeGateway()..documents['GetMe']!['bio'] = '原来的简介';
+    final store = await mount(tester, api);
+    await openEditor(tester, ProfileEditAction.nickname);
+    final field = find.byKey(const ValueKey('profile-name'));
+    await tester.enterText(field, '   ');
+    await tester.tap(find.byKey(const ValueKey('profile-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('给自己取一个昵称吧'), findsOneWidget);
+    expect(api.calls, isEmpty);
+    await tester.enterText(field, '新的昵称');
+    await tester.tap(find.byKey(const ValueKey('profile-save')));
+    await tester.pumpAndSettle();
+    expect(api.lastMutationBody, {'nickname': '新的昵称'});
+    expect(store.name, '新的昵称');
+    expect(store.bio, '原来的简介');
+    expect(find.byType(ProfileEditor), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'A session change while the menu is open cannot enter an editor',
     (tester) async {
@@ -289,7 +308,7 @@ void main() {
       await openMenu(tester);
       await store.endSession(remote: false);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('profile-edit-settings')));
+      await tester.tap(find.byKey(const ValueKey('profile-edit-nickname')));
       await tester.pumpAndSettle();
       expect(find.byType(ProfileEditor), findsNothing);
       expect(api.calls, isEmpty);

@@ -10,11 +10,21 @@ import 'package:video_player/video_player.dart';
 import 'api/bojian_api.dart';
 import 'article_video_player.dart';
 import 'article_high_efficiency_photo.dart';
+import 'article_photo_shrink.dart';
 import 'photo_format.dart';
 import 'design.dart';
 import 'resume_photo.dart';
 
 const maxArticleVideoDuration = Duration(minutes: 5);
+
+/// Pictures and videos one post can hold between them.
+const maxArticleMedia = 9;
+
+/// How many of those a post's [content] already holds.
+int articleMediaCount(Map content) => (content['blocks'] as List? ?? const [])
+    .whereType<Map>()
+    .where((b) => b['kind'] == 'image' || b['kind'] == 'video')
+    .length;
 const maxArticlePhotoBytes = 20 << 20;
 
 class PickedArticleMedia {
@@ -22,17 +32,40 @@ class PickedArticleMedia {
     this.file,
     this.mime, {
     this.duration,
-    this.convertToPng = false,
+    this.highEfficiency = false,
   });
   final XFile file;
   final String mime;
   final Duration? duration;
-  final bool convertToPng;
 
-  Future<XFile> fileForUpload() async => convertToPng
-      ? articlePhotoAsPng(file, maxBytes: maxArticlePhotoBytes)
-      : file;
+  /// A HEIF or AVIF original, uploaded as [mime] instead.
+  final bool highEfficiency;
+
   bool get isVideo => duration != null;
+
+  /// What goes to storage: photos cut down to a size worth sending, videos
+  /// and moving pictures as picked.
+  Future<({XFile file, String mime})> forUpload() async {
+    if (highEfficiency) {
+      final jpeg = await articlePhotoAsJpeg(
+        file,
+        maxBytes: maxArticlePhotoBytes,
+      );
+      return (file: jpeg, mime: mime);
+    }
+    if (!isVideo && mime != 'image/gif') {
+      if (await file.length() > photoKeptBytes) {
+        final jpeg = await shrinkPhoto(await file.readAsBytes());
+        if (jpeg != null) {
+          return (
+            file: XFile.fromData(jpeg, path: file.path, mimeType: 'image/jpeg'),
+            mime: 'image/jpeg',
+          );
+        }
+      }
+    }
+    return (file: file, mime: mime);
+  }
 }
 
 Future<PickedArticleMedia> checkArticleMedia(XFile file) async {
@@ -44,8 +77,8 @@ Future<PickedArticleMedia> checkArticleMedia(XFile file) async {
   if (isHighEfficiencyPhoto(prefix)) {
     if (size > maxArticlePhotoBytes) throw const ApiFailure('照片不能超过 20 MB');
     await checkPhotoDecodes(await file.readAsBytes());
-    // Keep the original for previews and encode one photo at a time during upload.
-    return PickedArticleMedia(file, 'image/png', convertToPng: true);
+    // Keep the original for previews; it is converted while uploading.
+    return PickedArticleMedia(file, 'image/jpeg', highEfficiency: true);
   }
   final ext = file.name.split('.').last.toLowerCase();
   final videoType = switch (ext) {
@@ -127,7 +160,7 @@ class _ArticleMediaPickerState extends State<ArticleMediaPicker> {
         ? null
         : widget.limit! - selected.length;
     if (remaining != null && remaining <= 0) {
-      toast(context, '最多可添加 ${widget.limit} 个图片或视频');
+      toast(context, '本次最多可添加 ${widget.limit} 个图片或视频');
       return;
     }
     setState(() => picking = true);
@@ -244,7 +277,10 @@ class _ArticleMediaPickerState extends State<ArticleMediaPicker> {
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('上传说明'),
-              content: const Text('上传视频最短不能小于 0 秒钟，最长不能大于5分钟'),
+              content: const Text(
+                '每条动态最多 $maxArticleMedia 个图片或视频。'
+                '上传视频最短不能小于 0 秒钟，最长不能大于5分钟',
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -339,7 +375,11 @@ class _ArticleMediaPickerState extends State<ArticleMediaPicker> {
             onPressed: selected.isEmpty || picking
                 ? null
                 : () => Navigator.pop(context, selected),
-            child: Text('下一步(${selected.length})'),
+            child: Text(
+              widget.limit == null
+                  ? '下一步(${selected.length})'
+                  : '下一步(${selected.length}/${widget.limit})',
+            ),
           ),
         ),
       ),

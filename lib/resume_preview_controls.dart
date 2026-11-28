@@ -254,6 +254,12 @@ class ResumeActionsSheet extends StatelessWidget {
         key: ValueKey('resume-action-download'),
       ),
       AppSheetAction(
+        value: 'share-link',
+        label: '简历外链',
+        icon: AppIcons.link,
+        key: ValueKey('resume-action-share-link'),
+      ),
+      AppSheetAction(
         value: 'delete',
         label: '删除',
         icon: AppIcons.delete,

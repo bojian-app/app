@@ -279,7 +279,10 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                     ),
                   SliverPadding(
                     padding: widget.embedded
-                        ? const EdgeInsets.only(bottom: 28)
+                        // Clears the home shell's floating tab bar.
+                        ? EdgeInsets.only(
+                            bottom: 28 + MediaQuery.paddingOf(context).bottom,
+                          )
                         : const EdgeInsets.fromLTRB(
                             appPageHorizontalPadding,
                             0,
@@ -295,36 +298,15 @@ class _SavedArticlesPageState extends State<SavedArticlesPage> {
                           return const ListSkeleton(count: 4);
                         }
                         if (error != null) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 48),
-                            child: Column(
-                              children: [
-                                AppIcon(
-                                  AppIcons.refresh,
-                                  size: 32,
-                                  color: context.colors.muted,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  error!,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: context.colors.muted,
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: _load,
-                                  child: const Text('重新加载'),
-                                ),
-                              ],
-                            ),
-                          );
+                          return EmptyState.failed(error!, onRetry: _load);
                         }
                         if (visible.isEmpty) {
                           return EmptyState(
                             query.isEmpty ? '还没有收藏的文章' : '没有找到这篇收藏',
                             query.isEmpty ? '文章中的书签按钮，可以把内容留在这里。' : '试试其他标题关键词',
+                            art: query.isEmpty
+                                ? EmptyArt.saved
+                                : EmptyArt.search,
                           );
                         }
                         if (!widget.embedded && index == 0) {

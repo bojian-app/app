@@ -1,6 +1,7 @@
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/discovery.dart';
 import 'package:bojian_mobile/invitation_dialog.dart';
+import 'package:bojian_mobile/invite_floating_badge.dart';
 import 'package:bojian_mobile/membership_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +44,17 @@ void main() {
         );
         await tester.pumpAndSettle();
         final entry = find.byKey(const ValueKey('discovery-invite'));
+        expect(entry, findsNothing); // Hidden by default.
+        InviteFloatingBadge.enabled = true;
+        addTearDown(() => InviteFloatingBadge.enabled = false);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: appTheme,
+            home: Scaffold(body: DiscoveryPage(store: store)),
+          ),
+        );
+        await tester.pumpAndSettle();
         expect(entry.hitTestable(), findsOneWidget);
         await tester.tap(entry);
         await tester.pumpAndSettle();

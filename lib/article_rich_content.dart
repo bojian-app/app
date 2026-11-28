@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -267,6 +268,11 @@ class ArticleRichBody extends StatelessWidget {
   final Map<int, GlobalKey>? headingKeys;
   final Map<String, dynamic> content;
   static const lineHeight = 1.6;
+
+  /// Pictures and cards stand clear of the writing, and further clear of one
+  /// another, so a caption reads with the picture above it.
+  static const blockGap = 12.0, objectGap = 24.0;
+  static const _objects = {'image', 'video', 'poll', 'link', 'table'};
   Color? color(dynamic value) {
     if (value is! String) return null;
     final hex = value.trim().replaceFirst('#', '');
@@ -404,7 +410,7 @@ class ArticleRichBody extends StatelessWidget {
           ),
         if ('${data['caption'] ?? ''}'.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.only(top: 8),
             child: Text(
               '${data['caption']}',
               textAlign: TextAlign.center,
@@ -457,6 +463,9 @@ class ArticleRichBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var number = 0;
+    // Whether the block above is a picture or card; none at the top, or under
+    // an empty line, which spaces by itself.
+    bool? above;
     final children = <Widget>[];
     final blocks = content['blocks'] as List? ?? [];
     for (var index = 0; index < blocks.length; index++) {
@@ -550,11 +559,21 @@ class ArticleRichBody extends StatelessWidget {
         }
       }
       final headingKey = heading == null ? null : headingKeys?[index];
+      final object = _objects.contains(kind);
+      final empty = !object && blank;
+      final gap = above == null || empty
+          ? 0.0
+          : object && above
+          ? objectGap
+          : object || above
+          ? blockGap
+          : 0.0;
+      above = empty ? null : object;
       children.add(
         Padding(
           key: headingKey,
           padding: EdgeInsets.only(
-            top: heading != null ? 8 : 0,
+            top: math.max(gap, heading != null ? 8 : 0),
             left: ((block['indent'] as num?)?.toDouble() ?? 0).clamp(0, 8) * 16,
           ),
           child: child,

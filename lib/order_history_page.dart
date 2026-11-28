@@ -116,26 +116,12 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                 if (loading && orders.isEmpty)
                   const ListSkeleton(count: 5)
                 else if (orders.isEmpty && error == null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 80),
-                    child: Column(
-                      children: [
-                        AppIcon(
-                          AppIcons.article,
-                          size: 38,
-                          color: context.colors.muted,
-                        ),
-                        const SizedBox(height: 14),
-                        const Text('暂无订单记录'),
-                        const SizedBox(height: 6),
-                        Text(
-                          '购买会员或 AI 次数后可在这里查看',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: context.colors.muted,
-                          ),
-                        ),
-                      ],
+                  const Padding(
+                    padding: EdgeInsets.only(top: 48),
+                    child: EmptyState(
+                      '暂无订单记录',
+                      '购买会员或 AI 次数后可在这里查看',
+                      art: EmptyArt.order,
                     ),
                   ),
                 for (final order in orders)
@@ -143,7 +129,18 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _OrderRecord(order: order),
                   ),
-                if (error != null)
+                if (error != null && orders.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 48),
+                    child: EmptyState.failed(
+                      error!,
+                      retryLabel: '重试',
+                      onRetry: loading || loadingMore
+                          ? null
+                          : () => _load(more: retryMore),
+                    ),
+                  )
+                else if (error != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     child: Column(

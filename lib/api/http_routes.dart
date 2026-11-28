@@ -70,6 +70,9 @@ const httpRoutes = <String, (String, String)>{
   'GetResumesIdExternalLink': ('GET', '/resumes/{id}/external-link'),
   'PostResumesIdExternalLink': ('POST', '/resumes/{id}/external-link'),
   'DeleteResumesIdExternalLink': ('DELETE', '/resumes/{id}/external-link'),
+  'GetResumesIdShareLink': ('GET', '/resumes/{id}/share-link'),
+  'PostResumesIdShareLink': ('POST', '/resumes/{id}/share-link'),
+  'DeleteResumesIdShareLink': ('DELETE', '/resumes/{id}/share-link'),
   'GetNotificationsIdGuidance': ('GET', '/notifications/{id}/guidance'),
   'PostNotificationsIdGuidanceResume': (
     'POST',

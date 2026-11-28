@@ -8,15 +8,14 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'article_rich_content.dart';
+import 'article_tags.dart';
+import 'article_topic.dart';
 import 'article_declaration.dart';
 import 'article_poll.dart' show ArticlePollCard;
-import 'panel_sheet.dart';
 import 'article_reaction_button.dart';
 import 'resume_guidance_view.dart';
 import 'guidance_feed_card.dart';
 import 'resume_updated_label.dart';
-import 'resume_pages.dart' show ResumeLibrary;
-import 'story_composer.dart';
 export 'story_composer.dart';
 import 'profile_avatar.dart';
 import 'article_comment_tile.dart';
@@ -27,34 +26,28 @@ import 'package:flutter/material.dart';
 
 import 'app_store.dart';
 import 'discovery_banner.dart';
+import 'feed_search.dart';
+import 'feed_media.dart';
 import 'invite_floating_badge.dart';
 import 'invitation_dialog.dart';
 import 'app_search_field.dart';
 import 'comment_composer.dart';
+import 'contents_sheet.dart';
 import 'design.dart';
-import 'messages_button.dart';
 import 'my_articles_page.dart';
 import 'saved_articles_page.dart';
 import 'story_author_identity.dart';
-import 'update_badge.dart';
 import 'user_profile_page.dart';
 
-part 'discovery_header.dart';
-
 const _feedGapHeight = discoveryGapHeight;
+const _headerButtonSize = 44.0;
+const _headerIconSize = 20.0;
 
 Color _discoveryGapColor(BuildContext context) => discoveryGapColor(context);
 
 class DiscoveryPage extends StatefulWidget {
-  const DiscoveryPage({
-    super.key,
-    required this.store,
-    this.onOpenProfile,
-    this.onOpenMembership,
-    this.onOpenService,
-  });
+  const DiscoveryPage({super.key, required this.store});
   final AppStore store;
-  final VoidCallback? onOpenProfile, onOpenMembership, onOpenService;
   @override
   State<DiscoveryPage> createState() => _DiscoveryPageState();
 }
@@ -64,20 +57,38 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
 
   Future<void> scan() async {
     if (scanning || ModalRoute.of(context)?.isCurrent != true) return;
-    setState(() => scanning = true);
+    dismissKeyboard();
+    scanning = true;
     try {
       await scanAndBindInvitation(context, widget.store);
     } finally {
-      if (mounted) setState(() => scanning = false);
+      scanning = false;
     }
   }
 
   final search = TextEditingController();
   final searchFocus = FocusNode();
+  late FeedSearch finder = FeedSearch(widget.store);
   String query = '';
   final _seenArticles = <int>{};
+
+  void searchFor(String value) {
+    finder.change(value);
+    setState(() => query = value.trim());
+  }
+
+  @override
+  void didUpdateWidget(DiscoveryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.store != widget.store) {
+      finder.dispose();
+      finder = FeedSearch(widget.store)..change(query);
+    }
+  }
+
   @override
   void dispose() {
+    finder.dispose();
     search.dispose();
     searchFocus.dispose();
     super.dispose();
@@ -90,18 +101,19 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     final rowHeight = (height + 8).clamp(48.0, double.infinity).toDouble();
     final buttonStyle =
         (IconButtonTheme.of(context).style ?? const ButtonStyle()).copyWith(
-          minimumSize: const WidgetStatePropertyAll(Size.square(44)),
+          minimumSize: const WidgetStatePropertyAll(
+            Size.square(_headerButtonSize),
+          ),
           padding: const WidgetStatePropertyAll(EdgeInsets.zero),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         );
     return Padding(
-      // The avatar's tap target is padded, so its visible edge meets the
-      // page gutter on the right.
+      // The last button's tap target is padded, so its icon meets the page
+      // gutter on the right.
       padding: const EdgeInsets.fromLTRB(
         appPageHorizontalPadding,
         2,
-        appPageHorizontalPadding -
-            (kMinInteractiveDimension - _discoveryAvatarSize) / 2,
+        appPageHorizontalPadding - (_headerButtonSize - _headerIconSize) / 2,
         2,
       ),
       child: SizedBox(
@@ -109,6 +121,21 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
         height: rowHeight,
         child: Row(
           children: [
+            // The page's name, as large as the other tabs write theirs and
+            // growing no further than an app bar's would.
+            Semantics(
+              header: true,
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: 1.34,
+                child: Text(
+                  '首页',
+                  style: AppPageBar.titleStyle.copyWith(
+                    color: context.colors.ink,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: SizedBox(
                 height: height,
@@ -123,8 +150,12 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     height: 1.2,
                     color: context.colors.ink,
                   ),
-                  onChanged: (value) => setState(() => query = value.trim()),
-                  onSubmitted: (_) => searchFocus.unfocus(),
+                  onChanged: searchFor,
+                  onSubmitted: (_) {
+                    searchFocus.unfocus();
+                    // The search key does not wait for the typing pause.
+                    if (finder.waiting && !finder.loading) finder.load();
+                  },
                   decoration: InputDecoration(
                     hintText: '搜索',
                     hintStyle: TextStyle(
@@ -158,7 +189,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                             padding: EdgeInsets.zero,
                             onPressed: () {
                               search.clear();
-                              setState(() => query = '');
+                              searchFor('');
                               searchFocus.requestFocus();
                             },
                             icon: AppIcon(
@@ -187,21 +218,14 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
             IconButtonTheme(
               data: IconButtonThemeData(style: buttonStyle),
               child: SizedBox.square(
-                dimension: 44,
-                child: MessagesButton(
-                  key: const ValueKey('discovery-messages'),
-                  store: widget.store,
-                  icon: AppIcons.notification,
-                  iconSize: 20,
+                dimension: _headerButtonSize,
+                child: IconButton(
+                  key: const ValueKey('discovery-scan'),
+                  tooltip: '扫一扫',
+                  onPressed: scan,
+                  icon: const AppIcon(AppIcons.scan, size: _headerIconSize),
                 ),
               ),
-            ),
-            _DiscoveryAvatarMenu(
-              store: widget.store,
-              onOpenProfile: widget.onOpenProfile,
-              onOpenMembership: widget.onOpenMembership,
-              onOpenService: widget.onOpenService,
-              onScan: scanning ? null : scan,
             ),
           ],
         ),
@@ -215,16 +239,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
   @override
   Widget build(BuildContext context) {
     final store = widget.store;
-    final term = query.toLowerCase();
-    final stories = term.isEmpty
-        ? store.stories.toList(growable: false)
-        : store.stories
-              .where(
-                (story) => '${story.title} ${story.excerpt} ${story.author}'
-                    .toLowerCase()
-                    .contains(term),
-              )
-              .toList();
+    final stories = store.stories.toList(growable: false);
     late final indices = {
       for (var i = 0; i < stories.length; i++)
         ValueKey('discovery-story-${stories[i].id}'): i,
@@ -235,6 +250,8 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
         ? const <int>{}
         : ids.difference(_seenArticles);
     _seenArticles.addAll(ids);
+    // Room the feed leaves for the home shell's floating tab bar.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     final feed = CustomScrollView(
       key: const PageStorageKey('discovery-feed-推荐'),
       physics: const AlwaysScrollableScrollPhysics(),
@@ -251,6 +268,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                   minHeight:
                       (constraints.viewportMainAxisExtent -
                               constraints.precedingScrollExtent -
+                              bottomInset -
                               24)
                           .clamp(0.0, double.infinity),
                 ),
@@ -259,8 +277,8 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     store: store,
                     section: 'feed',
                     empty: true,
-                    title: query.isEmpty ? '还没有发布的内容' : '没有找到相关内容',
-                    subtitle: query.isEmpty ? '' : '试试其他关键词。',
+                    title: '还没有发布的内容',
+                    subtitle: '',
                   ),
                 ),
               ),
@@ -288,7 +306,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
           ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: EdgeInsets.only(bottom: 24 + bottomInset),
             child: PageLoadingFooter(
               visible: store.loadingMore.contains('feed'),
             ),
@@ -310,20 +328,24 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
           Expanded(
             child: Stack(
               children: [
-                AutoPaginate.section(
-                  store: store,
-                  section: 'feed',
-                  child: PlayfulRefresh(
-                    hasError: () => store.errors['feed'] != null,
-                    onRefresh: () => store.load('feed'),
-                    child: feed,
+                if (query.isEmpty)
+                  AutoPaginate.section(
+                    store: store,
+                    section: 'feed',
+                    child: PlayfulRefresh(
+                      hasError: () => store.errors['feed'] != null,
+                      onRefresh: () => store.load('feed'),
+                      child: feed,
+                    ),
+                  )
+                else
+                  _FeedSearchResults(search: finder, bottomInset: bottomInset),
+                if (InviteFloatingBadge.enabled)
+                  Positioned(
+                    right: 10,
+                    bottom: 18 + bottomInset,
+                    child: InviteFloatingBadge(store: store),
                   ),
-                ),
-                Positioned(
-                  right: 10,
-                  bottom: 18,
-                  child: InviteFloatingBadge(store: store),
-                ),
               ],
             ),
           ),
@@ -486,24 +508,25 @@ class StoryCard extends StatelessWidget {
                 ],
               ),
               SizedBox(height: flat ? 5 : 12),
-              if (story.title.trim().isNotEmpty)
+              if (story.cardTitle.trim().isNotEmpty)
                 Text(
-                  story.title,
+                  story.cardTitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: compactTypography ? 14 : (flat ? 18 : 16),
+                    // Feed titles match a poll question and the body text: 14.
+                    fontSize: compactTypography || flat ? 14 : 16,
                     fontWeight: feedTitleWeight,
                     color: context.colors.ink,
                     height: 1.4,
                   ),
                 ),
               ArticleDeclarationLabel(story.content),
-              if (story.excerpt.trim().isNotEmpty) ...[
-                if (story.title.trim().isNotEmpty)
+              if (story.cardExcerpt.trim().isNotEmpty) ...[
+                if (story.cardTitle.trim().isNotEmpty)
                   SizedBox(height: flat ? 2 : 6),
                 Text(
-                  story.excerpt,
+                  story.cardExcerpt,
                   maxLines: flat ? 3 : 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -513,6 +536,26 @@ class StoryCard extends StatelessWidget {
                     height: 1.5,
                   ),
                 ),
+              ],
+              if (story.feedMedia case final media when media.isNotEmpty) ...[
+                SizedBox(height: flat ? 8 : 12),
+                FeedGallery(
+                  key: ValueKey('story-media-${story.id}'),
+                  store: store,
+                  articleID: story.id,
+                  watermark: story.mediaWatermark,
+                  media: [
+                    for (final item in media)
+                      item.video
+                          ? FeedMedia.video(item.data)
+                          : FeedMedia.image(item.data),
+                  ],
+                ),
+              ],
+              // Tapping one of these lines opens the post, like the text does.
+              for (final entry in story.feedAttachments) ...[
+                const SizedBox(height: 8),
+                _FeedAttachment(kind: entry.kind, label: entry.label),
               ],
               if (story.cover == 1) ...[
                 const SizedBox(height: 15),
@@ -575,6 +618,10 @@ class StoryCard extends StatelessWidget {
                   articleID: story.id,
                   embedded: true,
                 ),
+              if (story.tags case final tags when tags.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                ArticleTagRow(tags: tags, store: store, collapsible: true),
+              ],
               SizedBox(height: flat ? 2 : 8),
               Row(
                 children: [
@@ -636,6 +683,78 @@ class StoryCard extends StatelessWidget {
 
 /// Stand-in feed cards shown, in the real cards' place, until the first page of
 /// articles arrives.
+/// What a search found, in the feed's place. It starts under the search field,
+/// so neither the keyboard nor the banner moves it.
+class _FeedSearchResults extends StatelessWidget {
+  const _FeedSearchResults({required this.search, required this.bottomInset});
+  final FeedSearch search;
+  final double bottomInset;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([search, search.store]),
+    builder: (context, _) {
+      final results = search.results;
+      return AutoPaginate(
+        canLoad: search.canLoadMore,
+        onLoadMore: () => search.load(more: true),
+        child: PlayfulRefresh(
+          hasError: () => search.failed,
+          onRefresh: search.load,
+          child: CustomScrollView(
+            // A new answer starts again from the top.
+            key: ValueKey('discovery-search-${search.answered}'),
+            physics: const AlwaysScrollableScrollPhysics(),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              if (results.isEmpty && (search.waiting || search.loading))
+                const SliverToBoxAdapter(child: _FeedSkeleton())
+              else if (results.isEmpty)
+                SliverToBoxAdapter(
+                  child: search.failed
+                      ? EmptyState.failed('搜索失败，请稍后重试', onRetry: search.retry)
+                      : const EmptyState(
+                          '没有找到相关内容',
+                          '试试其他关键词。',
+                          art: EmptyArt.search,
+                        ),
+                )
+              else
+                SliverList.builder(
+                  itemCount: results.length,
+                  itemBuilder: (context, index) => FeedRow(
+                    key: ValueKey('discovery-result-${results[index].id}'),
+                    gapColor: _discoveryGapColor(context),
+                    child: StoryCard(
+                      story: results[index],
+                      store: search.store,
+                      flat: true,
+                    ),
+                  ),
+                ),
+              if (results.isNotEmpty && search.failed)
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: TextButton(
+                      onPressed: search.retry,
+                      child: const Text('加载失败，点击重试'),
+                    ),
+                  ),
+                ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 24 + bottomInset),
+                  child: PageLoadingFooter(visible: search.loadingMore),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _FeedSkeleton extends StatelessWidget {
   const _FeedSkeleton();
 
@@ -682,6 +801,48 @@ class _FeedSkeleton extends StatelessWidget {
               ),
             ),
           ),
+      ],
+    ),
+  );
+}
+
+class _FeedAttachment extends StatelessWidget {
+  const _FeedAttachment({required this.kind, required this.label});
+  final String kind, label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: ValueKey('feed-attachment-$kind'),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    decoration: BoxDecoration(
+      color: context.colors.inset,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      children: [
+        switch (kind) {
+          'link' => AppIcon(
+            AppIcons.link,
+            size: 16,
+            color: context.colors.muted,
+          ),
+          _ => Icon(
+            kind == 'poll' ? Icons.poll_outlined : Icons.table_chart_outlined,
+            size: 16,
+            color: context.colors.muted,
+          ),
+        },
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, color: context.colors.ink),
+          ),
+        ),
+        const SizedBox(width: 8),
+        AppIcon(AppIcons.forward, size: 14, color: context.colors.muted),
       ],
     ),
   );
@@ -830,10 +991,18 @@ class _StoryDetailState extends State<StoryDetail> {
   final headingKeys = <int, GlobalKey>{};
   late ArticleRichBody body = _buildBody(widget.story.content);
 
+  /// The tags of the content [body] was built from.
+  List<String> tags = const [];
+
   ArticleRichBody _buildBody(Map<String, dynamic> content) {
-    final data = content.isEmpty
-        ? richContent(widget.story.paragraphs.join('\n'))
-        : content;
+    final split = splitArticleTags(
+      content.isEmpty
+          ? richContent(widget.story.paragraphs.join('\n'))
+          : content,
+    );
+    final data = split.body;
+    // A guidance post has a question, not tags.
+    tags = widget.story.hasGuidance ? const [] : split.tags;
     headingKeys
       ..clear()
       ..addAll({
@@ -854,41 +1023,19 @@ class _StoryDetailState extends State<StoryDetail> {
     final items = headings;
     if (items.isEmpty) return;
     final minLevel = items.map((h) => h.level).reduce(math.min);
-    final picked = await showPanelSheet<int>(
+    final picked = await showContentsSheet<int>(
       context,
-      builder: (sheet) => PanelSheet(
-        title: '目录',
-        child: ListView(
-          key: const ValueKey('article-contents'),
-          children: [
-            for (final heading in items)
-              InkWell(
-                key: ValueKey('article-contents-${heading.blockIndex}'),
-                onTap: () => Navigator.pop(sheet, heading.blockIndex),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    12 + (heading.level - minLevel) * 16.0,
-                    12,
-                    12,
-                    12,
-                  ),
-                  child: Text(
-                    heading.text,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: heading.level == minLevel
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                      color: context.colors.ink,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+      title: '目录',
+      listKey: const ValueKey('article-contents'),
+      entries: [
+        for (final heading in items)
+          (
+            key: ValueKey('article-contents-${heading.blockIndex}'),
+            value: heading.blockIndex,
+            title: heading.text,
+            indent: (heading.level - minLevel) * 16.0,
+          ),
+      ],
     );
     if (picked != null && mounted) await jumpToHeading(picked);
   }
@@ -1376,6 +1523,10 @@ class _StoryDetailState extends State<StoryDetail> {
         ),
       ),
     body,
+    if (tags.isNotEmpty) ...[
+      const SizedBox(height: 7),
+      ArticleTagRow(tags: tags, store: widget.store),
+    ],
     if (bodyError != null)
       TextButton(onPressed: loadBody, child: Text('$bodyError，点击重试')),
     Padding(
@@ -1431,6 +1582,7 @@ class _StoryDetailState extends State<StoryDetail> {
       EmptyState(
         widget.story.canComment ? '还没有评论，聊聊你的看法' : '还没有评论',
         '',
+        art: EmptyArt.comment,
         compact: true,
       ),
   ];
@@ -1466,7 +1618,7 @@ class _StoryDetailState extends State<StoryDetail> {
         ],
       ),
       body: articleRemoved
-          ? const Center(child: Text('该文章已撤回，暂时无法查看'))
+          ? const EmptyState('该文章已撤回，暂时无法查看', '', art: EmptyArt.contentGone)
           : AutoPaginate(
               canLoad:
                   widget.story.commentsCursor.isNotEmpty &&
@@ -1744,7 +1896,11 @@ class _StorySearchState extends State<StorySearch> {
                   ),
                   const SizedBox(height: 20),
                   if (results.isEmpty)
-                    const EmptyState('这里还没有内容', '试试其他关键词，或去发现页看看。'),
+                    const EmptyState(
+                      '这里还没有内容',
+                      '试试其他关键词，或去发现页看看。',
+                      art: EmptyArt.search,
+                    ),
                   for (final story in results)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),

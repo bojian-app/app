@@ -9,6 +9,10 @@ class InviteFloatingBadge extends StatefulWidget {
   const InviteFloatingBadge({super.key, required this.store});
   final AppStore store;
 
+  /// Hidden for now: the house ad at the top of the feed is the invitation
+  /// entry. Turn this back on to show the floating badge again.
+  static bool enabled = false;
+
   /// Widget tests turn the endless pulse off so `pumpAndSettle` can settle.
   @visibleForTesting
   static bool pulse = true;

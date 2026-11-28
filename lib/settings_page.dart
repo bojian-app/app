@@ -20,6 +20,7 @@ import 'account_deletion_dialog.dart';
 import 'api/bojian_api.dart';
 import 'app_store.dart';
 import 'confirmation_dialog.dart';
+import 'customer_service_page.dart';
 import 'phone_binding_dialog.dart';
 import 'design.dart';
 import 'legal_document.dart';
@@ -357,6 +358,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     save: (item) => store.appearance.update(mode: item),
                   ),
                 ),
+                _SettingsRow(
+                  key: const ValueKey('settings-tab-bar-style'),
+                  icon: AppIcons.menu,
+                  title: '菜单栏主题',
+                  value: choice.tabBar.label,
+                  onTap: () => _chooseAppearance<AppTabBarStyle>(
+                    title: '菜单栏主题',
+                    choices: AppTabBarStyle.values,
+                    selected: choice.tabBar,
+                    label: (item) => item.label,
+                    save: (item) => store.appearance.update(tabBar: item),
+                  ),
+                ),
               ],
             ),
           ),
@@ -384,6 +398,14 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingsGroup(
             '帮助与关于',
             children: [
+              if (store.isAuthenticated)
+                _SettingsRow(
+                  key: const ValueKey('settings-customer-service'),
+                  icon: AppIcons.headset,
+                  title: '在线客服',
+                  onTap: () =>
+                      openPage(context, CustomerServicePage(store: store)),
+                ),
               if (store.isAuthenticated)
                 _SettingsRow(
                   icon: AppIcons.feedback,
@@ -415,28 +437,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   );
                 },
               ),
+              if (store.isAuthenticated)
+                _SettingsRow(
+                  key: const ValueKey('settings-sign-out'),
+                  icon: AppIcons.logout,
+                  title: signingOut ? '正在退出…' : '退出登录',
+                  onTap: signingOut ? null : _signOut,
+                ),
             ],
           ),
-          if (store.isAuthenticated)
-            OutlinedButton(
-              key: const ValueKey('settings-sign-out'),
-              onPressed: signingOut ? null : _signOut,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-                backgroundColor: context.colors.surface,
-                side: BorderSide(color: context.colors.border),
-                minimumSize: const Size.fromHeight(40),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ).withoutHover(),
-              child: Text(signingOut ? '正在退出…' : '退出登录'),
-            ),
         ],
       );
     },
@@ -986,7 +995,7 @@ class _SecurityPageState extends State<AccountSecurityPage> {
               ),
             )
           else if (sessions.isEmpty)
-            const EmptyState('暂无登录设备', '', compact: true)
+            const EmptyState('暂无登录设备', '', art: EmptyArt.search, compact: true)
           else
             for (final session in sessions) deviceRow(session),
         ],

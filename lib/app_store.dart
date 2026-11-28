@@ -1,6 +1,7 @@
 import 'content_moderation.dart';
 import 'ai_consent.dart';
 import 'app_appearance.dart';
+import 'article_tags.dart';
 import 'user_display_name.dart';
 
 import 'dart:async';

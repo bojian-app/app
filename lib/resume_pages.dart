@@ -46,6 +46,7 @@ import 'resume_user_share.dart';
 import 'resume_post_composer.dart';
 import 'resume_preview_color.dart';
 import 'resume_link_share.dart';
+import 'resume_share_link.dart';
 import 'resume_ai_optimization_page.dart';
 
 import 'dart:async';

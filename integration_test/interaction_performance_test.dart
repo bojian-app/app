@@ -197,21 +197,15 @@ void main() {
     await wait(800);
     for (final visit in ['first', 'retained']) {
       await measure(
-        'avatar-menu-$visit',
-        () => tap(byKey('discovery-profile')),
-      );
-      expect(byKey('discovery-scan'), findsOneWidget);
-      await measure(
-        'avatar-member-$visit',
-        () => tap(byKey('discovery-membership')),
+        'home-member-$visit',
+        () => tap(byKey('app-tab-membership')),
       );
       expect(find.byType(MembershipPage), findsOneWidget);
       await measure('member-back-$visit', back);
 
-      await tap(byKey('discovery-profile'));
       await measure(
-        'avatar-profile-$visit',
-        () => tap(byKey('discovery-my-page')),
+        'home-profile-$visit',
+        () => tap(byKey('app-tab-profile')),
       );
       expect(find.byType(ProfilePage), findsOneWidget);
       if (visit == 'first') {
@@ -244,10 +238,11 @@ void main() {
       await measure('profile-back-$visit', back);
       expect(find.byType(DiscoveryPage), findsOneWidget);
 
-      await tap(byKey('discovery-profile'));
+      await tap(byKey('app-tab-profile'));
+      await tap(byKey('profile-settings'));
       await measure(
-        'home-service-$visit',
-        () => tap(byKey('discovery-service')),
+        'settings-service-$visit',
+        () => tap(byKey('settings-customer-service')),
       );
       expect(find.byType(CustomerServicePage), findsOneWidget);
       if (visit == 'first') {
@@ -273,12 +268,14 @@ void main() {
         await back();
       }
       await measure('service-back-$visit', back);
+      await back();
+      await back();
       expect(find.byType(DiscoveryPage), findsOneWidget);
     }
 
     await measure(
       'home-notifications-500',
-      () => tap(byKey('discovery-messages')),
+      () => tap(byKey('app-tab-messages')),
     );
     expect(store.inbox.length, 500);
     await scroll('notifications-scroll', find.byType(MessagesPage));

@@ -185,6 +185,55 @@ void main() {
     },
   );
 
+  testWidgets('Every tab moves the header, whether tapped or swiped to', (
+    tester,
+  ) async {
+    await mount(tester, ProfileContentGateway());
+    final outer = nested(tester).outerController;
+    Future<void> drag(Offset start, Offset by) async {
+      await tester.dragFrom(start, by);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> headerFollows(String reason) async {
+      // Only the list on screen is joined to the header.
+      expect(
+        nested(tester).innerController.positions,
+        hasLength(1),
+        reason: reason,
+      );
+      // Back to the top of the list, then fold and unfold the header.
+      nested(tester).innerController.jumpTo(0);
+      await tester.pumpAndSettle();
+      await drag(const Offset(195, 320), const Offset(0, 500));
+      expect(outer.offset, closeTo(0, .5), reason: '$reason: unfolds');
+      await drag(const Offset(195, 600), const Offset(0, -450));
+      expect(
+        outer.offset,
+        closeTo(outer.position.maxScrollExtent, .5),
+        reason: '$reason: folds',
+      );
+    }
+
+    await headerFollows('first tab');
+    // A swipe builds each next page before it becomes the current one.
+    for (final (page, by) in [
+      (1, -300.0),
+      (2, -300.0),
+      (3, -300.0),
+      (2, 300.0),
+    ]) {
+      await drag(Offset(by < 0 ? 340 : 50, 650), Offset(by, 0));
+      expect(tabs(tester).index, page);
+      await headerFollows('swiped to $page');
+    }
+    for (final tab in ['resumes', 'drafts', 'saved']) {
+      await select(tester, tab);
+      await headerFollows('tapped $tab');
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Profile actions follow a swipe before it settles', (
     tester,
   ) async {
@@ -345,13 +394,12 @@ void main() {
         final bar = tester.getRect(find.byKey(const ValueKey('profile-tabs')));
         await pullAt(tester, Offset(bar.center.dx, bar.bottom + 35));
         expect(find.byType(ProfileDetailsPage), findsNothing);
-        expect(api.calls, [
-          switch (tab) {
-            'articles' => 'GetMeArticles',
-            'saved' => 'GetMeFavorites',
-            _ => 'GetResumes',
-          },
-        ]);
+        expect(api.calls, switch (tab) {
+          'articles' => ['GetMeArticles'],
+          // Embedded favorites load each article to draw its feed card.
+          'saved' => ['GetMeFavorites', 'GetArticlesId'],
+          _ => ['GetResumes'],
+        });
         expect(tester.takeException(), isNull);
       }, variant: TargetPlatformVariant({platform}));
 
@@ -596,7 +644,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.statuses, ['PUBLISHED']);
       await select(tester, 'saved');
-      await tester.tap(find.byKey(const ValueKey('saved-remove-1')));
+      await tester.tap(find.byKey(const ValueKey('story-bookmark-1')));
       await tester.pumpAndSettle();
       expect(api.saved, isFalse);
       expect(find.text('还没有收藏的文章'), findsOneWidget);
@@ -629,7 +677,7 @@ void main() {
       );
       expect(tester.widget<ProfileAvatar>(avatar).url, store.avatarURL);
       expect(
-        find.descendant(of: avatar, matching: find.byType(CustomPaint)),
+        find.descendant(of: avatar, matching: find.byType(Image)),
         findsOneWidget,
       );
       store.name = '修改后的用户昵称';
@@ -869,7 +917,10 @@ void main() {
       final initialOffset = nested(tester).outerController.offset;
       await openSharedAccountMenu(tester);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('profile-settings')).hitTestable(), findsNothing);
+      expect(
+        find.byKey(const ValueKey('profile-settings')).hitTestable(),
+        findsNothing,
+      );
       await tester.dragFrom(const Offset(370, 400), const Offset(0, -180));
       await tester.pumpAndSettle();
       expect(state.selected, 3);
@@ -877,7 +928,10 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('profile-drawer')), findsNothing);
-      expect(find.byKey(const ValueKey('profile-settings')).hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('profile-settings')).hitTestable(),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );

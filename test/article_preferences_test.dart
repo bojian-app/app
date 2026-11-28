@@ -103,7 +103,7 @@ void main() {
     expect(selected, '新 话题');
     await tester.tap(find.text('阅读'));
     await tester.pumpAndSettle();
-    expect(find.text('#test 1#'), findsOneWidget);
+    expect(find.text('返回'), findsOneWidget);
     expect(find.text('公开动态测试'), findsOneWidget);
   });
 }

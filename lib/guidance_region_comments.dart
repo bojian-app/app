@@ -988,25 +988,10 @@ class _RegionCommentsState extends State<_RegionComments>
                                 hasScrollBody: true,
                                 child: error != null
                                     ? Center(
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(24),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                error!,
-                                                textAlign: TextAlign.center,
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  color: context.colors.muted,
-                                                ),
-                                              ),
-                                              TextButton(
-                                                onPressed: load,
-                                                child: const Text('重新加载'),
-                                              ),
-                                            ],
-                                          ),
+                                        child: EmptyState.failed(
+                                          error!,
+                                          onRetry: load,
+                                          compact: true,
                                         ),
                                       )
                                     : items == null
@@ -1015,6 +1000,7 @@ class _RegionCommentsState extends State<_RegionComments>
                                         child: EmptyState(
                                           '还没有评论，聊聊你的看法',
                                           '',
+                                          art: EmptyArt.comment,
                                           compact: true,
                                         ),
                                       ),

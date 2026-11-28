@@ -134,7 +134,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('发起新服务'));
     await tester.pumpAndSettle();
-    expect(find.text('当前还没有客服在线。'), findsOneWidget);
+    expect(find.text('当前还没有客服在线，你可以先留言。'), findsOneWidget);
     expect(find.text('自助服务'), findsNothing);
     expect(find.widgetWithText(TextButton, '咨询'), findsNothing);
     expect(find.textContaining('排队中'), findsNothing);
@@ -148,7 +148,7 @@ void main() {
     api.documents['GetSupportSessionsId'] = connected;
     final greeting = find.text('您好！人工客服上班时间为法定工作日 09:00 - 18:00。');
     expect(greeting, findsOneWidget);
-    final followup = find.text('其他时段，您可以通过「意见反馈」留言。');
+    final followup = find.text('其他时段也可以留言，回复可能较慢；也可通过「意见反馈」提交问题。');
     expect(followup, findsOneWidget);
     expect(
       tester.getTopLeft(followup).dy,

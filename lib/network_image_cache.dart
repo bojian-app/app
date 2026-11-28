@@ -224,8 +224,12 @@ class NetworkImageStore {
 /// A network image cached in memory and on disk under a stable key, so a new
 /// download signature for the same object neither refetches nor flickers.
 class CachedNetworkImage extends ImageProvider<CachedNetworkImage> {
-  const CachedNetworkImage(this.url, {this.variant = ''});
+  const CachedNetworkImage(this.url, {this.variant = '', this.fallback = ''});
   final String url;
+
+  /// Tried when [url] cannot be had, as when a smaller rendition of a picture
+  /// cannot be made.
+  final String fallback;
 
   /// Distinguishes different images served from one fixed URL.
   final String variant;
@@ -256,9 +260,21 @@ class CachedNetworkImage extends ImageProvider<CachedNetworkImage> {
     CachedNetworkImage key,
     ImageDecoderCallback decode,
   ) async {
+    try {
+      return await _stored(key.url, key.cacheKey, decode);
+    } catch (_) {
+      if (key.fallback.isEmpty) rethrow;
+      return _stored(key.fallback, stableImageKey(key.fallback), decode);
+    }
+  }
+
+  static Future<ui.Codec> _stored(
+    String url,
+    String cacheKey,
+    ImageDecoderCallback decode,
+  ) async {
     final store = NetworkImageStore.instance;
-    final cacheKey = key.cacheKey;
-    final bytes = await store.load(key.url, cacheKey);
+    final bytes = await store.load(url, cacheKey);
     try {
       return await decode(await ui.ImmutableBuffer.fromUint8List(bytes));
     } catch (_) {

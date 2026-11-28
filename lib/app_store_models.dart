@@ -125,7 +125,8 @@ class Story {
   Map<String, dynamic>? get feedPoll {
     if (hasGuidance) return null;
     Map<String, dynamic>? poll;
-    for (final block in (content['blocks'] as List? ?? []).whereType<Map>()) {
+    final written = splitArticleTags(content).body['blocks'];
+    for (final block in (written as List? ?? []).whereType<Map>()) {
       if (block['kind'] == 'poll') {
         if (poll != null || integer(block['poll_id']) <= 0) return null;
         poll = Map<String, dynamic>.from(block);
@@ -139,6 +140,88 @@ class Story {
       if (!blank) return null;
     }
     return poll;
+  }
+
+  /// The pictures and playable videos of an ordinary post, in the order the
+  /// author placed them, shown together on its feed card.
+  List<({bool video, Map<String, dynamic> data})> get feedMedia => [
+    if (!hasGuidance)
+      for (final block in (content['blocks'] as List? ?? []).whereType<Map>())
+        if (block['kind'] == 'image' && feedImageData(block['image']))
+          (video: false, data: Map<String, dynamic>.from(block['image'] as Map))
+        else if (block['kind'] == 'video' &&
+            block['video'] is Map &&
+            integer((block['video'] as Map)['file_id']) > 0)
+          (video: true, data: Map<String, dynamic>.from(block['video'] as Map)),
+  ];
+
+  /// The tags the post carries, shown apart from what it says.
+  List<String> get tags =>
+      hasGuidance ? const [] : splitArticleTags(content).tags;
+
+  /// The label the author asked to stamp on their pictures, if any.
+  String? get mediaWatermark {
+    final declaration = content['declaration'];
+    return declaration is Map && declaration['watermark'] == true
+        ? '${declaration['watermark_label'] ?? 'Z优简'}'
+        : null;
+  }
+
+  /// The title over the card's content, left out where the box of a poll-only
+  /// post already says the same.
+  String get cardTitle {
+    final poll = feedPoll;
+    return poll != null && '${poll['title'] ?? ''}'.trim() == title.trim()
+        ? ''
+        : title;
+  }
+
+  /// What the author wrote, as the card's summary: nothing stands in for the
+  /// pictures, polls, links or tables the post also holds. The box of a
+  /// poll-only post states its own question.
+  String get cardExcerpt => content['blocks'] is List
+      ? articlePreviewText(content, textOnly: true)
+      : excerpt;
+
+  /// One line each, under the media, for what a feed card names but leaves to
+  /// the post page. A poll-only post shows its poll itself instead.
+  List<({String kind, String label})> get feedAttachments {
+    if (hasGuidance || feedPoll != null) return const [];
+    final blocks = (content['blocks'] as List? ?? []).whereType<Map>().toList();
+    final hosts = [
+      for (final block in blocks)
+        if (block['kind'] == 'link')
+          if (Uri.tryParse('${block['url'] ?? ''}'.trim())?.host
+              case final host? when host.isNotEmpty)
+            host,
+    ];
+    final entries = [
+      for (final block in blocks)
+        if (block['kind'] == 'poll')
+          (
+            kind: 'poll',
+            label: [
+              block['mode'] == 'question' ? '问答' : '投票',
+              '${block['title'] ?? ''}'.trim(),
+            ].where((part) => part.isNotEmpty).join('：'),
+          ),
+      if (hosts.isNotEmpty)
+        (
+          kind: 'link',
+          label: hosts.length > 1
+              ? '链接：${hosts.first} 等 ${hosts.length} 个'
+              : '链接：${hosts.first}',
+        ),
+    ];
+    // A post of nothing but a table would otherwise leave its card blank.
+    if (entries.isEmpty &&
+        title.trim().isEmpty &&
+        cardExcerpt.trim().isEmpty &&
+        feedMedia.isEmpty &&
+        blocks.any((block) => block['kind'] == 'table')) {
+      return const [(kind: 'table', label: '表格，点开查看')];
+    }
+    return entries;
   }
 
   void setBookmark(bool active) {
@@ -278,11 +361,24 @@ String plainContent(dynamic content) {
       .join('\n');
 }
 
-String articlePreviewText(dynamic content) {
+/// Whether an image block's data points at a picture a feed card can show.
+bool feedImageData(dynamic data) {
+  if (data is! Map) return false;
+  if (integer(data['file_id']) > 0) return true;
+  final uri = Uri.tryParse('${data['url'] ?? ''}'.trim());
+  return uri != null &&
+      (uri.scheme == 'https' || uri.scheme == 'http') &&
+      uri.host.isNotEmpty;
+}
+
+/// [textOnly] keeps the author's words alone, without the "[图片]" style lines
+/// that name everything else.
+String articlePreviewText(dynamic content, {bool textOnly = false}) {
   if (content is String) return content.trim();
   if (content is! Map || content['blocks'] is! List) return '';
   final parts = <String>[];
-  for (final block in (content['blocks'] as List).whereType<Map>()) {
+  final written = splitArticleTags(content).body['blocks'] as List;
+  for (final block in written.whereType<Map>()) {
     final kind = block['kind'];
     final spans = block['spans'];
     final text = spans is List
@@ -290,6 +386,8 @@ String articlePreviewText(dynamic content) {
         : '';
     if (text.isNotEmpty) {
       parts.add(text);
+    } else if (textOnly) {
+      continue;
     } else if (kind == 'image' || kind == 'video') {
       final data = block[kind];
       final caption = data is Map

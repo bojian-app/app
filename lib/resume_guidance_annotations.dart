@@ -764,15 +764,7 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
         child: LoadingGate(
           loading: error == null && items == null,
           builder: (_) => error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(error!, textAlign: TextAlign.center),
-                      TextButton(onPressed: load, child: const Text('重新加载')),
-                    ],
-                  ),
-                )
+              ? Center(child: EmptyState.failed(error!, onRetry: load))
               : items == null
               ? const DotMatrixLoader()
               : PlayfulRefresh(
@@ -788,6 +780,7 @@ class _GuidanceAnnotationsState extends State<GuidanceAnnotations>
                                   child: EmptyState(
                                     widget.commentsOnly ? '暂无评论' : '还没有指点记录',
                                     '',
+                                    art: EmptyArt.comment,
                                     compact: true,
                                   ),
                                 ),

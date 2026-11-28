@@ -185,6 +185,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
   }
 
+  /// The badge is small, so a word says what the tap did.
+  Future<void> toggleFollow() async {
+    final done = await runRequest(context, publicProfile.toggleFollow);
+    final followed = publicProfile.following;
+    if (done && mounted && followed != null) {
+      toast(context, followed ? '已关注' : '已取消关注', success: true);
+    }
+  }
+
   Widget status(String message, {bool retry = false}) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
     child: Column(
@@ -209,6 +218,28 @@ class _UserProfilePageState extends State<UserProfilePage> {
     ),
   );
 
+  /// Stands in for the whole page when there is no profile to show. A withheld
+  /// one is not an error, so it offers the way back rather than another try.
+  Widget blank() => publicProfile.unavailable
+      ? EmptyState(
+          '该用户主页暂不可见',
+          '对方可能没有公开个人主页，暂时看不到资料和动态',
+          art: EmptyArt.profileHidden,
+          action: FilledButton(
+            key: const ValueKey('profile-unavailable-back'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(128, 40),
+              shape: const StadiumBorder(),
+            ).withoutHover(),
+            onPressed: () => Navigator.of(context).maybePop(),
+            child: const Text('返回'),
+          ),
+        )
+      : EmptyState.failed(
+          profileError ?? '该用户主页暂不可见',
+          onRetry: loading ? null : load,
+        );
+
   @override
   void dispose() {
     loadingHold.dispose();
@@ -228,9 +259,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
           backgroundColor: showLoading ? Colors.transparent : null,
           title: const Text('个人主页'),
         ),
-        body: showLoading
-            ? const DotMatrixLoader()
-            : Center(child: status(profileError ?? '该用户主页暂不可见', retry: true)),
+        body: showLoading ? const DotMatrixLoader() : blank(),
       );
     }
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -283,6 +312,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           onEdit: () {},
                           onAvatar: showDetails,
                           onDetails: showDetails,
+                          following: widget.store.userID == widget.userID
+                              ? null
+                              : publicProfile.following,
+                          onFollow: publicProfile.changingFollow
+                              ? null
+                              : toggleFollow,
                         ),
                       ),
                     ),
@@ -297,23 +332,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     scrolledUnderElevation: 0,
                     surfaceTintColor: Colors.transparent,
                     shadowColor: Colors.transparent,
-                    bottom: ProfileContentTabs(
-                      trailing:
-                          widget.store.userID != widget.userID &&
-                              publicProfile.following != null
-                          ? TextButton(
-                              onPressed: publicProfile.changingFollow
-                                  ? null
-                                  : () => runRequest(
-                                      context,
-                                      publicProfile.toggleFollow,
-                                    ),
-                              child: Text(
-                                publicProfile.following! ? '已关注' : '关注',
-                              ),
-                            )
-                          : null,
-                      tabs: const [
+                    bottom: const ProfileContentTabs(
+                      tabs: [
                         Tab(
                           key: ValueKey('profile-tab-articles'),
                           text: '动态',
@@ -358,7 +378,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         loading: loading,
                         builder: (_) => loading
                             ? const DotMatrixLoader()
-                            : const Center(child: EmptyState('暂时没有公开动态', '')),
+                            : const Center(
+                                child: EmptyState(
+                                  '暂时没有公开动态',
+                                  '',
+                                  art: EmptyArt.post,
+                                ),
+                              ),
                       ),
                     ),
                   SliverLayoutBuilder(

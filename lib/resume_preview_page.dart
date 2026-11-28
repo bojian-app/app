@@ -62,6 +62,13 @@ class _ResumePreviewState extends State<ResumePreview> {
           showDragHandle: true,
           builder: (_) => ResumeLinkShare(store: store, resume: resume),
         );
+      } else if (action == 'share-link') {
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (_) => ResumeShareLinkSheet(store: store, resume: resume),
+        );
       } else if (action == 'rename') {
         await showResumeRenameDialog(context, store: store, resume: resume);
       } else if (action == 'ai-optimize') {
@@ -195,7 +202,11 @@ class _ResumePreviewState extends State<ResumePreview> {
       if (matches.isEmpty) {
         return Scaffold(
           appBar: _toolbar(context),
-          body: const EmptyState('简历暂不可用', '请返回列表刷新后重试。'),
+          body: const EmptyState(
+            '简历暂不可用',
+            '请返回列表刷新后重试。',
+            art: EmptyArt.contentGone,
+          ),
         );
       }
       final resume = matches.first;

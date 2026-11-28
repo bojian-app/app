@@ -60,18 +60,19 @@ extension AppStoreSocial on AppStore {
     String newName,
     String newBio, {
     bool updateName = true,
+    bool updateBio = true,
   }) async {
     final version = epoch;
     final v = await request(
       'PatchMe',
-      body: {if (updateName) 'nickname': newName, 'bio': newBio},
+      body: {if (updateName) 'nickname': newName, if (updateBio) 'bio': newBio},
     );
     if (version != epoch || !alive) return;
     if (v.data.containsKey('avatar_url')) {
       avatarURL = v.data['avatar_url'] as String? ?? '';
     }
     name = v.data['nickname'] as String? ?? (updateName ? newName : name);
-    bio = v.data['bio'] as String? ?? newBio;
+    bio = v.data['bio'] as String? ?? (updateBio ? newBio : bio);
     changed();
   }
 

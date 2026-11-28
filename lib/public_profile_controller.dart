@@ -20,6 +20,10 @@ class PublicProfileController extends ChangeNotifier {
   String cursor = '';
   bool loading = true, loadingMore = false;
   String? profileError, articleError;
+
+  /// The server withholds this profile; it does not say whether the owner made
+  /// it private, blocked the viewer or left.
+  bool unavailable = false;
   int generation = 0, viewerEpoch;
   bool disposed = false;
   bool? following;
@@ -35,6 +39,7 @@ class PublicProfileController extends ChangeNotifier {
     profile = null;
     articles = [];
     loading = false;
+    unavailable = false;
     profileError = '账号已变化，请重新打开该用户主页';
     notifyListeners();
   }
@@ -46,6 +51,7 @@ class PublicProfileController extends ChangeNotifier {
     loading = true;
     profileError = null;
     articleError = null;
+    unavailable = false;
     notifyListeners();
     try {
       final result = await store.request(
@@ -65,6 +71,7 @@ class PublicProfileController extends ChangeNotifier {
         profile = null;
         articles = [];
         cursor = '';
+        unavailable = true;
         profileError = '该用户主页暂不可见';
       } else {
         profileError = '主页加载失败，请稍后重试';

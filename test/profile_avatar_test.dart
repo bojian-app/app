@@ -5,6 +5,7 @@ import 'package:bojian_mobile/account_pages.dart';
 import 'package:bojian_mobile/api/bojian_api.dart';
 import 'package:bojian_mobile/design.dart';
 import 'package:bojian_mobile/profile_avatar.dart';
+import 'package:bojian_mobile/profile_edit_actions.dart';
 import 'package:bojian_mobile/resume_photo_crop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +40,14 @@ void main() {
         }
       }
       expect(storedSystemAvatar('https://cdn.example.com/upload.png'), isNull);
+      expect(
+        storedSystemAvatar('https://cdn.example.com/1-system-avatar-3.png'),
+        isNull,
+      );
+      expect(
+        storedSystemAvatar('https://cdn.example.com/1-system-avatar-v2-3.webp'),
+        isNull,
+      );
     },
   );
 
@@ -59,7 +68,7 @@ void main() {
         file,
         upload: (authorization, source, mime) async {
           expect(authorization['id'], 19);
-          expect(mime, 'image/png');
+          expect(mime, 'image/webp');
           expect(await source.length(), greaterThan(0));
         },
       );
@@ -133,10 +142,10 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: appTheme,
-          home: ProfileEditor(store: store),
+          home: ProfileEditor(store: store, action: ProfileEditAction.avatar),
         ),
       );
-      await tester.tap(find.text('更换头像'));
+      await tester.tap(find.byKey(const ValueKey('profile-avatar-system')));
       await tester.pumpAndSettle();
       expect(find.text('上传自己的头像'), findsOneWidget);
       expect(find.byKey(const ValueKey('system-avatar-7')), findsOneWidget);
@@ -147,7 +156,7 @@ void main() {
         4,
       );
       expect(api.calls.where((method) => method.startsWith('Post')), isEmpty);
-      await tester.tap(find.text('更换头像'));
+      await tester.tap(find.byKey(const ValueKey('profile-avatar-system')));
       await tester.pumpAndSettle();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -172,16 +181,16 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: appTheme,
-        home: ProfileEditor(store: store),
+        home: ProfileEditor(store: store, action: ProfileEditAction.avatar),
       ),
     );
-    await tester.tap(find.text('更换头像'));
+    await tester.tap(find.byKey(const ValueKey('profile-avatar-system')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('上传自己的头像'));
     expect(tester.takeException(), isNull);
   });
   testWidgets(
-    'Editor keeps save above keyboard and saves profile before returning',
+    'Nickname editor keeps save above keyboard and saves before returning',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -200,7 +209,10 @@ void main() {
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (_) => ProfileEditor(store: store),
+                    builder: (_) => ProfileEditor(
+                      store: store,
+                      action: ProfileEditAction.nickname,
+                    ),
                   ),
                 ),
                 child: const Text('打开编辑'),

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'app_icons.dart';
 import 'update_badge.dart';
 import 'app_store.dart';
+import 'app_page_bar.dart';
 import 'design.dart';
 import 'profile_avatar.dart';
 import 'profile_identity_data.dart';
@@ -96,6 +97,8 @@ class ProfileHeader extends StatelessWidget {
     this.showName = true,
     this.transitionSnapshot = false,
     this.paintBackground = true,
+    this.following,
+    this.onFollow,
   });
   final AppStore store;
   final ProfileIdentityData? identity;
@@ -106,6 +109,13 @@ class ProfileHeader extends StatelessWidget {
   final double pullProgress, collapseProgress, scrollOffset;
   final Key? nameKey, surfaceKey;
   final bool showName, transitionSnapshot, paintBackground;
+
+  /// Whether this other user is followed, worn as a button on their avatar;
+  /// null where there is nothing to follow.
+  final bool? following;
+
+  /// Follows or unfollows them; null while that is under way.
+  final VoidCallback? onFollow;
   static const pullExtent = 40.0;
   static const detailsPullThreshold = 64.0;
 
@@ -354,6 +364,33 @@ class ProfileHeader extends StatelessWidget {
                 ),
               ),
             ),
+            if (following case final followed? when identity != null)
+              Positioned(
+                // On the lower right of the avatar, with room to tap around it.
+                left:
+                    ui.lerpDouble(width / 2, compactAvatarCenterX, t)! +
+                    visualAvatar / 2 -
+                    _followBadge / 2 -
+                    22,
+                top:
+                    scrollOffset +
+                    avatarCenterY +
+                    visualAvatar / 2 -
+                    _followBadge / 2 -
+                    22,
+                width: 44,
+                height: 44,
+                // It leaves before the avatar is too small to carry it.
+                child: IgnorePointer(
+                  ignoring: t > .2,
+                  child: Opacity(
+                    opacity: transitionSnapshot
+                        ? 0
+                        : (1 - t * 3).clamp(0.0, 1.0),
+                    child: _FollowBadge(followed: followed, onTap: onFollow),
+                  ),
+                ),
+              ),
             Positioned(
               left: ui.lerpDouble(appPageHorizontalPadding, compactNameLeft, t),
               top: scrollOffset + nameY,
@@ -396,7 +433,37 @@ class ProfileHeader extends StatelessWidget {
                         onPressed: onMenu,
                         icon: AppIcon(AppIcons.back, size: 20, color: color),
                       ),
-                    const Spacer(),
+                    Expanded(
+                      child: identity != null
+                          ? const SizedBox.shrink()
+                          : Padding(
+                              // On the page gutter, which this row starts short
+                              // of for the sake of the back button.
+                              padding: EdgeInsets.only(
+                                left: hasBack ? 0 : 14.5,
+                              ),
+                              // Gone before the shrinking avatar and name
+                              // arrive in its place, and out of their way: this
+                              // row lies over the compact avatar's button.
+                              child: IgnorePointer(
+                                child: Opacity(
+                                  opacity: (1 - t * 3).clamp(0.0, 1.0),
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      '个人资料',
+                                      key: const ValueKey('profile-page-title'),
+                                      maxLines: 1,
+                                      style: AppPageBar.titleStyle.copyWith(
+                                        color: color,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
                     if (identity == null)
                       Stack(
                         alignment: Alignment.center,
@@ -475,6 +542,52 @@ class ProfileHeader extends StatelessWidget {
       );
     },
   );
+}
+
+const _followBadge = 28.0;
+
+class _FollowBadge extends StatelessWidget {
+  const _FollowBadge({required this.followed, required this.onTap});
+  final bool followed;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.colors.accent;
+    return Tooltip(
+      message: followed ? '取消关注' : '关注',
+      child: Semantics(
+        button: true,
+        enabled: onTap != null,
+        child: GestureDetector(
+          key: const ValueKey('profile-follow'),
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Center(
+            child: AnimatedContainer(
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 200),
+              width: _followBadge,
+              height: _followBadge,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: followed ? Colors.white : accent,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: Center(
+                child: AppIcon(
+                  followed ? AppIcons.confirm : AppIcons.add,
+                  size: 16,
+                  color: followed ? accent : Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ProfileBodyClipper extends CustomClipper<Rect> {
@@ -737,27 +850,31 @@ class ProfileHeaderSliver extends SliverPersistentHeaderDelegate {
     BuildContext context,
     double shrinkOffset,
     bool overlapsContent,
-  ) => ClipRect(
-    child: Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned(
-          top: -shrinkOffset,
-          left: 0,
-          right: 0,
-          child: headerBuilder(
-            shrinkOffset,
-            Curves.easeInOutCubic.transform(
-              (shrinkOffset / collapseExtent.clamp(1, double.infinity)).clamp(
-                0,
-                1,
+  ) {
+    // A single scroll view keeps counting up to maxExtent once the header is
+    // already collapsed. The bar drawn at that offset would fall past the
+    // header's own bounds and be clipped away, leaving the feed showing
+    // through, so the header stops where it is fully collapsed.
+    final offset = shrinkOffset.clamp(0.0, maxExtent - minExtent);
+    return ClipRect(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            top: -offset,
+            left: 0,
+            right: 0,
+            child: headerBuilder(
+              offset,
+              Curves.easeInOutCubic.transform(
+                (offset / collapseExtent.clamp(1, double.infinity)).clamp(0, 1),
               ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   @override
   bool shouldRebuild(ProfileHeaderSliver oldDelegate) =>
@@ -935,7 +1052,14 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                                 : MediaQuery.paddingOf(context).top +
                                       ProfileHeader.toolbarHeight(context),
                             child: Opacity(
-                              opacity: widget.initialCollapse * (1 - progress),
+                              opacity:
+                                  Curves.easeInOut.transform(
+                                    ((widget.initialCollapse - .8) / .2).clamp(
+                                      0,
+                                      1,
+                                    ),
+                                  ) *
+                                  (1 - progress),
                               child: ColoredBox(color: context.colors.surface),
                             ),
                           ),

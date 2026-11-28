@@ -5,14 +5,56 @@ import 'article_media_picker.dart';
 import 'article_video_player.dart';
 import 'app_store.dart';
 import 'design.dart';
+import 'feed_media.dart'
+    show
+        ArticleMediaAddresses,
+        articleMediaAddresses,
+        articlePicture,
+        forgetArticleMediaURL;
 import 'network_image_cache.dart';
 import 'photo_format.dart';
 import 'resume_importer.dart' show ResumeUpload, uploadResumeDocument;
+import 'when_near_viewport.dart';
+
+/// How far an upload of several files has got.
+typedef UploadProgress = void Function(int done, int total);
+
+/// How many files go up at once.
+const articleUploadsAtOnce = 3;
+
+/// Uploads [files] a few at a time and returns their blocks in the order they
+/// were picked. Once one fails no more are started; [error] is that failure.
+Future<({List<Map<String, dynamic>> blocks, Object? error})>
+uploadArticleMediaFiles(
+  List<PickedArticleMedia> files,
+  Future<Map<String, dynamic>> Function(PickedArticleMedia) upload, {
+  UploadProgress? onProgress,
+}) async {
+  final blocks = List<Map<String, dynamic>?>.filled(files.length, null);
+  Object? error;
+  var next = 0, done = 0;
+  onProgress?.call(done, files.length);
+  Future<void> worker() async {
+    while (error == null && next < files.length) {
+      final index = next++;
+      try {
+        blocks[index] = await upload(files[index]);
+        onProgress?.call(++done, files.length);
+      } catch (failure) {
+        error ??= failure;
+      }
+    }
+  }
+
+  await Future.wait([for (var i = 0; i < articleUploadsAtOnce; i++) worker()]);
+  return (blocks: [for (final block in blocks) ?block], error: error);
+}
 
 Future<List<Map<String, dynamic>>> pickArticlePhotos(
   BuildContext context,
   AppStore store, {
   int? limit,
+  UploadProgress? onProgress,
 }) async {
   final epoch = store.epoch;
   final files = await openPage<List<PickedArticleMedia>>(
@@ -20,16 +62,15 @@ Future<List<Map<String, dynamic>>> pickArticlePhotos(
     ArticleMediaPicker(limit: limit),
   );
   if (!context.mounted || files == null || files.isEmpty) return [];
-  final blocks = <Map<String, dynamic>>[];
-  for (final file in files) {
-    if (!context.mounted) return [];
-    try {
-      blocks.add(await uploadArticleMedia(store, file, epoch: epoch));
-    } catch (error) {
-      if (blocks.isEmpty || store.epoch != epoch || !context.mounted) rethrow;
-      toast(context, '已添加 ${blocks.length} 项，其他图片或视频未添加：$error');
-      break;
-    }
+  final (:blocks, :error) = await uploadArticleMediaFiles(files, (file) {
+    // Nothing more is sent for a page that has been closed.
+    if (!context.mounted) throw const ApiFailure('已取消上传');
+    return uploadArticleMedia(store, file, epoch: epoch);
+  }, onProgress: onProgress);
+  if (!context.mounted) return [];
+  if (error != null) {
+    if (blocks.isEmpty || store.epoch != epoch) throw error;
+    toast(context, '已添加 ${blocks.length} 项，其他图片或视频未添加：$error');
   }
   return blocks;
 }
@@ -40,8 +81,7 @@ Future<Map<String, dynamic>> uploadArticleMedia(
   required int epoch,
   ResumeUpload? transfer,
 }) async {
-  final mime = media.mime;
-  final file = await media.fileForUpload();
+  final (:file, :mime) = await media.forUpload();
   final kind = media.isVideo ? 'video' : 'image';
   final filename = media.isVideo
       ? 'article-video.${file.name.split('.').last.toLowerCase()}'
@@ -107,14 +147,14 @@ class ArticlePhoto extends StatefulWidget {
 }
 
 class _ArticlePhotoState extends State<ArticlePhoto> {
-  late Future<String> address;
-  late int epoch;
+  /// Asked for once the reader gets near.
+  Future<ArticleMediaAddresses>? address;
+  late int epoch = widget.store.epoch;
 
   @override
   void initState() {
     super.initState();
     widget.store.addListener(onAccountChanged);
-    load();
   }
 
   @override
@@ -124,38 +164,46 @@ class _ArticlePhotoState extends State<ArticlePhoto> {
       oldWidget.store.removeListener(onAccountChanged);
       widget.store.addListener(onAccountChanged);
     }
-    if (oldWidget.store != widget.store ||
-        oldWidget.fileID != widget.fileID ||
-        oldWidget.articleID != widget.articleID) {
+    if (address != null &&
+        (oldWidget.store != widget.store ||
+            oldWidget.fileID != widget.fileID ||
+            oldWidget.articleID != widget.articleID)) {
       load();
     }
   }
 
   void onAccountChanged() {
-    if (widget.store.epoch != epoch) setState(load);
+    if (widget.store.epoch == epoch) return;
+    epoch = widget.store.epoch;
+    if (address != null) setState(load);
   }
 
   void load() {
     epoch = widget.store.epoch;
-    address = widget.store
-        .request(
-          'GetFilesIdArticleMedia',
-          path: {'id': '${widget.fileID}'},
-          query: {
-            if ((widget.articleID ?? 0) > 0)
-              'article_id': '${widget.articleID}',
-          },
-          expectedEpoch: epoch,
-        )
-        .then((response) {
-          final url = response.data['url'];
-          final uri = url is String ? Uri.tryParse(url) : null;
-          if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
-            throw const ApiFailure('媒体地址无效');
-          }
-          return uri.toString();
-        });
+    // A picture shares the feed card's address; a video asks for a fresh one,
+    // which has all its time left to play in.
+    if (widget.video) {
+      forgetArticleMediaURL(
+        widget.store,
+        widget.fileID,
+        articleID: widget.articleID ?? 0,
+      );
+    }
+    address = articleMediaAddresses(
+      widget.store,
+      widget.fileID,
+      articleID: widget.articleID ?? 0,
+    );
   }
+
+  void reload() => setState(() {
+    forgetArticleMediaURL(
+      widget.store,
+      widget.fileID,
+      articleID: widget.articleID ?? 0,
+    );
+    load();
+  });
 
   @override
   void dispose() {
@@ -165,45 +213,69 @@ class _ArticlePhotoState extends State<ArticlePhoto> {
 
   Widget retry() => Center(
     child: TextButton.icon(
-      onPressed: () => setState(load),
+      onPressed: reload,
       icon: const Icon(Icons.refresh, size: 16),
       label: Text(widget.video ? '视频加载失败，重试' : '图片加载失败，重试'),
     ),
   );
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<String>(
-    future: address,
-    builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
-        return const SizedBox(height: 100, child: SkeletonFill(radius: 8));
-      }
-      if (!snapshot.hasData) return retry();
-      final url = snapshot.requireData;
-      if (widget.video) {
-        return ArticleVideoPlayer(source: url, onRetry: () => setState(load));
-      }
-      return ArticleNetworkPhoto(
-        url: url,
-        watermark: widget.watermark,
-        imageProvider: NetworkImage(url),
-        onRetry: () => setState(load),
+  Widget build(BuildContext context) {
+    if (address == null) {
+      return WhenNearViewport(
+        onNear: () => setState(load),
+        child: const _PhotoPlaceholder(),
       );
-    },
-  );
+    }
+    return FutureBuilder<ArticleMediaAddresses>(
+      future: address,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const _PhotoPlaceholder();
+        }
+        if (!snapshot.hasData) return retry();
+        final media = snapshot.requireData;
+        if (widget.video) {
+          return ArticleVideoPlayer(source: media.url, onRetry: reload);
+        }
+        final picture = articlePicture(media);
+        return ArticleNetworkPhoto(
+          url: picture.url,
+          original: picture.original,
+          watermark: widget.watermark,
+          onRetry: reload,
+        );
+      },
+    );
+  }
+}
+
+/// Holds a picture's room while it is on its way, at the commonest shape.
+class _PhotoPlaceholder extends StatelessWidget {
+  const _PhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) =>
+      const AspectRatio(aspectRatio: 4 / 3, child: SkeletonFill(radius: 8));
 }
 
 class ArticleNetworkPhoto extends StatelessWidget {
   const ArticleNetworkPhoto({
     super.key,
     required this.url,
+    this.original = '',
     this.watermark,
     this.alt,
     this.imageProvider,
     this.onRetry,
   });
   final String url;
+
+  /// Used instead when [url], a smaller rendition of it, cannot be had.
+  final String original;
   final String? watermark, alt;
+
+  /// Stands in for the picture at [url].
   final ImageProvider? imageProvider;
   final VoidCallback? onRetry;
 
@@ -228,10 +300,14 @@ class ArticleNetworkPhoto extends StatelessWidget {
   Widget photo({bool zoomed = false}) {
     final image = Image(
       image: ResizeImage(
-        imageProvider ?? CachedNetworkImage(url),
+        imageProvider ?? CachedNetworkImage(url, fallback: original),
         width: zoomed ? 2880 : 1440,
         policy: ResizeImagePolicy.fit,
       ),
+      frameBuilder: (context, child, frame, synchronous) =>
+          frame == null && !synchronous && !zoomed
+          ? const _PhotoPlaceholder()
+          : child,
       semanticLabel: alt == null || alt!.isEmpty ? '动态图片' : alt,
       fit: BoxFit.contain,
       errorBuilder: (_, _, _) => onRetry == null
